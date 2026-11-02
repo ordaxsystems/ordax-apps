@@ -853,7 +853,18 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       :engineStatus?.autonomousExecution===false
         ?' A análise só roda enquanto o processo OrdaX está aberto; o supervisor de 24 h do Runtime ainda não está conectado.'
         :' O estado de execução em segundo plano não foi confirmado; não considerar como trabalho 24 h.';
-    $('continuityState').textContent=(messages[result.state]||'Estado indisponível')+'.'+proposals+' Nenhum envio automático ao GPT.'+executionNotice;
+    const latestDecision=result.latest?.reviewDecision;
+    const nextLabels={continue_same_conversation:'Continuar na conversa atual',
+      new_conversation:'Abrir outra conversa',new_work:'Propor outra frente',
+      request_correction:'Solicitar correção',verify_external_effect:'Verificar efeitos externos',
+      candidate_complete:'Possível conclusão — falta verificar',blocked:'Aguardar dependência'};
+    const reviewNotice=latestDecision?.reviewOnly===true
+      ?' Revisão da última resposta GPT: '+(nextLabels[latestDecision.decision]||'Sem decisão')+
+        '. '+String(latestDecision.summary||'').slice(0,240)+
+        '. Proposta consultiva; nenhum efeito externo ou envio autorizado.'
+      :'';
+    $('continuityState').textContent=(messages[result.state]||'Estado indisponível')+'.'+proposals+
+      ' Nenhum envio automático ao GPT.'+reviewNotice+executionNotice;
   }
   async function refreshOrchestrators() {
     const generation=++orchestratorRefreshGeneration,p=projectId;

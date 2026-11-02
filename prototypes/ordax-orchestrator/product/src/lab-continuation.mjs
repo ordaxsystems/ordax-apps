@@ -74,18 +74,26 @@ export class LabContinuation {
       WHERE q.project_id=? AND q.orchestrator_id=? AND r.rowid>?
       GROUP BY q.state`).all(projectId,orchestratorId,baseline);
     const counts=Object.fromEntries(rows.map(row=>[row.state,row.count]));
-    const latest=this.db.prepare(`SELECT q.run_id,q.state,q.reason,q.updated_at
+    const latest=this.db.prepare(`SELECT q.run_id,q.state,q.reason,q.command_id,q.updated_at
       FROM lab_continuation_reviews q JOIN runs r ON r.id=q.run_id
       WHERE q.project_id=? AND q.orchestrator_id=? AND r.rowid>?
       ORDER BY q.updated_at DESC,q.run_id DESC LIMIT 1`)
       .get(projectId,orchestratorId,baseline)||null;
+    let reviewDecision=null;
+    if(latest?.state==='analyzed'&&latest.command_id) {
+      const receipt=this.db.prepare('SELECT status,result FROM lab_command_receipts WHERE id=?')
+        .get(latest.command_id);
+      if(receipt?.status==='succeeded') {
+        try{reviewDecision=JSON.parse(receipt.result||'{}').reviewDecision||null;}catch{}
+      }
+    }
     const enabled=policy?.enabled===1;
     return {enabled,mode:'automatic_analysis_and_optional_proposals',automaticGPTSends:false,
       nextProposals:this.nextProposal.status(projectId,orchestratorId),
       state:!enabled?'disabled':this.service.coordinator?.available?.(projectId,orchestratorId)!==true
         ?'blocked_coordinator':counts.reconciliation_required?'reconciliation_required':
           counts.queued||counts.analyzing?'pending':'observing',
-      counts,latest};
+      counts,latest:latest?{...latest,reviewDecision}:null};
   }
   scan() {
     // Only the active workspace may enqueue work, even if an old workspace
@@ -149,14 +157,21 @@ export class LabContinuation {
       if(claimed!==1)return {state:'race'};
       try {
         const requestId='review_'+row.run_id.replace(/[^A-Za-z0-9_-]/g,'_').slice(0,110);
+        // Only a real, latest, completed GPT response with immutable submission
+        // provenance receives the focused semantic review. Synthetic/historical
+        // unproven Runs retain the existing generic advisory path.
+        const source=this.service.reviewableGPTResult(row.project_id,row.orchestrator_id,row.run_id);
         const receipt=await this.service.invoke(context,'orchestrator_analyze',{
-          projectId:row.project_id,orchestratorId:row.orchestrator_id,requestId
+          projectId:row.project_id,orchestratorId:row.orchestrator_id,requestId,
+          ...(source?{reviewRunId:row.run_id}:{})
         });
         // The coordinator call is asynchronous: a workspace switch while it
         // is in flight must not certify an old session's queued review.
         const current=this.store.getWorkspaceSession();
         const sameWorkspace=current?.status==='active'&&current.id===session.id;
-        const confirmed=sameWorkspace&&receipt?.status==='succeeded'&&receipt?.result?.responseObserved===true;
+        const confirmed=sameWorkspace&&receipt?.status==='succeeded'&&receipt?.result?.responseObserved===true&&
+          (!source||(receipt.result.reviewDecision?.sourceRunId===row.run_id&&
+            receipt.result.reviewDecision?.automaticGPTSendAuthorized===false));
         const finalized=this.db.prepare(`UPDATE lab_continuation_reviews
           SET state=?,command_id=?,reason=?,updated_at=?
           WHERE run_id=? AND state='analyzing'`)

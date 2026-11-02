@@ -4,6 +4,8 @@ import {assertTaskHasNoUncertainTransport,listTaskUncertainTransportRuns} from '
 import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
 import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
 import {validateWorkProposal} from './orchestrator-proposal.mjs';
+import {interpretGPTWorkReview} from './gpt-work-review.mjs';
+import {findProviderSubmissionProvenance} from './provider-submission-provenance.mjs';
 import {LabContinuation} from './lab-continuation.mjs';
 import {AutonomousDialogue} from './autonomous-dialogue.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
@@ -594,6 +596,44 @@ export class OrchestratorService {
       });
   }
 
+  // One response-specific snapshot from the existing Store. A simulated Run
+  // without immutable provider provenance is not eligible for semantic review.
+  reviewableGPTResult(projectId,orchestratorId,runId) {
+    const session=this.store.getWorkspaceSession();
+    const row=this.db.prepare(`SELECT r.id,r.task_id,r.status,t.title,t.chat_url
+      FROM runs r JOIN tasks t ON t.id=r.task_id
+      JOIN lab_task_bindings b ON b.task_id=t.id AND b.kind='work'
+      WHERE r.id=? AND r.status='succeeded' AND t.workspace_session_id=?
+        AND b.project_id=? AND b.orchestrator_id=?`)
+      .get(runId,session?.id,projectId,orchestratorId);
+    if(!row||!/^https:\/\/chatgpt\.com\/c\//.test(row.chat_url||''))return null;
+    if(this.db.prepare('SELECT id FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1')
+      .get(row.task_id)?.id!==runId)return null;
+    const confirmed=this.db.prepare('SELECT 1 FROM conversation_completed_runs WHERE run_id=? AND task_id=?')
+      .get(runId,row.task_id);
+    if(!confirmed)return null;
+    const messages=this.db.prepare(`SELECT id,role,content FROM messages
+      WHERE task_id=? AND role IN ('user','assistant') ORDER BY rowid DESC LIMIT 2`)
+      .all(row.task_id).reverse();
+    if(messages.length!==2||messages[0].role!=='user'||messages[1].role!=='assistant'||
+       typeof messages[1].content!=='string'||messages[1].content.trim().length<20)return null;
+    // Reuse the canonical, message-bound delivery receipt verifier. A bare
+    // event of the same type is not trustworthy provenance for another turn.
+    const provenance=findProviderSubmissionProvenance({
+      store:this.store,taskId:row.task_id,chatUrl:row.chat_url,messageId:messages[0].id
+    });
+    if(provenance?.runId!==runId||provenance.evidenceKind!=='delivery_receipt')return null;
+    const answer=messages[1].content;
+    // Start and conclusion are provided separately so a long technical answer
+    // cannot push the actual outcome beyond the model's bounded input window.
+    const head=redactOrchestratorAnalysisText(answer.slice(0,1100),1100);
+    const tail=answer.length>1900?redactOrchestratorAnalysisText(answer.slice(-950),950):'';
+    const observedAnswer=head+(tail?'\n[trecho final da mesma resposta]\n'+tail:'');
+    return {runId,taskId:row.task_id,title:redactOrchestratorAnalysisText(row.title,140),
+      userText:redactOrchestratorAnalysisText(messages[0].content,1000),
+      observedAnswer,head,tail,responseTruncated:answer.length>1900};
+  }
+
   analysisContext(projectId,orchestratorId) {
     const owner=this.orchestrator(projectId,orchestratorId);
     const project=this.db.prepare(`SELECT name,objective FROM lab_projects
@@ -1097,11 +1137,40 @@ export class OrchestratorService {
     if(typeof port?.send!=='function'||(port.available&&port.available(input.projectId,owner.id)!==true))
       throw Error('orchestrator_provider_unavailable');
     const prepareWork=operation==='orchestrator_prepare';
-    const analysisContext=operation==='orchestrator_analyze'||prepareWork
+    const reviewSource=operation==='orchestrator_analyze'&&input.reviewRunId
+      ?this.reviewableGPTResult(input.projectId,input.orchestratorId,input.reviewRunId):null;
+    if(input.reviewRunId&&!reviewSource)throw Error('orchestrator_review_source_unconfirmed');
+    const baseAnalysis=operation==='orchestrator_analyze'||prepareWork
       ?this.analysisContext(input.projectId,input.orchestratorId):null;
+    const analysisContext=reviewSource?{
+      phase:'gpt_response_review',project:baseAnalysis.project,
+      orchestrator:baseAnalysis.orchestrator,
+      scope:{includedWorkCount:1,totalWorkCount:baseAnalysis.scope.totalWorkCount},
+      reviewEvidence:{runId:reviewSource.runId,runStatus:'succeeded',
+        providerResponseObserved:true,externalEffectsVerified:false,
+        responseTruncated:reviewSource.responseTruncated,
+        answerStart:reviewSource.head,answerEnd:reviewSource.tail},
+      works:[{title:reviewSource.title,status:'provider_response_observed',
+        runs:[{status:'succeeded'}],messages:[
+          {role:'user',content:reviewSource.userText},
+          {role:'assistant',content:reviewSource.head},
+          ...(reviewSource.tail?[{role:'assistant',content:'[Trecho final da mesma resposta] '+reviewSource.tail}]:[])
+        ]}]
+    }:baseAnalysis;
     if(operation==='orchestrator_analyze'&&analysisContext.works.length===0)throw Error('orchestrator_works_unavailable');
     const content=operation==='orchestrator_analyze'
-      ?'Analise explicitamente as conversas recentes de trabalho deste projeto e recomende próximos passos, sem executar nenhum deles.'
+      ?reviewSource
+        ?'INTERPRETAÇÃO DE UMA RESPOSTA GPT REAL, Run '+reviewSource.runId+
+          '. Leia exclusivamente a resposta GPT observada em reviewEvidence e works, inclusive o trecho final. '+
+          'Não afirme que código foi alterado, testado ou implantado sem evidência externa; um Run succeeded comprova só a resposta. '+
+          'Decida o próximo passo específico para a missão e as pendências. '+
+          'Responda SOMENTE JSON com as chaves runId,decision,summary,reason,observedExcerpt,nextPrompt. '+
+          'decision deve ser continue_same_conversation, new_conversation, new_work, request_correction, '+
+          'verify_external_effect, candidate_complete ou blocked. observedExcerpt deve copiar literalmente '+
+          'um trecho de 16 a 180 caracteres da resposta GPT fornecida. nextPrompt é uma instrução concreta '+
+          'de 20 a 2200 caracteres apenas nas decisões de continuar, nova conversa, nova frente ou corrigir; '+
+          'nas outras, use null. Não invente grants, acesso a arquivos, commit, execução ou verificação.'
+        :'Analise explicitamente as conversas recentes de trabalho deste projeto e recomende próximos passos, sem executar nenhum deles.'
       :sendInput.content;
     const providerContent=usesProvider
       ?preparedSend?.providerContent||appendRemoteRepositoryInstructions(content,repositoryUrl)
@@ -1180,6 +1249,10 @@ export class OrchestratorService {
           return this.getReceipt(context,reserved.commandId);
         if(!reply||typeof reply.content!=='string'||!reply.content.trim()||reply.content.length>12000)
           throw Error('orchestrator_reply_invalid');
+        // Parse an evidence-anchored decision before it becomes a completed
+        // receipt. The model response is never itself permission to execute.
+        const reviewDecision=reviewSource?interpretGPTWorkReview(reply.content,{
+          runId:reviewSource.runId,observedAnswer:reviewSource.observedAnswer}):null;
         return this.transaction(()=>{
           let proposalActionId=null;
           if(prepareWork) {
@@ -1191,6 +1264,7 @@ export class OrchestratorService {
           this.store.appendMessage(task.id,'assistant',reply.content);
           return this.finish(reserved.commandId,{taskId:task.id,responseObserved:true,
             ...(proposalActionId?{proposalActionId}:{}),
+            ...(reviewDecision?{reviewDecision}:{}),
             proposalsExecuted:0,provider:reply.provider||'groq',...(analysisContext?{analysis:{workCount:analysisContext.works.length,
               messageCount:analysisContext.works.reduce((n,work)=>n+work.messages.length,0)}}:{})});
         });
