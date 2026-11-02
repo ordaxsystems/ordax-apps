@@ -263,11 +263,14 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     }
   }
   let visibleWorkItems=[];
+  let verificationRequiredWorkIds=new Set();
   const workClass=work=>
     ['reconciliation_required','review_required'].includes(work.execution?.observed)?'attention':
     work.status==='running'?'running':
     work.status==='completed'?'completed':
     ['failed','error','interrupted'].includes(work.status)?'attention':'ready';
+  // One classification drives pulse counters, per-work labels and rail filters.
+  const workClassForPlan=work=>verificationRequiredWorkIds.has(work.id)?'attention':workClass(work);
   function clearProjectPreflight() {
     // Invalidate read-only responses issued before a project change or Pause.
     preflightGeneration++;
@@ -357,7 +360,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     let visible=0;
     for(const button of nodes){
       const work=byId.get(button.dataset.taskId);
-      const show=Boolean(work)&&(!query||normalize(work.title).includes(query))&&(state==='all'||workClass(work)===state);
+      const show=Boolean(work)&&(!query||normalize(work.title).includes(query))&&(state==='all'||workClassForPlan(work)===state);
       (button.closest('.work-entry')||button).hidden=!show;if(show)visible++;
     }
     const summary=$('orchestratorWorks').querySelector('.work-attention-summary');
@@ -442,12 +445,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   function renderWorks(works,plan=null,dependencyEligibleIds=new Set()) {
     visibleWorkItems=works;
+    verificationRequiredWorkIds=new Set(plan?.verificationRequired||[]);
     const planWorkers=new Map((plan?.workers||[]).map(w=>[w.taskId,w]));
     const candidates=new Set(plan?.candidates||[]);
     const waiting=new Set(plan?.waiting||[]);
     const blocked=new Set(plan?.blocked||[]);
-    const verificationRequired=new Set(plan?.verificationRequired||[]);
-    const classify=work=>verificationRequired.has(work.id)?'attention':workClass(work);
     const labels={running:['Em andamento','running'],completed:['Concluída','completed'],failed:['Revisar','attention'],error:['Revisar','attention'],interrupted:['Revisar','attention'],paused:['Pausada','paused'],ready:['Pronta','ready']};
     $('workRailProject').textContent=$('projectSelect').selectedOptions[0]?.textContent||'';
     const planStatus=$('workPlanSummary');
@@ -461,7 +463,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       planStatus.textContent='Planejamento do projeto · '+plan.candidates.length+' candidatas · '+
         plan.waiting.length+' aguardando · '+plan.blocked.length+' bloqueadas · '+
         plan.inFlight+' em execução no projeto · '+
-        verificationRequired.size+' respostas aguardando comprovação de resultado. '+physical+
+        verificationRequiredWorkIds.size+' respostas aguardando comprovação de resultado. '+physical+
         ' A seleção consultiva de até '+(plan.availableSlots+plan.inFlight)+
         ' frentes não significa envios simultâneos. Nenhum envio automático autorizado.';
     }else{
@@ -472,9 +474,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     }
     const list=$('orchestratorWorks');list.replaceChildren();
     const counts={running:0,completed:0,attention:0,ready:0};
-    for(const work of works)counts[classify(work)]++;
+    for(const work of works)counts[workClassForPlan(work)]++;
     renderProjectPulse(counts,works.length);
-    const attention=works.filter(work=>classify(work)==='attention');
+    const attention=works.filter(work=>workClassForPlan(work)==='attention');
     if(attention.length){
       const summary=document.createElement('div');
       summary.className='work-attention-summary';
@@ -486,10 +488,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       summary.append(label,description);list.append(summary);
     }
     if(!works.length){applyWorkFilters();const empty=document.createElement('div');empty.className='work-rail-empty';empty.textContent='Nenhuma frente registrada neste projeto. Use a ação de nova frente acima para criar um rascunho, sem envio automático ao GPT.';list.append(empty);return;}
-    const ordered=[...works].sort((a,b)=>{const priority={attention:0,running:1,ready:2,completed:4};return (priority[classify(a)]??5)-(priority[classify(b)]??5);});
+    const ordered=[...works].sort((a,b)=>{const priority={attention:0,running:1,ready:2,completed:4};return (priority[workClassForPlan(a)]??5)-(priority[workClassForPlan(b)]??5);});
     for(const work of ordered){
-      const state=classify(work);
-      const label=verificationRequired.has(work.id)?'Verificar resultado':
+      const state=workClassForPlan(work);
+      const label=verificationRequiredWorkIds.has(work.id)?'Verificar resultado':
         work.execution?.observed==='reconciliation_required'?'Resultado incerto':
         work.execution?.observed==='review_required'?'Revisar recibo':
         (labels[work.status]||labels.ready)[0];
@@ -523,7 +525,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       if(planned){
         const label=document.createElement('small');
         label.className='work-plan-item';
-        label.textContent='Plano · '+(verificationRequired.has(work.id)?'Resposta GPT recebida; resultado externo não verificado':
+        label.textContent='Plano · '+(verificationRequiredWorkIds.has(work.id)?'Resposta GPT recebida; resultado externo não verificado':
           blocked.has(work.id)?'Dependência bloqueada · revisar':
           waiting.has(work.id)?'Aguardando pré-requisitos':
           candidates.has(work.id)?'Candidata à próxima ação · requer autorização':
