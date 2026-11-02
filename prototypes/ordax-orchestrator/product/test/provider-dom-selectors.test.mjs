@@ -55,6 +55,18 @@ test('physical ChatGPT bubble extracts authored user content only, not copy-butt
   assert.deepEqual(browser(bubble),extraction);
 });
 
+test('nested ChatGPT user formatting keeps one authored-content root without accepting siblings',()=>{
+  const original='Conversa com contexto, sem botões de interface';
+  const outer={innerText:original,parentElement:{closest:()=>null}};
+  const inner={innerText:'',parentElement:{closest:selector=>selector==='.whitespace-pre-wrap'?outer:null}};
+  const unrelated={innerText:'Outra mensagem',parentElement:{closest:()=>null}};
+  const bubble=nodes=>({matches:()=>true,querySelectorAll:()=>nodes});
+  assert.deepEqual(readProviderHistoricalUserText(bubble([outer,inner])),{text:original,complete:true});
+  assert.deepEqual(readProviderHistoricalUserText(bubble([outer,inner,unrelated])),{text:'',complete:false});
+  const browser=new Function(providerHistoricalUserTextBootstrap+'return readProviderHistoricalUserText;')();
+  assert.deepEqual(browser(bubble([outer,inner])),{text:original,complete:true});
+});
+
 test('W3 user attribution fails closed if ChatGPT markup has no unique authored content',()=>{
   const mock=matches=>({
     innerText:'User text with controls',
