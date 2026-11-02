@@ -4,6 +4,16 @@
 
 **Próxima implementação elegível:** conectar o diagnóstico automático às fontes GitHub realmente autorizadas pela Platform, com snapshots limitados e orçamento explícito; ampliar cobertura para branches, PRs e checks somente se a porta autorizada oferecer essas operações. Não criar OAuth/token store próprio. Até existir esse gate, o app pode analisar somente frentes locais e deve mostrar que faltam evidências remotas. Depois, avançar para coordenação real de executores com receipts. Não certificar headless, Aura, verificação independente de trabalho GPT ou autonomia sem prova; não criar PR concorrente com trabalho do engenheiro responsável.
 
+## Gate físico Groq de proposta — falha observada e correção candidata (02/11/2026)
+
+- **Versão instalada, validada:** `ordax-apps/main@f3d04aa34c30bddc6e1c163eeae067995d36be45`; CI da main Foundation, Isolation e owned-Windows verdes; artefato assinado por recibos de integridade instalado na pasta Windows canônica, único perfil intacto.
+- **E2E real, resultado FALHO:** uma única ação na UI `Iniciar missão técnica` foi executada no `DESKTOP-4UFL03B`, com missão verdadeira de diagnóstico do digest SHA-256 do DOM. O Groq foi consultado para preparar a primeira frente, mas o parser de `prepareWork` recusou a resposta com `groq_invalid_work_proposal`. **Nenhum novo Run GPT** (contagem física permaneceu 2); nenhum comando incerto; missão bloqueada, sem reenvio. Essa falha não pode ser tratada como autonomia comprovada.
+- **Correção canônica sob teste na branch `fix/orchestrator-groq-json-fence-20261102`:** habilitar `response_format` estruturado no adapter **existente** `createGroqCoordinatorConversation` para planejamento, schema estrito `title/content/reason` em `openai/gpt-oss-20b/120b`, JSON Object Mode como fallback de modelo, `reasoning_format:hidden` para formato JSON, validação local `validateWorkProposal` independente do modelo, sem retry. Reutilizar um único parser `parseStructuredModelObject` para analisar JSON direto ou um único bloco `json` completo, tanto na proposta quanto na revisão GPT, sem aceitar prose extra nem campos arbitrários.
+- **Permanecem pendentes:** CI oficial Windows desta correção, integração à main, promoção do novo artefato coerente e uma **segunda missão real distinta** após comprovar 0 GPT sends e 0 resultados incertos na primeira. Apenas depois afirmar Groq → GPT Web → Groq → decisão.
+- **Segurança:** não registrar ou imprimir chave Groq, não criar DB/workers/transportes, não fingir execução externa; falhar fechado para saída inválida, interrupção ou mudança de owner.
+
+---
+
 ## Missão técnica sem microcomandos — candidata de 02/11/2026
 
 - **Fundação atual comprovada:** `ordaxsystems/ordax-apps/main@493889817f5beeaceaf8a51a400469faafee354a`; PRs #422 e #423 integradas e Gates Foundation/Isolation/Windows aprovados. `DESKTOP-4UFL03B` tem instalação canônica física no mesmo commit, janela visível e perfil SQLite íntegro (1 projeto, 2 Runs históricos, zero comandos incertos).

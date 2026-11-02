@@ -1,5 +1,6 @@
 import {redactOrchestratorAnalysisText} from '../src/orchestrator-analysis-text.mjs';
 import {validateWorkProposal} from '../src/orchestrator-proposal.mjs';
+import {parseStructuredModelObject} from '../src/structured-model-object.mjs';
 import {normalizeGitHubRepositoryUrl} from '../src/remote-repository-context.mjs';
 
 function sanitizeAnalysisValue(value,depth=0) {
@@ -101,7 +102,7 @@ export function validateCoordinatorReply(content,{prepareWork=false,errorPrefix=
     throw Error(`${errorPrefix}_invalid_response`);
   if(!prepareWork)return {content};
   let proposal;
-  try {proposal=JSON.parse(content);}
+  try {proposal=parseStructuredModelObject(content);}
   catch {throw Error(`${errorPrefix}_invalid_work_proposal`);}
   try {proposal=validateWorkProposal(proposal);}
   catch {throw Error(`${errorPrefix}_invalid_work_proposal`);}
