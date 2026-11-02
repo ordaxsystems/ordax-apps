@@ -481,6 +481,9 @@ body.orchestrator-focus .left-footer .provider-card{display:none}
 .project-pulse p{color:var(--muted-2);font-size:var(--type-caption);line-height:1.4;margin:0}
 .project-pulse .project-preflight-state{padding:9px 11px;border:1px solid var(--border-soft);border-radius:9px;background:var(--panel-2);line-height:1.55;overflow-wrap:anywhere}
 .project-preflight-state[data-state="blocked"]{border-color:var(--border-strong)}
+.project-preflight-actions{margin:0;padding:8px 12px 8px 28px;border:1px solid var(--border-soft);border-radius:9px;background:var(--panel-2);color:var(--muted);font-size:var(--type-caption);line-height:1.6}
+.project-preflight-actions[hidden]{display:none}
+.project-preflight-actions li+li{margin-top:3px}
 .orchestrator-experiments{flex:1 1 100%;min-width:0;border:1px solid var(--border-soft);border-radius:9px;background:var(--panel-2)}
 .orchestrator-experiments>summary{padding:10px 12px;cursor:pointer;color:var(--muted);font-size:var(--type-label);font-weight:650}
 .orchestrator-experiments-content{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:0 12px 12px}

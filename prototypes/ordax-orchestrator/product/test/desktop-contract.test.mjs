@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {resolveProjectOnboardingMission} from '../desktop/orchestrator-ui.mjs';
+import {resolveProjectOnboardingMission,describeProjectPreflight} from '../desktop/orchestrator-ui.mjs';
 const root = path.resolve(import.meta.dirname, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
 const bootstrap = JSON.parse(fs.readFileSync(path.join(root,'..','package.json'),'utf8'));
@@ -80,8 +80,12 @@ test('preflight is read-only, project-scoped and cannot silently send GPT',()=>{
   assert.match(html,/projectPreflightState"[^>]*role="status"/);
   assert.match(uiSource,/call\('project_preflight',\{projectId:p,orchestratorId:o\}\)/);
   assert.match(uiSource,/if\(!snapshot\|\|!snapshot\.gates\.recordedWorkAnalysisEligible\)/);
-  assert.match(uiSource,/if\(p!==projectId\|\|o!==orchestratorId\)return null/);
-  assert.match(uiSource,/repo\.urlRegistered\?'GitHub: URL registrada, leitura autenticada indisponível/);
+  assert.match(uiSource,/generation!==preflightGeneration\|\|p!==projectId\|\|o!==orchestratorId/);
+  // Preflight rendering now uses the same pure fail-closed helper as Start;
+  // a registered URL must never masquerade as authenticated GitHub access.
+  assert.match(uiSource,/snapshot\.repository\.authenticatedRead!=='unavailable'/);
+  assert.match(uiSource,/snapshot\.provenance\.externalObservation!==false/);
+  assert.match(uiSource,/Nenhuma leitura GitHub, chamada Groq, mensagem GPT/);
   assert.match(uiSource,/clearProjectPreflight\(\)/);
   assert.match(uiSource,/command\('orchestrator_analyze',\{projectId:p,orchestratorId:o\}\)/);
 });
@@ -104,9 +108,56 @@ test('Start/Pause is consent-only and never claims a running background supervis
   assert.match(uiHtml,/Iniciar salva somente a intenção de diagnóstico/);
   assert.match(source,/project\?\.observation_requested===1/);
   assert.match(source,/command\('project_observation_set',\{projectId:p,enabled\}\)/);
-  assert.match(source,/Nenhuma execução, mensagem GPT ou leitura remota foi iniciada/);
+  assert.match(source,/GitHub e Runtime ainda sem autorização verificada; nenhuma mensagem GPT foi enviada/);
+  assert.match(source,/Nenhuma leitura GitHub, chamada Groq, mensagem GPT ou ação Runtime foi realizada/);
   assert.match(source,/const p=projectId,project=projectsCache\.find/);
   assert.match(source,/if\(p!==projectId\)return/);
+});
+
+test('Start immediately inspects local evidence and restores it without automatic external effects',()=>{
+  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.equal((uiHtml.match(/id="projectPreflightActions"/g)||[]).length,1);
+  assert.match(source,/if\(enabled\)await inspectRequestedProject\(\)/);
+  assert.match(source,/await inspectRequestedProject\(\);\s*let refreshPending/);
+  assert.match(source,/generation!==preflightGeneration\|\|p!==projectId\|\|o!==orchestratorId/);
+  assert.match(source,/requested!==\(projectsCache\.find/);
+  assert.match(source,/button\.disabled=!project\|\|observationBusy\|\|\(!requested&&anotherRequested\)/);
+  assert.match(source,/observationBusy=false;[\s\S]{0,240}syncProjectObservation\(\);\s*}\s*}\);/);
+  const evidence={
+    schema:'ordax.orchestrator.project-preflight/1',
+    provenance:{source:'app_sqlite',externalObservation:false},
+    observation:{requested:true,active:false},
+    repository:{urlRegistered:true,authenticatedRead:'unavailable'},
+    runtime:{grantVerified:false},
+    coordinator:{state:'ready',modelConfigured:true},
+    work:{registered:4,started:2,unresolvedSends:0},
+    gates:{recordedWorkAnalysisEligible:true,githubObservationVerified:false,
+      automaticGptDispatchAllowed:false,headlessExecutionVerified:false},
+    blockers:[]
+  };
+  const guide=describeProjectPreflight(evidence);
+  assert.equal(guide.state,'blocked');
+  assert.match(guide.summary,/Inventário local: 4 frente/);
+  assert.match(guide.summary,/Nenhuma leitura GitHub, chamada Groq, mensagem GPT/);
+  assert.match(guide.actions.join(' '),/Platform ainda indisponível/);
+  assert.match(guide.actions.join(' '),/supervisão headless ainda não verificados/);
+  const missing=describeProjectPreflight({
+    ...evidence,observation:{requested:false,active:false},
+    repository:{urlRegistered:false,authenticatedRead:'unavailable'},
+    coordinator:{state:'paused',modelConfigured:false},
+    work:{registered:0,started:0,unresolvedSends:2},
+    gates:{...evidence.gates,recordedWorkAnalysisEligible:false}
+  });
+  assert.equal(missing.state,'blocked');
+  assert.match(missing.actions.join(' '),/Reconcilie envios pendentes/);
+  assert.match(missing.actions.join(' '),/Retome o Administrador Geral/);
+  assert.match(missing.actions.join(' '),/Cadastre a URL/);
+  assert.throws(()=>describeProjectPreflight({
+    ...evidence,provenance:{source:'app_sqlite',externalObservation:true}
+  }),/project_preflight_evidence_invalid/);
+  assert.throws(()=>describeProjectPreflight({
+    ...evidence,gates:{...evidence.gates,automaticGptDispatchAllowed:true}
+  }),/project_preflight_evidence_invalid/);
 });
 
 test('desktop is single-instance with canonical durable AppData state', () => {

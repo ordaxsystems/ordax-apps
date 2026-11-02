@@ -647,6 +647,16 @@ export class OrchestratorService {
       return {projectId:input.projectId,name:input.name};
     }
     if(operation==='project_observation_set') {
+      if(input.enabled) {
+        // An App profile can request observation of ONE project at a time.
+        // This is a local consent fence, not an external GitHub/Runtime grant.
+        // Mutations are executed within the existing BEGIN IMMEDIATE receipt
+        // transaction; concurrent requests cannot both pass this check.
+        const other=this.db.prepare(`SELECT 1 FROM lab_projects
+          WHERE workspace_session_id=? AND observation_requested=1 AND id<>? LIMIT 1`)
+          .get(this.store.getWorkspaceSession().id,input.projectId);
+        if(other)throw Error('orchestrator_project_observation_exclusive');
+      }
       const result=this.db.prepare('UPDATE lab_projects SET observation_requested=? WHERE id=? AND workspace_session_id=?')
         .run(input.enabled?1:0,input.projectId,this.store.getWorkspaceSession().id);
       if(result.changes!==1)throw Error('orchestrator_project_unavailable');
