@@ -2,7 +2,17 @@
 
 **Começar por:** [Contrato canônico de produto](docs/ORCHESTRATOR-CANONICAL-PRODUCT.md) → [AGENTS.md](../../AGENTS.md) → manifesto de versão → código atual → CI/PRs. **A decisão nova prevalece sobre todas as notas alpha anteriores abaixo.** Uma instância serve um projeto, com Administrador Geral Groq, descoberta/planejamento ao clicar Iniciar sem prompt, executor por repositório e intervenções humanas opcionais. GPT Web é canal de trabalho separado. Preservar um único Store/Kernel/serviço e recibos atuais; multi-projeto hoje implementado é legado a migrar com segurança, nunca apagar dados nem quebrar a UI por decreto.
 
-**Próxima implementação elegível:** conectar o diagnóstico automático às fontes GitHub realmente autorizadas pela Platform, com snapshots limitados e orçamento explícito; ampliar cobertura para branches, PRs e checks somente se a porta autorizada oferecer essas operações. Não criar OAuth/token store próprio. Até existir esse gate, o app pode analisar somente frentes locais e deve mostrar que faltam evidências remotas. Depois, avançar para coordenação real de executores com receipts. Não certificar headless, Aura, E2E GPT ou autonomia sem prova; não criar PR concorrente com trabalho do engenheiro responsável.
+**Próxima implementação elegível:** conectar o diagnóstico automático às fontes GitHub realmente autorizadas pela Platform, com snapshots limitados e orçamento explícito; ampliar cobertura para branches, PRs e checks somente se a porta autorizada oferecer essas operações. Não criar OAuth/token store próprio. Até existir esse gate, o app pode analisar somente frentes locais e deve mostrar que faltam evidências remotas. Depois, avançar para coordenação real de executores com receipts. Não certificar headless, Aura, verificação independente de trabalho GPT ou autonomia sem prova; não criar PR concorrente com trabalho do engenheiro responsável.
+
+## Evidência física 02/11/2026 — Groq/GPT real, W3 ainda bloqueado
+
+- **Base testada:** `ordax-apps/main@18246ace03bae2f715f6818f3f808df38597b00e`, aplicativo canônico instalado no `DESKTOP-4UFL03B`, perfil/SQLite preservados. A depuração local foi habilitada apenas para o ensaio, não faz parte do contrato de produção.
+- **Groq real:** mensagem curta enviada ao Administrador Geral, resposta esperada persistida com `orchestrator_chat=succeeded`; sem envio implícito ao GPT.
+- **GPT Web real:** uma mensagem inofensiva foi enviada pela UI existente à sessão observada no Electron. `runs`: 1 novo `succeeded`; `lab_command_receipts`: 1 `work_send=succeeded`; a resposta continha o marcador esperado; conversa canônica vinculada; rascunho original restaurado na UI e no SQLite; `PRAGMA quick_check=ok`. Isso prova resposta de provedor, **não** execução de tarefas ou efeito externo. A identidade da conta GPT não foi atestada pelo Lab.
+- **W3 read-only:** `inspectLinkedThread` bloqueou com `message_observation_incomplete` sem reenviar. O balão físico do ChatGPT continha `.whitespace-pre-wrap` aninhado; após identificar a raiz única, o texto renderizado ainda não reproduziu o SHA-256 do prompt realmente entregue. A correção de seleção de raiz aninhada preserva a exigência de hash idêntico, exclusividade, completion e fail-closed; não declarar `threadRendered` nem `effectVerified` para este ensaio.
+- **Permanecem pendentes:** observação GitHub autorizada pela Platform, grants do Runtime, verificação externa dos efeitos e continuidade autônoma/headless. Não confundir a existência de Run/recibo com esses gates.
+
+---
 
 ## Continuidade 02/11/2026 — Start com diagnóstico inicial sem prompt (candidata)
 

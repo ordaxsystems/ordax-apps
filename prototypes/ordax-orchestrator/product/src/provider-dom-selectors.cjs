@@ -31,8 +31,12 @@ function readProviderHistoricalUserText(node) {
   if (!bubble || typeof bubble.querySelectorAll!=='function')
     return {text:'',complete:false};
   const content=Array.from(bubble.querySelectorAll('.whitespace-pre-wrap'));
-  if (content.length!==1) return {text:'',complete:false};
-  const text=String(content[0].innerText ?? content[0].textContent ?? '');
+  // A formatted user turn can nest another pre-wrap element inside its single
+  // authored-content root. Count only outer roots; independent sibling roots
+  // remain ambiguous and must still fail closed.
+  const roots=content.filter(entry=>!entry.parentElement?.closest?.('.whitespace-pre-wrap'));
+  if (roots.length!==1) return {text:'',complete:false};
+  const text=String(roots[0].innerText ?? roots[0].textContent ?? '');
   return {text,complete:Boolean(text.trim())};
 }
 
