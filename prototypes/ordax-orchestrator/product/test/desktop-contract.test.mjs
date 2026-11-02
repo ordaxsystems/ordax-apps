@@ -453,7 +453,127 @@ test('operational overview reuses work state and never presents an experimental 
   assert.match(orchestration,/\['reconciliation_required','review_required'\]\.includes\(work\.execution\?\.observed\)/);
   assert.match(orchestration,/openProjectWork'\)\.addEventListener\('click',\(\)=>\{/);
   assert.match(orchestration,/Estados das conversas registradas; não comprovam execução autônoma/);
-  assert.match(css,/\.projec…2298 tokens truncated…lysisContext===null\?12:8/);
+  assert.match(css,/\.project-pulse\[hidden\]\{display:none\}/);
+  assert.match(css,/\.project-pulse-stats\{display:grid;grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
+  assert.match(css,/\.orchestrator-experiments-content\{/);
+});
+
+test('project pulse opens a single filtered rail with preserved keyboard focus and no duplicate counters',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.match(html,/id="projectPulseStats"/);
+  assert.deepEqual([...html.matchAll(/data-work-filter="([^"]+)"/g)].map(m=>m[1]),['all','running','attention','ready']);
+  assert.match(html,/aria-label="Ver frentes que precisam de revisão"/);
+  assert.match(orchestration,/projectPulseStats'\)\.addEventListener\('click'/);
+  assert.match(orchestration,/const button=event\.target\.closest\('button\[data-work-filter\]'\)/);
+  assert.match(orchestration,/openFilteredWorks\(button\.dataset\.workFilter,button\)/);
+  assert.match(orchestration,/workStatusFilter'\)\.value=filter/);
+  assert.match(orchestration,/workSearch'\)\.value=''/);
+  assert.match(orchestration,/applyWorkFilters\(\)/);
+  assert.match(orchestration,/setWorkRailOpen\(true\)\.then/);
+  assert.match(orchestration,/workRailReturnFocus\?\.isConnected/);
+  assert.match(orchestration,/const ordered=\[\.\.\.works\]\.sort\(\(a,b\)=>\{const priority=\{attention:0/);
+  assert.doesNotMatch(orchestration,/className='work-overview'/);
+  assert.doesNotMatch(css,/\.work-overview-stat\{/);
+  assert.match(css,/\.project-pulse-stats>button\{/);
+  assert.match(css,/\.project-pulse-stats button:focus-visible\{/);
+  assert.match(css,/@media\(max-width:460px\)\{/);
+});
+
+test('work rail separates observed evidence from advisory plans without duplicate counters or false failures',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const orchestrator=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.doesNotMatch(html,/id="workRailCount"/);
+  assert.doesNotMatch(orchestrator,/workRailCount/);
+  assert.doesNotMatch(css,/\.work-rail-count\{/);
+  assert.match(html,/<details class="work-plan-details">/);
+  assert.match(html,/Planejamento consultivo · não autoriza envios/);
+  assert.match(html,/id="workPlanSummary"/);
+  assert.match(orchestrator,/const state=workClass\(work\)/);
+  assert.doesNotMatch(orchestrator,/work\.status==='ready'&&nodeHost\?\['GPT indisponível','attention'\]/);
+  assert.match(orchestrator,/Rascunho local • envio ao GPT indisponível neste host/);
+  assert.match(orchestrator,/evidence\.className='work-evidence-stack'/);
+  assert.match(orchestrator,/runState\.textContent='Execução · '\+observed/);
+  assert.match(orchestrator,/dependencies\.textContent='Dependências · '/);
+  assert.match(orchestrator,/label\.textContent='Plano · '\+\(/);
+  assert.match(orchestrator,/work\.execution\?\.observed==='reconciliation_required'\?'Resultado incerto'/);
+  assert.match(css,/\.work-evidence-stack\{[^}]*var\(--border-strong\)/);
+  assert.match(css,/\.work-card-copy strong\{[^}]*overflow-wrap:anywhere/);
+  assert.match(css,/\.work-state\{[^}]*white-space:normal/);
+  assert.match(css,/@media\(max-width:420px\)\{\.work-card\{/);
+  assert.match(css,/\.work-plan-details\[open\]>summary\{/);
+  assert.ok(html.indexOf('id="contextPanel"')<html.indexOf('id="orchestratorWorkRail"'),
+    'work rail is nested in contextPanel and requires its parent visible');
+  assert.match(css,/#contextRail>:not\(#contextPanel\)\{display:none!important\}/);
+  assert.match(css,/#contextPanel\{display:flex!important;overflow:hidden;padding:0\}/);
+  assert.match(css,/#contextPanel>:not\(#orchestratorWorkRail\)\{display:none!important\}/);
+  assert.doesNotMatch(css,/#contextRail>:not\(#orchestratorWorkRail\)/);
+});
+
+test('per-front prerequisite actions reuse one safe editor and keep filtered cards together',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const js=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  for(const id of ['dependencyTarget','dependencyCandidates','dependencySelectionCount','clearDependencySelection','discardDependencyChanges','workDependencyEditor'])
+    assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,'single editor control: '+id);
+  assert.match(html,/id="dependencySelectionCount" role="status" aria-live="polite"/);
+  assert.match(html,/id="clearDependencySelection" type="button"[^>]*disabled/);
+  assert.match(js,/function updateDependencySelectionCount\(\)/);
+  assert.match(js,/marked\+' de '\+boxes\.length\+' pré-requisitos selecionados'/);
+  assert.match(js,/return new Set\(eligible\.map\(work=>work\.id\)\)/);
+  assert.match(js,/function renderWorks\(works,plan=null,dependencyEligibleIds=new Set\(\)\)/);
+  assert.match(js,/dependencyEligibleIds\.has\(work\.id\)/);
+  assert.match(js,/edit\.textContent='Organizar pré-requisitos'/);
+  assert.match(js,/dependencySelectionDirty&&\$\('dependencyTarget'\)\.value!==work\.id/);
+  assert.match(js,/const editableDependencies=renderDependencyEditor\(/);
+  assert.match(js,/renderWorks\(works,planning\?\.plan\|\|null,editableDependencies\)/);
+  assert.match(js,/button\.closest\('\.work-entry'\)\|\|button/);
+  assert.match(js,/dependencyCurrentTarget&&\$\('dependencyTarget'\)\.value!==dependencyCurrentTarget/);
+  assert.match(js,/dependencySelectionDirty=Boolean\(selected\)&&boxes\.some/);
+  assert.match(js,/discardDependencyChanges'\)\.addEventListener\('click'/);
+  assert.match(js,/Alterações não salvas descartadas/);
+  assert.match(html,/id="discardDependencyChanges" type="button"[^>]*disabled/);
+  assert.match(js,/for\(const box of \$\('dependencyCandidates'\)\.querySelectorAll\('input\[type="checkbox"\]'\)\)box\.checked=false/);
+  assert.match(css,/\.work-entry\[hidden\]\{display:none!important\}/);
+  assert.match(css,/\.work-dependency-action:focus-visible\{/);
+  assert.match(css,/\.work-dependency-controls button:disabled\{/);
+  assert.doesNotMatch(html,/id="dependencyEditorSecondary"/);
+});
+
+test('work filters have recoverable empty feedback without duplicate data sources',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const ui=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  for(const id of ['workFilterEmpty','clearWorkFilters','workFilteredCount','workSearch','workStatusFilter'])
+    assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,id+' must have a single owner');
+  assert.match(html,/<div id="workFilterEmpty" class="work-filter-empty" hidden>/);
+  assert.match(html,/Nenhuma frente corresponde aos filtros/);
+  assert.match(html,/<button id="clearWorkFilters"[^>]*type="button">Limpar filtros<\/button>/);
+  assert.match(ui,/const byId=new Map\(visibleWorkItems\.map\(work=>\[work\.id,work\]\)\)/);
+  assert.match(ui,/summary\.hidden=Boolean\(query\)\|\|\(state!=='all'&&state!=='attention'\)/);
+  assert.match(ui,/workFilterEmpty'\)\.hidden=visibleWorkItems\.length===0\|\|visible>0/);
+  assert.match(ui,/clearWorkFilters'\)\.addEventListener\('click'/);
+  assert.match(ui,/workStatusFilter'\)\.value='all'/);
+  assert.match(ui,/workSearch'\)\.focus\(\)/);
+  assert.match(css,/\.work-filter-empty\[hidden\],\.work-attention-summary\[hidden\],\.work-entry\[hidden\]\{display:none!important\}/);
+  assert.match(css,/\.work-filter-empty button:focus-visible\{/);
+  assert.match(css,/\.work-filter-empty\{[^}]*var\(--panel-2\)/);
+});
+
+test('Orchestrator workspace links project navigation, coordinator and scoped GPT work conversations', () => {
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  const coordinatorContext=fs.readFileSync(path.join(root,'supervisor','coordinator-request-context.mjs'),'utf8');
+  for(const id of ['projectNavList','orchestratorNavList','projectSelect','orchestratorSelect','orchestrationPanel','orchestratorWorkRail','orchestratorWorks','newScopedWorkForm','closeWorkRail'])
+    assert.match(html,new RegExp(`id="${id}"`));
+  assert.match(html,/Conversas no GPT/);
+  assert.match(html,/Nova conversa no GPT/);
+  assert.match(html,/id="analyzeWorks"/);
+  assert.match(html,/id="remoteRepositoryCapabilityNote"/);
+  assert.match(coordinatorContext,/historyLimit=analysisContext===null\?12:8/);
   assert.match(coordinatorContext,/historyMessageLimit=analysisContext===null\?4000:2000/);
   assert.match(orchestration,/command\('orchestrator_analyze'/);
   assert.match(orchestration,/call\('status'\)\.catch\(\(\)=>null\)/);

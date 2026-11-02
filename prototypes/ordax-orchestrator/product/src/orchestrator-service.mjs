@@ -479,7 +479,260 @@ export class OrchestratorService {
         analysis:{attempts:Number(analysis.attempts),completed:Number(analysis.completed),
           lastStatus:analysis.last_status,lastAttemptAt:analysis.last_attempt_at},
         gates:{recordedWorkAnalysisEligible:blockers.length===0,
-          githubObservationVerified:false,automaticGptDispatchAllowed:false,headlessExecutionVerified:…3910 tokens truncated…are(`SELECT repository_url,observation_requested FROM lab_projects
+          githubObservationVerified:false,automaticGptDispatchAllowed:false,headlessExecutionVerified:false},
+        blockers
+      };
+    }
+    if(operation==='orchestrators_list')return {orchestrators:this.db.prepare(
+      'SELECT * FROM lab_orchestrators WHERE project_id=? ORDER BY created_at,id LIMIT 100').all(input.projectId)};
+    if(operation==='work_plan')return {plan:this.projectPlan(input.projectId,input.maxParallel||4)};
+    if(operation==='work_list')return {works:this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,
+      b.orchestrator_id,(SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments,
+      (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_run_status,
+      (SELECT COUNT(*) FROM runs r WHERE r.task_id=t.id AND r.status='running') running_runs
+      FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
+      WHERE b.project_id=? AND b.kind='work' AND (? IS NULL OR b.orchestrator_id=?)
+      AND t.workspace_session_id=? ORDER BY t.updated_at DESC,t.id LIMIT 200`)
+      .all(input.projectId,input.orchestratorId||null,input.orchestratorId||null,context.workspaceSessionId)
+      .map(work=>({...work,execution:workExecutionSummary([work])[0],
+        dependsOn:this.db.prepare('SELECT prerequisite_id FROM lab_work_dependencies WHERE project_id=? AND task_id=? ORDER BY prerequisite_id')
+          .all(input.projectId,work.id).map(row=>row.prerequisite_id)}))};
+    if(operation==='work_get') {
+      const task=this.task(input.projectId,input.taskId);
+      const runs=this.db.prepare(`SELECT id,status,started_at,completed_at,heartbeat_at
+        FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 10`).all(task.id);
+      return {...task,runs,conversations:this.store.listConversations(task.id).slice(-50),
+        pendingApprovals:this.store.pendingApprovals(task.id).map(a=>({id:a.id,status:a.status,actionId:a.action_id})),
+        monitor:this.monitor(task,runs,input.projectId)};
+    }
+    if(operation==='work_messages') {
+      this.task(input.projectId,input.taskId);
+      const page=this.store.messagesPage(input.taskId,{before:input.before||null,limit:input.limit||50});
+      return {...page,messages:page.messages.map(m=>({id:m.id,role:m.role,content:m.content,created_at:m.created_at}))};
+    }
+    if(operation==='command_get')return this.getReceipt(context,input.commandId);
+    throw Error('orchestrator_unknown_operation');
+  }
+
+  // The Electron host currently has ONE shared WebContentsView and ONE
+  // canonical provider transport. This capability is a verified ceiling,
+  // not an opt-in flag that may be raised without isolated workers.
+  executorAdmission() {
+    const activeRuns=Number(this.db.prepare(
+      "SELECT COUNT(*) n FROM runs WHERE status='running'"
+    ).get().n);
+    // Only GPT Web submissions occupy the single WebContentsView executor.
+    // Groq/chat/analysis requests have their own coordinator lane and must
+    // not consume provider capacity, even while their receipts are running.
+    // Keep ALL in-flight GPT sends reserved until their durable receipt ends.
+    const activeCommands=Number(this.db.prepare(`SELECT COUNT(*) n
+      FROM lab_command_receipts WHERE status='running'
+      AND operation IN ('work_send','proposal_send')`).get().n);
+    const hostOccupied=Boolean(this.provider?.busy?.());
+    const occupied=activeRuns>0||activeCommands>0||hostOccupied;
+    return Object.freeze({
+      mode:'single_embedded_chatgpt_worker',
+      maxConcurrentSends:1,
+      activeRuns,activeCommands,hostOccupied,
+      availableSlots:occupied?0:1,
+      isolatedWorkerSessions:false,
+      parallelProviderSendsEnabled:false
+    });
+  }
+
+  monitor(task,runs,projectId) {
+    const command=this.db.prepare(`SELECT status FROM lab_command_receipt_scope
+      WHERE task_id=? OR (project_id=? AND unknown_work_target=1)
+      ORDER BY CASE WHEN status IN ('uncertain','running') THEN 0 ELSE 1 END,
+        receipt_rowid DESC LIMIT 1`).get(task.id,projectId);
+    if(command?.status==='uncertain')return {state:'reconciliation_required',mayAutomaticallySend:false};
+    if(command?.status==='running')return {state:'running',mayAutomaticallySend:false};
+    if(command?.status==='failed')return {state:'failed',retryAllowed:true,mayAutomaticallySend:false};
+    const current=runs[0];
+    if(current?.status==='running') {
+      const lastHeartbeatAt=current.heartbeat_at||current.started_at;
+      const age=Date.parse(this.store.now())-Date.parse(lastHeartbeatAt);
+      return {state:!Number.isFinite(age)||age>30000?'execution_unresponsive':'running',
+        lastHeartbeatAt,mayAutomaticallySend:false};
+    }
+    if(current?.status==='interrupted'||listTaskUncertainTransportRuns(this.store,task.id).length)
+      return {state:'reconciliation_required',mayAutomaticallySend:false};
+    if(current?.status==='failed')return {state:'failed',retryAllowed:true,mayAutomaticallySend:false};
+    return {state:task.status==='completed'?'completed':'awaiting_instruction',mayAutomaticallySend:false};
+  }
+
+  projectPlan(projectId,maxParallel=4) {
+      // Query all scoped works: dependencies can span several orchestrators of
+      // the SAME project. Never silently omit dependencies through pagination.
+      const works=this.db.prepare(`SELECT t.id,t.status,
+        (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_run_status,
+        (SELECT r.started_at FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_started_at,
+        (SELECT r.heartbeat_at FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_heartbeat_at,
+        (SELECT COUNT(*) FROM runs r WHERE r.task_id=t.id AND r.status='running') running_runs
+        FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
+        WHERE b.project_id=? AND b.kind='work' AND t.workspace_session_id=?
+        ORDER BY t.created_at,t.id LIMIT 257`)
+        .all(projectId,this.store.getWorkspaceSession().id);
+      if(works.length>256)throw Error('orchestrator_work_plan_too_large');
+      const edges=this.db.prepare(`SELECT project_id,task_id,prerequisite_id
+        FROM lab_work_dependencies WHERE project_id=? ORDER BY task_id,prerequisite_id`)
+        .all(projectId);
+      const planning=projectWorkPlan({
+        projectId:projectId,maxParallel:maxParallel,edges,
+        works:works.map(w=>({...w,monitor:this.monitor(w,[{
+          status:w.latest_run_status,started_at:w.latest_started_at,
+          heartbeat_at:w.latest_heartbeat_at
+        }],projectId)}))
+      });
+      const executor=this.executorAdmission();
+      return Object.freeze({...planning,
+        executor,
+        // Structural candidates are not permission to send. Only one candidate
+        // can occupy the real shared-browser lane, and zero when it is busy.
+        transportSlotCandidates:Object.freeze(planning.candidates.slice(0,executor.availableSlots)),
+        automaticDispatchAllowed:false
+      });
+  }
+
+  analysisContext(projectId,orchestratorId) {
+    const owner=this.orchestrator(projectId,orchestratorId);
+    const project=this.db.prepare(`SELECT name,objective FROM lab_projects
+      WHERE id=? AND workspace_session_id=?`).get(projectId,this.store.getWorkspaceSession().id);
+    if(!project)throw Error('orchestrator_project_unavailable');
+
+    // The same Store powers the UI, coordinator and authenticated executor.
+    // Cover many work fronts without copying their full conversation histories.
+    // Never expose the titles or IDs of another coordinator's private works.
+    const totalWorkCount=this.db.prepare(`SELECT COUNT(*) n FROM tasks t
+      JOIN lab_task_bindings b ON b.task_id=t.id
+      WHERE b.project_id=? AND b.orchestrator_id=? AND b.kind='work'
+      AND t.workspace_session_id=?`)
+      .get(projectId,orchestratorId,this.store.getWorkspaceSession().id).n;
+    const overviewRows=this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,
+      (SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments,
+      (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) last_run_status
+      FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
+      WHERE b.project_id=? AND b.orchestrator_id=? AND b.kind='work'
+        AND t.workspace_session_id=? ORDER BY t.updated_at DESC,t.id LIMIT 257`)
+      .all(projectId,orchestratorId,this.store.getWorkspaceSession().id);
+    const ownerIds=new Set(overviewRows.map(row=>row.id));
+
+    // The project DAG is advisory, never an authorization to submit messages.
+    // Preserve project-wide dependencies internally but disclose only THIS
+    // coordinator's scoped work in the Groq analysis.
+    let planning={state:'unavailable',automaticDispatchAllowed:false,qualityCertified:false};
+    let plan=null;
+    try {
+      plan=this.projectPlan(projectId,4);
+      const owned=plan.workers.filter(worker=>ownerIds.has(worker.taskId));
+      planning={state:'available',
+        candidateTaskIds:plan.candidates.filter(id=>ownerIds.has(id)).slice(0,8),
+        waitingCount:plan.waiting.filter(id=>ownerIds.has(id)).length,
+        blockedCount:plan.blocked.filter(id=>ownerIds.has(id)).length,
+        inFlight:owned.filter(worker=>worker.state==='running').length,
+        workCount:totalWorkCount,
+        executorMode:plan.executor.mode,
+        physicalProviderLanes:plan.executor.maxConcurrentSends,
+        availablePhysicalSlots:plan.executor.availableSlots,
+        transportSlotCandidateCount:plan.transportSlotCandidates.filter(id=>ownerIds.has(id)).length,
+        automaticDispatchAllowed:false,qualityCertified:false};
+    }catch(error){
+      if(error?.message!=='orchestrator_work_plan_too_large')throw error;
+      planning={state:'scope_too_large',automaticDispatchAllowed:false,qualityCertified:false};
+    }
+    const candidate=new Set(plan?.candidates||[]);
+    const waiting=new Set(plan?.waiting||[]);
+    const blocked=new Set(plan?.blocked||[]);
+    const states=new Map((plan?.workers||[]).map(worker=>[worker.taskId,worker.state]));
+    const readiness=id=>blocked.has(id)?'blocked':waiting.has(id)?'waiting':
+      candidate.has(id)?'candidate':states.get(id)||'unavailable';
+    // Prioritize reviews and active work, then ready/waiting tasks. The rich
+    // history remains capped at four works with five messages each; the wider
+    // overview has no message contents and no provider authority.
+    const priority=row=>{
+      const state=readiness(row.id);
+      return state==='uncertain'?0:state==='failed'?1:state==='running'?2:
+        state==='blocked'?3:state==='candidate'?4:state==='waiting'?5:6;
+    };
+    const ordered=[...overviewRows].sort((a,b)=>priority(a)-priority(b)||
+      String(b.updated_at).localeCompare(String(a.updated_at))||a.id.localeCompare(b.id));
+    const rows=ordered.slice(0,4);
+    return {
+      planning,
+      project:{name:redactOrchestratorAnalysisText(project.name,160),objective:redactOrchestratorAnalysisText(project.objective,600)},
+      orchestrator:{name:redactOrchestratorAnalysisText(owner.name,160),mission:redactOrchestratorAnalysisText(owner.mission,800)},
+      scope:{includedWorkCount:rows.length,workLimit:4,messageLimitPerWork:5,
+        overviewCount:Math.min(ordered.length,32),overviewLimit:32,totalWorkCount,
+        overviewTruncated:totalWorkCount>32},
+      workOverview:ordered.slice(0,32).map(row=>({
+        title:redactOrchestratorAnalysisText(row.title,180),
+        status:row.status,latestRunStatus:row.last_run_status,
+        readiness:readiness(row.id),updatedAt:row.updated_at
+      })),
+      works:rows.map(row=>{
+        const runs=this.db.prepare(`SELECT status,started_at,completed_at,heartbeat_at
+          FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 3`).all(row.id);
+        const messages=this.store.messages(row.id,{limit:5}).map(message=>({
+          role:message.role,content:redactOrchestratorAnalysisText(message.content,1200),createdAt:message.created_at
+        }));
+        return {title:redactOrchestratorAnalysisText(row.title,180),status:row.status,updatedAt:row.updated_at,
+          providerSegments:row.provider_segments,monitor:this.monitor(row,runs,projectId),runs,messages};
+      })
+    };
+  }
+
+  mutate(operation,input) {
+    const now=this.store.now();
+    if(operation==='project_create') {
+      return {projectId:this.createProjectRecord(input.name,input.objective||'',input.repositoryUrl,now)};
+    }
+    if(operation==='mission_create') {
+      const projectName=input.name||missionProjectName(input.mission);
+      const projectId=this.createProjectRecord(projectName,input.mission,input.repositoryUrl,now);
+      const orchestratorId='orchestrator_'+randomUUID();
+      const coordinatorName='Orquestrador';
+      const coordinator=this.store.createTask(coordinatorName);
+      this.db.prepare('INSERT INTO lab_orchestrators VALUES(?,?,?,?,?,?,?)')
+        .run(orchestratorId,projectId,coordinatorName,input.mission,'ready',coordinator.id,now);
+      this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)')
+        .run(coordinator.id,projectId,orchestratorId,'orchestrator');
+      const work=this.store.createTask('Primeira frente');
+      this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)')
+        .run(work.id,projectId,orchestratorId,'work');
+      this.store.setDraft(work.id,input.mission,1);
+      return {projectId,projectName,orchestratorId,chatTaskId:coordinator.id,
+        taskId:work.id,taskTitle:work.title,draftRevision:1};
+    }
+    if(operation==='project_rename') {
+      const workspaceSessionId=this.store.getWorkspaceSession().id;
+      const changed=this.db.prepare('UPDATE lab_projects SET name=? WHERE id=? AND workspace_session_id=?')
+        .run(input.name,input.projectId,workspaceSessionId).changes;
+      if(changed!==1)throw Error('orchestrator_project_unavailable');
+      return {projectId:input.projectId,name:input.name};
+    }
+    if(operation==='project_observation_set') {
+      if(input.enabled) {
+        // An App profile can request observation of ONE project at a time.
+        // This is a local consent fence, not an external GitHub/Runtime grant.
+        // Mutations are executed within the existing BEGIN IMMEDIATE receipt
+        // transaction; concurrent requests cannot both pass this check.
+        const other=this.db.prepare(`SELECT 1 FROM lab_projects
+          WHERE workspace_session_id=? AND observation_requested=1 AND id<>? LIMIT 1`)
+          .get(this.store.getWorkspaceSession().id,input.projectId);
+        if(other)throw Error('orchestrator_project_observation_exclusive');
+      }
+      const result=this.db.prepare('UPDATE lab_projects SET observation_requested=? WHERE id=? AND workspace_session_id=?')
+        .run(input.enabled?1:0,input.projectId,this.store.getWorkspaceSession().id);
+      if(result.changes!==1)throw Error('orchestrator_project_unavailable');
+      // This records intent only; it is not a Platform grant or a running
+      // scheduler. This response must never imply successful remote observation.
+      return {projectId:input.projectId,requested:input.enabled,active:false,
+        state:input.enabled?'awaiting_external_authority':'paused',
+        automaticGptDispatchAllowed:false,providerMessagesSent:0,externalCalls:0};
+    }
+    if(operation==='project_repository_set') {
+      const repositoryUrl=normalizeGitHubRepositoryUrl(input.repositoryUrl);
+      const project=this.db.prepare(`SELECT repository_url,observation_requested FROM lab_projects
         WHERE id=? AND workspace_session_id=?`).get(input.projectId,this.store.getWorkspaceSession().id);
       if(!project)throw Error('orchestrator_project_unavailable');
       if(project.repository_url!==repositoryUrl) {
