@@ -11,13 +11,13 @@ import {createGroqCoordinatorConversation} from '../supervisor/groq-conversation
 
 const jsonResponse=value=>new Response(JSON.stringify(value),{headers:{'content-type':'application/json'}});
 
-function fixture(t,{provider,coordinator,confirmProposal=()=>true,confirmProposalSend=()=>true}={}) {
+function fixture(t,{provider,coordinator,repositoryPort=null,confirmProposal=()=>true,confirmProposalSend=()=>true}={}) {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-orchestration-'));
   const file=path.join(dir,'lab.sqlite');
   const store=new Store(file);
   const context=Object.freeze({actorId:'local-test-owner',clientId:'app-test',workspaceSessionId:store.getWorkspaceSession().id});
   let allowed=true;
-  const service=new OrchestratorService({store,provider,coordinator,confirmProposal,confirmProposalSend,authorize:({context:c})=>allowed&&c===context});
+  const service=new OrchestratorService({store,provider,coordinator,repositoryPort,confirmProposal,confirmProposalSend,authorize:({context:c})=>allowed&&c===context});
   t.after(()=>{try{store.close();}catch{}fs.rmSync(dir,{recursive:true,force:true});});
   let request=0;
   return {file,store,context,service,setAllowed:v=>allowed=v,
@@ -87,6 +87,102 @@ test('project preflight blocks missing model and paused coordinator without chan
   assert.deepEqual((await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o})).blockers,
     ['coordinator_paused','coordinator_unavailable']);
   assert.equal(f.store.getTask(a.w).status,'ready');
+});
+
+test('authenticated repository observation remains unavailable without a supplied grant port',async t=>{
+  const f=fixture(t),a=await project(f);
+  f.store.db.prepare('UPDATE lab_projects SET repository_url=? WHERE id=?')
+    .run('https://github.com/ordaxsystems/ordax-os',a.p);
+  assert.equal((await f.call('status')).repositoryPortAvailable,false);
+  await assert.rejects(f.call('repository_observe',{projectId:a.p}),/orchestrator_repository_capability_unavailable/);
+  assert.equal((await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o})).repository.authenticatedRead,'unavailable');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='repository_observe'").get().n,0);
+});
+
+test('GitHub HEAD read uses a project-scoped grant before and after and never dispatches GPT',async t=>{
+  let authCalls=0,reads=0,gptSends=0;
+  let f;
+  const port={
+    authorizeRead:async({context,repositoryUrl})=>{
+      authCalls++;
+      assert.equal(context.projectId,a.p);
+      assert.equal(repositoryUrl,'https://github.com/ordaxsystems/ordax-os');
+      return {...context,repositoryUrl,provider:'github',authorized:true,
+        grantId:'grant_verified_12345678',expiresAt:Date.now()+120000};
+    },
+    readSnapshot:async({context,repositoryUrl,grantId})=>{
+      reads++;
+      assert.equal(context.projectId,a.p);
+      assert.equal(grantId,'grant_verified_12345678');
+      return {source:'github_rest_authenticated',authenticated:true,repositoryUrl,
+        repositoryId:123456,defaultBranch:'main',
+        headSha:'a'.repeat(40),observedAt:new Date().toISOString()};
+    }
+  };
+  f=fixture(t,{repositoryPort:port,provider:{send:()=>{gptSends++;throw Error('unexpected');}}});
+  const a=await project(f);
+  f.store.db.prepare('UPDATE lab_projects SET repository_url=? WHERE id=?')
+    .run('https://github.com/ordaxsystems/ordax-os',a.p);
+  const before=f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts').get().n;
+  assert.equal((await f.call('status')).repositoryPortAvailable,true);
+  const snapshot=await f.call('repository_observe',{projectId:a.p});
+  assert.equal(snapshot.schema,'ordax.orchestrator.repository-observation/1');
+  assert.equal(snapshot.headSha,'a'.repeat(40));
+  assert.equal(snapshot.provenance.grantRechecked,true);
+  assert.equal(snapshot.provenance.contentsRead,false);
+  assert.equal(snapshot.provenance.prsRead,false);
+  assert.equal(snapshot.provenance.checksRead,false);
+  assert.equal(snapshot.providerMessagesSent,0);
+  assert.equal(authCalls,2);assert.equal(reads,1);assert.equal(gptSends,0);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts').get().n,before);
+  assert.equal((await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o})).gates.githubObservationVerified,false);
+  f.setAllowed(false);
+  await assert.rejects(f.call('repository_observe',{projectId:a.p}),/orchestrator_access_denied/);
+  assert.equal(authCalls,2);
+});
+
+test('repository read fails closed on revoked grants, substituted targets and changed project binding',async t=>{
+  for(const mode of ['revoked','substituted','wrong-head','changed-repository','revoked-app-access','expired']) {
+    let auth=0,reads=0,f;
+    const repository='https://github.com/ordaxsystems/ordax-os';
+    const port={
+      authorizeRead:async({context,repositoryUrl})=>{
+        auth++;
+        return {...context,repositoryUrl,provider:'github',authorized:mode!=='revoked'||auth===1,
+          grantId:'grant_verified_12345678',expiresAt:mode==='expired'?Date.now()-100:Date.now()+120000};
+      },
+      readSnapshot:async({repositoryUrl})=>{
+        reads++;
+        if(mode==='changed-repository')f.store.db.prepare('UPDATE lab_projects SET repository_url=? WHERE id=?')
+          .run('https://github.com/ordaxsystems/ordax-surface',a.p);
+        if(mode==='revoked-app-access')f.setAllowed(false);
+        return {source:'github_rest_authenticated',authenticated:true,
+          repositoryUrl:mode==='substituted'?'https://github.com/ordaxsystems/ordax-surface':repositoryUrl,
+          repositoryId:1234,defaultBranch:'main',headSha:mode==='wrong-head'?'not-a-sha':'b'.repeat(40),
+          observedAt:new Date().toISOString()};
+      }
+    };
+    f=fixture(t,{repositoryPort:port});
+    const a=await project(f);
+    f.store.db.prepare('UPDATE lab_projects SET repository_url=? WHERE id=?').run(repository,a.p);
+    const before=f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts').get().n;
+    await assert.rejects(f.call('repository_observe',{projectId:a.p}),/orchestrator_repository_|orchestrator_access_denied/);
+    assert.equal(reads,mode==='expired'?0:1);
+    assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts').get().n,before);
+  }
+});
+
+test('a missing repository or another project identity cannot borrow a verified GitHub grant',async t=>{
+  let authCalls=0;
+  const port={authorizeRead:async()=>{authCalls++;throw Error('must not authorize');},
+    readSnapshot:()=>{throw Error('must not read');}};
+  const f=fixture(t,{repositoryPort:port}),a=await project(f),b=await project(f);
+  await assert.rejects(f.call('repository_observe',{projectId:a.p}),/orchestrator_repository_not_configured/);
+  await assert.rejects(f.call('repository_observe',{projectId:'project_missing'}),/orchestrator_project_unavailable/);
+  f.store.db.prepare('UPDATE lab_projects SET repository_url=? WHERE id=?')
+    .run('https://github.com/ordaxsystems/ordax-os',b.p);
+  await assert.rejects(f.call('repository_observe',{projectId:b.p}),/must not authorize/);
+  assert.equal(authCalls,1);
 });
 
 test('native-approved first send uses the existing executor, durable approval and one receipt without coordinator API',async t=>{
