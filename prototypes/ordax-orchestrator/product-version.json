@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.38",
+  "version": "0.2.0-alpha.40",
   "channel": "alpha",
-  "name": "Admissão GPT independente de comandos Groq",
+  "name": "Correção do gate E2E Windows",
   "distributionEnabled": false,
   "releaseDate": null
 }

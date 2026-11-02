@@ -1,3 +1,15 @@
+## 0.2.0-alpha.40 — correção do gate E2E Windows (02/11/2026)
+
+- Alinha a verificação do perfil novo à mensagem atual do escopo de análise, que afirma que propostas não são executadas.
+- Atualiza a confirmação após criar uma missão para apontar ao botão Iniciar, que solicita a análise sem prompt.
+
+## 0.2.0-alpha.39 — diagnóstico inicial sem prompt (02/11/2026)
+
+- **Iniciar** persiste a intenção do projeto, executa o preflight local e solicita uma análise das frentes registradas pelo Administrador Geral somente quando as pré-condições passam; não exige uma mensagem inicial.
+- A análise reutiliza `orchestrator_analyze` e o Store existentes. Reabrir o projeto não repete chamada ao modelo; **Reanalisar frentes** é uma ação manual explícita.
+- A análise não lê GitHub nem consulta branches, PRs ou checks; não envia GPT Web, não usa Runtime e não executa recomendações. Acesso remoto continua bloqueado até existir evidência autorizada.
+- O bloqueio de análise compartilha a trava com outras ações do coordenador; resultados incertos não são repetidos.
+
 ## 0.2.0-alpha.38 — execução GPT independente de coordenação Groq (01/11/2026)
 
 - A admissão do executor GPT Web contabiliza somente recibos `work_send` e `proposal_send` com estado `running`, Runs GPT `running` e a ocupação real do WebContentsView. Chamadas Groq `orchestrator_chat`, `orchestrator_analyze` ou `orchestrator_prepare` não consomem slots de transporte GPT.

@@ -49,7 +49,7 @@
             <label for="projectName">Nome do projeto</label><input id="projectName" maxlength="140" placeholder="Ex.: OrdaX" />
             <label for="projectObjective">Objetivo e orientações (opcional)</label><textarea id="projectObjective" maxlength="4000" rows="3" placeholder="Pode deixar vazio: a coordenação começa com o nome do projeto."></textarea>
             <label for="projectRepositoryUrl">Repositório GitHub remoto (opcional)</label><input id="projectRepositoryUrl" type="url" maxlength="300" placeholder="https://github.com/owner/repository" />
-            <small>Informe um nome ou objetivo. Conectar cria o projeto, o Administrador e o rascunho inicial; não envia ao GPT. Depois use Iniciar análise para revisar apenas as frentes registradas.</small>
+            <small>Informe um nome ou objetivo. Conectar cria o projeto, o Administrador Geral e a primeira frente; não envia ao GPT. Ao iniciar, o app consulta o inventário local e solicita uma análise sem prompt somente se os gates permitirem.</small>
             <button type="submit">Conectar projeto</button>
           </form>
         </details>
@@ -137,7 +137,7 @@
         <section id="projectPulse" class="project-pulse" aria-label="Resumo operacional das frentes de trabalho" hidden>
           <div class="project-pulse-heading">
             <div><span class="project-pulse-kicker">VISÃO OPERACIONAL</span><strong>Frentes do projeto</strong></div>
-            <div class="project-pulse-actions"><button id="projectObservationToggle" type="button" class="mini-secondary" disabled>Iniciar</button><button id="inspectProjectAccess" type="button" class="mini-secondary" disabled>Verificar acesso</button><button id="analyzeWorks" type="button" class="mini-primary" disabled>Iniciar análise</button><button id="openProjectWork" class="mini-secondary" type="button" disabled>Ver frentes</button></div>
+            <div class="project-pulse-actions"><button id="projectObservationToggle" type="button" class="mini-secondary" disabled>Iniciar</button><button id="inspectProjectAccess" type="button" class="mini-secondary" disabled>Verificar acesso</button><button id="analyzeWorks" type="button" class="mini-primary" disabled>Reanalisar frentes</button><button id="openProjectWork" class="mini-secondary" type="button" disabled>Ver frentes</button></div>
           </div>
           <div id="projectPulseStats" class="project-pulse-stats" role="group" aria-label="Abrir frentes por estado">
             <button type="button" data-work-filter="all" aria-label="Ver todas as frentes"><strong id="projectPulseTotal">0</strong><span>Registradas</span></button>
@@ -146,10 +146,10 @@
             <button type="button" data-work-filter="ready" aria-label="Ver frentes aguardando"><strong id="projectPulseWaiting">0</strong><span>Aguardando</span></button>
           </div>
           <p id="projectPulseNote">Resumo das frentes registradas, não uma confirmação de execução autônoma.</p>
-          <p id="projectObservationState" role="status" aria-live="polite" data-state="idle">Observação pausada. Iniciar salva somente a intenção de diagnóstico; não concede acesso ao GitHub nem aciona GPT.</p>
+          <p id="projectObservationState" role="status" aria-live="polite" data-state="idle">Pausado. Iniciar registra a intenção, consulta o inventário local e pode solicitar uma análise ao Administrador Geral se os gates permitirem.</p>
           <p id="projectPreflightState" class="project-preflight-state" data-state="idle" role="status" aria-live="polite">Diagnóstico ainda não solicitado. Uma URL GitHub não comprova acesso ao repositório.</p>
           <ul id="projectPreflightActions" class="project-preflight-actions" aria-label="Próximos passos verificados pelo diagnóstico local" hidden></ul>
-          <p id="analysisScopeHint">Iniciar análise consulta o coordenador configurado com contexto local limitado. Não lê o GitHub, não envia mensagens ao GPT Web nem executa propostas. As recomendações não executam ações. Exige conexão com um modelo.</p>
+          <p id="analysisScopeHint">Iniciar consulta o preflight local e, quando coordenador, frentes e recibos passam pelos gates, solicita uma análise sem prompt. Ela usa somente frentes registradas: não lê GitHub, não envia GPT Web e não executa propostas. Use Reanalisar frentes para repetir manualmente.</p>
         </section>
         <div id="orchestrationCapabilitySummary" class="orchestration-capabilities" aria-label="Capacidades disponíveis no Host" hidden>
           <span id="capabilityGroq" data-state="blocked">Groq · não configurado</span>
