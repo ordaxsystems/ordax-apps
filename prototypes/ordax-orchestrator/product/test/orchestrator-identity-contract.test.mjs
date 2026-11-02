@@ -31,6 +31,14 @@ test('OrdaX coordinator identifies the Groq model as a coordinator, not as ChatG
   assert.match(context.system,/work_memory_proof/);
   assert.match(context.system,/Groq coordena, GPT Web responde/);
   assert.match(context.system,/workspaceObservation não é memória/);
+  const analysis=buildCoordinatorRequestContext({store,taskId:chatTaskId,mission,projectId,orchestratorId,
+    analysisContext:{works:[{title:'Primeira frente',status:'ready',runs:[],messages:[]}]},
+    workspaceObservation:{state:'capability_unavailable',filesRead:0,snapshotObserved:false},
+    repositoryUrl:'https://github.com/ordaxsystems/ordax-apps'});
+  assert.match(analysis.system,/Não invente ferramentas, permissões, credenciais, integrações ou canais de comunicação/);
+  assert.match(analysis.system,/não sugira tokens, cópia manual de arquivos nem atualizações em Slack ou Teams/);
+  assert.match(analysis.system,/Não crie metas quantitativas sem evidência/);
+  assert.match(analysis.system,/mantenha o diagnóstico técnico em aberto/);
   let actual;
   const model=createGroqCoordinatorConversation({store,getApiKey:()=> 'fixture-key',
     isEnabled:()=>true,fetchImpl:async(_url,options)=>{
