@@ -39,6 +39,18 @@ export class OrchestratorService {
         observation_requested INTEGER NOT NULL DEFAULT 0 CHECK(observation_requested IN (0,1))
       );
       CREATE INDEX IF NOT EXISTS idx_lab_project_session ON lab_projects(workspace_session_id);
+      -- One bounded historical HEAD per project, NOT a current grant or
+      -- authoritative remote state. Auth decisions and bearer tokens never
+      -- enter the local App Store.
+      CREATE TABLE IF NOT EXISTS lab_repository_head_evidence (
+        project_id TEXT PRIMARY KEY REFERENCES lab_projects(id) ON DELETE CASCADE,
+        repository_url TEXT NOT NULL,
+        repository_id INTEGER NOT NULL CHECK(repository_id>0),
+        default_branch TEXT NOT NULL,
+        head_sha TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        recorded_at TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS lab_orchestrators (
         id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES lab_projects(id),
         name TEXT NOT NULL, mission TEXT NOT NULL,
@@ -186,6 +198,29 @@ export class OrchestratorService {
     return row;
   }
 
+  historicalRepositoryHead(projectId,repositoryUrl) {
+    const row=this.db.prepare(`SELECT repository_url,repository_id,default_branch,head_sha,observed_at,recorded_at
+      FROM lab_repository_head_evidence WHERE project_id=? AND repository_url=?`)
+      .get(projectId,repositoryUrl);
+    if(!row)return null;
+    // Corrupt or displaced local metadata is never elevated to a live GitHub
+    // claim. Its source was validated at write time by the trusted port.
+    if(!Number.isSafeInteger(row.repository_id)||row.repository_id<=0||
+      !/^[a-f0-9]{40}$/.test(row.head_sha)||
+      typeof row.default_branch!=='string'||row.default_branch.length>140||
+      !/^[A-Za-z0-9_.\\/-]+$/.test(row.default_branch)||
+      row.default_branch.includes('..')||row.default_branch.startsWith('/')||
+      row.default_branch.endsWith('/')||
+      !Number.isFinite(Date.parse(row.observed_at))||
+      !Number.isFinite(Date.parse(row.recorded_at)))
+      return null;
+    return {repositoryId:row.repository_id,defaultBranch:row.default_branch,
+      headSha:row.head_sha,observedAt:row.observed_at,recordedAt:row.recorded_at,
+      provenance:{source:'github_rest_authenticated',historical:true,
+        currentAccessVerified:false,grantRecheckedAtObservation:true,
+        contentsRead:false,prsRead:false,checksRead:false}};
+  }
+
   projectRepositoryUrl(projectId) {
     const row=this.db.prepare(`SELECT repository_url FROM lab_projects
       WHERE id=? AND workspace_session_id=?`).get(projectId,this.store.getWorkspaceSession().id);
@@ -277,7 +312,21 @@ export class OrchestratorService {
         if(this.projectRepositoryUrl(input.projectId)!==repositoryUrl)
           throw Error('orchestrator_repository_changed_during_observation');
       };
-      return this.repository.observe(context,{projectId:input.projectId,repositoryUrl},recheck);
+      const snapshot=await this.repository.observe(context,{projectId:input.projectId,repositoryUrl},recheck);
+      // No await between the final scoped grant check and this existing App
+      // transaction. Revalidate the owner and binding again before saving.
+      this.transaction(()=>{
+        recheck();
+        this.db.prepare(`INSERT INTO lab_repository_head_evidence
+          (project_id,repository_url,repository_id,default_branch,head_sha,observed_at,recorded_at)
+          VALUES(?,?,?,?,?,?,?) ON CONFLICT(project_id) DO UPDATE SET
+          repository_url=excluded.repository_url,repository_id=excluded.repository_id,
+          default_branch=excluded.default_branch,head_sha=excluded.head_sha,
+          observed_at=excluded.observed_at,recorded_at=excluded.recorded_at`)
+          .run(input.projectId,snapshot.repositoryUrl,snapshot.repositoryId,
+            snapshot.defaultBranch,snapshot.headSha,snapshot.observedAt,this.store.now());
+      });
+      return snapshot;
     }
     if(operation==='workspace_snapshot')return this.workspace.snapshot(context,input,()=>this.requireAccess(context,operation,input.projectId));
     if(operation==='workspace_bind')return this.bindWorkspace(context,input);
@@ -407,7 +456,9 @@ export class OrchestratorService {
         projectId:input.projectId,orchestratorId:input.orchestratorId,
         observedAt:this.store.now(),
         provenance:{source:'app_sqlite',externalObservation:false},
-        repository:{urlRegistered:Boolean(project?.repository_url),authenticatedRead:'unavailable'},
+        repository:{urlRegistered:Boolean(project?.repository_url),authenticatedRead:'unavailable',
+          lastHistoricalHead:project?.repository_url
+            ?this.historicalRepositoryHead(input.projectId,project.repository_url):null},
         observation:{requested:project.observation_requested===1,active:false,
           state:project.observation_requested===1?'awaiting_external_authority':'paused',
           automaticGptDispatchAllowed:false,backgroundSchedulerActive:false},
@@ -688,6 +739,8 @@ export class OrchestratorService {
       const changed=this.db.prepare('UPDATE lab_projects SET repository_url=? WHERE id=? AND workspace_session_id=?')
         .run(repositoryUrl,input.projectId,this.store.getWorkspaceSession().id).changes;
       if(changed!==1)throw Error('orchestrator_project_unavailable');
+      if(project.repository_url!==repositoryUrl)
+        this.db.prepare('DELETE FROM lab_repository_head_evidence WHERE project_id=?').run(input.projectId);
       return {projectId:input.projectId,repositoryUrl};
     }
     if(operation==='orchestrator_create') {

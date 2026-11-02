@@ -133,6 +133,17 @@ test('GitHub HEAD read uses a project-scoped grant before and after and never di
   assert.equal(snapshot.provenance.prsRead,false);
   assert.equal(snapshot.provenance.checksRead,false);
   assert.equal(snapshot.providerMessagesSent,0);
+  const historical=(await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o})).repository.lastHistoricalHead;
+  assert.equal(historical.headSha,'a'.repeat(40));
+  assert.equal(historical.repositoryId,123456);
+  assert.equal(historical.provenance.historical,true);
+  assert.equal(historical.provenance.currentAccessVerified,false);
+  assert.equal(historical.provenance.grantRecheckedAtObservation,true);
+  assert.equal(historical.provenance.contentsRead,false);
+  assert.equal(historical.provenance.prsRead,false);
+  assert.equal(historical.provenance.checksRead,false);
+  assert.deepEqual(Object.keys(f.store.db.prepare('SELECT * FROM lab_repository_head_evidence').get()).sort(),
+    ['default_branch','head_sha','observed_at','project_id','recorded_at','repository_id','repository_url']);
   assert.equal(authCalls,2);assert.equal(reads,1);assert.equal(gptSends,0);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts').get().n,before);
   assert.equal((await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o})).gates.githubObservationVerified,false);
@@ -168,6 +179,7 @@ test('repository read fails closed on revoked grants, substituted targets and ch
     const before=f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts').get().n;
     await assert.rejects(f.call('repository_observe',{projectId:a.p}),/orchestrator_repository_|orchestrator_access_denied/);
     assert.equal(reads,mode==='expired'?0:1);
+    assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_repository_head_evidence').get().n,0);
     assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts').get().n,before);
   }
 });
@@ -183,6 +195,46 @@ test('a missing repository or another project identity cannot borrow a verified 
     .run('https://github.com/ordaxsystems/ordax-os',b.p);
   await assert.rejects(f.call('repository_observe',{projectId:b.p}),/must not authorize/);
   assert.equal(authCalls,1);
+});
+
+test('verified GitHub HEAD history survives reopen but does not authorize current access or cross-project reads',async t=>{
+  let authorizeCalls=0;
+  const port={
+    authorizeRead:async({context,repositoryUrl})=>{
+      authorizeCalls++;return {...context,repositoryUrl,provider:'github',authorized:true,
+        grantId:'grant_verified_12345678',expiresAt:Date.now()+120000};
+    },
+    readSnapshot:async({repositoryUrl})=>({
+      source:'github_rest_authenticated',authenticated:true,repositoryUrl,
+      repositoryId:9988,defaultBranch:'main',headSha:'c'.repeat(40),
+      observedAt:new Date().toISOString()
+    })
+  };
+  const f=fixture(t,{repositoryPort:port}),a=await project(f,'A'),b=await project(f,'B');
+  await f.call('project_repository_set',{projectId:a.p,repositoryUrl:'https://github.com/ordaxsystems/ordax-os'});
+  await f.call('repository_observe',{projectId:a.p});
+  assert.equal(authorizeCalls,2);
+  assert.equal((await f.call('project_preflight',{projectId:b.p,orchestratorId:b.o})).repository.lastHistoricalHead,null);
+  f.store.close();
+  const reopened=new Store(f.file);
+  try {
+    const context={...f.context,workspaceSessionId:reopened.getWorkspaceSession().id};
+    const service=new OrchestratorService({store:reopened,authorize:()=>true});
+    const pre=await service.invoke(context,'project_preflight',{projectId:a.p,orchestratorId:a.o});
+    assert.equal(pre.repository.authenticatedRead,'unavailable');
+    assert.equal(pre.repository.lastHistoricalHead.headSha,'c'.repeat(40));
+    assert.equal(pre.repository.lastHistoricalHead.provenance.currentAccessVerified,false);
+    assert.equal(pre.gates.githubObservationVerified,false);
+    assert.equal((await service.invoke(context,'project_preflight',{projectId:b.p,orchestratorId:b.o})).repository.lastHistoricalHead,null);
+    await assert.rejects(service.invoke(context,'repository_observe',{projectId:a.p}),
+      /orchestrator_repository_capability_unavailable/);
+    assert.equal(authorizeCalls,2);
+    await service.invoke(context,'project_repository_set',
+      {projectId:a.p,repositoryUrl:'https://github.com/ordaxsystems/ordax-surface',requestId:'change-repo-on-reopen'});
+    assert.equal((await service.invoke(context,'project_preflight',{projectId:a.p,orchestratorId:a.o})).repository.lastHistoricalHead,null);
+    assert.equal(reopened.db.prepare('SELECT COUNT(*) n FROM lab_repository_head_evidence').get().n,0);
+    assert.equal(reopened.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+  } finally {reopened.close();}
 });
 
 test('project observation intent survives reboot, keeps project isolation and never grants or dispatches',async t=>{

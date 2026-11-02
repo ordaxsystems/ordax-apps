@@ -114,6 +114,14 @@ test('Start/Pause is consent-only and never claims a running background supervis
   assert.match(source,/if\(p!==projectId\)return/);
 });
 
+test('verified repository HEAD is shown only as historical evidence and never as current permission',()=>{
+  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.match(source,/historical\.provenance\.currentAccessVerified===false/);
+  assert.match(source,/Histórico GitHub: HEAD/);
+  assert.match(source,/não confirma acesso atual, integridade ou checks/);
+  assert.match(source,/snapshot\.repository\.authenticatedRead!=='unavailable'/);
+});
+
 test('Start immediately inspects local evidence and restores it without automatic external effects',()=>{
   const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.equal((uiHtml.match(/id="projectPreflightActions"/g)||[]).length,1);
