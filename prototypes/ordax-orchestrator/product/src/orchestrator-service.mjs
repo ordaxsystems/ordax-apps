@@ -830,13 +830,23 @@ export class OrchestratorService {
       // Invalid titles, duplicate fronts or capacity overflow produce zero tasks.
       this.orchestrator(input.projectId,input.orchestratorId);
       const titles=input.titles.map(title=>title.trim());
+      const titleKey=title=>title.normalize('NFKC').replace(/\s+/gu,' ').trim().toLocaleLowerCase('pt-BR');
       if(titles.length<2||titles.length>16||
         titles.some(title=>!title||title.length>140||/[\r\n\0]/u.test(title))||
-        new Set(titles.map(title=>title.normalize('NFKC').toLocaleLowerCase('pt-BR'))).size!==titles.length)
+        new Set(titles.map(titleKey)).size!==titles.length)
         throw Error('orchestrator_batch_titles_invalid');
       const current=this.db.prepare(`SELECT COUNT(*) n FROM lab_task_bindings
         WHERE project_id=? AND kind='work'`).get(input.projectId).n;
       if(current+titles.length>256)throw Error('orchestrator_work_plan_too_large');
+      // A fresh requestId must not create a second copy of an existing work.
+      // Validate inside the same receipt transaction, including across restarts.
+      const existing=this.db.prepare(`SELECT t.title FROM tasks t
+        JOIN lab_task_bindings b ON b.task_id=t.id
+        WHERE b.project_id=? AND b.orchestrator_id=? AND b.kind='work'
+          AND t.status!='archived'`).all(input.projectId,input.orchestratorId);
+      const existingTitles=new Set(existing.map(row=>titleKey(row.title)));
+      if(titles.some(title=>existingTitles.has(titleKey(title))))
+        throw Error('orchestrator_batch_title_already_exists');
       const insert=this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)');
       const taskIds=[];
       for(const title of titles) {
