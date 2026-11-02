@@ -80,7 +80,7 @@ test('preflight is read-only, project-scoped and cannot silently send GPT',()=>{
   assert.match(html,/projectPreflightState"[^>]*role="status"/);
   assert.match(uiSource,/call\('project_preflight',\{projectId:p,orchestratorId:o\}\)/);
   assert.match(uiSource,/if\(!snapshot\|\|!snapshot\.gates\.recordedWorkAnalysisEligible\)/);
-  assert.match(uiSource,/if\(p!==projectId\|\|o!==orchestratorId\)return null/);
+  assert.match(uiSource,/generation!==preflightGeneration\|\|p!==projectId\|\|o!==orchestratorId/);
   // Preflight rendering now uses the same pure fail-closed helper as Start;
   // a registered URL must never masquerade as authenticated GitHub access.
   assert.match(uiSource,/snapshot\.repository\.authenticatedRead!=='unavailable'/);
@@ -108,7 +108,8 @@ test('Start/Pause is consent-only and never claims a running background supervis
   assert.match(uiHtml,/Iniciar salva somente a intenção de diagnóstico/);
   assert.match(source,/project\?\.observation_requested===1/);
   assert.match(source,/command\('project_observation_set',\{projectId:p,enabled\}\)/);
-  assert.match(source,/Nenhuma execução, mensagem GPT ou leitura remota foi iniciada/);
+  assert.match(source,/GitHub e Runtime ainda sem autorização verificada; nenhuma mensagem GPT foi enviada/);
+  assert.match(source,/Nenhuma leitura GitHub, chamada Groq, mensagem GPT ou ação Runtime foi realizada/);
   assert.match(source,/const p=projectId,project=projectsCache\.find/);
   assert.match(source,/if\(p!==projectId\)return/);
 });
