@@ -122,7 +122,7 @@ test('Start immediately inspects local evidence and restores it without automati
   assert.match(source,/generation!==preflightGeneration\|\|p!==projectId\|\|o!==orchestratorId/);
   assert.match(source,/requested!==\(projectsCache\.find/);
   assert.match(source,/button\.disabled=!project\|\|observationBusy\|\|\(!requested&&anotherRequested\)/);
-  assert.match(source,/observationBusy=false;[\s\S]*?syncProjectObservation\(\);\s*}\);\s*\$\('inspectProjectAccess'\)/);
+  assert.match(source,/observationBusy=false;[\s\S]{0,240}syncProjectObservation\(\);\s*}\s*}\);/);
   const evidence={
     schema:'ordax.orchestrator.project-preflight/1',
     provenance:{source:'app_sqlite',externalObservation:false},
