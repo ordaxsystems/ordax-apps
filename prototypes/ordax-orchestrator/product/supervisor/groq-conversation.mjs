@@ -1,6 +1,21 @@
 import {readBoundedJsonResponse} from '../src/bounded-json-response.mjs';
 import {buildCoordinatorRequestContext,validateCoordinatorReply} from './coordinator-request-context.mjs';
 
+// Constrain planned work at the model boundary, then validate again with
+// the canonical work-proposal policy (field limits, scope and no extra keys).
+// Supported GPT-OSS models receive Groq strict structured output; other
+// configured models use JSON object mode with the same local validation.
+const WORK_PROPOSAL_SCHEMA=Object.freeze({
+  type:'object',properties:{
+    title:{type:'string'},
+    content:{type:'string'},
+    reason:{type:'string'}
+  },required:['title','content','reason'],additionalProperties:false
+});
+const groqProposalFormat=model=>/^openai\/gpt-oss-(20b|120b)$/.test(model)
+  ?{type:'json_schema',json_schema:{name:'ordax_work_proposal',strict:true,schema:WORK_PROPOSAL_SCHEMA}}
+  :{type:'json_object'};
+
 function coordinatorFailure(code,outcome,httpStatus=null) {
   const error=Error(code);
   error.orchestratorFailureCode=code;
@@ -26,7 +41,7 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
         throw Error('orchestrator_completion_profile_invalid');
       const narrative=completionProfile!=='standard';
       const maxCompletionTokens=completionProfile==='narrative_recovery'?3200:
-        narrative?2600:1200;
+        narrative?2600:prepareWork?1800:1200;
       const request=buildCoordinatorRequestContext({store,taskId,mission,projectId,orchestratorId,
         analysisContext,prepareWork,workspaceObservation,repositoryUrl});
       let response;
@@ -36,7 +51,10 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
           headers:{Authorization:'Bearer '+apiKey,'Content-Type':'application/json'},
           body:JSON.stringify({model,temperature:narrative?0.2:0,
             max_completion_tokens:maxCompletionTokens,
-            ...(narrative&&/^openai\/gpt-oss-(20b|120b)$/.test(model)?{reasoning_effort:'low'}:{}),
+            ...(prepareWork?{response_format:groqProposalFormat(model)}:{}),
+            ...(prepareWork&&/^openai\/gpt-oss-(20b|120b)$/.test(model)?{reasoning_format:'hidden'}:{}),
+            ...((narrative||prepareWork)&&/^openai\/gpt-oss-(20b|120b)$/.test(model)
+              ?{reasoning_effort:'low'}:{}),
             messages:[{role:'system',content:request.system},...request.history]})
         });
       } catch(error) {
