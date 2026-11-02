@@ -185,13 +185,14 @@
               <small id="continuityState" role="status">Análise automática desativada. Nunca envia mensagens ao GPT.</small>
               <button id="continuityFollowupPrepare" type="button" class="mini-secondary" hidden disabled>Preparar próximo passo na conversa GPT</button>
               <button id="prepareWork" type="button" class="mini-secondary" disabled>Preparar nova frente</button>
+              <button id="startAutonomousTechnical" type="button" class="mini-primary" disabled>Iniciar missão técnica com GPT + Groq (até 2 envios)</button>
+              <small id="autonomousDialogueState" role="status" aria-live="polite">Descreva uma missão no campo do coordenador para iniciar. Ela autoriza até dois envios GPT; a próxima decisão depende da resposta observada, sem presumir alterações, testes nem commit.</small>
+              <div id="autonomousReviewActions" class="memory-review-actions" aria-label="Revisar conversas da missão" hidden></div>
               <details id="orchestratorExperiments" class="orchestrator-experiments">
-                <summary>Experimentos de coordenação GPT</summary>
+                <summary>Outros testes de coordenação GPT</summary>
                 <div class="orchestrator-experiments-content">
                   <button id="startAutonomousDialogue" type="button" class="mini-primary" disabled>Executar missão autônoma (2 perguntas GPT)</button>
                   <button id="startAutonomousStory" type="button" class="mini-secondary" disabled>Criar história colaborativa (2 ciclos, 4 cenas GPT)</button>
-                  <small id="autonomousDialogueState" role="status" aria-live="polite">Escolha diálogo de duas mensagens ou história de quatro cenas. Uma missão inicial autoriza no máximo duas conversas GPT. O Groq planeja e interpreta as respostas sem novos comandos; falhas incertas bloqueiam reenvio.</small>
-                  <div id="autonomousReviewActions" class="memory-review-actions" aria-label="Revisar conversas da missão" hidden></div>
                 </div>
               </details>
             </div>
