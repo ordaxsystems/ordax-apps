@@ -81,7 +81,11 @@ test('preflight is read-only, project-scoped and cannot silently send GPT',()=>{
   assert.match(uiSource,/call\('project_preflight',\{projectId:p,orchestratorId:o\}\)/);
   assert.match(uiSource,/if\(!snapshot\|\|!snapshot\.gates\.recordedWorkAnalysisEligible\)/);
   assert.match(uiSource,/if\(p!==projectId\|\|o!==orchestratorId\)return null/);
-  assert.match(uiSource,/repo\.urlRegistered\?'GitHub: URL registrada, leitura autenticada indisponível/);
+  // Preflight rendering now uses the same pure fail-closed helper as Start;
+  // a registered URL must never masquerade as authenticated GitHub access.
+  assert.match(uiSource,/snapshot\.repository\.authenticatedRead!=='unavailable'/);
+  assert.match(uiSource,/snapshot\.provenance\.externalObservation!==false/);
+  assert.match(uiSource,/Nenhuma leitura GitHub, chamada Groq, mensagem GPT/);
   assert.match(uiSource,/clearProjectPreflight\(\)/);
   assert.match(uiSource,/command\('orchestrator_analyze',\{projectId:p,orchestratorId:o\}\)/);
 });
