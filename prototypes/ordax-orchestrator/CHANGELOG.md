@@ -1,3 +1,8 @@
+## 0.2.0-alpha.40 — correção do gate E2E Windows (02/11/2026)
+
+- Alinha a verificação do perfil novo à mensagem atual do escopo de análise, que afirma que propostas não são executadas.
+- Atualiza a confirmação após criar uma missão para apontar ao botão Iniciar, que solicita a análise sem prompt.
+
 ## 0.2.0-alpha.39 — diagnóstico inicial sem prompt (02/11/2026)
 
 - **Iniciar** persiste a intenção do projeto, executa o preflight local e solicita uma análise das frentes registradas pelo Administrador Geral somente quando as pré-condições passam; não exige uma mensagem inicial.

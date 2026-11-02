@@ -1037,7 +1037,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       await refreshProjects();await refreshOrchestrators();
       await onNavigationChange?.({view:'coordinator',projectId,orchestratorId,taskId:null});
       await showCoordinator();
-      status('Projeto e missão criados localmente. Use Iniciar análise para revisar frentes salvas sem escrever um prompt; nenhum envio ao GPT ocorreu.');
+      status('Projeto e missão criados localmente. Use Iniciar para solicitar a análise sem prompt; nenhum envio ao GPT ocorreu.');
     });
   });
   $('renameProjectForm').addEventListener('submit',event=>{

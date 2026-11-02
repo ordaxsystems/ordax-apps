@@ -61,7 +61,7 @@ let cleanupFailurePhase=null;
       analysisHint:document.getElementById('analysisScopeHint')?.textContent||''}))()`);
     if(before.projects!==0||before.taskCount!==0||before.status.coordinatorAvailable!==false||
       before.status.autonomousExecution!==false||!before.analysisButton||before.analysisDisabled!==true||
-      !before.analysisHint.includes('não executam ações')||before.prepareDisabled!==true||!before.proposalsPresent)throw Error('fresh_disabled_profile_required');
+      !before.analysisHint.includes('não executa propostas')||before.prepareDisabled!==true||!before.proposalsPresent)throw Error('fresh_disabled_profile_required');
     phase='mission_create';
     await evaluate(`(()=>{
       document.getElementById('projectSetup').open=true;
