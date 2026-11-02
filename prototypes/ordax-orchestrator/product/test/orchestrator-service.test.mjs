@@ -213,19 +213,24 @@ test('project observation intent survives reboot, keeps project isolation and ne
   assert.equal(cols.filter(x=>x.name==='observation_requested').length,1);
   f.store.close();
   const reopenedStore=new Store(f.file);
-  t.after(()=>reopenedStore.close());
-  const context={...f.context,workspaceSessionId:reopenedStore.getWorkspaceSession().id};
-  const service=new OrchestratorService({store:reopenedStore,authorize:()=>true});
-  const persisted=await service.invoke(context,'projects_list',{});
-  assert.equal(persisted.projects.find(x=>x.id===a.p)?.observation_requested,1);
-  assert.equal(persisted.projects.find(x=>x.id===b.p)?.observation_requested,0);
-  const stop=await service.invoke(context,'project_observation_set',
-    {projectId:a.p,enabled:false,requestId:'project-stop-1'});
-  assert.equal(stop.result.state,'paused');
-  assert.equal((await service.invoke(context,'project_preflight',{projectId:a.p,orchestratorId:a.o})).observation.active,false);
-  assert.equal((await service.invoke(context,'projects_list',{})).projects.find(x=>x.id===a.p).observation_requested,0);
-  assert.equal(reopenedStore.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
-  assert.equal(modelCalls,0);assert.equal(gptSends,0);assert.equal(githubReads,0);
+  try {
+    const context={...f.context,workspaceSessionId:reopenedStore.getWorkspaceSession().id};
+    const service=new OrchestratorService({store:reopenedStore,authorize:()=>true});
+    const persisted=await service.invoke(context,'projects_list',{});
+    assert.equal(persisted.projects.find(x=>x.id===a.p)?.observation_requested,1);
+    assert.equal(persisted.projects.find(x=>x.id===b.p)?.observation_requested,0);
+    const stop=await service.invoke(context,'project_observation_set',
+      {projectId:a.p,enabled:false,requestId:'project-stop-1'});
+    assert.equal(stop.result.state,'paused');
+    assert.equal((await service.invoke(context,'project_preflight',{projectId:a.p,orchestratorId:a.o})).observation.active,false);
+    assert.equal((await service.invoke(context,'projects_list',{})).projects.find(x=>x.id===a.p).observation_requested,0);
+    assert.equal(reopenedStore.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+    assert.equal(modelCalls,0);assert.equal(gptSends,0);assert.equal(githubReads,0);
+  } finally {
+    // Windows cannot delete a still-open SQLite file. Close this reopened
+    // handle before the fixture's existing end-of-test temporary cleanup.
+    reopenedStore.close();
+  }
 });
 
 test('project observation intent blocks retargeting until explicit pause and rejects unauthorized changes',async t=>{
