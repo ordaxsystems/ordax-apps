@@ -110,7 +110,7 @@ test('preflight is read-only, project-scoped and cannot silently send GPT',()=>{
   // a registered URL must never masquerade as authenticated GitHub access.
   assert.match(uiSource,/snapshot\.repository\.authenticatedRead!=='unavailable'/);
   assert.match(uiSource,/snapshot\.provenance\.externalObservation!==false/);
-  assert.match(uiSource,/Nenhuma leitura GitHub, chamada Groq, mensagem GPT/);
+  assert.match(uiSource,/Este preflight não fez nova leitura GitHub, chamada Groq/);
   assert.match(uiSource,/clearProjectPreflight\(\)/);
   assert.match(uiSource,/command\('orchestrator_analyze',\{projectId:p,orchestratorId:o\}\)/);
 });
@@ -162,13 +162,14 @@ test('Start inspects local evidence immediately and restores it without repeatin
   assert.match(source,/button\.disabled=!project\|\|observationBusy\|\|\(!requested&&anotherRequested\)/);
   assert.match(source,/observationBusy=false;[\s\S]{0,240}syncProjectObservation\(\);\s*}\s*}\);/);
   const evidence={
-    schema:'ordax.orchestrator.project-preflight/1',
+    schema:'ordax.orchestrator.project-preflight/2',
     provenance:{source:'app_sqlite',externalObservation:false},
     observation:{requested:true,active:false},
     repository:{urlRegistered:true,authenticatedRead:'unavailable'},
     runtime:{grantVerified:false},
     coordinator:{state:'ready',modelConfigured:true},
     work:{registered:4,started:2,unresolvedSends:0},
+    analysis:{attempts:1,completed:1,lastStatus:'succeeded',lastAttemptAt:'2026-11-02T03:00:00.000Z'},
     gates:{recordedWorkAnalysisEligible:true,githubObservationVerified:false,
       automaticGptDispatchAllowed:false,headlessExecutionVerified:false},
     blockers:[]
@@ -176,7 +177,9 @@ test('Start inspects local evidence immediately and restores it without repeatin
   const guide=describeProjectPreflight(evidence);
   assert.equal(guide.state,'blocked');
   assert.match(guide.summary,/Inventário local: 4 frente/);
-  assert.match(guide.summary,/Nenhuma leitura GitHub, chamada Groq, mensagem GPT/);
+  assert.match(guide.summary,/Última análise registrada em 2026-11-02/);
+  assert.match(guide.summary,/Este preflight não fez nova leitura GitHub/);
+  assert.equal(guide.analysisLabel,'Reanalisar frentes');
   assert.match(guide.actions.join(' '),/Platform ainda indisponível/);
   assert.match(guide.actions.join(' '),/supervisão headless ainda não verificados/);
   const missing=describeProjectPreflight({
@@ -184,10 +187,13 @@ test('Start inspects local evidence immediately and restores it without repeatin
     repository:{urlRegistered:false,authenticatedRead:'unavailable'},
     coordinator:{state:'paused',modelConfigured:false},
     work:{registered:0,started:0,unresolvedSends:2},
+    analysis:{attempts:0,completed:0,lastStatus:null,lastAttemptAt:null},
     gates:{...evidence.gates,recordedWorkAnalysisEligible:false}
   });
   assert.equal(missing.state,'blocked');
   assert.match(missing.actions.join(' '),/Reconcilie envios pendentes/);
+  assert.match(missing.summary,/Análise ainda não iniciada/);
+  assert.equal(missing.analysisLabel,'Analisar frentes');
   assert.match(missing.actions.join(' '),/Retome o Administrador Geral/);
   assert.match(missing.actions.join(' '),/Cadastre a URL/);
   assert.throws(()=>describeProjectPreflight({

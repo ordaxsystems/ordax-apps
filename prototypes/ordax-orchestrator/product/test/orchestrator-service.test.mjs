@@ -51,19 +51,28 @@ test('project preflight reports only scoped local evidence, never manufactures e
     .run('https://github.com/ordaxsystems/ordax-os',a.p);
   const before=f.store.db.prepare('SELECT COUNT(*) AS total FROM lab_command_receipts').get().total;
   const initial=await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o});
-  assert.equal(initial.schema,'ordax.orchestrator.project-preflight/1');
+  assert.equal(initial.schema,'ordax.orchestrator.project-preflight/2');
   assert.equal(initial.projectId,a.p);
   assert.equal(initial.provenance.source,'app_sqlite');
   assert.equal(initial.provenance.externalObservation,false);
   assert.deepEqual(initial.repository,{urlRegistered:true,authenticatedRead:'unavailable',lastHistoricalHead:null});
   assert.deepEqual(initial.runtime,{grantVerified:false});
   assert.deepEqual(initial.work,{registered:1,started:0,unresolvedSends:0});
+  assert.deepEqual(initial.analysis,{attempts:0,completed:0,lastStatus:null,lastAttemptAt:null});
   assert.deepEqual(initial.blockers,[]);
   assert.equal(initial.gates.recordedWorkAnalysisEligible,true);
   assert.equal(initial.gates.githubObservationVerified,false);
   assert.equal(initial.gates.automaticGptDispatchAllowed,false);
   assert.equal(initial.gates.headlessExecutionVerified,false);
   assert.equal((await f.call('project_preflight',{projectId:b.p,orchestratorId:b.o})).repository.urlRegistered,false);
+  const reserved=f.service.reserve(f.context,'orchestrator_analyze',{requestId:'analysis_a',projectId:a.p});
+  f.service.finish(reserved.commandId,{provider:'groq',response:'redacted'},'succeeded');
+  const analyzed=await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o});
+  assert.deepEqual({...analyzed.analysis,lastAttemptAt:null},
+    {attempts:1,completed:1,lastStatus:'succeeded',lastAttemptAt:null});
+  assert.ok(Number.isFinite(Date.parse(analyzed.analysis.lastAttemptAt)));
+  assert.deepEqual((await f.call('project_preflight',{projectId:b.p,orchestratorId:b.o})).analysis,
+    {attempts:0,completed:0,lastStatus:null,lastAttemptAt:null});
   await assert.rejects(f.call('project_preflight',{projectId:a.p,orchestratorId:b.o}),/orchestrator_unavailable/);
   f.service.transaction(()=>f.service.reserve(f.context,'work_send',{
     requestId:'pending_work_preflight',projectId:a.p,taskId:a.w,content:'unconfirmed'}));
@@ -75,7 +84,7 @@ test('project preflight reports only scoped local evidence, never manufactures e
   f.setAllowed(false);
   await assert.rejects(f.call('project_preflight',{projectId:a.p,orchestratorId:a.o}),/orchestrator_access_denied/);
   f.setAllowed(true);
-  assert.equal(f.store.db.prepare('SELECT COUNT(*) AS total FROM lab_command_receipts').get().total,before+1);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) AS total FROM lab_command_receipts').get().total,before+2);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
   assert.equal(providerSends,0);assert.equal(modelCalls,0);
 });

@@ -14,7 +14,7 @@ export function resolveProjectOnboardingMission(name,objective) {
 // Pure presentation of the SAME read-only project_preflight projection.
  // It cannot confer GitHub/Runtime authority or issue a provider request.
 export function describeProjectPreflight(snapshot) {
-  if(snapshot?.schema!=='ordax.orchestrator.project-preflight/1'||
+  if(snapshot?.schema!=='ordax.orchestrator.project-preflight/2'||
     snapshot.provenance?.source!=='app_sqlite'||snapshot.provenance.externalObservation!==false||
     !snapshot.observation||typeof snapshot.observation.requested!=='boolean'||
     snapshot.observation.active!==false||!snapshot.repository||
@@ -24,6 +24,10 @@ export function describeProjectPreflight(snapshot) {
     !snapshot.work||!Number.isSafeInteger(snapshot.work.registered)||snapshot.work.registered<0||
     !Number.isSafeInteger(snapshot.work.started)||snapshot.work.started<0||
     !Number.isSafeInteger(snapshot.work.unresolvedSends)||snapshot.work.unresolvedSends<0||
+    !snapshot.analysis||!Number.isSafeInteger(snapshot.analysis.attempts)||snapshot.analysis.attempts<0||
+    !Number.isSafeInteger(snapshot.analysis.completed)||snapshot.analysis.completed<0||
+    !(snapshot.analysis.lastStatus===null||['running','succeeded','failed','uncertain'].includes(snapshot.analysis.lastStatus))||
+    !(snapshot.analysis.lastAttemptAt===null||typeof snapshot.analysis.lastAttemptAt==='string')||
     !snapshot.coordinator||typeof snapshot.coordinator.modelConfigured!=='boolean'||
     !snapshot.gates||typeof snapshot.gates.recordedWorkAnalysisEligible!=='boolean'||
     snapshot.gates.githubObservationVerified!==false||
@@ -50,15 +54,22 @@ export function describeProjectPreflight(snapshot) {
     actions.push(`Histórico GitHub: HEAD ${historical.headSha.slice(0,12)} observado em ${historical.observedAt}; não confirma acesso atual, integridade ou checks.`);
   actions.push('GitHub: integração autorizada pela Platform ainda indisponível neste Host.');
   actions.push('Runtime: grant de leitura e supervisão headless ainda não verificados.');
+  const latestAnalysis=snapshot.analysis.lastStatus==='succeeded'
+    ?`Última análise registrada em ${snapshot.analysis.lastAttemptAt}.`
+    :snapshot.analysis.lastStatus==='running'?'Há uma análise em andamento; consulte o histórico antes de repetir.'
+      :snapshot.analysis.lastStatus==='uncertain'?'O recibo da última análise está incerto; consulte o histórico antes de repetir.'
+        :snapshot.analysis.lastStatus==='failed'?'A última análise falhou; consulte o histórico antes de repetir.'
+          :'Análise ainda não iniciada.';
+  const analysisLabel=snapshot.analysis.attempts>0?'Reanalisar frentes':'Analisar frentes';
   return {
     state:snapshot.observation.requested?'blocked':
       snapshot.gates.recordedWorkAnalysisEligible?'ready':'blocked',
     summary:`Inventário local: ${snapshot.work.registered} frente(s), ${snapshot.work.started} com histórico de Run, ${snapshot.work.unresolvedSends} envio(s) incerto(s) ou pendente(s). `+
-      (snapshot.gates.recordedWorkAnalysisEligible?
-        'Análise das frentes registradas elegível, mas não iniciada. ':
+      `${latestAnalysis} `+(snapshot.gates.recordedWorkAnalysisEligible?
+        'Análise das frentes registradas elegível. ':
         'Análise das frentes registradas bloqueada. ')+
-      'Fonte: Store local. Nenhuma leitura GitHub, chamada Groq, mensagem GPT ou ação Runtime foi realizada.',
-    actions
+      'Fonte: Store local. Este preflight não fez nova leitura GitHub, chamada Groq, mensagem GPT ou ação Runtime.',
+    actions,analysisLabel
   };
 }
 
@@ -262,6 +273,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     preflightGeneration++;
     $('projectPreflightState').textContent='Diagnóstico ainda não solicitado. Uma URL GitHub não comprova acesso ao repositório.';
     $('projectPreflightState').dataset.state='idle';
+    $('analyzeWorks').textContent='Analisar frentes';
     $('projectPreflightActions').replaceChildren();
     $('projectPreflightActions').hidden=true;
     clearRepositoryObservation();
@@ -269,6 +281,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   function renderProjectPreflight(snapshot) {
     const guide=describeProjectPreflight(snapshot);
     const node=$('projectPreflightState');
+    $('analyzeWorks').textContent=guide.analysisLabel;
     node.textContent=guide.summary;
     node.dataset.state=guide.state;
     const list=$('projectPreflightActions');
@@ -289,7 +302,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       return null;
     if(snapshot?.projectId!==p||snapshot.orchestratorId!==o||
       snapshot.observation?.requested!==requested||
-      snapshot.schema!=='ordax.orchestrator.project-preflight/1')
+      snapshot.schema!=='ordax.orchestrator.project-preflight/2')
       throw Error('project_preflight_scope_mismatch');
     renderProjectPreflight(snapshot);
     return snapshot;

@@ -439,6 +439,17 @@ export class OrchestratorService {
         WHERE b.project_id=? AND b.orchestrator_id=? AND b.kind='work'
           AND t.workspace_session_id=?`)
         .get(input.projectId,input.orchestratorId,context.workspaceSessionId);
+      // Project-scoped command receipts are the source of truth for whether
+      // the local Groq analysis was attempted. The result body is deliberately
+      // excluded from this read model.
+      const analysis=this.db.prepare(`SELECT COUNT(*) AS attempts,
+        COALESCE(SUM(CASE WHEN status='succeeded' THEN 1 ELSE 0 END),0) AS completed,
+        (SELECT status FROM lab_command_receipts WHERE project_id=? AND operation='orchestrator_analyze'
+          ORDER BY updated_at DESC,id DESC LIMIT 1) AS last_status,
+        (SELECT updated_at FROM lab_command_receipts WHERE project_id=? AND operation='orchestrator_analyze'
+          ORDER BY updated_at DESC,id DESC LIMIT 1) AS last_attempt_at
+        FROM lab_command_receipts WHERE project_id=? AND operation='orchestrator_analyze'`)
+        .get(input.projectId,input.projectId,input.projectId);
       // Any outstanding send in this project is relevant: parallel owners can
       // share a repo, and missing/invalid target receipts are fail-closed.
       const unresolved=this.db.prepare(`SELECT COUNT(*) AS total
@@ -452,7 +463,7 @@ export class OrchestratorService {
       if(work.total===0)blockers.push('no_registered_work');
       if(unresolved.total>0)blockers.push('work_receipts_unresolved');
       return {
-        schema:'ordax.orchestrator.project-preflight/1',
+        schema:'ordax.orchestrator.project-preflight/2',
         projectId:input.projectId,orchestratorId:input.orchestratorId,
         observedAt:this.store.now(),
         provenance:{source:'app_sqlite',externalObservation:false},
@@ -465,6 +476,8 @@ export class OrchestratorService {
         runtime:{grantVerified:false},
         coordinator:{state:owner.status,modelConfigured,providerResponseVerified:false},
         work:{registered:Number(work.total),started:Number(work.started),unresolvedSends:Number(unresolved.total)},
+        analysis:{attempts:Number(analysis.attempts),completed:Number(analysis.completed),
+          lastStatus:analysis.last_status,lastAttemptAt:analysis.last_attempt_at},
         gates:{recordedWorkAnalysisEligible:blockers.length===0,
           githubObservationVerified:false,automaticGptDispatchAllowed:false,headlessExecutionVerified:false},
         blockers
