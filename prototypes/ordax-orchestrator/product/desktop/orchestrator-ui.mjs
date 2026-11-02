@@ -1203,7 +1203,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         :'Não foi possível confirmar a mudança da observação. Consulte o estado antes de repetir.');
     }finally{
       observationBusy=false;
-      if(p===projectId)syncProjectObservation();
+      // The user may have selected another project while the old command
+      // was awaited. Restore controls for the CURRENT scope, not the old one.
+      syncProjectObservation();
     }
   });
   $('inspectProjectAccess').addEventListener('click',async()=>{
