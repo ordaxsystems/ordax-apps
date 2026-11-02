@@ -86,6 +86,17 @@ test('preflight is read-only, project-scoped and cannot silently send GPT',()=>{
   assert.match(uiSource,/command\('orchestrator_analyze',\{projectId:p,orchestratorId:o\}\)/);
 });
 
+test('GitHub observation is hidden until trusted host capability and never authorizes from a URL',()=>{
+  const s=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.equal((uiHtml.match(/id="observeProjectRepository"/g)||[]).length,1);
+  assert.match(uiHtml,/id="observeProjectRepository"[^>]*hidden disabled/);
+  assert.match(s,/repositoryPortAvailable=engineStatus\.repositoryPortAvailable===true/);
+  assert.match(s,/button\.disabled\|\|!repositoryPortAvailable/);
+  assert.match(s,/call\('repository_observe',\{projectId:p\}\)/);
+  assert.match(s,/p!==projectId\|\|projectsCache\.find/);
+  assert.match(s,/snapshot\.provenance\?\.grantRechecked!==true/);
+});
+
 test('desktop is single-instance with canonical durable AppData state', () => {
   assert.match(main, /requestSingleInstanceLock/);
   const binding=fs.readFileSync(path.join(root,'src','lab-profile-binding.mjs'),'utf8');

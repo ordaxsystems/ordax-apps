@@ -166,6 +166,8 @@
                 <input id="projectRepositoryInput" type="url" maxlength="300" placeholder="https://github.com/owner/repository" />
                 <button id="saveProjectRepository" class="mini-secondary" type="submit">Salvar repositório</button>
               </form>
+              <button id="observeProjectRepository" class="mini-secondary" type="button" hidden disabled>Verificar HEAD autenticado</button>
+              <small id="repositoryObservationState" role="status" aria-live="polite" data-state="idle">Nenhum HEAD autenticado verificado nesta sessão.</small>
               <small id="remoteRepositoryStatus" role="status">Vincule um repositório GitHub para orientar as conversas de trabalho.</small>
               <small id="remoteRepositoryCapabilityNote">A API recebe somente a URL. No desktop, tarefas podem pedir ao ChatGPT para usar a integração GitHub da sessão; isso não comprova que a integração está disponível. Nenhum arquivo local é lido nesta etapa.</small>
             </section>

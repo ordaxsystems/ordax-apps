@@ -7,6 +7,7 @@ import {validateWorkProposal} from './orchestrator-proposal.mjs';
 import {LabContinuation} from './lab-continuation.mjs';
 import {AutonomousDialogue} from './autonomous-dialogue.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
+import {ProjectRepository} from './project-repository.mjs';
 import {workExecutionSummary} from './work-execution-summary.mjs';
 import {projectWorkPlan} from './work-plan-read-model.mjs';
 import {appendRemoteRepositoryInstructions,normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
@@ -20,7 +21,7 @@ function missionProjectName(mission) {
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
 export class OrchestratorService {
-  constructor({store,authorize,provider=null,coordinator=null,confirmProposal=null,confirmProposalSend=null,workspacePort=null}={}) {
+  constructor({store,authorize,provider=null,coordinator=null,confirmProposal=null,confirmProposalSend=null,workspacePort=null,repositoryPort=null}={}) {
     if(!store?.db || typeof authorize!=='function')throw Error('orchestrator_ports_required');
     this.store=store; this.db=store.db; this.authorize=authorize;
     this.provider=provider; this.coordinator=coordinator;
@@ -114,6 +115,7 @@ export class OrchestratorService {
     this.continuation=new LabContinuation({store,service:this});
     this.autonomous=new AutonomousDialogue({store,service:this});
     this.workspace=new ProjectWorkspace({store,port:workspacePort});
+    this.repository=new ProjectRepository({port:repositoryPort});
   }
 
   transaction(operation) {
@@ -265,6 +267,15 @@ export class OrchestratorService {
     this.requireAccess(context,operation,input.projectId||null);
     if(operation==='autonomous_dialogue_status')return this.autonomous.status(context,input);
     if(operation==='autonomous_dialogue_start')return {status:'succeeded',operation,result:this.autonomous.start(context,input)};
+    if(operation==='repository_observe') {
+      const repositoryUrl=this.projectRepositoryUrl(input.projectId);
+      const recheck=()=>{
+        this.requireAccess(context,operation,input.projectId);
+        if(this.projectRepositoryUrl(input.projectId)!==repositoryUrl)
+          throw Error('orchestrator_repository_changed_during_observation');
+      };
+      return this.repository.observe(context,{projectId:input.projectId,repositoryUrl},recheck);
+    }
     if(operation==='workspace_snapshot')return this.workspace.snapshot(context,input,()=>this.requireAccess(context,operation,input.projectId));
     if(operation==='workspace_bind')return this.bindWorkspace(context,input);
     if(tool.readOnly)return this.read(context,operation,input);
@@ -350,6 +361,7 @@ export class OrchestratorService {
       autonomousAnalysisAvailable:true,
       coordinatorDraftCommitAvailable:true,
       workspacePortAvailable:this.workspace.available(),
+      repositoryPortAvailable:this.repository.available(),
       continuationEnabled:Number(this.db.prepare('SELECT COUNT(*) n FROM lab_continuation_policies WHERE enabled=1').get().n),
       coordinatorAvailable:this.coordinator?.available?.()===true,
       providerExecutionAvailable:typeof this.provider?.send==='function',

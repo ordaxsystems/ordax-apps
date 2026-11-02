@@ -19,7 +19,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   let gptWebTransportAvailable=false;
   let chatgptPlanStatus={connected:false,planUsageAuthorized:false,secureStorageAvailable:false};
   let groqConfigured=false,coordinatorProvider=null;
-  let analysisBusy=false,preflightBusy=false,coordinatorSubmitting=false,nodeHost=false;
+  let analysisBusy=false,preflightBusy=false,repositoryBusy=false,repositoryPortAvailable=false,coordinatorSubmitting=false,nodeHost=false;
   let coordinatorDraftTaskId=null,coordinatorDraftRevision=0,coordinatorDraftTimer=null;
   let coordinatorDraftGeneration=0,pendingCoordinatorDraft=null,coordinatorDraftWrite=Promise.resolve();
   const requestKeys=new Map();
@@ -40,7 +40,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     set('capabilityGpt',!chatgptPlanStatus.connected?'ChatGPT Plan · não conectado':
       chatgptPlanStatus.planUsageAuthorized?'ChatGPT Plan · autorizado':'ChatGPT · uso do plano não autorizado',
       chatgptPlanStatus.planUsageAuthorized?'ready':chatgptPlanStatus.connected?'partial':'blocked');
-    set('capabilityGitHub',project?.repository_url?'GitHub · URL salva, leitura ausente':'GitHub · sem leitura autenticada',
+    set('capabilityGitHub',repositoryPortAvailable&&project?.repository_url
+      ?'GitHub · adaptador disponível, acesso não verificado'
+      :project?.repository_url?'GitHub · URL salva, leitura ausente':'GitHub · sem leitura autenticada',
       project?.repository_url?'partial':'blocked');
     set('capabilityRuntime','Runtime · workspace sem grant','blocked');
     set('capabilityContinuity','24 h · supervisor ausente','blocked');
@@ -207,6 +209,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   function clearProjectPreflight() {
     $('projectPreflightState').textContent='Diagnóstico ainda não solicitado. Uma URL GitHub não comprova acesso ao repositório.';
     $('projectPreflightState').dataset.state='idle';
+    clearRepositoryObservation();
   }
   function renderProjectPreflight(snapshot) {
     const work=snapshot.work,repo=snapshot.repository,owner=snapshot.coordinator;
@@ -232,6 +235,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       throw Error('project_preflight_scope_mismatch');
     renderProjectPreflight(snapshot);
     return snapshot;
+  }
+  function clearRepositoryObservation() {
+    $('repositoryObservationState').textContent='Nenhum HEAD autenticado verificado nesta sessão.';
+    $('repositoryObservationState').dataset.state='idle';
   }
   function renderProjectPulse(counts,total) {
     const panel=$('projectPulse');
@@ -509,6 +516,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     input.value=project?.repository_url||'';
     input.disabled=!project;
     $('saveProjectRepository').disabled=!project;
+    $('observeProjectRepository').hidden=!repositoryPortAvailable;
+    $('observeProjectRepository').disabled=!repositoryPortAvailable||!project?.repository_url||repositoryBusy;
     $('renameProjectButton').disabled=!project;
     $('renameProjectInput').value=project?.name||'';
     $('remoteRepositoryStatus').textContent=nodeHost
@@ -547,6 +556,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       :'Cada conversa mantém o próprio histórico dentro do projeto.';
     const engineStatus=await call('status');
     coordinatorAvailable=engineStatus.coordinatorAvailable===true;
+    repositoryPortAvailable=engineStatus.repositoryPortAvailable===true;
     gptWebTransportAvailable=engineStatus.providerExecutionAvailable===true&&!nodeHost;
     // The coordinator is a distinct conversation, not another GPT Web front.
     orchestratorChatAvailable=coordinatorAvailable;
@@ -951,6 +961,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       try {
         const receipt=await command('project_repository_set',{projectId:p,repositoryUrl:$('projectRepositoryInput').value});
         if(receipt.status!=='succeeded'||p!==projectId)return;
+        clearProjectPreflight();
         await refreshProjects();
         status(receipt.result.repositoryUrl
           ?nodeHost
@@ -965,6 +976,30 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         else status('Não foi possível salvar o repositório. Consulte o estado antes de repetir.');
       } finally {button.disabled=false;}
     })();
+  });
+  $('observeProjectRepository').addEventListener('click',async()=>{
+    const button=$('observeProjectRepository');
+    const p=projectId,repositoryUrl=projectsCache.find(item=>item.id===p)?.repository_url;
+    if(button.disabled||!repositoryPortAvailable||!p||!repositoryUrl||repositoryBusy)return;
+    repositoryBusy=true;button.disabled=true;
+    try{
+      const snapshot=await call('repository_observe',{projectId:p});
+      if(p!==projectId||projectsCache.find(item=>item.id===p)?.repository_url!==repositoryUrl)return;
+      if(snapshot?.schema!=='ordax.orchestrator.repository-observation/1'||
+        snapshot.repositoryUrl!==repositoryUrl||snapshot.provenance?.grantRechecked!==true)
+        throw Error('orchestrator_repository_observation_unverified');
+      const label=$('repositoryObservationState');
+      label.dataset.state='ready';
+      label.textContent=`GitHub autenticado: ${snapshot.defaultBranch} @ ${snapshot.headSha.slice(0,12)} · observado em ${snapshot.observedAt}. Apenas metadados do HEAD; PRs e checks não foram lidos.`;
+    }catch{
+      if(p===projectId&&projectsCache.find(item=>item.id===p)?.repository_url===repositoryUrl){
+        $('repositoryObservationState').dataset.state='blocked';
+        $('repositoryObservationState').textContent='Leitura GitHub não comprovada ou permissão revogada. Nenhum HEAD será assumido.';
+      }
+    }finally{
+      repositoryBusy=false;
+      button.disabled=!repositoryPortAvailable||!projectsCache.find(item=>item.id===projectId)?.repository_url;
+    }
   });
   $('newOrchestratorForm').addEventListener('submit',event=>{
     event.preventDefault();void formAction(event.currentTarget,async()=>{
