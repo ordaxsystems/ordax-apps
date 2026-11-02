@@ -55,7 +55,7 @@ test('project preflight reports only scoped local evidence, never manufactures e
   assert.equal(initial.projectId,a.p);
   assert.equal(initial.provenance.source,'app_sqlite');
   assert.equal(initial.provenance.externalObservation,false);
-  assert.deepEqual(initial.repository,{urlRegistered:true,authenticatedRead:'unavailable'});
+  assert.deepEqual(initial.repository,{urlRegistered:true,authenticatedRead:'unavailable',lastHistoricalHead:null});
   assert.deepEqual(initial.runtime,{grantVerified:false});
   assert.deepEqual(initial.work,{registered:1,started:0,unresolvedSends:0});
   assert.deepEqual(initial.blockers,[]);
