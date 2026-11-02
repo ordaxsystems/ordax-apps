@@ -185,6 +185,75 @@ test('a missing repository or another project identity cannot borrow a verified 
   assert.equal(authCalls,1);
 });
 
+test('project observation intent survives reboot, keeps project isolation and never grants or dispatches',async t=>{
+  let modelCalls=0,gptSends=0,githubReads=0;
+  const f=fixture(t,{coordinator:{send:()=>{modelCalls++;throw Error('model_not_expected');}},
+    provider:{send:()=>{gptSends++;throw Error('gpt_not_expected');}},
+    repositoryPort:{authorizeRead:()=>{githubReads++;throw Error('github_not_expected');},
+      readSnapshot:()=>{githubReads++;throw Error('github_not_expected');}}});
+  const a=await project(f,'A'),b=await project(f,'B');
+  const first=await f.call('projects_list');
+  assert.ok(first.projects.some(x=>x.id===a.p&&x.observation_requested===0));
+  assert.ok(first.projects.some(x=>x.id===b.p&&x.observation_requested===0));
+  const before=f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts').get().n;
+  const start={projectId:a.p,enabled:true,requestId:'project-start-1'};
+  const startReceipt=await f.call('project_observation_set',start);
+  assert.equal(startReceipt.status,'succeeded');
+  assert.equal(startReceipt.result.requested,true);
+  assert.equal(startReceipt.result.active,false);
+  assert.equal(startReceipt.result.externalCalls,0);
+  assert.equal(startReceipt.result.providerMessagesSent,0);
+  assert.deepEqual(await f.call('project_observation_set',start),startReceipt);
+  await assert.rejects(f.call('project_observation_set',{...start,enabled:false}),/orchestrator_request_conflict/);
+  assert.equal((await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o})).observation.state,
+    'awaiting_external_authority');
+  assert.equal((await f.call('project_preflight',{projectId:b.p,orchestratorId:b.o})).observation.state,'paused');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts').get().n,before+1);
+  const cols=f.store.db.prepare('PRAGMA table_info(lab_projects)').all();
+  assert.equal(cols.filter(x=>x.name==='observation_requested').length,1);
+  f.store.close();
+  const reopenedStore=new Store(f.file);
+  try {
+    const context={...f.context,workspaceSessionId:reopenedStore.getWorkspaceSession().id};
+    const service=new OrchestratorService({store:reopenedStore,authorize:()=>true});
+    const persisted=await service.invoke(context,'projects_list',{});
+    assert.equal(persisted.projects.find(x=>x.id===a.p)?.observation_requested,1);
+    assert.equal(persisted.projects.find(x=>x.id===b.p)?.observation_requested,0);
+    const stop=await service.invoke(context,'project_observation_set',
+      {projectId:a.p,enabled:false,requestId:'project-stop-1'});
+    assert.equal(stop.result.state,'paused');
+    assert.equal((await service.invoke(context,'project_preflight',{projectId:a.p,orchestratorId:a.o})).observation.active,false);
+    assert.equal((await service.invoke(context,'projects_list',{})).projects.find(x=>x.id===a.p).observation_requested,0);
+    assert.equal(reopenedStore.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+    assert.equal(modelCalls,0);assert.equal(gptSends,0);assert.equal(githubReads,0);
+  } finally {
+    // Windows cannot delete a still-open SQLite file. Close this reopened
+    // handle before the fixture's existing end-of-test temporary cleanup.
+    reopenedStore.close();
+  }
+});
+
+test('project observation intent blocks retargeting until explicit pause and rejects unauthorized changes',async t=>{
+  const f=fixture(t),a=await project(f),b=await project(f);
+  await f.call('project_repository_set',{projectId:a.p,repositoryUrl:'https://github.com/ordaxsystems/ordax-os'});
+  await f.call('project_observation_set',{projectId:a.p,enabled:true});
+  await assert.rejects(f.call('project_repository_set',{
+    projectId:a.p,repositoryUrl:'https://github.com/ordaxsystems/ordax-surface'
+  }),/orchestrator_repository_change_requires_observation_pause/);
+  const rows=(await f.call('projects_list')).projects;
+  assert.equal(rows.find(x=>x.id===a.p).repository_url,'https://github.com/ordaxsystems/ordax-os');
+  assert.equal(rows.find(x=>x.id===b.p).observation_requested,0);
+  f.setAllowed(false);
+  await assert.rejects(f.call('project_observation_set',{projectId:a.p,enabled:false}),/orchestrator_access_denied/);
+  f.setAllowed(true);
+  await f.call('project_observation_set',{projectId:a.p,enabled:false});
+  const changed=await f.call('project_repository_set',{
+    projectId:a.p,repositoryUrl:'https://github.com/ordaxsystems/ordax-surface'
+  });
+  assert.equal(changed.result.repositoryUrl,'https://github.com/ordaxsystems/ordax-surface');
+  assert.equal((await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o})).observation.state,'paused');
+});
+
 test('native-approved first send uses the existing executor, durable approval and one receipt without coordinator API',async t=>{
   let sends=0,confirms=0;
   const f=fixture(t,{coordinator:{send:proposedReply},confirmProposalSend:async({content})=>{

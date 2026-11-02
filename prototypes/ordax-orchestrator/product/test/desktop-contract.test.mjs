@@ -97,6 +97,18 @@ test('GitHub observation is hidden until trusted host capability and never autho
   assert.match(s,/snapshot\.provenance\?\.grantRechecked!==true/);
 });
 
+test('Start/Pause is consent-only and never claims a running background supervisor',()=>{
+  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.equal((uiHtml.match(/id="projectObservationToggle"/g)||[]).length,1);
+  assert.equal((uiHtml.match(/id="projectObservationState"/g)||[]).length,1);
+  assert.match(uiHtml,/Iniciar salva somente a intenção de diagnóstico/);
+  assert.match(source,/project\?\.observation_requested===1/);
+  assert.match(source,/command\('project_observation_set',\{projectId:p,enabled\}\)/);
+  assert.match(source,/Nenhuma execução, mensagem GPT ou leitura remota foi iniciada/);
+  assert.match(source,/const p=projectId,project=projectsCache\.find/);
+  assert.match(source,/if\(p!==projectId\)return/);
+});
+
 test('desktop is single-instance with canonical durable AppData state', () => {
   assert.match(main, /requestSingleInstanceLock/);
   const binding=fs.readFileSync(path.join(root,'src','lab-profile-binding.mjs'),'utf8');

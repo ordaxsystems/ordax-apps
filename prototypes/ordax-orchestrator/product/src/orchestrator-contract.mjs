@@ -15,6 +15,7 @@ const definitions = [
   ['project_create','Create an isolated Lab project and optionally bind its canonical GitHub repository URL. No repository contents are read.',{name:text(140),objective:text(4000,0),repositoryUrl:text(300,0)},['name'],false],
   ['mission_create','Atomically create a project, coordinator and first work conversation with the mission saved as a draft. Does not submit to GPT.',{name:text(140,0),mission:text(4000),repositoryUrl:text(300,0)},['mission'],false],
   ['project_rename','Rename one accessible project. Does not alter its repository or work.',{projectId:id,name:text(140)},['projectId','name'],false],
+  ['project_observation_set','Persist or revoke explicit project-level intent to begin read-only observation. Never starts a scheduler, authenticates GitHub, submits GPT or grants authority.',{projectId:id,enabled:{type:'boolean'}},['projectId','enabled'],false],
   ['project_repository_set','Set or clear the project GitHub remote reference. This stores a URL only and does not read or write the repository.',{projectId:id,repositoryUrl:text(300,0)},['projectId','repositoryUrl'],false],
   ['orchestrators_list','List coordinators of one project.',{projectId:id},['projectId'],true],
   ['orchestrator_create','Create a coordinator with persistent mission and its own local conversation.',{projectId:id,name:text(140),mission:text(4000)},['projectId','name','mission'],false],

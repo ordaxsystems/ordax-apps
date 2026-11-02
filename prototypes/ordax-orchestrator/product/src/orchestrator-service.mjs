@@ -35,7 +35,8 @@ export class OrchestratorService {
       CREATE TABLE IF NOT EXISTS lab_projects (
         id TEXT PRIMARY KEY, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
         name TEXT NOT NULL, objective TEXT NOT NULL, created_at TEXT NOT NULL,
-        repository_url TEXT
+        repository_url TEXT,
+        observation_requested INTEGER NOT NULL DEFAULT 0 CHECK(observation_requested IN (0,1))
       );
       CREATE INDEX IF NOT EXISTS idx_lab_project_session ON lab_projects(workspace_session_id);
       CREATE TABLE IF NOT EXISTS lab_orchestrators (
@@ -98,6 +99,8 @@ export class OrchestratorService {
     }
     if(!this.db.prepare('PRAGMA table_info(lab_projects)').all().some(column=>column.name==='repository_url'))
       this.db.exec('ALTER TABLE lab_projects ADD COLUMN repository_url TEXT');
+    if(!this.db.prepare('PRAGMA table_info(lab_projects)').all().some(column=>column.name==='observation_requested'))
+      this.db.exec('ALTER TABLE lab_projects ADD COLUMN observation_requested INTEGER NOT NULL DEFAULT 0 CHECK(observation_requested IN (0,1))');
     // Read-only projection over the ONE durable receipt ledger. SQLite JSON
     // extraction is never attempted on invalid/truncated result data. A work
     // receipt with an unresolvable Task quarantines its OWN project only.
@@ -372,14 +375,14 @@ export class OrchestratorService {
         .get(context.workspaceSessionId,context.actorId,context.clientId).n)
     };
     if(operation==='projects_list')return {projects:this.db.prepare(
-      'SELECT id,name,objective,repository_url,created_at FROM lab_projects WHERE workspace_session_id=? ORDER BY created_at,id LIMIT 200')
+      'SELECT id,name,objective,repository_url,created_at,observation_requested FROM lab_projects WHERE workspace_session_id=? ORDER BY created_at,id LIMIT 200')
       .all(context.workspaceSessionId).filter(row=>this.authorize({context,operation,projectId:row.id})===true)};
     if(operation==='project_preflight') {
       // Read-only, project-scoped projection of the canonical Store. A saved
       // repository URL is NOT authenticated GitHub access; an injected Runtime
       // port is NOT a project resource grant. Never claim either as verified.
       const owner=this.orchestrator(input.projectId,input.orchestratorId);
-      const project=this.db.prepare('SELECT repository_url FROM lab_projects WHERE id=? AND workspace_session_id=?')
+      const project=this.db.prepare('SELECT repository_url,observation_requested FROM lab_projects WHERE id=? AND workspace_session_id=?')
         .get(input.projectId,context.workspaceSessionId);
       const work=this.db.prepare(`SELECT COUNT(*) AS total,
         COALESCE(SUM(CASE WHEN EXISTS(SELECT 1 FROM runs r WHERE r.task_id=t.id) THEN 1 ELSE 0 END),0) AS started
@@ -405,6 +408,9 @@ export class OrchestratorService {
         observedAt:this.store.now(),
         provenance:{source:'app_sqlite',externalObservation:false},
         repository:{urlRegistered:Boolean(project?.repository_url),authenticatedRead:'unavailable'},
+        observation:{requested:project.observation_requested===1,active:false,
+          state:project.observation_requested===1?'awaiting_external_authority':'paused',
+          automaticGptDispatchAllowed:false,backgroundSchedulerActive:false},
         runtime:{grantVerified:false},
         coordinator:{state:owner.status,modelConfigured,providerResponseVerified:false},
         work:{registered:Number(work.total),started:Number(work.started),unresolvedSends:Number(unresolved.total)},
@@ -640,12 +646,23 @@ export class OrchestratorService {
       if(changed!==1)throw Error('orchestrator_project_unavailable');
       return {projectId:input.projectId,name:input.name};
     }
+    if(operation==='project_observation_set') {
+      const result=this.db.prepare('UPDATE lab_projects SET observation_requested=? WHERE id=? AND workspace_session_id=?')
+        .run(input.enabled?1:0,input.projectId,this.store.getWorkspaceSession().id);
+      if(result.changes!==1)throw Error('orchestrator_project_unavailable');
+      // This records intent only; it is not a Platform grant or a running
+      // scheduler. This response must never imply successful remote observation.
+      return {projectId:input.projectId,requested:input.enabled,active:false,
+        state:input.enabled?'awaiting_external_authority':'paused',
+        automaticGptDispatchAllowed:false,providerMessagesSent:0,externalCalls:0};
+    }
     if(operation==='project_repository_set') {
       const repositoryUrl=normalizeGitHubRepositoryUrl(input.repositoryUrl);
-      const project=this.db.prepare(`SELECT repository_url FROM lab_projects
+      const project=this.db.prepare(`SELECT repository_url,observation_requested FROM lab_projects
         WHERE id=? AND workspace_session_id=?`).get(input.projectId,this.store.getWorkspaceSession().id);
       if(!project)throw Error('orchestrator_project_unavailable');
       if(project.repository_url!==repositoryUrl) {
+        if(project.observation_requested===1)throw Error('orchestrator_repository_change_requires_observation_pause');
         const workStarted=this.db.prepare(`SELECT 1 FROM lab_task_bindings b JOIN tasks t ON t.id=b.task_id
           WHERE b.project_id=? AND b.kind='work' AND (
             t.draft_revision>0 OR
