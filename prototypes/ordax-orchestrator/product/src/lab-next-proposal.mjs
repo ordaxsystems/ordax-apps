@@ -75,6 +75,13 @@ export class LabNextProposal {
       JOIN lab_projects project ON project.id=r.project_id AND project.workspace_session_id=?
       JOIN tasks t ON t.id=r.task_id AND t.workspace_session_id=?
       WHERE r.state='analyzed' AND p.enabled=1 AND base.enabled=1 AND o.status='ready'
+      -- A reviewed GPT result that requires verification, correction in the
+      -- same conversation, or a hold is not an invitation to create work.
+      -- Filter BEFORE candidate selection so it cannot starve another project.
+      AND (json_extract((SELECT c.result FROM lab_command_receipts c
+            WHERE c.id=r.command_id AND c.status='succeeded'),'$.reviewDecision.decision') IS NULL
+        OR json_extract((SELECT c.result FROM lab_command_receipts c
+            WHERE c.id=r.command_id AND c.status='succeeded'),'$.reviewDecision.decision')='new_work')
       AND r.rowid>p.start_review_rowid
       AND NOT EXISTS (SELECT 1 FROM lab_next_proposals n WHERE n.review_run_id=r.run_id)
       AND (SELECT COUNT(*) FROM lab_next_proposals n JOIN lab_continuation_reviews q
@@ -83,6 +90,16 @@ export class LabNextProposal {
       ORDER BY transport_uncertain ASC,pending_review ASC,r.updated_at,r.run_id`).iterate(session.id,session.id));
     if(!choice.row)return {state:choice.state};
     const row=choice.row;
+    const reviewReceipt=this.db.prepare('SELECT result FROM lab_command_receipts WHERE id=(SELECT command_id FROM lab_continuation_reviews WHERE run_id=?) AND status=\'succeeded\'')
+      .get(row.run_id);
+    let specificDecision=null;
+    try{specificDecision=JSON.parse(reviewReceipt?.result||'{}').reviewDecision||null;}catch{}
+    // An explicit result interpretation supersedes generic proposal creation.
+    // A decision for the same thread or a verification request is NOT a new
+    // work front; never turn it into another work proposal silently.
+    if(specificDecision&&specificDecision.decision!=='new_work')
+      return {state:'awaiting_decision_review',runId:row.run_id,
+        decision:specificDecision.decision};
     if(this.db.prepare(`SELECT 1 FROM action_ledger a JOIN lab_orchestrators o ON o.chat_task_id=a.task_id
       WHERE o.id=? AND a.action_type='orchestrator.work-proposal' AND a.status='pending' LIMIT 1`)
       .get(row.orchestrator_id))return {state:'waiting_proposal_review'};
@@ -96,7 +113,10 @@ export class LabNextProposal {
       const receipt=await this.service.invoke(context,'orchestrator_prepare',{
         projectId:row.project_id,orchestratorId:row.orchestrator_id,
         requestId:'next_'+row.run_id.replace(/[^A-Za-z0-9_-]/g,'_').slice(0,110),
-        content:'Revise o progresso confirmado e proponha apenas UMA nova frente curta, verificável e necessária à missão. Não afirme que o trabalho já foi executado.'
+        content:specificDecision?.decision==='new_work'
+          ?'Com base na interpretação fundamentada do Run anterior, proponha exatamente UMA nova frente de trabalho: '+specificDecision.nextPrompt.slice(0,2000)+
+            '. A interpretação é consultiva: não assuma que efeitos externos foram executados.'
+          :'Revise o progresso confirmado e proponha apenas UMA nova frente curta, verificável e necessária à missão. Não afirme que o trabalho já foi executado.'
       });
       // Model calls may finish after the active workspace changes. Keep
       // the uncertain receipt, but never certify the old session's proposal.
