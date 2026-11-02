@@ -41,6 +41,13 @@ export function describeProjectPreflight(snapshot) {
     actions.push('Registre uma frente de trabalho para a análise local.');
   if(!snapshot.repository.urlRegistered)
     actions.push('Cadastre a URL do repositório nas conexões do projeto.');
+  const historical=snapshot.repository.lastHistoricalHead;
+  if(historical?.provenance?.historical===true&&
+    historical.provenance.currentAccessVerified===false&&
+    historical.provenance.source==='github_rest_authenticated'&&
+    /^[a-f0-9]{40}$/.test(historical.headSha)&&
+    typeof historical.observedAt==='string'&&Number.isFinite(Date.parse(historical.observedAt)))
+    actions.push(`Histórico GitHub: HEAD ${historical.headSha.slice(0,12)} observado em ${historical.observedAt}; não confirma acesso atual, integridade ou checks.`);
   actions.push('GitHub: integração autorizada pela Platform ainda indisponível neste Host.');
   actions.push('Runtime: grant de leitura e supervisão headless ainda não verificados.');
   return {
