@@ -320,6 +320,15 @@
             <button class="primary" type="submit">Criar e abrir conversa</button>
           </form>
         </details>
+        <details id="batchWorkDetails" class="new-work-details">
+          <summary>Criar várias frentes de uma vez</summary>
+          <form id="batchWorkForm" class="new-work-form">
+            <label for="batchWorkTitles">Uma frente por linha (2 a 16)</label>
+            <textarea id="batchWorkTitles" rows="4" maxlength="2400" placeholder="Pesquisar dependências&#10;Implementar integração&#10;Validar resultado" required></textarea>
+            <button class="primary" type="submit">Registrar frentes do projeto</button>
+            <small>Cria conversas locais no mesmo projeto, sem mensagens ao GPT ou novos agentes físicos.</small>
+          </form>
+        </details>
         <details id="workDependencyEditor" class="work-dependency-editor">
           <summary>Organizar dependências</summary>
           <form id="workDependencyForm">
