@@ -200,7 +200,7 @@ let cleanupFailurePhase=null;
     successReport={schema:'ordax.lab.orchestration-app-e2e.v1',ok:true,
       appMode:true,runtimeVerified:true,toolCount:summary.toolCount,sharedStateVerified:true,
       projectFormVerified:true,missionDraftPersisted:true,missionStartBlockedWithoutSession:true,
-      coordinatorFormVerified:true,workVisibleInApp:true,
+      globalSettingsWithoutProjectVerified:true,coordinatorFormVerified:true,workVisibleInApp:true,
       projectNavigationVerified:true,coordinatorWorkspaceVerified:true,workConversationUiVerified:true,
       projectWorkspaceFailClosedVerified:true,
       localApiOptInVerified:true,localApiDisableVerified:true,analysisNeedsExplicitApiOptIn:true,
