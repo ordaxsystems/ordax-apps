@@ -17,6 +17,7 @@ const STATIC_FILES = new Map([
   ['/src/provider-compose-availability.mjs',['src/provider-compose-availability.mjs','text/javascript; charset=utf-8']],
   ['/src/provider-login-action.mjs',['src/provider-login-action.mjs','text/javascript; charset=utf-8']],
   ['/src/task-navigation-status.mjs',['src/task-navigation-status.mjs','text/javascript; charset=utf-8']],
+  ['/src/run-review-eligibility.mjs',['src/run-review-eligibility.mjs','text/javascript; charset=utf-8']],
   ['/src/supervisor-role-presets.mjs',['src/supervisor-role-presets.mjs','text/javascript; charset=utf-8']]
 ]);
 
