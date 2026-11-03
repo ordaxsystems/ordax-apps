@@ -12,8 +12,21 @@ const WORK_PROPOSAL_SCHEMA=Object.freeze({
     reason:{type:'string'}
   },required:['title','content','reason'],additionalProperties:false
 });
+const WORK_REVIEW_SCHEMA=Object.freeze({
+  type:'object',properties:{
+    runId:{type:'string'},
+    decision:{type:'string',enum:['continue_same_conversation','new_conversation','new_work',
+      'request_correction','verify_external_effect','candidate_complete','blocked']},
+    summary:{type:'string'},reason:{type:'string'},observedExcerpt:{type:'string'},
+    nextPrompt:{type:['string','null']}
+  },required:['runId','decision','summary','reason','observedExcerpt','nextPrompt'],
+  additionalProperties:false
+});
 const groqProposalFormat=model=>/^openai\/gpt-oss-(20b|120b)$/.test(model)
   ?{type:'json_schema',json_schema:{name:'ordax_work_proposal',strict:true,schema:WORK_PROPOSAL_SCHEMA}}
+  :{type:'json_object'};
+const groqReviewFormat=model=>/^openai\/gpt-oss-(20b|120b)$/.test(model)
+  ?{type:'json_schema',json_schema:{name:'ordax_gpt_work_review',strict:true,schema:WORK_REVIEW_SCHEMA}}
   :{type:'json_object'};
 
 function coordinatorFailure(code,outcome,httpStatus=null) {
@@ -52,8 +65,10 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
           headers:{Authorization:'Bearer '+apiKey,'Content-Type':'application/json'},
           body:JSON.stringify({model,temperature:narrative?0.2:0,
             max_completion_tokens:maxCompletionTokens,
-            ...(prepareWork?{response_format:groqProposalFormat(model)}:{}),
-            ...(prepareWork&&/^openai\/gpt-oss-(20b|120b)$/.test(model)?{reasoning_format:'hidden'}:{}),
+            ...(prepareWork?{response_format:groqProposalFormat(model)}:
+              technicalReview?{response_format:groqReviewFormat(model)}:{}),
+            ...((prepareWork||technicalReview)&&/^openai\/gpt-oss-(20b|120b)$/.test(model)
+              ?{reasoning_format:'hidden'}:{}),
             ...((narrative||prepareWork||technicalReview)&&/^openai\/gpt-oss-(20b|120b)$/.test(model)
               ?{reasoning_effort:'low'}:{}),
             messages:[{role:'system',content:request.system},...request.history]})
