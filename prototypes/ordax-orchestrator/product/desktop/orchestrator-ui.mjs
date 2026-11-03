@@ -1447,8 +1447,12 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         return;
       }
       status('Orquestrador organizando seu pedido…');
+      // Use the existing Store's draft revision as the durable idempotency
+      // identity. Reopening an acknowledged request cannot create a second
+      // mission while the same draft remains on screen after a save failure.
       const receipt=await command('autonomous_dialogue_start',{
-        projectId:p,orchestratorId:o,mission:content,mode:'technical'
+        projectId:p,orchestratorId:o,mission:content,mode:'technical',
+        requestId:'natural_'+t.slice(-64)+'_'+draft.draftRevision
       });
       if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
       if(receipt.status==='succeeded'){
