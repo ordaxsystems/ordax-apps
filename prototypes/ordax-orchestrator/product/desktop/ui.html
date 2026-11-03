@@ -28,13 +28,21 @@
         <span class="workspace-modes-caption">Áreas do projeto</span>
         <button id="openOrchestrator" class="workspace-mode workspace-mode-coordinator" type="button" aria-pressed="false" disabled>
           <span class="workspace-mode-symbol" aria-hidden="true">◇</span>
-          <span class="workspace-mode-copy"><strong>Administrador Geral</strong><small id="coordinatorNavProvider">Coordenação via Groq</small></span>
+          <span class="workspace-mode-copy"><strong>Visão geral</strong><small id="coordinatorNavProvider">Conversar com Orchestrator</small></span>
           <span class="workspace-mode-arrow" aria-hidden="true">↗</span>
         </button>
         <button id="openWorks" class="workspace-mode workspace-mode-gpt" type="button" aria-pressed="false" aria-controls="orchestratorWorkRail" aria-expanded="false" disabled>
           <span class="workspace-mode-symbol" aria-hidden="true">⌘</span>
-          <span class="workspace-mode-copy"><strong>Execuções GPT</strong><small>Escolha uma frente na lista</small></span>
+          <span class="workspace-mode-copy"><strong>Missões</strong><small>Frentes e conversas GPT</small></span>
           <span class="workspace-mode-arrow" aria-hidden="true">↗</span>
+        </button>
+        <button id="openHistory" class="workspace-mode" type="button" disabled>
+          <span class="workspace-mode-symbol" aria-hidden="true">◷</span>
+          <span class="workspace-mode-copy"><strong>Histórico</strong><small>Conversas registradas</small></span>
+        </button>
+        <button id="openEvidence" class="workspace-mode" type="button" disabled>
+          <span class="workspace-mode-symbol" aria-hidden="true">✓</span>
+          <span class="workspace-mode-copy"><strong>Evidências</strong><small>Resultados a verificar</small></span>
         </button>
       </nav>
       <section class="orchestration-navigation" aria-label="Configuração do projeto e administração">
@@ -124,7 +132,7 @@
     <section class="chat-column">
       <section id="orchestrationPanel" class="orchestration-panel" hidden aria-label="Conversa com o orquestrador">
         <header class="coordinator-head">
-          <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><span class="route-kicker" id="coordinatorRouteLabel">ADMINISTRAÇÃO · GROQ</span><h2 id="orchestratorTitle">Administrador Geral</h2><p id="orchestratorMission"></p></div></div>
+          <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><span class="route-kicker" id="coordinatorRouteLabel">ADMINISTRAÇÃO · GROQ</span><h2 id="orchestratorTitle">Conversar com Orchestrator</h2><p id="orchestratorMission"></p></div></div>
           <div class="coordinator-head-actions">
             <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Frentes</button>
             <button id="pauseOrchestrator" class="ghost-button" type="button" disabled>Pausar</button>
@@ -135,6 +143,7 @@
           <span class="transport-symbol" aria-hidden="true">●</span>
           <span id="orchestrationConnection" class="orchestration-connection">Esta área conversa com o Orquestrador. Nenhuma mensagem daqui vai ao ChatGPT Web.</span>
         </div>
+        <details id="projectPulseDisclosure" class="command-advanced"><summary>Ferramentas de missão e diagnóstico local</summary>
         <section id="projectPulse" class="project-pulse" aria-label="Resumo operacional das frentes de trabalho" hidden>
           <div class="project-pulse-heading">
             <div><span class="project-pulse-kicker">VISÃO OPERACIONAL</span><strong>Frentes do projeto</strong></div>
@@ -152,6 +161,7 @@
           <ul id="projectPreflightActions" class="project-preflight-actions" aria-label="Próximos passos verificados pelo diagnóstico local" hidden></ul>
           <p id="analysisScopeHint">Iniciar consulta o preflight local e, quando coordenador, frentes e recibos passam pelos gates, solicita uma análise sem prompt. Ela usa somente frentes registradas: não lê GitHub, não envia GPT Web e não executa propostas. Use Reanalisar frentes para repetir manualmente.</p>
         </section>
+        </details>
         <div id="orchestrationCapabilitySummary" class="orchestration-capabilities" aria-label="Capacidades disponíveis no Host" hidden>
           <span id="capabilityGroq" data-state="blocked">Groq · não configurado</span>
           <span id="capabilityGpt" data-state="blocked">ChatGPT Plan · não conectado</span>
@@ -185,6 +195,7 @@
               <small id="continuityState" role="status">Análise automática desativada. Nunca envia mensagens ao GPT.</small>
               <button id="continuityFollowupPrepare" type="button" class="mini-secondary" hidden disabled>Preparar próximo passo na conversa GPT</button>
               <button id="prepareWork" type="button" class="mini-secondary" disabled>Preparar nova frente</button>
+              <button id="continueAutonomousTechnical" type="button" class="mini-secondary" hidden disabled>Continuar missão técnica · autorizar até 2 novos envios GPT</button>
               <button id="startAutonomousTechnical" type="button" class="mini-primary" disabled>Iniciar missão técnica com GPT + Groq (até 2 envios)</button>
               <small id="autonomousDialogueState" role="status" aria-live="polite">Descreva uma missão no campo do coordenador para iniciar. Ela autoriza até dois envios GPT; a próxima decisão depende da resposta observada, sem presumir alterações, testes nem commit.</small>
               <div id="autonomousReviewActions" class="memory-review-actions" aria-label="Revisar conversas da missão" hidden></div>
@@ -204,7 +215,7 @@
         <div id="coordinatorProposals" class="coordinator-proposals" aria-label="Propostas para revisão"></div>
         <form id="coordinatorComposer">
           <label class="sr-only" for="coordinatorPrompt">Mensagem ao orquestrador</label>
-          <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="Direcione o Administrador Geral ou solicite uma análise…" aria-describedby="orchestrationConnection" required></textarea>
+          <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="Envie uma mensagem ao Orchestrator..." aria-describedby="orchestrationConnection" required></textarea>
           <button id="coordinatorSend" class="send-button coordinator-send" type="submit" aria-label="Enviar ao Orquestrador via Groq" disabled>Enviar à Groq</button>
         </form>
         <small class="coordinator-route-note">Você conversa com o Administrador Geral via Groq. Ctrl+Enter envia · Enter cria nova linha. O GPT Web é um canal separado.</small>
@@ -305,6 +316,27 @@
       </section>
       <section id="previewPanel" class="right-pane-panel preview-panel" role="tabpanel" aria-labelledby="previewPaneTab" hidden>
         <div class="preview-state-card"><span class="eyebrow">Preview do projeto</span><h3>Runtime ainda não forneceu uma visualização</h3><p>Quando houver um preview autorizado do workspace pelo Runtime, ele aparecerá aqui. Esta tela não cria servidor nem simula arquivos.</p><span id="previewRuntimeState" class="preview-runtime-state">Aguardando conexão do Runtime</span></div>
+      </section>
+      <section id="executionOverview" class="execution-overview" aria-label="Execução ativa e evidências do projeto" hidden>
+        <header class="execution-overview-head">
+          <div><span class="command-eyebrow">CENTRAL DE OPERAÇÕES</span><h2>Execução ativa</h2><p>Missões, decisões e estados observados no projeto.</p></div>
+          <button id="refreshExecutionOverview" type="button" aria-label="Atualizar execução" title="Atualizar dados locais">↻</button>
+        </header>
+        <article class="execution-mission-card">
+          <div class="execution-mission-label"><span class="execution-mission-icon" aria-hidden="true">◎</span><span>Missão atual</span><span id="executionMissionBadge" class="execution-badge" data-state="idle">Sem missão ativa</span></div>
+          <h3 id="executionMissionTitle">Nenhuma missão técnica selecionada</h3>
+          <p id="executionMissionDetail">Os estados serão apresentados conforme os registros do Orchestrator.</p>
+          <div class="execution-mission-metrics"><span><strong id="executionWorkCount">0</strong> frentes</span><span><strong id="executionRunningCount">0</strong> em execução</span><span><strong id="executionReviewCount">0</strong> a revisar</span></div>
+        </article>
+        <section class="execution-monitor-section" aria-label="Frentes e executores observados">
+          <div class="execution-section-heading"><h3>Frentes do projeto</h3><button id="executionOpenWorks" type="button">Ver missões</button></div>
+          <div id="executionWorkList" class="execution-work-list" role="list"><p class="execution-empty">Nenhuma frente registrada.</p></div>
+        </section>
+        <section class="execution-monitor-section" aria-label="Últimas decisões e verificações">
+          <div class="execution-section-heading"><h3>Atividade e verificação</h3></div>
+          <ol id="executionActivity" class="execution-activity"><li>Sem atividade confirmada para esta missão.</li></ol>
+        </section>
+        <details class="execution-monitor-details"><summary>Limites e evidências</summary><p>Os dados vêm do projeto local, dos Runs GPT e das decisões Groq registradas. Uma resposta GPT não comprova alterações, testes ou publicação. Nada é marcado como validado sem evidência externa.</p></details>
       </section>
       <div id="contextPanel" class="right-pane-panel context-panel" role="tabpanel" aria-labelledby="contextPaneTab" hidden>
       <section id="orchestratorWorkRail" class="orchestrator-work-rail" hidden aria-label="Conversas do projeto no GPT">

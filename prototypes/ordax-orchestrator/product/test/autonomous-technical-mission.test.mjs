@@ -12,8 +12,8 @@ const quote='nenhuma alteração externa foi comprovada';
 const response='O GPT investigou o código e propôs alterações e testes de regressão; nenhuma alteração externa foi comprovada. A validação de efeito deve ser realizada separadamente.';
 const instruction='Revise o resultado observado, defina se continua na conversa ou exige outra frente, e produza provas verificáveis.';
 
-function fixture(t,{first='continue_same_conversation',last='verify_external_effect',providerFailure=null,lateResponseAt=null,groqTruncateReviews=[],holdAfterFirstReview=false,holdProviderBusyAfterFirstSend=false,
-  holdProviderBusyAfterSecondSend=false}={}){
+function fixture(t,{first='continue_same_conversation',last='verify_external_effect',providerFailure=null,lateResponseAt=null,groqTruncateReviews=[],groqInvalidEvidenceReviews=[],holdAfterFirstReview=false,holdProviderBusyAfterFirstSend=false,
+  holdProviderBusyAfterSecondSend=false,maxExpectedSends=2}={}){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-semantic-mission-'));
   const store=new Store(path.join(dir,'canonical.sqlite'));
   t.after(()=>{store.close();fs.rmSync(dir,{force:true,recursive:true})});
@@ -49,8 +49,12 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
         decision,
         summary:'A resposta GPT foi observada, mas a execução externa não foi certificada.',
         reason:'O próprio GPT diz que nenhuma alteração externa foi comprovada; não tratar uma sugestão como execução.',
-        observedExcerpt:quote,
-        nextPrompt:requiresNext?instruction:null
+        observedExcerpt:groqInvalidEvidenceReviews.includes(reviews)
+          ?'A saída GPT comprovou uma implantação inexistente.':quote,
+        nextPrompt:requiresNext
+          ?(maxExpectedSends>2&&reviews>=2
+            ?instruction+' Próxima etapa independente '+reviews+': verifique a nova evidência do projeto.'
+            :instruction):null
       })};
     }
   };
@@ -81,7 +85,7 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
         if(providerFailure.beforeSubmit)e.providerDeliveryState='not_submitted';
         throw e;
       }
-      assert.ok(sends<=2,'bounded consent never grants a third GPT send');
+      assert.ok(sends<=maxExpectedSends,'each authorized mission has a bounded GPT send budget');
       assert.ok(content.length>=20);
       const {runId}=store.beginProviderRun(taskId,content);
       const chatUrl='https://chatgpt.com/c/'+String(sends).padStart(8,'0')+'-2222-4333-8444-555555555555';
@@ -212,6 +216,179 @@ test('two-send budget is a hard stop even if Groq requests further corrections',
   assert.equal(m.questionFinal,instruction);
   assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
   assert.equal((await f.service.autonomous.tick(f.context)).state,'idle');
+});
+
+test('explicit second consent continues the same project through four GPT Runs',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',last:'continue_same_conversation',
+    maxExpectedSends:4}),ids=await f.setup();
+  await f.start(ids);
+  const first=await f.wait(ids);
+  assert.equal(first.state,'budget_exhausted');
+  assert.equal(first.canContinue,true);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
+  const next=await f.service.invoke(f.context,'autonomous_dialogue_continue',{
+    ...ids,sourceMissionId:first.missionId,requestId:'consent_2'});
+  assert.equal(next.status,'succeeded');
+  assert.equal(next.result.originMissionId,first.missionId);
+  assert.equal(next.result.maxGPTSends,2,'each explicit authorization remains bounded');
+  const finished=await f.wait(ids);
+  assert.equal(finished.state,'budget_exhausted');
+  assert.equal(finished.taskAId,first.taskBId);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:4,sends:4});
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_projects').get().n,1);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_autonomous_dialogues').get().n,2);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_task_bindings WHERE kind='work'").get().n,1);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,4);
+  const idempotent=await f.service.invoke(f.context,'autonomous_dialogue_continue',{
+    ...ids,sourceMissionId:first.missionId,requestId:'consent_2'});
+  assert.equal(idempotent.result.missionId,finished.missionId);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:4,sends:4});
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('a renewed technical consent may open a fresh GPT conversation',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',last:'new_conversation',
+    maxExpectedSends:4}),ids=await f.setup();
+  await f.start(ids);
+  const first=await f.wait(ids);
+  assert.equal(first.state,'budget_exhausted');
+  const originalSegments=f.store.db.prepare(
+    'SELECT COUNT(*) n FROM task_conversations WHERE task_id=?').get(first.taskBId).n;
+  await f.service.invoke(f.context,'autonomous_dialogue_continue',{
+    ...ids,sourceMissionId:first.missionId,requestId:'consent_new_segment'});
+  const second=await f.wait(ids);
+  assert.equal(second.state,'budget_exhausted');
+  assert.equal(second.taskAId,first.taskBId);
+  assert.ok(f.store.db.prepare('SELECT COUNT(*) n FROM task_conversations WHERE task_id=?')
+    .get(first.taskBId).n>originalSegments);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:4,sends:4});
+});
+
+test('Groq new-work decision continues under existing project without duplicate provider',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',last:'new_work',
+    maxExpectedSends:4}),ids=await f.setup();
+  await f.start(ids);
+  const first=await f.wait(ids);
+  assert.equal(first.state,'budget_exhausted');
+  const consent=await f.service.invoke(f.context,'autonomous_dialogue_continue',{
+    ...ids,sourceMissionId:first.missionId,requestId:'consent_new_work'});
+  assert.notEqual(consent.result.taskAId,first.taskBId);
+  const finished=await f.wait(ids);
+  assert.equal(finished.state,'budget_exhausted');
+  assert.equal(finished.taskAId,consent.result.taskAId);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_projects').get().n,1);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_autonomous_dialogues').get().n,2);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:4,sends:4});
+});
+
+test('manual draft entered after consent prevents its next GPT submission',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',last:'continue_same_conversation',
+    maxExpectedSends:4,holdProviderBusyAfterSecondSend:true}),ids=await f.setup();
+  await f.start(ids);
+  const first=await f.wait(ids);
+  assert.equal(first.state,'budget_exhausted');
+  await f.service.invoke(f.context,'autonomous_dialogue_continue',{
+    ...ids,sourceMissionId:first.missionId,requestId:'consent_held'});
+  const ready=await f.waitFor(ids,['ready_a']);
+  const draft='Uma revisão manual nova impede qualquer envio automático desta etapa.';
+  f.store.setDraft(ready.taskAId,draft,1);
+  f.release();
+  assert.equal((await f.service.autonomous.tick(f.context)).state,'blocked');
+  assert.equal(f.service.autonomous.status(f.context,ids).mission.state,'blocked');
+  assert.equal(f.store.getTaskDraft(ready.taskAId).draft,draft);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
+});
+
+test('manual GPT Run after consent supersedes the pending third send',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',last:'continue_same_conversation',
+    maxExpectedSends:4,holdProviderBusyAfterSecondSend:true}),ids=await f.setup();
+  await f.start(ids);
+  const source=await f.wait(ids);
+  await f.service.invoke(f.context,'autonomous_dialogue_continue',{
+    ...ids,sourceMissionId:source.missionId,requestId:'consent_superseded'});
+  const pending=await f.waitFor(ids,['ready_a']);
+  const other=f.store.beginProviderRun(source.taskBId,
+    'Mensagem humana inserida depois da autorização para continuar a missão.');
+  f.store.appendMessage(source.taskBId,'assistant',
+    'Resposta nova e posterior, desvinculada da decisão Groq anterior.');
+  f.store.finishRun(source.taskBId,other.runId);
+  f.release();
+  assert.equal((await f.service.autonomous.tick(f.context)).state,'blocked');
+  assert.equal(f.service.autonomous.status(f.context,ids).mission.state,'blocked');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
+});
+
+test('renewed consent can advance across three bounded cycles without duplicate project',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',last:'continue_same_conversation',
+    maxExpectedSends:6}),ids=await f.setup();
+  await f.start(ids);
+  let current=await f.wait(ids);
+  for(let i=2;i<=3;i++){
+    assert.equal(current.state,'budget_exhausted');
+    assert.equal(current.canContinue,true);
+    assert.equal((await f.service.autonomous.tick(f.context)).state,'idle');
+    const receipt=await f.service.invoke(f.context,'autonomous_dialogue_continue',{
+      ...ids,sourceMissionId:current.missionId,requestId:'consent_cycle_'+i});
+    assert.equal(receipt.result.originMissionId,current.missionId);
+    current=await f.wait(ids);
+  }
+  assert.deepEqual(f.metrics(),{plans:1,reviews:6,sends:6});
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_projects').get().n,1);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_autonomous_dialogues').get().n,3);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,6);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('identical Groq prompt cannot be re-sent as a new consent cycle',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',last:'continue_same_conversation'}),ids=await f.setup();
+  await f.start(ids);
+  const source=await f.wait(ids);
+  assert.equal(source.state,'budget_exhausted');
+  assert.equal(source.canContinue,false,'the exact last GPT prompt may not be repeated');
+  await assert.rejects(f.service.invoke(f.context,'autonomous_dialogue_continue',{
+    ...ids,sourceMissionId:source.missionId,requestId:'duplicate_prompt'
+  }),/autonomous_continuation_decision_invalid/);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_autonomous_dialogues').get().n,1);
+});
+
+test('third GPT reply recovered after restart never repeats its submission',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',last:'continue_same_conversation',
+    maxExpectedSends:4,lateResponseAt:3}),ids=await f.setup();
+  await f.start(ids);
+  const source=await f.wait(ids);
+  await f.service.invoke(f.context,'autonomous_dialogue_continue',{
+    ...ids,sourceMissionId:source.missionId,requestId:'consent_late_third'});
+  const pending=await f.waitFor(ids,['reconciliation_required']);
+  assert.equal(pending.lastError,'response_not_observed');
+  assert.equal(pending.taskAId,source.taskBId);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:3});
+  await reconcileLateTechnicalAnswer(f,pending.taskAId);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  const result=restored.autonomous.status(f.context,ids).mission;
+  assert.equal(result.state,'budget_exhausted');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:4,sends:4});
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,4);
+});
+
+test('a newer human GPT Run rejects a proposed extra authorization',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',last:'continue_same_conversation',
+    maxExpectedSends:4}),
+    ids=await f.setup();
+  await f.start(ids);
+  const first=await f.wait(ids);
+  const human=f.store.beginProviderRun(first.taskBId,
+    'Uma intervenção posterior supersede a decisão Groq anterior.');
+  f.store.appendMessage(first.taskBId,'assistant',
+    'A intervenção posterior concluiu um Run diferente, sem autorização da missão.');
+  f.store.finishRun(first.taskBId,human.runId);
+  await assert.rejects(f.service.invoke(f.context,'autonomous_dialogue_continue',{
+    ...ids,sourceMissionId:first.missionId,requestId:'stale_consent'
+  }),/autonomous_continuation_source_superseded/);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_autonomous_dialogues').get().n,1);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
 });
 
 test('unknown second-send outcome never retries after an app restart',async t=>{
@@ -375,6 +552,163 @@ test('a human draft written during late-response recovery prevents autonomous co
   assert.equal(restored.autonomous.status(f.context,ids).mission.state,'reconciliation_required');
   assert.equal(f.store.getTaskDraft(blocked.taskAId).draft,draft);
   assert.deepEqual(f.metrics(),{plans:1,reviews:0,sends:1});
+});
+
+test('invalid-evidence Groq review recovers once against the same confirmed GPT Run',async t=>{
+  const f=fixture(t,{first:'verify_external_effect',groqInvalidEvidenceReviews:[1]}),ids=await f.setup();
+  await f.start(ids);
+  const blocked=await f.waitFor(ids,['reconciliation_required']);
+  assert.equal(blocked.lastError,'autonomous_semantic_review_unconfirmed');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:1});
+  const base='technical_'+blocked.missionId+'_a';
+  const first=f.store.db.prepare('SELECT status,result FROM lab_command_receipts WHERE request_id=?').get(base);
+  assert.equal(first.status,'failed');
+  assert.equal(JSON.parse(first.result).failureCode,'groq_review_invalid_evidence');
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  const resumed=restored.autonomous.status(f.context,ids).mission;
+  assert.equal(resumed.state,'verification_required');
+  assert.equal(resumed.decision.decision,'verify_external_effect');
+  assert.equal(resumed.decision.externalEffectVerified,false);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:1},'no GPT replay');
+  assert.equal(f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE request_id=?')
+    .get(base+'_recovery').status,'succeeded');
+  await restored.autonomous.tick(f.context);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:1});
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('two invalid-evidence Groq reviews quarantine the mission without GPT replay',async t=>{
+  const f=fixture(t,{first:'verify_external_effect',groqInvalidEvidenceReviews:[1,2]}),ids=await f.setup();
+  await f.start(ids);
+  const blocked=await f.waitFor(ids,['reconciliation_required']);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  assert.equal(restored.autonomous.status(f.context,ids).mission.state,'reconciliation_required');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:1});
+  const receipt=f.store.db.prepare('SELECT status,result FROM lab_command_receipts WHERE request_id=?')
+    .get('technical_'+blocked.missionId+'_a_recovery');
+  assert.equal(receipt.status,'failed');
+  assert.equal(JSON.parse(receipt.result).failureCode,'groq_review_invalid_evidence');
+  const restarted=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restarted.autonomous.tick(f.context);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:1});
+});
+
+test('late second GPT response resumes only final Groq review without third send',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',last:'verify_external_effect',
+    lateResponseAt:2}),ids=await f.setup();
+  await f.start(ids);
+  const pending=await f.waitFor(ids,['reconciliation_required']);
+  assert.equal(pending.lastError,'response_not_observed');
+  assert.equal(pending.taskAId,pending.taskBId);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:2});
+  const runId=await reconcileLateTechnicalAnswer(f,pending.taskBId);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  const result=restored.autonomous.status(f.context,ids).mission;
+  assert.equal(result.state,'verification_required');
+  assert.equal(result.decision.sourceRunId,runId);
+  assert.equal(result.decision.decision,'verify_external_effect');
+  assert.equal(result.decision.externalEffectVerified,false);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
+  assert.equal((await restored.autonomous.tick(f.context)).state,'idle');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('late second GPT reply in new work resumes review without duplicating tasks',async t=>{
+  const f=fixture(t,{first:'new_work',last:'candidate_complete',lateResponseAt:2}),ids=await f.setup();
+  await f.start(ids);
+  const pending=await f.waitFor(ids,['reconciliation_required']);
+  assert.notEqual(pending.taskAId,pending.taskBId);
+  const runId=await reconcileLateTechnicalAnswer(f,pending.taskBId);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  const m=restored.autonomous.status(f.context,ids).mission;
+  assert.equal(m.state,'verification_required');
+  assert.equal(m.decision.sourceRunId,runId);
+  assert.equal(m.decision.decision,'candidate_complete');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_task_bindings WHERE kind='work'").get().n,2);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
+});
+
+test('human draft blocks late final-response recovery before any Groq replay',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',lateResponseAt:2}),ids=await f.setup();
+  await f.start(ids);
+  const pending=await f.waitFor(ids,['reconciliation_required']);
+  await reconcileLateTechnicalAnswer(f,pending.taskBId);
+  const draft='Intervenção humana depois da resposta GPT, sem nova revisão automatizada.';
+  f.store.setDraft(pending.taskBId,draft,1);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  assert.equal(restored.autonomous.resumeReconciledTechnical(f.context),false);
+  assert.equal((await restored.autonomous.tick(f.context)).state,'idle');
+  assert.equal(restored.autonomous.status(f.context,ids).mission.state,'reconciliation_required');
+  assert.equal(f.store.getTaskDraft(pending.taskBId).draft,draft);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:2});
+});
+
+test('newer human GPT Run cannot revive an obsolete final Groq review',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',lateResponseAt:2}),ids=await f.setup();
+  await f.start(ids);
+  const pending=await f.waitFor(ids,['reconciliation_required']);
+  await reconcileLateTechnicalAnswer(f,pending.taskBId);
+  const extra=f.store.beginProviderRun(pending.taskBId,
+    'Pedido posterior do usuário deve invalidar o contexto da revisão anterior.');
+  f.store.appendMessage(pending.taskBId,'assistant',
+    'Resposta posterior do trabalho humano; nenhuma revisão antiga pode continuar.');
+  f.store.finishRun(pending.taskBId,extra.runId);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  assert.equal(restored.autonomous.resumeReconciledTechnical(f.context),false);
+  assert.equal((await restored.autonomous.tick(f.context)).state,'idle');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:2});
+});
+
+test('terminal invalid final Groq citation retries final review only once',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',last:'verify_external_effect',
+    groqInvalidEvidenceReviews:[2]}),ids=await f.setup();
+  await f.start(ids);
+  const pending=await f.waitFor(ids,['reconciliation_required']);
+  assert.equal(pending.lastError,'autonomous_semantic_review_unconfirmed');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
+  const original=f.store.db.prepare('SELECT status,result FROM lab_command_receipts WHERE request_id=?')
+    .get('technical_'+pending.missionId+'_final');
+  assert.equal(original.status,'failed');
+  assert.equal(JSON.parse(original.result).failureCode,'groq_review_invalid_evidence');
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  const m=restored.autonomous.status(f.context,ids).mission;
+  assert.equal(m.state,'verification_required');
+  assert.equal(m.decision.decision,'verify_external_effect');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:3,sends:2});
+  assert.equal(f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE request_id=?')
+    .get('technical_'+pending.missionId+'_final_recovery').status,'succeeded');
+  await restored.autonomous.tick(f.context);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:3,sends:2});
+});
+
+test('repeated invalid final Groq citation stays quarantined after restart',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',
+    groqInvalidEvidenceReviews:[2,3]}),ids=await f.setup();
+  await f.start(ids);
+  const pending=await f.waitFor(ids,['reconciliation_required']);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  assert.equal(restored.autonomous.status(f.context,ids).mission.state,'reconciliation_required');
+  const again=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await again.autonomous.tick(f.context);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:3,sends:2});
+  assert.equal(f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE request_id=?')
+    .get('technical_'+pending.missionId+'_final_recovery').status,'failed');
 });
 
 test('terminal truncated Groq review can recover once without replaying the GPT Run',async t=>{

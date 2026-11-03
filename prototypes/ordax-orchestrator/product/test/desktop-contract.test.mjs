@@ -126,6 +126,21 @@ test('autonomous mission recovery exposes scoped existing Tasks without replay',
   assert.match(start,/if\(!availability\.allowed\)/);
   assert.match(start,/Nenhuma missão foi iniciada/);
 });
+test('technical continuation is a separate user action with a fresh GPT readiness gate',()=>{
+  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.equal((uiHtml.match(/id="continueAutonomousTechnical"/g)||[]).length,1);
+  assert.match(uiHtml,/id="continueAutonomousTechnical"[^>]*hidden disabled/);
+  assert.match(source,/continueButton\.hidden=job\?\.canContinue!==true/);
+  const handler=source.slice(source.indexOf("$('continueAutonomousTechnical').addEventListener"));
+  assert.match(handler,/snapshot\?\.mission\?\.canContinue!==true/);
+  assert.match(handler,/providerComposeAvailability\(await api\.providerStatus\(\),\{hostMode:nodeHost\}\)/);
+  assert.ok(handler.indexOf('providerComposeAvailability(await api.providerStatus()')<
+    handler.indexOf("command('autonomous_dialogue_continue'"),
+    'the physical GPT readiness check must precede an authorization');
+  assert.match(handler,/sourceMissionId:snapshot\.mission\.missionId/);
+  assert.match(handler,/if\(!availability\.allowed\)/);
+});
+
 test('preflight is read-only, project-scoped and cannot silently send GPT',()=>{
   const html=uiHtml;
   const uiSource=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
@@ -393,6 +408,31 @@ test('OrdaX UI exposes responsive conversation, chat and context columns', () =>
   assert.match(html, /id="sessionPersistenceNote"/);
 });
 
+test('command centre uses one real project projection without fictional agents or progress',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const ui=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const shell=fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
+  for(const id of ['executionOverview','executionMissionBadge','executionMissionTitle',
+    'executionWorkList','executionActivity','executionOpenWorks','refreshExecutionOverview',
+    'openHistory','openEvidence','projectPulseDisclosure']){
+    assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,
+      id+' must have one canonical DOM owner');
+  }
+  assert.match(ui,/function renderExecutionMonitor\(\)/);
+  assert.match(ui,/executionWorkScope===scope\?visibleWorkItems:\[\]/);
+  assert.match(ui,/executionMissionScope===scope\?executionMission:null/);
+  assert.match(ui,/workClassForPlan\(work\)/);
+  assert.match(ui,/Resposta GPT registrada · efeito não verificado/);
+  assert.match(ui,/Resultado externo/iu);
+  assert.match(ui,/openMissionNavigation\('attention',\$\('openEvidence'\)\)/);
+  assert.match(ui,/openMissionNavigation\('all',\$\('openHistory'\)\)/);
+  assert.match(css,/orchestrator-rail-open[^\n]*#executionOverview/);
+  assert.match(shell,/if\(window\.matchMedia\('\(max-width:1024px\)'\)\.matches\)[\s\S]{0,90}contextRail'\)\.classList\.remove\('open'\)/);
+  assert.doesNotMatch(html,/Missão 042|68%|GPT Executor 01|GPT Executor 02/);
+  assert.doesNotMatch(ui,/Math\.random\(|fakeProgress|fakeAgents/);
+});
+
 test('single-project direction leads the desktop navigation without implying autonomous GitHub access',()=>{
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
@@ -402,12 +442,13 @@ test('single-project direction leads the desktop navigation without implying aut
   assert.ok(html.indexOf('id="openOrchestrator"')<html.indexOf('id="projectNavList"'),
     'the administrator must appear before legacy project selectors');
   assert.match(html,/Administrador Geral/);
-  assert.match(html,/Execuções GPT/);
+  assert.match(html,/id="openWorks"[\s\S]*?<strong>Missões<\/strong>/);
+  assert.match(html,/id="executionOverview"/);
   assert.match(html,/<details id="legacyProjectAccess"[^>]*hidden>/);
   assert.match(orchestration,/legacyProjectAccess'\)\.hidden=projects\.length<=1/);
   assert.match(orchestration,/activeProjectName'\)\.textContent=current\?\.name/);
   assert.match(orchestration,/GitHub vinculado por URL · leitura não verificada/);
-  assert.match(orchestration,/ADMINISTRAÇÃO ·/);
+  assert.match(orchestration,/CANAL ADMINISTRATIVO ·/);
   assert.match(css,/--font-ui:/);
   for(const token of ['--bg:','--panel:','--panel-2:','--border:','--text:','--muted:','--focus:'])
     assert.ok(css.includes(token),token+' should be defined in the canonical CSS root');
@@ -421,15 +462,15 @@ test('GPT execution navigation opens scoped work chooser, including an empty pro
   const orchestrator=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const shell=fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
   assert.match(html,/id="openWorks"[^>]*aria-controls="orchestratorWorkRail"[^>]*aria-expanded="false"/);
-  assert.match(html,/Execuções GPT<\/strong><small>Escolha uma frente na lista/);
+  assert.match(html,/Missões<\/strong><small>Frentes e conversas GPT/);
   assert.match(orchestrator,/\$\('openWorks'\)\.disabled=!projectId\|\|!orchestratorId;/);
   assert.match(orchestrator,/\$\('openWorks'\)\.disabled=!p\|\|!selected;/);
-  const start=orchestrator.indexOf("  $('openWorks').addEventListener('click'");
+  const start=orchestrator.indexOf('  function openMissionNavigation(');
   const end=orchestrator.indexOf("  $('pauseOrchestrator').addEventListener",start);
   assert.ok(start>=0&&end>start,'GPT workspace click handler must exist');
   const handler=orchestrator.slice(start,end);
   assert.match(handler,/await showCoordinator\(\)/);
-  assert.match(handler,/openFilteredWorks\('all',\$\('openWorks'\)\)/);
+  assert.match(handler,/openMissionNavigation\('all',\$\('openWorks'\)\)/);
   assert.match(handler,/if\(currentProject!==projectId\|\|currentOrchestrator!==orchestratorId\)return/);
   assert.doesNotMatch(handler,/visibleWorkItems\[0\]/,'never choose the first task arbitrarily');
   assert.doesNotMatch(handler,/onOpenWork\(/,'the work list never sends or opens a GPT task by itself');
