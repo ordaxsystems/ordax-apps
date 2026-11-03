@@ -433,19 +433,27 @@ test('command centre uses one real project projection without fictional agents o
   assert.doesNotMatch(ui,/Math\.random\(|fakeProgress|fakeAgents/);
 });
 
-test('single-project direction leads the desktop navigation without implying autonomous GitHub access',()=>{
+test('project hub exposes creation and switching before the administrative navigation',()=>{
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   for(const id of ['activeProjectName','activeProjectDetail','projectNavList','openOrchestrator','openWorks'])
     assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,id+' must have exactly one owner');
-  assert.ok(html.indexOf('id="openOrchestrator"')<html.indexOf('id="projectNavList"'),
-    'the administrator must appear before legacy project selectors');
+  assert.ok(html.indexOf('id="quickNewProject"')<html.indexOf('id="openOrchestrator"'),
+    'create project must be discoverable before workspace navigation');
+  assert.ok(html.indexOf('id="projectNavList"')<html.indexOf('id="openOrchestrator"'),
+    'switching projects must be immediately discoverable in the sidebar');
   assert.match(html,/Administrador Geral/);
   assert.match(html,/id="openWorks"[\s\S]*?<strong>Missões<\/strong>/);
   assert.match(html,/id="executionOverview"/);
-  assert.match(html,/<details id="legacyProjectAccess"[^>]*hidden>/);
-  assert.match(orchestration,/legacyProjectAccess'\)\.hidden=projects\.length<=1/);
+  assert.match(html,/<section id="projectSwitcher" class="project-chooser"[^>]*hidden>/);
+  assert.match(orchestration,/projectSwitcher'\)\.hidden=otherProjects\.length===0/);
+  assert.match(orchestration,/projects\.filter\(project=>project\.id!==projectId\)/);
+  assert.match(orchestration,/quickNewProject'\)\.addEventListener\('click',openNewProjectForm\)/);
+  assert.match(orchestration,/addProject'\)\.addEventListener\('click',openNewProjectForm\)/);
+  assert.match(css,/body\.orchestrator-focus #quickNewProject/);
+  assert.match(css,/body\.orchestrator-focus \.project-chooser/);
+  assert.doesNotMatch(html,/Trocar de projeto anterior/);
   assert.match(orchestration,/activeProjectName'\)\.textContent=current\?\.name/);
   assert.match(orchestration,/GitHub vinculado por URL · leitura não verificada/);
   assert.match(orchestration,/CANAL ADMINISTRATIVO ·/);
