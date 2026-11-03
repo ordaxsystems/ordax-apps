@@ -876,7 +876,9 @@ export class OrchestratorService {
         // boundary so a late reply cannot be promoted after rapid resume.
         // Scope to this coordinator Task, not unrelated project work/GPT sends.
         this.db.prepare(`UPDATE lab_command_receipts
-          SET status='uncertain',result=json_object('taskId',?,'reason','coordinator_paused_inflight'),
+          SET status='uncertain',
+              result=json_set(CASE WHEN json_valid(result) THEN result
+                ELSE json_object('taskId',?) END,'$.reason','coordinator_paused_inflight'),
               updated_at=?
           WHERE project_id=? AND status='running'
             AND operation IN ('orchestrator_chat','orchestrator_analyze','orchestrator_prepare')
@@ -1253,6 +1255,16 @@ export class OrchestratorService {
     const reserved=this.transaction(()=>{
       this.requireAccess(context,operation,input.projectId);
       if(isWorkSend)this.assertDependenciesSatisfied(input.projectId,task.id);
+      // Admission is atomic with reservation: a fresh requestId, another
+      // renderer or a restarted process cannot dispatch this Run twice.
+      // Reuse the canonical receipt (including older reviewDecision records).
+      if(reviewSource && this.db.prepare(`SELECT 1 FROM lab_command_receipts
+        WHERE workspace_session_id=? AND project_id=? AND operation='orchestrator_analyze'
+          AND CASE WHEN json_valid(result) THEN
+            COALESCE(json_extract(result,'$.reviewRunId'),
+              json_extract(result,'$.reviewDecision.sourceRunId')) END=?
+        LIMIT 1`).get(context.workspaceSessionId,input.projectId,reviewSource.runId))
+        throw Error('orchestrator_run_review_already_attempted');
       const reservation=this.reserve(context,operation,input);
       if(reservation.existing)return {existing:reservation.existing};
       if(preparedSend) {
@@ -1265,7 +1277,9 @@ export class OrchestratorService {
         this.db.prepare("UPDATE action_ledger SET status='dispatching' WHERE id=?").run(reservation.sendActionId);
       }
       this.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
-        .run(JSON.stringify({taskId:task.id,...(reservation.sendActionId?{
+        .run(JSON.stringify({taskId:task.id,
+          ...(reviewSource?{reviewRunId:reviewSource.runId}:{}),
+          ...(reservation.sendActionId?{
           sendActionId:reservation.sendActionId,approvalId:reservation.approvalId}: {})}),reservation.commandId);
       if(!usesProvider) {
         const coordinatorDraft=['orchestrator_chat','orchestrator_prepare'].includes(operation)&&input.draftRevision!==undefined;
@@ -1334,6 +1348,7 @@ export class OrchestratorService {
           }
           this.store.appendMessage(task.id,'assistant',reply.content);
           return this.finish(reserved.commandId,{taskId:task.id,responseObserved:true,
+            ...(reviewSource?{reviewRunId:reviewSource.runId}:{}),
             ...(proposalActionId?{proposalActionId}:{}),
             ...(reviewDecision?{reviewDecision}:{}),
             proposalsExecuted:0,provider:reply.provider||'groq',...(analysisContext?{analysis:{workCount:analysisContext.works.length,
@@ -1389,7 +1404,9 @@ export class OrchestratorService {
       const completionBudget=hasFinishDetails&&Number.isSafeInteger(failure?.orchestratorCompletionBudget)&&
         failure.orchestratorCompletionBudget>=1&&failure.orchestratorCompletionBudget<=1000000
         ?failure.orchestratorCompletionBudget:null;
-      const result={taskId:task.id,reason:notSubmitted?'provider_not_submitted':coordinatorRejected?'coordinator_request_failed':'execution_unconfirmed',
+      const result={taskId:task.id,
+        ...(reviewSource?{reviewRunId:reviewSource.runId}:{}),
+        reason:notSubmitted?'provider_not_submitted':coordinatorRejected?'coordinator_request_failed':'execution_unconfirmed',
         ...(notSubmitted?{providerStage:String(failure?.providerFailureStage||'unknown'),failureCode}:{}),
         ...(coordinatorCode?{failureCode:coordinatorCode}:{}),...(coordinatorHttpStatus!==null?{httpStatus:coordinatorHttpStatus}:{}),
         ...(finishReason?{finishReason}:{}),...(completionTokens!==null?{completionTokens}:{}),
