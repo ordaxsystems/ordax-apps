@@ -145,12 +145,17 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
       // Strict technical review can require both hidden reasoning and a
       // complete, bounded JSON decision. Raise this lane's ceiling only;
       // ordinary chat and story budgets retain their established limits.
+      // A live Windows admin chat exhausted its entire 1,200-token allowance
+      // on GPT-OSS reasoning and returned finish_reason=length. Keep normal
+      // conversation bounded below narrative and technical-review lanes while
+      // allocating enough room for a complete, verifiable response.
       const maxCompletionTokens=completionProfile==='narrative_recovery'?3200:
-        technicalReview?3600:narrative?2600:prepareWork?1800:1200;
+        technicalReview?3600:narrative?2600:prepareWork?1800:2400;
       const request=buildCoordinatorRequestContext({store,taskId,mission,projectId,orchestratorId,
         analysisContext,prepareWork,workspaceObservation,repositoryUrl});
       const responseFormat=prepareWork?groqProposalFormat(model):
         technicalReview?groqReviewFormat(model,analysisContext):null;
+      const standardChat=completionProfile==='standard'&&!prepareWork;
       const strictReview=technicalReview&&/^openai\/gpt-oss-(20b|120b)$/.test(model);
       const outputInstructions=technicalReview
         ?strictReview
@@ -171,9 +176,9 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
           body:JSON.stringify({model,temperature:narrative?0.2:0,
             max_completion_tokens:maxCompletionTokens,
             ...(responseFormat?{response_format:responseFormat}:{}),
-            ...((prepareWork||technicalReview)&&/^openai\/gpt-oss-(20b|120b)$/.test(model)
+            ...((prepareWork||technicalReview||standardChat)&&/^openai\/gpt-oss-(20b|120b)$/.test(model)
               ?{reasoning_format:'hidden'}:{}),
-            ...((narrative||prepareWork||technicalReview)&&/^openai\/gpt-oss-(20b|120b)$/.test(model)
+            ...((narrative||prepareWork||technicalReview||standardChat)&&/^openai\/gpt-oss-(20b|120b)$/.test(model)
               ?{reasoning_effort:'low'}:{}),
             messages:[{role:'system',content:request.system+outputInstructions},...request.history]})
         });

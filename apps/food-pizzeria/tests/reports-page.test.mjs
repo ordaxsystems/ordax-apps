@@ -3,17 +3,21 @@ import test from "node:test";
 import { renderFoodReportsPage } from "../src/ui/views/reports.mjs";
 import { assertFoodModuleView } from "../src/ui/presentation.mjs";
 
+// The renderer uses a rolling seven-day period; a fixed calendar timestamp
+// would silently expire and make the nonempty-report assertions fail in CI.
+const readyAt = Date.now() - 5 * 60_000;
+const createdAt = readyAt - 16 * 60_000;
 const snapshot = {
   orders: [{
     id: "order-1048",
-    createdAt: "2026-10-27T15:00:00.000Z",
+    createdAt: new Date(createdAt).toISOString(),
     channel: "pickup",
     status: "ready",
     totalCents: 2450,
     items: [{ id: "pizza-1", quantity: 1, flavors: [{ id: "calabresa", name: "Calabresa" }] }],
     statusHistory: [
-      { status: "received", changedAt: "2026-10-27T15:00:00.000Z" },
-      { status: "ready", changedAt: "2026-10-27T15:16:00.000Z" },
+      { status: "received", changedAt: new Date(createdAt).toISOString() },
+      { status: "ready", changedAt: new Date(readyAt).toISOString() },
     ],
   }],
 };
@@ -25,7 +29,7 @@ function viewModel(overrides = {}) {
     orderNumber: ({ id }) => `#${id.replace("order-", "")}`,
     CHANNEL_LABELS: { delivery: "Entrega", pickup: "Retirada", counter: "Balcão", "dine-in": "Salão" },
     STATUS_LABELS: { ready: "Pronto" },
-    timeLabel: () => "27/10/2026, 12:00",
+    timeLabel: (value) => new Date(value).toISOString(),
     iconSvg: (name) => `<svg data-icon="${name}"></svg>`,
     escapeHtml: (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]),
     ...overrides,

@@ -557,8 +557,12 @@ export class AutonomousDialogue {
          (prior.decision==='new_work')!==(row.task_b_id!==row.task_a_id))return false;
     }
     this.assertMissionSession(context,row,{allowPaused:true});
+    // Another project's scoped Groq receipt must not starve this recovery.
+    // Unknown/unscoped receipts and same-project uncertainty remain fail-closed;
+    // the running GPT gate remains global (one physical executor).
     if(this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
-       this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status IN ('running','uncertain') LIMIT 1").get())
+       this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE (project_id=? OR project_id IS NULL) "+
+         "AND status IN ('running','uncertain') LIMIT 1").get(row.project_id))
       return false;
     const taskId=finalPhase?row.task_b_id:row.task_a_id;
     const question=finalPhase?row.question_b:row.question_a;
