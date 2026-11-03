@@ -836,11 +836,12 @@ export class EmbeddedChatWorker {
     if (initial.text.trim()) throw new Error('chatgpt_draft_present');
 
     const baseline = await this.#submissionState();
-    // A web editor can remain mounted and visible after the app loses native
-    // page focus. Focus the existing embedded WebContents before routing the
-    // single CDP text insertion, then require the intended composer itself to
-    // own DOM focus. This prevents a silent insertion into the page body.
-    this.view.webContents.focus();
+    // Do not activate or steal the user's Windows foreground while a mission
+    // runs minimized/hidden. Native focus is only allowed when the owner was
+    // already foreground. CDP and verified DOM composer focus target the
+    // existing embedded WebContents directly, with no OS keyboard/mouse input.
+    const owner=wc.getOwnerBrowserWindow?.();
+    if(owner?.isVisible()&&owner.isFocused())wc.focus();
     const prepared = await wc.executeJavaScript(`(() => {
       const sels = ${JSON.stringify(selectors.composer)};
       const input = ${composerExpression()};
