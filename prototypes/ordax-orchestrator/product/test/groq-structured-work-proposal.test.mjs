@@ -103,6 +103,45 @@ test('ordinary Groq coordinator remains natural language without JSON format',as
   assert.match(content,/exige prova externa/);
 });
 
+test('Groq finish reasons and bounded token usage are classified without leaking model output',async t=>{
+  const f=setup(t),args=await f.ids();
+  const reviewContext={phase:'gpt_response_review',reviewEvidence:{runId:'run_finish_1',
+    answerStart:'O GPT registrou uma proposta para validar os testes sem alterar o repositório.',
+    answerEnd:'Nenhum arquivo foi modificado; falta evidência de integração externa.'}};
+  const cases=[
+    {reason:'length',code:'groq_incomplete_response',used:3599,budget:3600},
+    {reason:'content_filter',code:'groq_response_filtered',used:9,budget:3600},
+    {reason:'tool_calls',code:'groq_unexpected_tool_call',used:90,budget:3600},
+    {reason:'injected_secret_from_provider',code:'groq_incomplete_response',used:-5,budget:3600}
+  ];
+  let calls=0;
+  const groq=createGroqCoordinatorConversation({store:f.store,getApiKey:()=> 'fixture-secret',
+    isEnabled:()=>true,fetchImpl:async()=> {
+      const scenario=cases[calls++];
+      assert.ok(scenario,'at most one Groq request per explicit call');
+      return new Response(JSON.stringify({choices:[{finish_reason:scenario.reason,
+        message:{content:'NUNCA_PERSISTIR_TEXTO_PARCIAL'}}],
+        usage:{completion_tokens:scenario.used}}),{
+        status:200,headers:{'content-type':'application/json'}});
+    }});
+  for(const scenario of cases){
+    await assert.rejects(groq.send({...args,completionProfile:'technical_review',
+      prepareWork:false,analysisContext:reviewContext}),error=>{
+      assert.equal(error.orchestratorFailureCode,scenario.code);
+      assert.equal(error.orchestratorRequestOutcome,'response_invalid');
+      assert.equal(error.orchestratorFinishReason,
+        scenario.reason==='injected_secret_from_provider'?'unknown':scenario.reason);
+      assert.equal(error.orchestratorCompletionBudget,scenario.budget);
+      if(scenario.used>=0)assert.equal(error.orchestratorCompletionTokens,scenario.used);
+      else assert.equal(error.orchestratorCompletionTokens,undefined);
+      assert.doesNotMatch(String(error.message),/NUNCA_PERSISTIR|injected_secret/);
+      return true;
+    });
+  }
+  assert.equal(calls,cases.length,'no hidden retry of incomplete, filtered, or tool responses');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,0);
+});
+
 test('semantic technical review has dedicated bounded Groq reasoning budget and no hidden retry',async t=>{
   const f=setup(t),args=await f.ids();
   const reviewContext={phase:'gpt_response_review',reviewEvidence:{runId:'run_direct',
@@ -113,7 +152,7 @@ test('semantic technical review has dedicated bounded Groq reasoning budget and 
     isEnabled:()=>true,fetchImpl:async (_url,options)=>{
       requests++;
       const body=JSON.parse(options.body);
-      assert.equal(body.max_completion_tokens,2600);
+      assert.equal(body.max_completion_tokens,3600);
       assert.equal(body.reasoning_effort,'low');
       assert.equal(body.response_format.type,'json_schema');
       assert.equal(body.response_format.json_schema.strict,true);

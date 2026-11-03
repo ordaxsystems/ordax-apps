@@ -68,6 +68,23 @@ function coordinatorFailure(code,outcome,httpStatus=null) {
   if(Number.isSafeInteger(httpStatus))error.orchestratorHttpStatus=httpStatus;
   return error;
 }
+// Only fixed enums and bounded numbers enter command receipts. Never persist
+// model text, provider metadata objects or unknown finish_reason strings.
+const KNOWN_FINISH_REASONS=new Set(['length','content_filter','tool_calls','function_call']);
+function incompleteGroqResponse(parsed,maxCompletionTokens){
+  const raw=parsed?.choices?.[0]?.finish_reason;
+  const reason=KNOWN_FINISH_REASONS.has(raw)?raw:'unknown';
+  const error=coordinatorFailure(
+    reason==='content_filter'?'groq_response_filtered':
+    reason==='tool_calls'||reason==='function_call'?'groq_unexpected_tool_call':
+    'groq_incomplete_response','response_invalid');
+  error.orchestratorFinishReason=reason;
+  error.orchestratorCompletionBudget=maxCompletionTokens;
+  const used=parsed?.usage?.completion_tokens;
+  if(Number.isSafeInteger(used)&&used>=0&&used<=1000000)
+    error.orchestratorCompletionTokens=used;
+  return error;
+}
 
 export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
   fetchImpl=globalThis.fetch,model='openai/gpt-oss-20b',timeoutMs=25000}={}) {
@@ -86,8 +103,11 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
         throw Error('orchestrator_completion_profile_invalid');
       const narrative=['narrative','narrative_recovery'].includes(completionProfile);
       const technicalReview=completionProfile==='technical_review';
+      // Strict technical review can require both hidden reasoning and a
+      // complete, bounded JSON decision. Raise this lane's ceiling only;
+      // ordinary chat and story budgets retain their established limits.
       const maxCompletionTokens=completionProfile==='narrative_recovery'?3200:
-        technicalReview?2600:narrative?2600:prepareWork?1800:1200;
+        technicalReview?3600:narrative?2600:prepareWork?1800:1200;
       const request=buildCoordinatorRequestContext({store,taskId,mission,projectId,orchestratorId,
         analysisContext,prepareWork,workspaceObservation,repositoryUrl});
       const responseFormat=prepareWork?groqProposalFormat(model):
@@ -119,7 +139,8 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
       let parsed;
       try {parsed=await readBoundedJsonResponse(response,{maxBytes:64000,errorCode:'orchestrator_reply_invalid'});}
       catch {throw coordinatorFailure('groq_invalid_response','response_invalid');}
-      if(parsed?.choices?.[0]?.finish_reason!=='stop')throw coordinatorFailure('groq_incomplete_response','response_invalid');
+      if(parsed?.choices?.[0]?.finish_reason!=='stop')
+        throw incompleteGroqResponse(parsed,maxCompletionTokens);
       const content=parsed?.choices?.[0]?.message?.content;
       try {return validateCoordinatorReply(content,{prepareWork,errorPrefix:'groq'});}
       catch(error) {throw coordinatorFailure(error.message,'response_invalid');}

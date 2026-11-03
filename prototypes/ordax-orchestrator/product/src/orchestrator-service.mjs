@@ -1374,9 +1374,25 @@ export class OrchestratorService {
       const coordinatorRejected=Boolean(coordinatorCode&&coordinatorOutcome);
       const coordinatorHttpStatus=coordinatorCode&&Number.isSafeInteger(failure?.orchestratorHttpStatus)
         ?failure.orchestratorHttpStatus:null;
+      // Model termination diagnostics are not model output: persist only
+      // allowlisted enum values and bounded token counts in this receipt.
+      const hasFinishDetails=coordinatorRejected&&[
+        'groq_incomplete_response','groq_response_filtered','groq_unexpected_tool_call'
+      ].includes(coordinatorCode);
+      const finishReason=hasFinishDetails&&['length','content_filter','tool_calls',
+        'function_call','unknown'].includes(failure?.orchestratorFinishReason)
+        ?failure.orchestratorFinishReason:null;
+      const completionTokens=hasFinishDetails&&Number.isSafeInteger(failure?.orchestratorCompletionTokens)&&
+        failure.orchestratorCompletionTokens>=0&&failure.orchestratorCompletionTokens<=1000000
+        ?failure.orchestratorCompletionTokens:null;
+      const completionBudget=hasFinishDetails&&Number.isSafeInteger(failure?.orchestratorCompletionBudget)&&
+        failure.orchestratorCompletionBudget>=1&&failure.orchestratorCompletionBudget<=1000000
+        ?failure.orchestratorCompletionBudget:null;
       const result={taskId:task.id,reason:notSubmitted?'provider_not_submitted':coordinatorRejected?'coordinator_request_failed':'execution_unconfirmed',
         ...(notSubmitted?{providerStage:String(failure?.providerFailureStage||'unknown'),failureCode}:{}),
-        ...(coordinatorCode?{failureCode:coordinatorCode}:{}),...(coordinatorHttpStatus!==null?{httpStatus:coordinatorHttpStatus}:{}),...(reserved.sendActionId?{
+        ...(coordinatorCode?{failureCode:coordinatorCode}:{}),...(coordinatorHttpStatus!==null?{httpStatus:coordinatorHttpStatus}:{}),
+        ...(finishReason?{finishReason}:{}),...(completionTokens!==null?{completionTokens}:{}),
+        ...(completionBudget!==null?{completionBudget}:{}),...(reserved.sendActionId?{
         sendActionId:reserved.sendActionId,approvalId:reserved.approvalId}:{})};
       this.transaction(()=>{
         if(reserved.sendActionId)this.store.finishAction(task.id,reserved.sendActionId,notSubmitted?'failed':'indeterminate',result);
