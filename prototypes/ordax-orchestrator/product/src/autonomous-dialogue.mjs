@@ -436,22 +436,39 @@ export class AutonomousDialogue {
       .get(session.id,context.actorId,context.clientId);
     if(!row||row.state!=='reconciliation_required'||row.strategy!=='semantic'||
        row.mode!=='dialogue'||!['response_not_observed','autonomous_semantic_review_unconfirmed'].includes(row.last_error)||
-       !row.task_a_id||!row.question_a||
-       row.task_b_id||row.question_b||row.question_final||
-       row.review_a_json||row.review_b_json)return false;
+       !row.task_a_id||!row.question_a||row.question_final||row.review_b_json)return false;
+    // Recovery is possible after either confirmed GPT turn, never between
+    // turns or when the prior Groq decision has been replaced.
+    const finalPhase=Boolean(row.task_b_id||row.question_b||row.review_a_json);
+    if(finalPhase){
+      if(!row.task_b_id||!row.question_b||!row.review_a_json)return false;
+      let prior=null;
+      try{prior=JSON.parse(row.review_a_json);}catch{return false;}
+      const continued=['continue_same_conversation','request_correction',
+        'new_conversation','new_work'].includes(prior?.decision);
+      const source=this.db.prepare('SELECT status FROM runs WHERE id=? AND task_id=?')
+        .get(prior?.sourceRunId,row.task_a_id);
+      if(!continued||prior.nextPrompt!==row.question_b||prior.reviewOnly!==true||
+         prior.externalEffectVerified!==false||prior.automaticGPTSendAuthorized!==false||
+         source?.status!=='succeeded'||
+         (prior.decision==='new_work')!==(row.task_b_id!==row.task_a_id))return false;
+    }
     this.assertMissionSession(context,row,{allowPaused:true});
     if(this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
        this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status IN ('running','uncertain') LIMIT 1").get())
       return false;
-    const task=this.db.prepare('SELECT status FROM tasks WHERE id=?').get(row.task_a_id);
-    const count=this.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=?').get(row.task_a_id)?.n;
-    const run=this.db.prepare('SELECT id,status FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1').get(row.task_a_id);
-    const user=this.db.prepare("SELECT content FROM messages WHERE task_id=? AND role='user' ORDER BY rowid DESC LIMIT 1").get(row.task_a_id);
-    if(task?.status!=='ready'||count!==1||run?.status!=='succeeded'||
-       user?.content?.trim()!==row.question_a.trim()||
-       String(this.store.getTaskDraft(row.task_a_id)?.draft||'').trim())return false;
+    const taskId=finalPhase?row.task_b_id:row.task_a_id;
+    const question=finalPhase?row.question_b:row.question_a;
+    const expectedRuns=finalPhase&&taskId===row.task_a_id?2:1;
+    const task=this.db.prepare('SELECT status FROM tasks WHERE id=?').get(taskId);
+    const count=this.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=?').get(taskId)?.n;
+    const run=this.db.prepare('SELECT id,status FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1').get(taskId);
+    const user=this.db.prepare("SELECT content FROM messages WHERE task_id=? AND role='user' ORDER BY rowid DESC LIMIT 1").get(taskId);
+    if(task?.status!=='ready'||count!==expectedRuns||run?.status!=='succeeded'||
+       user?.content?.trim()!==question.trim()||
+       String(this.store.getTaskDraft(taskId)?.draft||'').trim())return false;
     const event=kind=>this.db.prepare("SELECT 1 FROM events WHERE task_id=? AND kind=? "+
-      "AND json_extract(payload,'$.run_id')=? LIMIT 1").get(row.task_a_id,kind,run.id);
+      "AND json_extract(payload,'$.run_id')=? LIMIT 1").get(taskId,kind,run.id);
     if(!event('provider.submission.provenance')||
        (row.last_error==='response_not_observed'&&!event('provider.response.reconciled'))||
        !this.service.reviewableGPTResult(row.project_id,row.orchestrator_id,run.id))
@@ -459,7 +476,7 @@ export class AutonomousDialogue {
     if(row.last_error==='autonomous_semantic_review_unconfirmed'){
       // Only a known terminal Groq review error is eligible. The retry has
       // its OWN idempotent receipt and must not be attempted twice.
-      const requestId='technical_'+row.id+'_a';
+      const requestId='technical_'+row.id+'_'+(finalPhase?'final':'a');
       const first=this.db.prepare('SELECT status,result FROM lab_command_receipts '+
         'WHERE workspace_session_id=? AND request_id=?').get(row.workspace_session_id,requestId);
       const retried=this.db.prepare('SELECT 1 FROM lab_command_receipts '+
@@ -471,7 +488,8 @@ export class AutonomousDialogue {
     }
     // A state transition, never a second GPT submission. The existing
     // reviewTechnical() owns the deterministic Groq review request receipt.
-    this.move(row.id,'reconciliation_required','ready_b',{last_error:null});
+    this.move(row.id,'reconciliation_required',finalPhase?'ready_review_final':'ready_b',
+      {last_error:null});
     return true;
   }
   async tick(context){

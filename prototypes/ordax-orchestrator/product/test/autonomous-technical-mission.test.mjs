@@ -422,6 +422,119 @@ test('two invalid-evidence Groq reviews quarantine the mission without GPT repla
   assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:1});
 });
 
+test('late second GPT response resumes only final Groq review without third send',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',last:'verify_external_effect',
+    lateResponseAt:2}),ids=await f.setup();
+  await f.start(ids);
+  const pending=await f.waitFor(ids,['reconciliation_required']);
+  assert.equal(pending.lastError,'response_not_observed');
+  assert.equal(pending.taskAId,pending.taskBId);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:2});
+  const runId=await reconcileLateTechnicalAnswer(f,pending.taskBId);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  const result=restored.autonomous.status(f.context,ids).mission;
+  assert.equal(result.state,'verification_required');
+  assert.equal(result.decision.sourceRunId,runId);
+  assert.equal(result.decision.decision,'verify_external_effect');
+  assert.equal(result.decision.externalEffectVerified,false);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
+  assert.equal((await restored.autonomous.tick(f.context)).state,'idle');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('late second GPT reply in new work resumes review without duplicating tasks',async t=>{
+  const f=fixture(t,{first:'new_work',last:'candidate_complete',lateResponseAt:2}),ids=await f.setup();
+  await f.start(ids);
+  const pending=await f.waitFor(ids,['reconciliation_required']);
+  assert.notEqual(pending.taskAId,pending.taskBId);
+  const runId=await reconcileLateTechnicalAnswer(f,pending.taskBId);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  const m=restored.autonomous.status(f.context,ids).mission;
+  assert.equal(m.state,'verification_required');
+  assert.equal(m.decision.sourceRunId,runId);
+  assert.equal(m.decision.decision,'candidate_complete');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_task_bindings WHERE kind='work'").get().n,2);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
+});
+
+test('human draft blocks late final-response recovery before any Groq replay',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',lateResponseAt:2}),ids=await f.setup();
+  await f.start(ids);
+  const pending=await f.waitFor(ids,['reconciliation_required']);
+  await reconcileLateTechnicalAnswer(f,pending.taskBId);
+  const draft='Intervenção humana depois da resposta GPT, sem nova revisão automatizada.';
+  f.store.setDraft(pending.taskBId,draft,1);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  assert.equal(restored.autonomous.resumeReconciledTechnical(f.context),false);
+  assert.equal((await restored.autonomous.tick(f.context)).state,'idle');
+  assert.equal(restored.autonomous.status(f.context,ids).mission.state,'reconciliation_required');
+  assert.equal(f.store.getTaskDraft(pending.taskBId).draft,draft);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:2});
+});
+
+test('newer human GPT Run cannot revive an obsolete final Groq review',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',lateResponseAt:2}),ids=await f.setup();
+  await f.start(ids);
+  const pending=await f.waitFor(ids,['reconciliation_required']);
+  await reconcileLateTechnicalAnswer(f,pending.taskBId);
+  const extra=f.store.beginProviderRun(pending.taskBId,
+    'Pedido posterior do usuário deve invalidar o contexto da revisão anterior.');
+  f.store.appendMessage(pending.taskBId,'assistant',
+    'Resposta posterior do trabalho humano; nenhuma revisão antiga pode continuar.');
+  f.store.finishRun(pending.taskBId,extra.runId);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  assert.equal(restored.autonomous.resumeReconciledTechnical(f.context),false);
+  assert.equal((await restored.autonomous.tick(f.context)).state,'idle');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:2});
+});
+
+test('terminal invalid final Groq citation retries final review only once',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',last:'verify_external_effect',
+    groqInvalidEvidenceReviews:[2]}),ids=await f.setup();
+  await f.start(ids);
+  const pending=await f.waitFor(ids,['reconciliation_required']);
+  assert.equal(pending.lastError,'autonomous_semantic_review_unconfirmed');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
+  const original=f.store.db.prepare('SELECT status,result FROM lab_command_receipts WHERE request_id=?')
+    .get('technical_'+pending.missionId+'_final');
+  assert.equal(original.status,'failed');
+  assert.equal(JSON.parse(original.result).failureCode,'groq_review_invalid_evidence');
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  const m=restored.autonomous.status(f.context,ids).mission;
+  assert.equal(m.state,'verification_required');
+  assert.equal(m.decision.decision,'verify_external_effect');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:3,sends:2});
+  assert.equal(f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE request_id=?')
+    .get('technical_'+pending.missionId+'_final_recovery').status,'succeeded');
+  await restored.autonomous.tick(f.context);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:3,sends:2});
+});
+
+test('repeated invalid final Groq citation stays quarantined after restart',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',
+    groqInvalidEvidenceReviews:[2,3]}),ids=await f.setup();
+  await f.start(ids);
+  const pending=await f.waitFor(ids,['reconciliation_required']);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  assert.equal(restored.autonomous.status(f.context,ids).mission.state,'reconciliation_required');
+  const again=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await again.autonomous.tick(f.context);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:3,sends:2});
+  assert.equal(f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE request_id=?')
+    .get('technical_'+pending.missionId+'_final_recovery').status,'failed');
+});
+
 test('terminal truncated Groq review can recover once without replaying the GPT Run',async t=>{
   const f=fixture(t,{first:'verify_external_effect',groqTruncateReviews:[1]}),ids=await f.setup();
   await f.start(ids);
