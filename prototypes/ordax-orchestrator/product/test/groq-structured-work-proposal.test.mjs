@@ -7,6 +7,7 @@ import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {createGroqCoordinatorConversation} from '../supervisor/groq-conversation.mjs';
 import {parseStructuredModelObject} from '../src/structured-model-object.mjs';
+import {GPT_REVIEW_FOLLOWUP_DECISIONS,GPT_REVIEW_TERMINAL_DECISIONS} from '../src/gpt-work-review.mjs';
 
 const proposal={title:'Revisão de leitor DOM',content:'Diagnostique o leitor de mensagens e proponha testes de regressão verificáveis.',reason:'A evidência técnica ainda está incompleta.'};
 const fence=value=>String.fromCharCode(96).repeat(3)+'json\n'+value+'\n'+String.fromCharCode(96).repeat(3);
@@ -142,6 +143,62 @@ test('Groq finish reasons and bounded token usage are classified without leaking
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,0);
 });
 
+test('strict review binds the next step to the decision and rejects contradictory data',async t=>{
+  const f=setup(t),args=await f.ids();
+  const ctx={phase:'gpt_response_review',reviewEvidence:{runId:'run_step',answerStart:
+    'O GPT elaborou uma analise e nao executou alteracoes externas no repositorio.',
+    answerEnd:'Uma segunda pergunta precisa exigir provas de idempotencia verificaveis.'}};
+  const quote='O GPT elaborou uma analise e nao executou alteracoes externas no repositorio.';
+  const valid={runId:'run_step',summary:'O GPT descreveu uma estrategia, sem executar comandos de sistema.',
+    reason:'Ainda ha falta de evidencia material e a proxima tarefa deve validar falhas de concorrencia.',
+    observedExcerpt:quote,step:{decision:'request_correction',
+      nextPrompt:'Corrija a analise e demonstre o caso de crash entre envio e recibo, com testes de concorrencia.'}};
+  const invalid=[
+    {...valid,step:{decision:'verify_external_effect',nextPrompt:'Envie automaticamente outra mensagem para concluir a tarefa.'}},
+    {...valid,step:{decision:'continue_same_conversation',nextPrompt:null}},
+    {...valid,step:{decision:'blocked',nextPrompt:null,automaticGPTSendAuthorized:true}},
+    {...valid,automaticGPTSendAuthorized:true}
+  ];
+  let calls=0;
+  const groq=createGroqCoordinatorConversation({store:f.store,getApiKey:()=> 'fixture-secret',
+    isEnabled:()=>true,fetchImpl:async()=>{
+      const payload=calls++===0?valid:invalid[calls-2];
+      return apiResponse(JSON.stringify(payload));
+    }});
+  const result=JSON.parse((await groq.send({...args,completionProfile:'technical_review',
+    prepareWork:false,analysisContext:ctx})).content);
+  assert.equal(result.decision,'request_correction');
+  assert.equal(result.nextPrompt,valid.step.nextPrompt);
+  assert.equal(result.step,undefined);
+  for(let i=0;i<invalid.length;i++)await assert.rejects(
+    groq.send({...args,completionProfile:'technical_review',prepareWork:false,analysisContext:ctx}),
+    /groq_review_invalid_next_step|groq_review_invalid_evidence/
+  );
+  assert.equal(calls,1+invalid.length,'no hidden Groq retry after invalid strict JSON');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,0);
+});
+
+test('portable Groq JSON mode preserves the flat review contract',async t=>{
+  const f=setup(t),args=await f.ids();
+  const ctx={phase:'gpt_response_review',reviewEvidence:{runId:'run_portable',
+    answerStart:'A observacao GPT nao comprova efeitos externos sobre os arquivos.',
+    answerEnd:'A revisao precisa indicar que o codigo ainda nao foi verificado.'}};
+  const flat={runId:'run_portable',decision:'verify_external_effect',
+    summary:'A resposta fornece uma proposta tecnica e nao comprova edicao de arquivos.',
+    reason:'Sem recibos de alteracao ou testes fisicos, o trabalho permanece pendente de verificacao.',
+    observedExcerpt:'A observacao GPT nao comprova efeitos externos sobre os arquivos.',nextPrompt:null};
+  const groq=createGroqCoordinatorConversation({store:f.store,getApiKey:()=> 'fixture-secret',
+    isEnabled:()=>true,model:'llama-3.3-70b-versatile',fetchImpl:async(_url,options)=>{
+      const body=JSON.parse(options.body);
+      assert.deepEqual(body.response_format,{type:'json_object'});
+      assert.match(body.messages[0].content,/FORMATO JSON: devolva exatamente/);
+      return apiResponse(JSON.stringify(flat));
+    }});
+  const result=JSON.parse((await groq.send({...args,completionProfile:'technical_review',
+    prepareWork:false,analysisContext:ctx})).content);
+  assert.deepEqual(result,flat,'non-strict configured model remains backward compatible');
+});
+
 test('semantic technical review has dedicated bounded Groq reasoning budget and no hidden retry',async t=>{
   const f=setup(t),args=await f.ids();
   const reviewContext={phase:'gpt_response_review',reviewEvidence:{runId:'run_direct',
@@ -158,20 +215,40 @@ test('semantic technical review has dedicated bounded Groq reasoning budget and 
       assert.equal(body.response_format.json_schema.strict,true);
       const schema=body.response_format.json_schema.schema;
       assert.equal(schema.additionalProperties,false);
-      assert.deepEqual(schema.required,['runId','decision','summary','reason','observedExcerpt','nextPrompt']);
-      assert.ok(schema.properties.decision.enum.includes('verify_external_effect'));
+      assert.deepEqual(schema.required,['runId','step','summary','reason','observedExcerpt']);
+      assert.equal(schema.properties.decision,undefined);
+      assert.equal(schema.properties.nextPrompt,undefined);
+      const [followup,terminal]=schema.properties.step.anyOf;
+      assert.deepEqual(followup.required,['decision','nextPrompt']);
+      assert.deepEqual(terminal.required,['decision','nextPrompt']);
+      assert.equal(followup.additionalProperties,false);
+      assert.equal(terminal.additionalProperties,false);
+      assert.deepEqual(followup.properties.decision.enum,GPT_REVIEW_FOLLOWUP_DECISIONS);
+      assert.deepEqual(terminal.properties.decision.enum,GPT_REVIEW_TERMINAL_DECISIONS);
+      assert.equal(followup.properties.nextPrompt.type,'string');
+      assert.equal(terminal.properties.nextPrompt.type,'null');
       assert.deepEqual(schema.properties.runId.enum,['run_direct']);
       assert.ok(schema.properties.observedExcerpt.enum.length>=2);
       assert.ok(schema.properties.observedExcerpt.enum.every(q=>
         [reviewContext.reviewEvidence.answerStart,reviewContext.reviewEvidence.answerEnd].some(text=>text.includes(q))));
-      assert.deepEqual(schema.properties.nextPrompt.type,['string','null']);
       assert.equal(body.reasoning_format,'hidden');
       assert.equal(body.tools,undefined);
-      return apiResponse('A resposta técnica está observada; sem recibos Git não há conclusão.');
+      assert.match(body.messages[0].content,/step e \{decision,nextPrompt\}/);
+      return apiResponse(JSON.stringify({
+        runId:'run_direct',step:{decision:'verify_external_effect',nextPrompt:null},
+        summary:'A resposta tecnica esta observada; sem recibos Git nao ha conclusao comprovada.',
+        reason:'Somente o texto GPT esta comprovado; faltam recibos externos de modificacao.',
+        observedExcerpt:schema.properties.observedExcerpt.enum[0]
+      }));
     }});
   const result=await groq.send({...args,prepareWork:false,completionProfile:'technical_review',
     analysisContext:reviewContext});
   assert.match(result.content,/sem recibos Git/);
+  const normalized=JSON.parse(result.content);
+  assert.equal(normalized.runId,'run_direct');
+  assert.equal(normalized.decision,'verify_external_effect');
+  assert.equal(normalized.nextPrompt,null);
+  assert.equal(normalized.step,undefined,'the service receives only the canonical flat review');
   assert.equal(requests,1);
   await assert.rejects(groq.send({...args,prepareWork:false,completionProfile:'technical_review',analysisContext:{
     phase:'gpt_response_review',reviewEvidence:{runId:'run_direct',answerStart:'sem citação'}}}),

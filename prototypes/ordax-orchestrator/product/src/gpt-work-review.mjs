@@ -2,11 +2,17 @@ import {parseStructuredModelObject} from './structured-model-object.mjs';
 
 // A Groq review classifies one real GPT response. It proposes a next step,
 // never certifies a repository effect or authorizes a provider submission.
+export const GPT_REVIEW_FOLLOWUP_DECISIONS=Object.freeze([
+  'continue_same_conversation','new_conversation','new_work','request_correction'
+]);
+export const GPT_REVIEW_TERMINAL_DECISIONS=Object.freeze([
+  'verify_external_effect','candidate_complete','blocked'
+]);
 export const GPT_REVIEW_DECISIONS=Object.freeze([
-  'continue_same_conversation','new_conversation','new_work',
-  'request_correction','verify_external_effect','candidate_complete','blocked'
+  ...GPT_REVIEW_FOLLOWUP_DECISIONS,...GPT_REVIEW_TERMINAL_DECISIONS
 ]);
 const decisions=new Set(GPT_REVIEW_DECISIONS);
+const followups=new Set(GPT_REVIEW_FOLLOWUP_DECISIONS);
 const bounded=(value,max,min=0)=>typeof value==='string'&&value.trim().length>=min&&value.trim().length<=max;
 export function interpretGPTWorkReview(raw,{runId,observedAnswer}={}){
   if(!bounded(raw,9000,5)||!bounded(runId,180,1)||!bounded(observedAnswer,2500,20))
@@ -20,8 +26,7 @@ export function interpretGPTWorkReview(raw,{runId,observedAnswer}={}){
     !bounded(value.summary,600,20)||!bounded(value.reason,700,20)||
     !bounded(value.observedExcerpt,180,16)||!observedAnswer.includes(value.observedExcerpt))
     throw Error('gpt_review_invalid_evidence');
-  const hasNext=['continue_same_conversation','new_conversation','new_work','request_correction']
-    .includes(value.decision);
+  const hasNext=followups.has(value.decision);
   if(hasNext?!bounded(value.nextPrompt,2200,20):
     !(value.nextPrompt===null||value.nextPrompt===undefined||value.nextPrompt===''))
     throw Error('gpt_review_invalid_next_step');
