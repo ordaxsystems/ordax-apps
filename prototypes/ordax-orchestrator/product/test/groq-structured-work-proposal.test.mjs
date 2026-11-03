@@ -97,11 +97,42 @@ test('ordinary Groq coordinator remains natural language without JSON format',as
     fetchImpl:async (_url,request)=>{
       const data=JSON.parse(request.body);
       assert.equal(data.response_format,undefined);
-      assert.equal(data.reasoning_format,undefined);
+      assert.equal(data.reasoning_format,'hidden');
+      assert.equal(data.reasoning_effort,'low');
+      assert.equal(data.max_completion_tokens,2400);
+      assert.equal(data.tools,undefined);
       return apiResponse('Esta etapa exige prova externa, não é conclusão.');
     }});
   const {content}=await adapter.send({...args,prepareWork:false});
   assert.match(content,/exige prova externa/);
+});
+
+test('real-world ordinary Groq truncation fails closed with its expanded budget and no retry',async t=>{
+  const f=setup(t),args=await f.ids();
+  let calls=0;
+  const groq=createGroqCoordinatorConversation({store:f.store,
+    getApiKey:()=> 'fixture-secret',isEnabled:()=>true,
+    fetchImpl:async(_url,options)=>{
+      calls++;
+      const request=JSON.parse(options.body);
+      assert.equal(request.max_completion_tokens,2400);
+      assert.equal(request.reasoning_effort,'low');
+      assert.equal(request.reasoning_format,'hidden');
+      return new Response(JSON.stringify({choices:[{finish_reason:'length',
+        message:{content:'PARCIAL_NAO_E_CONCLUSAO'}}],
+        usage:{completion_tokens:2400}}),{status:200,headers:{'content-type':'application/json'}});
+    }});
+  await assert.rejects(groq.send({...args,prepareWork:false}),error=>{
+    assert.equal(error.orchestratorFailureCode,'groq_incomplete_response');
+    assert.equal(error.orchestratorRequestOutcome,'response_invalid');
+    assert.equal(error.orchestratorFinishReason,'length');
+    assert.equal(error.orchestratorCompletionBudget,2400);
+    assert.equal(error.orchestratorCompletionTokens,2400);
+    assert.doesNotMatch(error.message,/PARCIAL_NAO_E_CONCLUSAO/);
+    return true;
+  });
+  assert.equal(calls,1,'one definite partial answer must not trigger an automatic second request');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,0);
 });
 
 test('Groq finish reasons and bounded token usage are classified without leaking model output',async t=>{
