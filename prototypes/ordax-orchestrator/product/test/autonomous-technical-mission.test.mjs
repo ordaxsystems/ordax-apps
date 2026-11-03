@@ -747,6 +747,82 @@ test('filtered Groq review is quarantined and never repeated after restart',asyn
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
+test('older uncertain Groq receipt from a different project cannot starve real Run review recovery',async t=>{
+  const f=fixture(t,{first:'verify_external_effect',groqInvalidNextStepReviews:[1]}),ids=await f.setup();
+  await f.start(ids);
+  const pending=await f.waitFor(ids,['reconciliation_required']);
+  assert.equal(pending.lastError,'autonomous_semantic_review_unconfirmed');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:1});
+  const foreign=(await f.service.invoke(f.context,'project_create',{
+    requestId:'foreign_uncertain_project',name:'Projeto historico com recibo incerto',
+    objective:'Preservar independencia das reconciliacoes'
+  })).result.projectId;
+  const foreignOrch=(await f.service.invoke(f.context,'orchestrator_create',{
+    requestId:'foreign_uncertain_coordinator',projectId:foreign,name:'Groq Historico',
+    mission:'Atividade independente'
+  })).result.orchestratorId;
+  const reserved=f.service.transaction(()=>f.service.reserve(f.context,'orchestrator_analyze',{
+    requestId:'foreign_groq_uncertain',projectId:foreign,orchestratorId:foreignOrch
+  }));
+  f.service.finish(reserved.commandId,{reason:'execution_unconfirmed'},'uncertain');
+  assert.equal(f.store.db.prepare("SELECT status FROM lab_command_receipts WHERE request_id='foreign_groq_uncertain'").get().status,'uncertain');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE project_id=? AND status='uncertain'").get(ids.projectId).n,0);
+  const originalRun=f.store.db.prepare('SELECT id,status FROM runs ORDER BY rowid DESC LIMIT 1').get();
+  assert.equal(originalRun.status,'succeeded');
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  const result=restored.autonomous.status(f.context,ids).mission;
+  assert.equal(result.state,'verification_required','foreign uncertainty must not quarantine an independent project');
+  assert.equal(result.decision.sourceRunId,originalRun.id,'recovery must cite original successful GPT Run');
+  assert.equal(result.decision.externalEffectVerified,false);
+  assert.equal(result.decision.automaticGPTSendAuthorized,false);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:1},'never resend GPT or Groq twice');
+  assert.equal(f.store.db.prepare("SELECT status FROM lab_command_receipts WHERE request_id='foreign_groq_uncertain'").get().status,'uncertain','original unrelated uncertainty stays untouched');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('same-project uncertain coordinator receipt still blocks review recovery fail-closed',async t=>{
+  const f=fixture(t,{first:'verify_external_effect',groqInvalidNextStepReviews:[1]}),ids=await f.setup();
+  await f.start(ids);
+  const pending=await f.waitFor(ids,['reconciliation_required']);
+  const reserved=f.service.transaction(()=>f.service.reserve(f.context,'orchestrator_analyze',{
+    requestId:'same_project_groq_uncertain',projectId:ids.projectId,orchestratorId:ids.orchestratorId
+  }));
+  f.service.finish(reserved.commandId,{reason:'execution_unconfirmed'},'uncertain');
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  assert.equal(restored.autonomous.status(f.context,ids).mission.state,'reconciliation_required');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id=?')
+    .get('technical_'+pending.missionId+'_a_recovery').n,0);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:1});
+  assert.equal(f.store.db.prepare("SELECT status FROM lab_command_receipts WHERE request_id='same_project_groq_uncertain'").get().status,'uncertain');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('unscoped uncertain receipt conservatively blocks recovery without a new GPT send',async t=>{
+  const f=fixture(t,{first:'verify_external_effect',groqInvalidNextStepReviews:[1]}),ids=await f.setup();
+  await f.start(ids);
+  const pending=await f.waitFor(ids,['reconciliation_required']);
+  const reserved=f.service.transaction(()=>f.service.reserve(f.context,'project_create',{
+    requestId:'unscoped_project_uncertain',name:'Nova instancia pendente',
+    objective:'Aguardando reconciliacao externa'
+  }));
+  f.service.finish(reserved.commandId,{reason:'execution_unconfirmed'},'uncertain');
+  const receipt=f.store.db.prepare("SELECT project_id,status FROM lab_command_receipts WHERE request_id='unscoped_project_uncertain'").get();
+  assert.equal(receipt.project_id,null);
+  assert.equal(receipt.status,'uncertain');
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  assert.equal(restored.autonomous.status(f.context,ids).mission.state,'reconciliation_required');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id=?')
+    .get('technical_'+pending.missionId+'_a_recovery').n,0);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:1});
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
 test('real-world incompatible Groq next step is recovered once against the confirmed GPT Run',async t=>{
   const f=fixture(t,{first:'verify_external_effect',last:'verify_external_effect',
     groqInvalidNextStepReviews:[1]}),ids=await f.setup();
