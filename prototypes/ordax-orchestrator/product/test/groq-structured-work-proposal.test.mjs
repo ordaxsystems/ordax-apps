@@ -105,6 +105,9 @@ test('ordinary Groq coordinator remains natural language without JSON format',as
 
 test('semantic technical review has dedicated bounded Groq reasoning budget and no hidden retry',async t=>{
   const f=setup(t),args=await f.ids();
+  const reviewContext={phase:'gpt_response_review',reviewEvidence:{runId:'run_direct',
+    answerStart:'O GPT investigou o DOM e sugeriu testes sem modificar arquivos.',
+    answerEnd:'O próprio GPT confirmou que nenhuma alteração foi aplicada ou testada.'}};
   let requests=0;
   const groq=createGroqCoordinatorConversation({store:f.store,getApiKey:()=> 'fixture-secret',
     isEnabled:()=>true,fetchImpl:async (_url,options)=>{
@@ -118,14 +121,22 @@ test('semantic technical review has dedicated bounded Groq reasoning budget and 
       assert.equal(schema.additionalProperties,false);
       assert.deepEqual(schema.required,['runId','decision','summary','reason','observedExcerpt','nextPrompt']);
       assert.ok(schema.properties.decision.enum.includes('verify_external_effect'));
+      assert.deepEqual(schema.properties.runId.enum,['run_direct']);
+      assert.ok(schema.properties.observedExcerpt.enum.length>=2);
+      assert.ok(schema.properties.observedExcerpt.enum.every(q=>
+        [reviewContext.reviewEvidence.answerStart,reviewContext.reviewEvidence.answerEnd].some(text=>text.includes(q))));
       assert.deepEqual(schema.properties.nextPrompt.type,['string','null']);
       assert.equal(body.reasoning_format,'hidden');
       assert.equal(body.tools,undefined);
       return apiResponse('A resposta técnica está observada; sem recibos Git não há conclusão.');
     }});
   const result=await groq.send({...args,prepareWork:false,completionProfile:'technical_review',
-    analysisContext:{phase:'gpt_response_review',reviewEvidence:{answerStart:'Trecho técnico real'}}});
+    analysisContext:reviewContext});
   assert.match(result.content,/sem recibos Git/);
   assert.equal(requests,1);
+  await assert.rejects(groq.send({...args,prepareWork:false,completionProfile:'technical_review',analysisContext:{
+    phase:'gpt_response_review',reviewEvidence:{runId:'run_direct',answerStart:'sem citação'}}}),
+    /groq_review_context_invalid/);
+  assert.equal(requests,1,'missing evidence cannot reach the API');
   await assert.rejects(groq.send({...args,completionProfile:'unbounded'}),/orchestrator_completion_profile_invalid/);
 });
