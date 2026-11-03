@@ -304,7 +304,12 @@ export class AutonomousDialogue {
     // Busy is a wait condition, not an uncertain autonomous API effect.
     if(this.service.coordinatorTurnBusy(this.service.orchestrator(row.project_id,row.orchestrator_id).chat_task_id))
       return {state:'coordinator_busy'};
-    if(this.service.executorAdmission().availableSlots===0)
+    // Semantic planning and evidence review run only on the independent
+    // Groq coordinator lane. An occupied GPT WebContentsView must not
+    // prevent classifying an already confirmed response or stopping work.
+    const coordinatorOnly=row.strategy==='semantic'&&
+      ['queued','ready_b','ready_review_final'].includes(row.state);
+    if(!coordinatorOnly&&this.service.executorAdmission().availableSlots===0)
       return {state:'executor_busy'};
     if(row.mode==='story')return advanceStory(this,context,row);
     let working='';

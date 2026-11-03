@@ -25,9 +25,41 @@ const WORK_REVIEW_SCHEMA=Object.freeze({
 const groqProposalFormat=model=>/^openai\/gpt-oss-(20b|120b)$/.test(model)
   ?{type:'json_schema',json_schema:{name:'ordax_work_proposal',strict:true,schema:WORK_PROPOSAL_SCHEMA}}
   :{type:'json_object'};
-const groqReviewFormat=model=>/^openai\/gpt-oss-(20b|120b)$/.test(model)
-  ?{type:'json_schema',json_schema:{name:'ordax_gpt_work_review',strict:true,schema:WORK_REVIEW_SCHEMA}}
-  :{type:'json_object'};
+// Exact, bounded citations from one already-redacted GPT Run. No fixed
+// decision or answer: the coordinator chooses among verbatim evidence.
+export function deriveGPTReviewQuoteCandidates(context){
+  if(context?.phase!=='gpt_response_review')return [];
+  const parts=[context.reviewEvidence?.answerStart,context.reviewEvidence?.answerEnd]
+    .filter(part=>typeof part==='string'&&part.length>=20);
+  const all=[];
+  for(const part of parts){
+    const lines=part.split(/\r?\n/).map(line=>line.trim()).filter(line=>line.length>=20);
+    const choices=[];
+    for(const index of [...new Set([0,Math.floor(lines.length/2),lines.length-1])]){
+      const line=lines[index];
+      if(!line)continue;
+      const offset=index===lines.length-1?Math.max(0,line.length-140):
+        index===0?0:Math.max(0,Math.floor((line.length-140)/2));
+      const quote=line.slice(offset,offset+140).trim();
+      if(quote.length>=20&&part.includes(quote)&&!choices.includes(quote))choices.push(quote);
+    }
+    if(!choices.length){
+      const quote=part.slice(0,140).trim();
+      if(quote.length>=20&&part.includes(quote))choices.push(quote);
+    }
+    for(const quote of choices)if(!all.includes(quote))all.push(quote);
+  }
+  return all.slice(0,6);
+}
+function groqReviewFormat(model,context){
+  const runId=context?.reviewEvidence?.runId,quotes=deriveGPTReviewQuoteCandidates(context);
+  if(typeof runId!=='string'||runId.length<1||runId.length>180||!quotes.length)
+    throw coordinatorFailure('groq_review_context_invalid','rejected');
+  if(!/^openai\/gpt-oss-(20b|120b)$/.test(model))return {type:'json_object'};
+  const schema={...WORK_REVIEW_SCHEMA,properties:{...WORK_REVIEW_SCHEMA.properties,
+    runId:{type:'string',enum:[runId]},observedExcerpt:{type:'string',enum:quotes}}};
+  return {type:'json_schema',json_schema:{name:'ordax_gpt_work_review',strict:true,schema}};
+}
 
 function coordinatorFailure(code,outcome,httpStatus=null) {
   const error=Error(code);
@@ -58,6 +90,8 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
         technicalReview?2600:narrative?2600:prepareWork?1800:1200;
       const request=buildCoordinatorRequestContext({store,taskId,mission,projectId,orchestratorId,
         analysisContext,prepareWork,workspaceObservation,repositoryUrl});
+      const responseFormat=prepareWork?groqProposalFormat(model):
+        technicalReview?groqReviewFormat(model,analysisContext):null;
       let response;
       try {
         response=await fetchImpl('https://api.groq.com/openai/v1/chat/completions',{
@@ -65,8 +99,7 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
           headers:{Authorization:'Bearer '+apiKey,'Content-Type':'application/json'},
           body:JSON.stringify({model,temperature:narrative?0.2:0,
             max_completion_tokens:maxCompletionTokens,
-            ...(prepareWork?{response_format:groqProposalFormat(model)}:
-              technicalReview?{response_format:groqReviewFormat(model)}:{}),
+            ...(responseFormat?{response_format:responseFormat}:{}),
             ...((prepareWork||technicalReview)&&/^openai\/gpt-oss-(20b|120b)$/.test(model)
               ?{reasoning_format:'hidden'}:{}),
             ...((narrative||prepareWork||technicalReview)&&/^openai\/gpt-oss-(20b|120b)$/.test(model)
