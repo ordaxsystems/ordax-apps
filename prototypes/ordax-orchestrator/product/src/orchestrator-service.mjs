@@ -307,6 +307,8 @@ export class OrchestratorService {
     this.requireAccess(context,operation,input.projectId||null);
     if(operation==='autonomous_dialogue_status')return this.autonomous.status(context,input);
     if(operation==='autonomous_dialogue_start')return {status:'succeeded',operation,result:this.autonomous.start(context,input)};
+    if(operation==='autonomous_dialogue_continue')return {status:'succeeded',operation,
+      result:this.autonomous.continueTechnical(context,input)};
     if(operation==='repository_observe') {
       const repositoryUrl=this.projectRepositoryUrl(input.projectId);
       const recheck=()=>{

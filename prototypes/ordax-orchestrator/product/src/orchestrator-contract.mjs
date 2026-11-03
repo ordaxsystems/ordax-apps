@@ -26,6 +26,7 @@ const definitions = [
   ['continuity_followup_prepare','Prepare the exact evidence-backed next prompt on the original GPT work Task after an explicit user action. Does not submit; may rotate a canonical conversation only when the reviewed decision requires it.',{projectId:id,orchestratorId:id,reviewRunId:id},['projectId','orchestratorId','reviewRunId'],false],
   ['autonomous_dialogue_status','Read the latest bounded one-mission dialogue; no external effects.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
   ['autonomous_dialogue_start','Authorize one bounded mission: semantic technical work (up to 2 GPT sends with Groq review of each real response), legacy dialogue (2 sends), or story (4 scenes). Uses the existing provider; never certifies external effects.',{projectId:id,orchestratorId:id,mission:text(4000),mode:{...text(10),pattern:'^(dialogue|story|technical)$'}},['projectId','orchestratorId','mission'],false],
+  ['autonomous_dialogue_continue','Explicitly authorize the next bounded two-send technical cycle using the exact previous Groq decision and confirmed GPT Run. Never replay an uncertain send or certify external effects.',{projectId:id,orchestratorId:id,sourceMissionId:id},['projectId','orchestratorId','sourceMissionId'],false],
   ['work_create','Create a work conversation under a project/coordinator. No provider submission.',{projectId:id,orchestratorId:id,title:text(140)},['projectId','orchestratorId','title'],false],
   ['work_batch_create','Atomically register 2–16 independent work conversations with one coordinator. No GPT send or authorization grant.',{projectId:id,orchestratorId:id,titles:{type:'array',items:text(140),maxItems:16}},['projectId','orchestratorId','titles'],false],
   ['work_dependency_set','Replace prerequisite work IDs for one existing work, without dispatching.',{projectId:id,taskId:id,dependsOn:{type:'array',items:id,maxItems:64}},['projectId','taskId','dependsOn'],false],
@@ -49,7 +50,7 @@ export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,desc
     properties:{...(!readOnly?{requestId}:{}),...properties},
     required:[...(!readOnly?['requestId']:[]),...required]},
   annotations:{readOnlyHint:readOnly,destructiveHint:false,idempotentHint:true,
-    openWorldHint:['work_send','proposal_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare','autonomous_dialogue_start'].includes(operation)}
+    openWorldHint:['work_send','proposal_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare','autonomous_dialogue_start','autonomous_dialogue_continue'].includes(operation)}
 })));
 
 export function validateOrchestratorInput(operation, input) {

@@ -924,7 +924,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       job.state==='verification_required'
         ?'GPT respondeu; verificação externa de alterações/testes é necessária'
         :job.state==='budget_exhausted'
-          ?'Limite de dois envios atingido; próxima decisão Groq registrada sem novo envio'
+          ?'Ciclo de dois envios concluído; decisão Groq registrada'+
+            (job.canContinue?'; é possível autorizar outro ciclo':'')
           :job.state==='blocked'
             ?'Missão técnica bloqueada; nenhum envio será repetido'
             :job.state==='reconciliation_required'
@@ -966,6 +967,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('startAutonomousDialogue').disabled=Boolean(job && !['succeeded','blocked','reconciliation_required','verification_required','budget_exhausted'].includes(job.state))||!coordinatorAvailable||!gptWebTransportAvailable||analysisBusy||coordinatorSubmitting||preflightBusy;
     $('startAutonomousStory').disabled=$('startAutonomousDialogue').disabled;
     $('startAutonomousTechnical').disabled=$('startAutonomousDialogue').disabled;
+    const continueButton=$('continueAutonomousTechnical');
+    continueButton.hidden=job?.canContinue!==true;
+    continueButton.disabled=continueButton.hidden||!coordinatorAvailable||
+      !gptWebTransportAvailable||analysisBusy||coordinatorSubmitting||preflightBusy;
   }
   async function renderCoordinator() {
     if(!projectId||!chatTaskId)return;
@@ -1377,6 +1382,38 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       await refreshAutonomousDialogue();
     }catch{error();}finally{await refreshAutonomousDialogue();}
   }
+  $('continueAutonomousTechnical').addEventListener('click',async()=>{
+    const button=$('continueAutonomousTechnical');
+    if(button.disabled||!projectId||!orchestratorId)return;
+    const p=projectId,o=orchestratorId;
+    button.disabled=true;
+    try{
+      const snapshot=await call('autonomous_dialogue_status',{projectId:p,orchestratorId:o});
+      if(p!==projectId||o!==orchestratorId)return;
+      if(snapshot?.mission?.canContinue!==true){
+        status('A decisão Groq anterior não está disponível para continuação. Nenhum envio realizado.');
+        return;
+      }
+      let availability;
+      try{availability=providerComposeAvailability(await api.providerStatus(),{hostMode:nodeHost});}
+      catch{
+        status('Não foi possível verificar a sessão GPT. Nenhuma autorização foi criada.');
+        return;
+      }
+      if(p!==projectId||o!==orchestratorId)return;
+      if(!availability.allowed){
+        status(COMPOSE_STATUS_MESSAGES[availability.reason]||
+          'Sessão GPT não confirmada. Nenhuma autorização foi criada.');
+        return;
+      }
+      const receipt=await command('autonomous_dialogue_continue',{
+        projectId:p,orchestratorId:o,sourceMissionId:snapshot.mission.missionId});
+      if(p!==projectId||o!==orchestratorId)return;
+      if(receipt.status==='succeeded')
+        status('Continuação autorizada: até 2 novos envios GPT, com decisões e recibos canônicos.');
+    }catch{error();}
+    finally{if(p===projectId&&o===orchestratorId)await refreshAutonomousDialogue();}
+  });
   $('startAutonomousTechnical').addEventListener('click',()=>void launchAutonomousMission('technical'));
   $('startAutonomousDialogue').addEventListener('click',()=>void launchAutonomousMission('dialogue'));
   $('startAutonomousStory').addEventListener('click',()=>void launchAutonomousMission('story'));

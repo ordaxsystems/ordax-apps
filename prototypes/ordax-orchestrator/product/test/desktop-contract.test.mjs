@@ -126,6 +126,21 @@ test('autonomous mission recovery exposes scoped existing Tasks without replay',
   assert.match(start,/if\(!availability\.allowed\)/);
   assert.match(start,/Nenhuma missão foi iniciada/);
 });
+test('technical continuation is a separate user action with a fresh GPT readiness gate',()=>{
+  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.equal((uiHtml.match(/id="continueAutonomousTechnical"/g)||[]).length,1);
+  assert.match(uiHtml,/id="continueAutonomousTechnical"[^>]*hidden disabled/);
+  assert.match(source,/continueButton\.hidden=job\?\.canContinue!==true/);
+  const handler=source.slice(source.indexOf("$('continueAutonomousTechnical').addEventListener"));
+  assert.match(handler,/snapshot\?\.mission\?\.canContinue!==true/);
+  assert.match(handler,/providerComposeAvailability\(await api\.providerStatus\(\),\{hostMode:nodeHost\}\)/);
+  assert.ok(handler.indexOf('providerComposeAvailability(await api.providerStatus()')<
+    handler.indexOf("command('autonomous_dialogue_continue'"),
+    'the physical GPT readiness check must precede an authorization');
+  assert.match(handler,/sourceMissionId:snapshot\.mission\.missionId/);
+  assert.match(handler,/if\(!availability\.allowed\)/);
+});
+
 test('preflight is read-only, project-scoped and cannot silently send GPT',()=>{
   const html=uiHtml;
   const uiSource=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');

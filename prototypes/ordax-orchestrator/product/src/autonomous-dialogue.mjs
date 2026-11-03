@@ -53,7 +53,11 @@ export class AutonomousDialogue {
     for(const [column,definition] of [
       ['strategy',"TEXT NOT NULL DEFAULT 'legacy' CHECK(strategy IN ('legacy','semantic'))"],
       ['review_a_json','TEXT'],
-      ['review_b_json','TEXT']
+      ['review_b_json','TEXT'],
+      // A new explicit consent renews the existing two-send budget while
+      // preserving the exact previous mission and source GPT Run.
+      ['origin_mission_id','TEXT REFERENCES lab_autonomous_dialogues(id)'],
+      ['origin_run_id','TEXT REFERENCES runs(id)']
     ])if(!missionColumns.some(row=>row.name===column))
       this.db.exec('ALTER TABLE lab_autonomous_dialogues ADD COLUMN '+column+' '+definition);
     this.db.exec(`CREATE TABLE IF NOT EXISTS lab_autonomous_story_turns (
@@ -104,6 +108,11 @@ export class AutonomousDialogue {
     return {missionId:row.id,projectId:row.project_id,orchestratorId:row.orchestrator_id,
       mode:story?'story':semantic?'technical':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,quality,reviewTasks,
       state:row.state,maxGPTSends:story?STORY_TURNS:row.max_gpt_sends,taskAId:row.task_a_id,taskBId:row.task_b_id,
+      originMissionId:semantic?row.origin_mission_id||null:null,
+      canContinue:semantic&&row.state==='budget_exhausted'&&
+        ['continue_same_conversation','request_correction','new_conversation','new_work'].includes(decision?.decision)&&
+        typeof decision?.nextPrompt==='string'&&decision.nextPrompt.length>=20&&
+        decision.nextPrompt.trim()!==row.question_b?.trim(),
       decision:semantic?decision:null,
       questionFinal:semantic?row.question_final:row.state==='succeeded'?row.question_final:null,
       distinctConfirmedConversations:Boolean(a?.chat_url&&b?.chat_url&&a.chat_url!==b.chat_url),
@@ -157,6 +166,79 @@ export class AutonomousDialogue {
     // lifetime tick also resumes queued/ready (never indeterminate) stages.
     queueMicrotask(()=>{void this.tick(context).catch(()=>{});});
     return this.summary(this.get(id));
+  }
+  // A second human authorization extends the *same* technical mission chain.
+  // One new ledger row represents one bounded two-send consent window; the
+  // previous Run, decision, Task and project remain the canonical sources.
+  continueTechnical(context,{projectId,orchestratorId,sourceMissionId,requestId}) {
+    this.service.requireAccess(context,'autonomous_dialogue_continue',projectId);
+    const owner=this.service.orchestrator(projectId,orchestratorId);
+    const session=this.store.getWorkspaceSession();
+    return this.service.transaction(()=>{
+      const existing=this.db.prepare(`SELECT * FROM lab_autonomous_dialogues WHERE
+        workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
+        .get(session.id,context.actorId,context.clientId,requestId);
+      if(existing) {
+        if(existing.origin_mission_id!==sourceMissionId||existing.project_id!==projectId||
+           existing.orchestrator_id!==orchestratorId||existing.strategy!=='semantic')
+          throw Error('autonomous_request_conflict');
+        return this.summary(existing);
+      }
+      if(owner.status!=='ready'||this.service.coordinator.available?.(projectId,orchestratorId)!==true||
+         typeof this.service.provider?.send!=='function')
+        throw Error('autonomous_provider_unavailable');
+      const previous=this.db.prepare(`SELECT * FROM lab_autonomous_dialogues WHERE
+        id=? AND workspace_session_id=? AND actor_id=? AND client_id=?
+        AND project_id=? AND orchestrator_id=?`)
+        .get(sourceMissionId,session.id,context.actorId,context.clientId,projectId,orchestratorId);
+      const latest=this.db.prepare(`SELECT id FROM lab_autonomous_dialogues WHERE
+        workspace_session_id=? AND actor_id=? AND client_id=? ORDER BY rowid DESC LIMIT 1`)
+        .get(session.id,context.actorId,context.clientId);
+      if(!previous||latest?.id!==sourceMissionId||previous.strategy!=='semantic'||
+         previous.state!=='budget_exhausted'||!previous.task_b_id||!previous.review_b_json||
+         !previous.question_final)
+        throw Error('autonomous_continuation_source_unavailable');
+      let decision;
+      try{decision=JSON.parse(previous.review_b_json);}catch{}
+      if(!decision||!['continue_same_conversation','request_correction',
+        'new_conversation','new_work'].includes(decision.decision)||
+        decision.sourceRunId==null||decision.nextPrompt!==previous.question_final||
+        typeof decision.nextPrompt!=='string'||decision.nextPrompt.length<20||
+        decision.reviewOnly!==true||decision.externalEffectVerified!==false||
+        decision.automaticGPTSendAuthorized!==false||
+        decision.nextPrompt.trim()===previous.question_b?.trim())
+        throw Error('autonomous_continuation_decision_invalid');
+      const source=this.service.reviewableGPTResult(projectId,orchestratorId,decision.sourceRunId);
+      if(source?.taskId!==previous.task_b_id||
+         this.service.hasUnresolvedWorkReceipt(projectId,previous.task_b_id)||
+         String(this.store.getTaskDraft(previous.task_b_id)?.draft||'')!=='')
+        throw Error('autonomous_continuation_source_superseded');
+      if(this.db.prepare(`SELECT 1 FROM lab_autonomous_dialogues WHERE
+        workspace_session_id=? AND (state IN ('queued','planning_a','ready_a',
+          'sending_a','ready_b','planning_b','ready_final','sending_b',
+          'planning_final','reviewing_a','ready_review_final','reviewing_final')
+          OR (mode='story' AND (state LIKE 'story_queued_%' OR state LIKE 'story_ready_%'
+            OR state LIKE 'story_planning_%' OR state LIKE 'story_sending_%'
+            OR state='story_synthesizing')))
+        LIMIT 1`).get(session.id))
+        throw Error('autonomous_mission_already_running');
+      const id='autonomous_'+randomUUID(),now=this.store.now();
+      const taskId=decision.decision==='new_work'
+        ?this.service.mutate('work_create',{projectId,orchestratorId,
+          title:'Continuação técnica · '+id.slice(-12)}).taskId
+        :previous.task_b_id;
+      this.db.prepare(`INSERT INTO lab_autonomous_dialogues
+        (id,workspace_session_id,actor_id,client_id,project_id,orchestrator_id,
+         request_id,mission,state,max_gpt_sends,task_a_id,question_a,
+         created_at,updated_at,mode,strategy,origin_mission_id,origin_run_id)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(id,session.id,context.actorId,context.clientId,projectId,orchestratorId,
+          requestId,previous.mission,'ready_a',LIMIT,taskId,decision.nextPrompt,
+          now,now,'dialogue','semantic',previous.id,source.runId);
+      this.notify();
+      queueMicrotask(()=>{void this.tick(context).catch(()=>{});});
+      return this.summary(this.get(id));
+    });
   }
   assertMissionSession(context,row,{allowPaused=false}={}) {
     const session=this.store.getWorkspaceSession();
@@ -259,6 +341,23 @@ export class AutonomousDialogue {
     // must never pass the canonical per-process authority predicate.
     this.assertMissionSession(context,row);
     assertTaskHasNoUncertainTransport(this.store,taskId);
+    if(row.origin_mission_id&&row.strategy==='semantic'&&phase==='a') {
+      const previous=this.get(row.origin_mission_id);
+      let decision;
+      try{decision=JSON.parse(previous?.review_b_json||'null');}catch{}
+      const evidence=this.service.reviewableGPTResult(row.project_id,row.orchestrator_id,row.origin_run_id);
+      if(previous?.state!=='budget_exhausted'||!decision||
+         previous.task_b_id!==evidence?.taskId||decision.sourceRunId!==row.origin_run_id||
+         decision.nextPrompt!==content||String(this.store.getTaskDraft(taskId)?.draft||'')!==''||
+         String(this.store.getTaskDraft(previous.task_b_id)?.draft||'')!=='') {
+        const error=Error('autonomous_continuation_source_or_draft_changed');
+        error.providerDeliveryState='not_submitted';
+        throw error;
+      }
+      // A segment change is made only at the actual, authorized send stage.
+      if(decision.decision==='new_conversation')
+        this.store.rotateConversation(taskId,'technical_mission_continuation');
+    }
     if(row.strategy==='semantic'&&phase==='b') {
       const decision=JSON.parse(row.review_a_json||'null');
       const sourceRun=this.db.prepare("SELECT id FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1")
@@ -459,7 +558,18 @@ export class AutonomousDialogue {
       return false;
     const taskId=finalPhase?row.task_b_id:row.task_a_id;
     const question=finalPhase?row.question_b:row.question_a;
-    const expectedRuns=finalPhase&&taskId===row.task_a_id?2:1;
+    const previous=row.origin_mission_id?this.get(row.origin_mission_id):null;
+    const origin=previous?this.db.prepare('SELECT task_id,status FROM runs WHERE id=?')
+      .get(row.origin_run_id):null;
+    let previousDecision=null;
+    if(previous){try{previousDecision=JSON.parse(previous.review_b_json);}catch{}}
+    if(row.origin_mission_id&&(previous?.state!=='budget_exhausted'||
+       previousDecision?.sourceRunId!==row.origin_run_id||
+       origin?.task_id!==previous.task_b_id||origin.status!=='succeeded'))return false;
+    const initialCount=previous&&taskId===previous.task_b_id
+      ?this.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=? AND rowid BETWEEN 1 AND (SELECT rowid FROM runs WHERE id=?)').get(taskId,row.origin_run_id).n
+      :0;
+    const expectedRuns=initialCount+(finalPhase&&taskId===row.task_a_id?2:1);
     const task=this.db.prepare('SELECT status FROM tasks WHERE id=?').get(taskId);
     const count=this.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=?').get(taskId)?.n;
     const run=this.db.prepare('SELECT id,status FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1').get(taskId);
