@@ -2,13 +2,14 @@ import { renderLiveStage } from './ui-stage.mjs';
 import { providerComposeAvailability, canStartFreshProviderChat, COMPOSE_STATUS_MESSAGES } from '../src/provider-compose-availability.mjs';
 import { resolveProviderLoginAction } from '../src/provider-login-action.mjs';
 import { taskListStatusLabel, taskNavigationStatus } from '../src/task-navigation-status.mjs';
-import { reviewCandidateRun, confirmedRunReview } from '../src/run-review-eligibility.mjs';
+import { reviewCandidateRun, confirmedRunReview, runReviewButtonState, runReviewLookupCurrent } from '../src/run-review-eligibility.mjs';
 import { SUPERVISOR_ROLES, supervisorRole } from '../src/supervisor-role-presets.mjs';
 import { mountOrchestratorUi } from './orchestrator-ui.mjs';
 const $ = selector => document.querySelector(selector);
 let currentTaskId = null;
 let currentTask = null;
 let runReviewBusy = false;
+let runReviewLookupVersion = 0;
 const runReviewAttempted = new Set();
 let pendingReplyRecovery=null;
 let workspace = null;
@@ -671,17 +672,42 @@ function renderTaskNavigationStatus(task) {
 
 function syncRunReviewAction(task=currentTask) {
   const binding=allTasks.find(item=>item.id===task?.id)?.lab_binding;
-  const runId=reviewCandidateRun({
-    task,binding,projectId:orchestrationUi?.getProjectId(),
-    orchestratorId:orchestrationUi?.getOrchestratorId()
-  });
-  const button=$('#reviewLatestRun'),panel=$('#runReviewActions');
+  const projectId=orchestrationUi?.getProjectId();
+  const orchestratorId=orchestrationUi?.getOrchestratorId();
+  const runId=reviewCandidateRun({task,binding,projectId,orchestratorId});
+  const button=$('#reviewLatestRun'),panel=$('#runReviewActions'),notice=$('#runReviewState');
+  const request={lookup:++runReviewLookupVersion,epoch:navigationEpoch,
+    taskId:task?.id,runId,projectId,orchestratorId};
   panel.classList.toggle('hidden',!runId);
   button.dataset.runId=runId||'';
-  button.disabled=!runId||runReviewBusy||runReviewAttempted.has(runId);
-  if(!runId)$('#runReviewState').textContent='';
-  else if(runReviewAttempted.has(runId)&&!$('#runReviewState').textContent)
-    $('#runReviewState').textContent='Revisão já solicitada nesta sessão. Consulte o histórico antes de repetir.';
+  // Default closed until the current Run's scoped SQLite receipt is read.
+  button.disabled=true;
+  if(!runId){notice.textContent='';return;}
+  if(runReviewBusy||runReviewAttempted.has(runId)){
+    notice.textContent=runReviewButtonState({runId,busy:runReviewBusy,
+      attempted:runReviewAttempted.has(runId)}).message;
+    return;
+  }
+  notice.textContent='Conferindo recibos desta execução...';
+  void Promise.resolve().then(()=>orchestrationUi.getRunReviewStatus({taskId:request.taskId,runId}))
+    .then(receipt=>{
+      const active={lookup:runReviewLookupVersion,epoch:navigationEpoch,
+        taskId:currentTaskId,runId:button.dataset.runId,
+        projectId:orchestrationUi.getProjectId(),orchestratorId:orchestrationUi.getOrchestratorId()};
+      if(!runReviewLookupCurrent(request,active))return;
+      const state=runReviewButtonState({runId,receipt,
+        attempted:runReviewAttempted.has(runId),busy:runReviewBusy});
+      button.disabled=!state.enabled;
+      notice.textContent=state.message;
+    }).catch(()=>{
+      const active={lookup:runReviewLookupVersion,epoch:navigationEpoch,
+        taskId:currentTaskId,runId:button.dataset.runId,
+        projectId:orchestrationUi?.getProjectId(),orchestratorId:orchestrationUi?.getOrchestratorId()};
+      if(runReviewLookupCurrent(request,active)){
+        button.disabled=true;
+        notice.textContent='Não foi possível confirmar os recibos deste Run. Nenhum envio autorizado.';
+      }
+    });
 }
 
 $('#reviewLatestRun').addEventListener('click',async()=>{

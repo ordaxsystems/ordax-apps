@@ -200,6 +200,24 @@ export class OrchestratorService {
     return row;
   }
 
+  // Read-only projection from the same canonical receipts used to reserve a
+  // Run-specific Groq review. Priority is fail-closed: an uncertain or active
+  // earlier request must not disappear behind a later failed model reply.
+  runReviewReceipt(context,projectId,runId) {
+    const receipt=this.db.prepare(`SELECT status,updated_at
+      FROM lab_command_receipts
+      WHERE workspace_session_id=? AND project_id=? AND operation='orchestrator_analyze'
+        AND CASE WHEN json_valid(result) THEN
+          COALESCE(json_extract(result,'$.reviewRunId'),
+            json_extract(result,'$.reviewDecision.sourceRunId')) END=?
+      ORDER BY CASE status
+        WHEN 'uncertain' THEN 0 WHEN 'running' THEN 1
+        WHEN 'succeeded' THEN 2 ELSE 3 END,updated_at DESC,id DESC
+      LIMIT 1`).get(context.workspaceSessionId,projectId,runId);
+    return {runId,status:receipt?.status||'not_requested',
+      updatedAt:receipt?.updated_at||null};
+  }
+
   historicalRepositoryHead(projectId,repositoryUrl) {
     const row=this.db.prepare(`SELECT repository_url,repository_id,default_branch,head_sha,observed_at,recorded_at
       FROM lab_repository_head_evidence WHERE project_id=? AND repository_url=?`)
@@ -505,7 +523,10 @@ export class OrchestratorService {
       const task=this.task(input.projectId,input.taskId);
       const runs=this.db.prepare(`SELECT id,status,started_at,completed_at,heartbeat_at
         FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 10`).all(task.id);
-      return {...task,runs,conversations:this.store.listConversations(task.id).slice(-50),
+      return {...task,runs,
+        latestRunReview:task.kind==='work'&&runs[0]?.status==='succeeded'
+          ?this.runReviewReceipt(context,input.projectId,runs[0].id):null,
+        conversations:this.store.listConversations(task.id).slice(-50),
         pendingApprovals:this.store.pendingApprovals(task.id).map(a=>({id:a.id,status:a.status,actionId:a.action_id})),
         monitor:this.monitor(task,runs,input.projectId)};
     }
@@ -1258,15 +1279,8 @@ export class OrchestratorService {
       // Admission is atomic with reservation: a fresh requestId, another
       // renderer or a restarted process cannot dispatch this Run twice.
       // Reuse the canonical receipt (including older reviewDecision records).
-      if(reviewSource && this.db.prepare(`SELECT 1 FROM lab_command_receipts
-        WHERE workspace_session_id=? AND project_id=? AND operation='orchestrator_analyze'
-          -- A terminal *confirmed-invalid* model reply may be retried by the
-          -- existing bounded mission recovery; unknown/successful effects may not.
-          AND status IN ('running','uncertain','succeeded')
-          AND CASE WHEN json_valid(result) THEN
-            COALESCE(json_extract(result,'$.reviewRunId'),
-              json_extract(result,'$.reviewDecision.sourceRunId')) END=?
-        LIMIT 1`).get(context.workspaceSessionId,input.projectId,reviewSource.runId))
+      if(reviewSource && ['running','uncertain','succeeded'].includes(
+        this.runReviewReceipt(context,input.projectId,reviewSource.runId).status))
         throw Error('orchestrator_run_review_already_attempted');
       const reservation=this.reserve(context,operation,input);
       if(reservation.existing)return {existing:reservation.existing};
