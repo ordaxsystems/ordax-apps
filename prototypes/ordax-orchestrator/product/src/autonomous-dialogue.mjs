@@ -284,7 +284,7 @@ export class AutonomousDialogue {
     const analysisContext=this.service.analysisContext(row.project_id,row.orchestrator_id);
     const directive=phase==='a'
       ?row.strategy==='semantic'
-        ?'Prepare UMA missão inicial concreta para o GPT: investigar ou realizar a tarefa técnica pedida, explicar os efeitos reais e as provas. Não invente alterações nem presuma acesso externo; o modelo GPT será o executor intelectual.'
+        ?'Transforme o objetivo simples do usuário em UMA solicitação concreta ao GPT Web. O GPT deve criar seu próprio plano técnico e realizar a implementação solicitada, com conteúdo verificável; você coordena a entrega e a revisão, sem escrever o artefato no lugar dele. Não invente alterações, ferramentas, acesso externo nem provas.'
         :'Crie apenas UMA pergunta curta e verificável ao GPT A. Não calcule a resposta.'
       :phase==='b'
         ?'Leia a resposta confirmada do GPT A no contexto. Crie UMA pergunta NOVA ao GPT B que DEPENDA dela e cite o resultado comprovado. Não responda à pergunta.'
