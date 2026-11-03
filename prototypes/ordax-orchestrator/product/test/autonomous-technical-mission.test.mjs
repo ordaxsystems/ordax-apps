@@ -12,7 +12,7 @@ const quote='nenhuma alteração externa foi comprovada';
 const response='O GPT investigou o código e propôs alterações e testes de regressão; nenhuma alteração externa foi comprovada. A validação de efeito deve ser realizada separadamente.';
 const instruction='Revise o resultado observado, defina se continua na conversa ou exige outra frente, e produza provas verificáveis.';
 
-function fixture(t,{first='continue_same_conversation',last='verify_external_effect',providerFailure=null,lateResponseAt=null,holdAfterFirstReview=false}={}){
+function fixture(t,{first='continue_same_conversation',last='verify_external_effect',providerFailure=null,lateResponseAt=null,groqTruncateReviews=[],holdAfterFirstReview=false}={}){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-semantic-mission-'));
   const store=new Store(path.join(dir,'canonical.sqlite'));
   t.after(()=>{store.close();fs.rmSync(dir,{force:true,recursive:true})});
@@ -21,7 +21,7 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
   let plans=0,reviews=0,sends=0,released=false;
   const coordinator={
     available:()=>true,
-    send:async({prepareWork,analysisContext,mission})=>{
+    send:async({prepareWork,analysisContext,mission,completionProfile})=>{
       if(prepareWork){
         plans++;
         assert.match(mission,/missão|MISSÃO/u);
@@ -31,6 +31,13 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
           reason:'O GPT deve realizar a análise antes da próxima decisão.'}};
       }
       reviews++;
+      assert.equal(completionProfile,'technical_review');
+      if(groqTruncateReviews.includes(reviews)){
+        const error=Error('groq_incomplete_response');
+        error.orchestratorFailureCode='groq_incomplete_response';
+        error.orchestratorRequestOutcome='response_invalid';
+        throw error;
+      }
       assert.equal(analysisContext.phase,'gpt_response_review');
       assert.equal(analysisContext.reviewEvidence.externalEffectsVerified,false);
       assert.match(analysisContext.reviewEvidence.answerStart,/nenhuma alteração externa foi comprovada/);
@@ -341,4 +348,49 @@ test('a human draft written during late-response recovery prevents autonomous co
   assert.equal(restored.autonomous.status(f.context,ids).mission.state,'reconciliation_required');
   assert.equal(f.store.getTaskDraft(blocked.taskAId).draft,draft);
   assert.deepEqual(f.metrics(),{plans:1,reviews:0,sends:1});
+});
+
+test('terminal truncated Groq review can recover once without replaying the GPT Run',async t=>{
+  const f=fixture(t,{first:'verify_external_effect',groqTruncateReviews:[1]}),ids=await f.setup();
+  await f.start(ids);
+  const blocked=await f.waitFor(ids,['reconciliation_required']);
+  assert.equal(blocked.lastError,'autonomous_semantic_review_unconfirmed');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:1});
+  const firstId='technical_'+blocked.missionId+'_a';
+  const failed=f.store.db.prepare('SELECT status,result FROM lab_command_receipts WHERE request_id=?').get(firstId);
+  assert.equal(failed.status,'failed');
+  assert.equal(JSON.parse(failed.result).failureCode,'groq_incomplete_response');
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  const resumed=restored.autonomous.status(f.context,ids).mission;
+  assert.equal(resumed.state,'verification_required');
+  assert.equal(resumed.decision.decision,'verify_external_effect');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:1},'only the Groq review is repeated');
+  const retry=f.store.db.prepare('SELECT status,result FROM lab_command_receipts WHERE request_id=?')
+    .get(firstId+'_recovery');
+  assert.equal(retry.status,'succeeded');
+  assert.equal(JSON.parse(retry.result).reviewDecision.externalEffectVerified,false);
+  await restored.autonomous.tick(f.context);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:1});
+});
+
+test('second truncated review exhausts the Groq recovery with zero GPT replay',async t=>{
+  const f=fixture(t,{first:'verify_external_effect',groqTruncateReviews:[1,2]}),ids=await f.setup();
+  await f.start(ids);
+  const blocked=await f.waitFor(ids,['reconciliation_required']);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  assert.equal(restored.autonomous.status(f.context,ids).mission.state,'reconciliation_required');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:1});
+  await restored.autonomous.tick(f.context);
+  const newer=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await newer.autonomous.tick(f.context);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:1});
+  const retry=f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE request_id=?')
+    .get('technical_'+blocked.missionId+'_a_recovery');
+  assert.equal(retry.status,'failed');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });

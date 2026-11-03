@@ -37,11 +37,12 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
       if(isEnabled(projectId,orchestratorId)!==true)throw Error('supervisor_disabled');
       const apiKey=getApiKey();
       if(typeof apiKey!=='string'||!apiKey.trim()||/[\r\n]/.test(apiKey))throw Error('supervisor_api_key_missing');
-      if(!['standard','narrative','narrative_recovery'].includes(completionProfile))
+      if(!['standard','narrative','narrative_recovery','technical_review'].includes(completionProfile))
         throw Error('orchestrator_completion_profile_invalid');
-      const narrative=completionProfile!=='standard';
+      const narrative=['narrative','narrative_recovery'].includes(completionProfile);
+      const technicalReview=completionProfile==='technical_review';
       const maxCompletionTokens=completionProfile==='narrative_recovery'?3200:
-        narrative?2600:prepareWork?1800:1200;
+        technicalReview?2600:narrative?2600:prepareWork?1800:1200;
       const request=buildCoordinatorRequestContext({store,taskId,mission,projectId,orchestratorId,
         analysisContext,prepareWork,workspaceObservation,repositoryUrl});
       let response;
@@ -53,7 +54,7 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
             max_completion_tokens:maxCompletionTokens,
             ...(prepareWork?{response_format:groqProposalFormat(model)}:{}),
             ...(prepareWork&&/^openai\/gpt-oss-(20b|120b)$/.test(model)?{reasoning_format:'hidden'}:{}),
-            ...((narrative||prepareWork)&&/^openai\/gpt-oss-(20b|120b)$/.test(model)
+            ...((narrative||prepareWork||technicalReview)&&/^openai\/gpt-oss-(20b|120b)$/.test(model)
               ?{reasoning_effort:'low'}:{}),
             messages:[{role:'system',content:request.system},...request.history]})
         });
