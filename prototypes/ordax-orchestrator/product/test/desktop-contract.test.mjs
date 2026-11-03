@@ -307,7 +307,11 @@ test('ChatGPT text insertion focuses and verifies the embedded composer before d
   const end=worker.indexOf('    // Wait until React renders a usable submit control',start);
   const preparation=worker.slice(start,end);
   assert.ok(start>=0&&end>start);
-  assert.ok(preparation.indexOf('this.view.webContents.focus()')<preparation.indexOf('Input.insertText'));
+  assert.match(preparation,/const owner=wc\.getOwnerBrowserWindow\?\.\(\)/);
+  assert.match(preparation,/if\(owner\?\.isVisible\(\)\&\&owner\.isFocused\(\)\)wc\.focus\(\)/);
+  assert.doesNotMatch(preparation,/this\.view\.webContents\.focus\(\)/);
+  assert.ok(preparation.indexOf('if(owner?.isVisible()&&owner.isFocused())wc.focus()')<
+    preparation.indexOf('Input.insertText'),'background preparation never forces foreground focus');
   assert.match(preparation,/document\.activeElement === input \|\| input\.contains\(document\.activeElement\)/);
   assert.match(preparation,/composer_focus_not_observed/);
   const send=worker.slice(start,worker.indexOf('  async #submissionState()',start));
