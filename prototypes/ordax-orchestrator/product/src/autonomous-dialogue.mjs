@@ -9,6 +9,12 @@ import {diagnoseAgentFailure} from './agent-failure-diagnosis.mjs';
 // executor. A mission's consent covers at most two GPT Web submissions.
 // No filesystem/network grants, arbitrary tools, replays or background daemon.
 const LIMIT=2;
+// Both are terminal, known-invalid Groq replies. A single fresh review may
+// be attempted after a restart, never after a running/uncertain receipt.
+// Citation enums now constrain an invalid-evidence model reply at the source.
+const RECOVERABLE_GROQ_REVIEW_FAILURES=new Set([
+  'groq_incomplete_response','groq_review_invalid_evidence'
+]);
 const noExtra=value=>typeof value==='string'&&value.trim().length>0;
 const boundedError=error=>String(error?.message||error||'autonomous_step_failed').replace(/[^a-z0-9_]/gi,'_').slice(0,90);
 const numbers=answer=>[...String(answer||'').matchAll(/\b[0-9]{1,6}\b/g)].map(m=>m[0]).filter(x=>Number(x)!==0);
@@ -223,11 +229,11 @@ export class AutonomousDialogue {
       'workspace_session_id=? AND request_id=?').get(row.workspace_session_id,baseRequestId);
     let firstFailure=null;
     try{firstFailure=JSON.parse(firstReceipt?.result||'null');}catch{}
-    // A known terminal, truncated Groq reply may be replanned once. Never
-    // replay an uncertain coordinator call, and never resend a GPT prompt.
+    // A known terminal Groq parse/evidence failure may be reviewed once
+    // more under the strict model schema. No uncertain replay or GPT resend.
     const retry=firstReceipt?.status==='failed'&&
       firstFailure?.reason==='coordinator_request_failed'&&
-      firstFailure?.failureCode==='groq_incomplete_response';
+      RECOVERABLE_GROQ_REVIEW_FAILURES.has(firstFailure?.failureCode);
     const receipt=await this.service.invoke(context,'orchestrator_analyze',{
       projectId:row.project_id,orchestratorId:row.orchestrator_id,
       reviewRunId:run.id,requestId:retry?baseRequestId+'_recovery':baseRequestId
@@ -451,7 +457,7 @@ export class AutonomousDialogue {
        !this.service.reviewableGPTResult(row.project_id,row.orchestrator_id,run.id))
       return false;
     if(row.last_error==='autonomous_semantic_review_unconfirmed'){
-      // Only one known terminal Groq truncation is eligible. The retry has
+      // Only a known terminal Groq review error is eligible. The retry has
       // its OWN idempotent receipt and must not be attempted twice.
       const requestId='technical_'+row.id+'_a';
       const first=this.db.prepare('SELECT status,result FROM lab_command_receipts '+
@@ -461,7 +467,7 @@ export class AutonomousDialogue {
       let evidence=null;
       try{evidence=JSON.parse(first?.result||'null');}catch{}
       if(retried||first?.status!=='failed'||evidence?.reason!=='coordinator_request_failed'||
-         evidence?.failureCode!=='groq_incomplete_response')return false;
+         !RECOVERABLE_GROQ_REVIEW_FAILURES.has(evidence?.failureCode))return false;
     }
     // A state transition, never a second GPT submission. The existing
     // reviewTechnical() owns the deterministic Groq review request receipt.
