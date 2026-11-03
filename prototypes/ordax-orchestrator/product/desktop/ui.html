@@ -148,7 +148,7 @@
         </header>
         <div class="coordinator-transport" role="status" aria-live="polite">
           <span class="transport-symbol" aria-hidden="true">●</span>
-          <span id="orchestrationConnection" class="orchestration-connection">Esta área conversa com o Orquestrador. Nenhuma mensagem daqui vai ao ChatGPT Web.</span>
+          <span id="orchestrationConnection" class="orchestration-connection">Descreva o que deseja. O Orquestrador organiza o trabalho e acompanha o resultado.</span>
         </div>
         <details id="projectPulseDisclosure" class="command-advanced"><summary>Ferramentas de missão e diagnóstico local</summary>
         <section id="projectPulse" class="project-pulse" aria-label="Resumo operacional das frentes de trabalho" hidden>
@@ -221,11 +221,15 @@
         </div>
         <div id="coordinatorProposals" class="coordinator-proposals" aria-label="Propostas para revisão"></div>
         <form id="coordinatorComposer">
-          <label class="sr-only" for="coordinatorPrompt">Mensagem ao orquestrador</label>
-          <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="Envie uma mensagem ao Orchestrator..." aria-describedby="orchestrationConnection" required></textarea>
-          <button id="coordinatorSend" class="send-button coordinator-send" type="submit" aria-label="Enviar ao Orquestrador via Groq" disabled>Enviar à Groq</button>
+          <label class="sr-only" for="coordinatorPrompt">O que você deseja criar ou resolver?</label>
+          <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="Ex.: Crie um site em HTML para uma academia." aria-describedby="orchestrationConnection" required></textarea>
+          <button id="coordinatorSend" class="send-button coordinator-send" type="submit" aria-label="Enviar pedido ao Orquestrador" disabled>Enviar pedido</button>
         </form>
-        <small class="coordinator-route-note">Você conversa com o Administrador Geral via Groq. Ctrl+Enter envia · Enter cria nova linha. O GPT Web é um canal separado.</small>
+        <small class="coordinator-route-note">Explique seu pedido com suas palavras. O Orquestrador coordena o trabalho. Enter envia · Shift+Enter quebra a linha.</small>
+        <details class="command-advanced">
+          <summary>Conversar sem iniciar tarefa</summary>
+          <button id="coordinatorChatOnly" class="mini-secondary" type="submit" form="coordinatorComposer" disabled>Só conversar com Groq</button>
+        </details>
         <small id="coordinatorDraftState" class="coordinator-draft-state" role="status" aria-live="polite"></small>
       </section>
       <p id="orchestrationNotice" class="orchestration-notice" role="status" aria-live="polite"></p>
