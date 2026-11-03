@@ -1337,13 +1337,10 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
 const savedNavigation=workspace?.metadata?.navigation;
 await orchestrationUi.start({restoreNavigation:savedNavigation});
 await loadTasks();
-if(savedNavigation?.schema==='ordax.workspace-navigation.v1'&&savedNavigation.view==='task'&&typeof savedNavigation.taskId==='string') {
-  const task=allTasks.find(item=>item.id===savedNavigation.taskId);
-  const inScope=task&&(scopedTaskIds?scopedTaskIds.has(task.id):!task.lab_binding);
-  if(inScope)await openTask(task.id);
-  else if(orchestrationUi.hasOrchestrator?.())await orchestrationUi.showCoordinator();
-  else await persistWorkspaceNavigation({view:'home',taskId:null});
-}
+// Executor conversations are inspectable through Missões, not a startup
+// destination. Do not open a previously selected GPT Task or re-run its
+// provider navigation during cold start. The Orchestrator startup selects
+// the persisted project/coordinator, then presents the administrative chat.
 refreshProvider();
 setInterval(refreshProvider, 1500);
 
