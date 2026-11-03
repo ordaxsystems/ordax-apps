@@ -1,4 +1,6 @@
 import {readBoundedJsonResponse} from '../src/bounded-json-response.mjs';
+import {parseStructuredModelObject} from '../src/structured-model-object.mjs';
+import {GPT_REVIEW_FOLLOWUP_DECISIONS,GPT_REVIEW_TERMINAL_DECISIONS} from '../src/gpt-work-review.mjs';
 import {buildCoordinatorRequestContext,validateCoordinatorReply} from './coordinator-request-context.mjs';
 
 // Constrain planned work at the model boundary, then validate again with
@@ -12,14 +14,24 @@ const WORK_PROPOSAL_SCHEMA=Object.freeze({
     reason:{type:'string'}
   },required:['title','content','reason'],additionalProperties:false
 });
+// Groq strict schema supports an inner anyOf, not a root anyOf. Binding
+// decision and nextPrompt inside one union means it cannot generate a terminal
+// decision alongside a provider-supplied executable follow-up prompt.
+const reviewStep=(decisions,nextPromptType)=>({
+  type:'object',properties:{
+    decision:{type:'string',enum:[...decisions]},
+    nextPrompt:{type:nextPromptType}
+  },required:['decision','nextPrompt'],additionalProperties:false
+});
 const WORK_REVIEW_SCHEMA=Object.freeze({
   type:'object',properties:{
     runId:{type:'string'},
-    decision:{type:'string',enum:['continue_same_conversation','new_conversation','new_work',
-      'request_correction','verify_external_effect','candidate_complete','blocked']},
-    summary:{type:'string'},reason:{type:'string'},observedExcerpt:{type:'string'},
-    nextPrompt:{type:['string','null']}
-  },required:['runId','decision','summary','reason','observedExcerpt','nextPrompt'],
+    step:{anyOf:[
+      reviewStep(GPT_REVIEW_FOLLOWUP_DECISIONS,'string'),
+      reviewStep(GPT_REVIEW_TERMINAL_DECISIONS,'null')
+    ]},
+    summary:{type:'string'},reason:{type:'string'},observedExcerpt:{type:'string'}
+  },required:['runId','step','summary','reason','observedExcerpt'],
   additionalProperties:false
 });
 const groqProposalFormat=model=>/^openai\/gpt-oss-(20b|120b)$/.test(model)
@@ -68,6 +80,33 @@ function coordinatorFailure(code,outcome,httpStatus=null) {
   if(Number.isSafeInteger(httpStatus))error.orchestratorHttpStatus=httpStatus;
   return error;
 }
+// The provider shape is an API boundary, not a second review contract.
+// Convert only an exact nested strict response into the existing canonical
+// flat review object; OrchestratorService still independently validates Run,
+// verbatim evidence, bounds, and the decision's permissions.
+function flattenStrictReview(content) {
+  let value;
+  try {value=parseStructuredModelObject(content);}
+  catch {throw coordinatorFailure('groq_review_invalid_json','response_invalid');}
+  const rootKeys=['runId','step','summary','reason','observedExcerpt'];
+  if(!value||typeof value!=='object'||Array.isArray(value)||
+     Object.keys(value).length!==rootKeys.length||
+     !rootKeys.every(key=>Object.hasOwn(value,key)))
+    throw coordinatorFailure('groq_review_invalid_evidence','response_invalid');
+  const step=value.step;
+  if(!step||typeof step!=='object'||Array.isArray(step)||
+     Object.keys(step).length!==2||
+     !Object.hasOwn(step,'decision')||!Object.hasOwn(step,'nextPrompt'))
+    throw coordinatorFailure('groq_review_invalid_next_step','response_invalid');
+  const followup=GPT_REVIEW_FOLLOWUP_DECISIONS.includes(step.decision);
+  const terminal=GPT_REVIEW_TERMINAL_DECISIONS.includes(step.decision);
+  if(!(followup&&typeof step.nextPrompt==='string'||terminal&&step.nextPrompt===null))
+    throw coordinatorFailure('groq_review_invalid_next_step','response_invalid');
+  return JSON.stringify({runId:value.runId,decision:step.decision,
+    summary:value.summary,reason:value.reason,
+    observedExcerpt:value.observedExcerpt,nextPrompt:step.nextPrompt});
+}
+
 // Only fixed enums and bounded numbers enter command receipts. Never persist
 // model text, provider metadata objects or unknown finish_reason strings.
 const KNOWN_FINISH_REASONS=new Set(['length','content_filter','tool_calls','function_call']);
@@ -112,6 +151,18 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
         analysisContext,prepareWork,workspaceObservation,repositoryUrl});
       const responseFormat=prepareWork?groqProposalFormat(model):
         technicalReview?groqReviewFormat(model,analysisContext):null;
+      const strictReview=technicalReview&&/^openai\/gpt-oss-(20b|120b)$/.test(model);
+      const outputInstructions=technicalReview
+        ?strictReview
+          ?' FORMATO ESTRITO: devolva as chaves runId, step, summary, reason, observedExcerpt. '+
+            'step e {decision,nextPrompt}; decisoes de continuacao/correcao exigem nextPrompt '+
+            'como instrucao textual concreta (no minimo 20 caracteres). Decisoes de verificacao, '+
+            'candidato a conclusao ou bloqueio exigem nextPrompt null. O schema JSON anyOf '+
+            'obriga essa correspondencia. Nunca coloque decision nem nextPrompt na raiz.'
+          :' FORMATO JSON: devolva exatamente runId,decision,summary,reason,observedExcerpt,nextPrompt '+
+            'na raiz. Para continuar ou corrigir, nextPrompt deve ter pelo menos 20 caracteres; '+
+            'para verificar, concluir como candidato ou bloquear, use nextPrompt null.'
+        :'';
       let response;
       try {
         response=await fetchImpl('https://api.groq.com/openai/v1/chat/completions',{
@@ -124,7 +175,7 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
               ?{reasoning_format:'hidden'}:{}),
             ...((narrative||prepareWork||technicalReview)&&/^openai\/gpt-oss-(20b|120b)$/.test(model)
               ?{reasoning_effort:'low'}:{}),
-            messages:[{role:'system',content:request.system},...request.history]})
+            messages:[{role:'system',content:request.system+outputInstructions},...request.history]})
         });
       } catch(error) {
         const timedOut=error?.name==='TimeoutError'||error?.name==='AbortError';
@@ -141,7 +192,9 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
       catch {throw coordinatorFailure('groq_invalid_response','response_invalid');}
       if(parsed?.choices?.[0]?.finish_reason!=='stop')
         throw incompleteGroqResponse(parsed,maxCompletionTokens);
-      const content=parsed?.choices?.[0]?.message?.content;
+      const content=strictReview
+        ?flattenStrictReview(parsed?.choices?.[0]?.message?.content)
+        :parsed?.choices?.[0]?.message?.content;
       try {return validateCoordinatorReply(content,{prepareWork,errorPrefix:'groq'});}
       catch(error) {throw coordinatorFailure(error.message,'response_invalid');}
     }

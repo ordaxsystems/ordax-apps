@@ -1216,7 +1216,8 @@ export class OrchestratorService {
           '. Leia exclusivamente a resposta GPT observada em reviewEvidence e works, inclusive o trecho final. '+
           'Não afirme que código foi alterado, testado ou implantado sem evidência externa; um Run succeeded comprova só a resposta. '+
           'Decida o próximo passo específico para a missão e as pendências. '+
-          'Responda SOMENTE JSON com as chaves runId,decision,summary,reason,observedExcerpt,nextPrompt. '+
+          'Responda SOMENTE JSON conforme o formato do provedor, incluindo o Run, a decisao, resumo, '+
+          'justificativa, trecho literal observado e proxima instrucao conforme a decisao. '+
           'decision deve ser continue_same_conversation, new_conversation, new_work, request_correction, '+
           'verify_external_effect, candidate_complete ou blocked. observedExcerpt deve copiar literalmente '+
           'um trecho de 16 a 180 caracteres da resposta GPT fornecida. nextPrompt é uma instrução concreta '+

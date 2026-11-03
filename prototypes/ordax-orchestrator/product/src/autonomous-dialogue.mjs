@@ -9,11 +9,14 @@ import {diagnoseAgentFailure} from './agent-failure-diagnosis.mjs';
 // executor. A mission's consent covers at most two GPT Web submissions.
 // No filesystem/network grants, arbitrary tools, replays or background daemon.
 const LIMIT=2;
-// Both are terminal, known-invalid Groq replies. A single fresh review may
+// These are terminal, known-invalid Groq replies. A single fresh review may
 // be attempted after a restart, never after a running/uncertain receipt.
 // Citation enums now constrain an invalid-evidence model reply at the source.
 const RECOVERABLE_GROQ_REVIEW_FAILURES=new Set([
-  'groq_incomplete_response','groq_review_invalid_evidence'
+  'groq_incomplete_response','groq_review_invalid_evidence',
+  // This is a fully rejected Groq response, not a GPT transport effect.
+  // One idempotent recovery may use the corrected structured step schema.
+  'groq_review_invalid_next_step'
 ]);
 const noExtra=value=>typeof value==='string'&&value.trim().length>0;
 const boundedError=error=>String(error?.message||error||'autonomous_step_failed').replace(/[^a-z0-9_]/gi,'_').slice(0,90);
