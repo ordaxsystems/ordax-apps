@@ -801,7 +801,11 @@ export class EmbeddedChatWorker {
       const latestUserExpandControlPresent = Boolean(latestUserNode && Array.from(latestUserNode.querySelectorAll('button,[role="button"]')).some(control =>
         /^(Mostrar mais|Show more|Mostrar menos|Show less)$/i.test(String(control.innerText || control.textContent || control.getAttribute('aria-label') || '').trim())
       ));
-      const latestUserText = String(latestUserNode?.innerText || latestUserNode?.textContent || '').trim();
+      ${providerHistoricalUserTextBootstrap}
+      const latestAuthored=readProviderHistoricalUserText(latestUserNode);
+      const latestUserText=latestAuthored.complete
+        ?latestAuthored.text
+        :String(latestUserNode?.innerText || latestUserNode?.textContent || '').trim();
       const imageData = img => ({ src: img.currentSrc || img.src || '', alt: img.alt || '', width: img.naturalWidth || 0, height: img.naturalHeight || 0 });
       const validImage = (img, min) => Boolean(img.src) && (img.width >= min || img.height >= min || img.src.includes('images.openai.com'));
       const generatedImages = Array.from(document.querySelectorAll('[data-testid="generated-image-preview"] img')).map(imageData).filter(img => validImage(img, 64));
@@ -989,6 +993,7 @@ export class EmbeddedChatWorker {
       const composer = ${composerExpression()};
       const text = composer ? ('value' in composer ? composer.value : (composer.innerText || composer.textContent || '')) : '';
       ${providerMessageQueryBootstrap}
+      ${providerHistoricalUserTextBootstrap}
       const userNodes = queryProviderMessageNodes(document,'user',providerMessageSelectors);
       const latestUserNode = userNodes.at(-1) || null;
       const latestUserExpandControlPresent = Boolean(latestUserNode && [...latestUserNode.querySelectorAll('button,[role="button"]')].some(control =>
@@ -997,7 +1002,8 @@ export class EmbeddedChatWorker {
       return {
         composerText:String(text || ''),
         userCount:userNodes.length,
-        latestUserText:String(latestUserNode?.innerText || latestUserNode?.textContent || ''),
+        latestUserText:(()=>{const authored=readProviderHistoricalUserText(latestUserNode);
+          return authored.complete?authored.text:String(latestUserNode?.innerText || latestUserNode?.textContent || '');})(),
         latestUserMessageId:String(latestUserNode?.getAttribute('data-chatgpt-selection-message-id')||latestUserNode?.getAttribute('data-message-id')||''),
         latestUserExpandControlPresent,
         url:location.href

@@ -4,6 +4,17 @@
 
 **Próxima implementação elegível:** conectar o diagnóstico automático às fontes GitHub realmente autorizadas pela Platform, com snapshots limitados e orçamento explícito; ampliar cobertura para branches, PRs e checks somente se a porta autorizada oferecer essas operações. Não criar OAuth/token store próprio. Até existir esse gate, o app pode analisar somente frentes locais e deve mostrar que faltam evidências remotas. Depois, avançar para coordenação real de executores com receipts. Não certificar headless, Aura, verificação independente de trabalho GPT ou autonomia sem prova; não criar PR concorrente com trabalho do engenheiro responsável.
 
+## Checkpoint físico — confirmação de envio GPT com código inline (02/11/2026)
+
+- **SSOT de execução:** `ordaxsystems/ordax-apps/main@19fd078d13feb00e5e97933c8dbeb9dbe18c7bcd`, instalado fisicamente na pasta única Windows em `DESKTOP-4UFL03B`; checkout inicial limpo, zero PRs abertas desse fluxo, SQLite íntegro, 1 projeto.
+- **E2E livre de marcadores:** após cessar `backend_http_429_observed`, uma missão técnica real foi admitida e chegou ao formulário GPT Web. O Run de envio (terceiro Run do perfil) terminou `submit:send_confirmation_unknown`, `provider_delivery_state=uncertain`; missão `reconciliation_required`. Há intenção canônica persistida, mas não recibo de entrega/Run bem-sucedido. **Nenhum reenvio** ou segunda mensagem, sem forçar reconciliação.
+- **Causa raiz comprovada por inspeção física somente leitura:** `messages.content` (prompt do Run) tem 1.748 caracteres e SHA-256 idêntico ao `provider.submission.intent.prompt_sha256`. O ChatGPT renderizou a mensagem em `.whitespace-pre-wrap` com sete elementos `<code>` diretos, retirando os 14 caracteres de delimitadores de crase. `innerText`/`textContent` têm 1.734 caracteres; um diff por LCS apontou precisamente 14 remoções de pontuação, sem inserções. A igualdade textual excluindo crases foi usada **somente no diagnóstico**, não como autorização de envio.
+- **Correção candidata no único branch `fix/orchestrator-inline-code-provider-receipt-20261102`:** `readProviderHistoricalUserText`, SSOT para mensagem do autor, reconstrói delimitadores SOMENTE quando a árvore contém texto e CODE inline diretos, cada CODE com um único nó textual e nenhum delimitador embutido. Demais estruturas permanecem `complete:false`. `embedded-worker` usa o mesmo extrator na confirmação do submit, na associação da resposta e no histórico. Sem heurística de semelhança e sem duplicar transporte/Store.
+- **Prova física sem modificação do app:** executei a função candidata sobre o DOM real existente por leitura CDP. Reconstituiu 1.748 caracteres e **SHA-256 exatamente igual ao da intenção canônica**; zero envio GPT novo. Teste inicial do extrator/recibo **26/26** aprovado, suíte estendida em verificação.
+- **Gates seguintes:** CI Foundation, Isolation e owned-Windows; após merge, instalar SOMENTE artefato final da main; reconciliar o Run existente exclusivamente se o observador canônico verificar mensagem única, mesmo chat e resposta completa. Não reenviar a missão incerta. Marcar autonomia Groq→GPT→Groq apenas se o ciclo for efetivamente comprovado por recibos persistidos, incluindo revisão Groq.
+
+---
+
 ## Gate físico Groq de proposta — falha observada e correção candidata (02/11/2026)
 
 - **Versão instalada, validada:** `ordax-apps/main@f3d04aa34c30bddc6e1c163eeae067995d36be45`; CI da main Foundation, Isolation e owned-Windows verdes; artefato assinado por recibos de integridade instalado na pasta Windows canônica, único perfil intacto.
