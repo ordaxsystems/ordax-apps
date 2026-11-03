@@ -67,9 +67,18 @@ async function verifyHostFixture({child,root,profile,exchange}) {
       return {...body,signature:createHmac('sha256',key).update(canonical(body)).digest('hex')};
     };
     const projects=await exchange(request('projects_list'));
-    if(projects.ok!==true||projects.result?.projects?.length!==1||
-      projects.result.projects[0].name!=='Projeto E2E isolado')throw Error('host_shared_project_missing');
-    const projectId=projects.result.projects[0].id;
+    const rows=projects.result?.projects||[];
+    const original=rows.find(p=>p.name==='Projeto E2E isolado');
+    const alternate=rows.find(p=>p.name==='Segundo projeto E2E');
+    if(projects.ok!==true||rows.length!==2||!original||!alternate||
+      original.id===alternate.id)throw Error('host_shared_project_missing');
+    const projectId=original.id;
+    // The Runtime host sees the SAME two projects the Electron app just
+    // created, and project isolation survives a real sidebar switch.
+    const alternateWorks=await exchange(request('work_list',{projectId:alternate.id}));
+    if(alternateWorks.ok!==true||alternateWorks.result?.works?.length!==1||
+      alternateWorks.result.works[0].title!=='Primeira frente')
+      throw Error('host_shared_project_missing');
     const works=await exchange(request('work_list',{projectId}));
     const workRows=works.result?.works||[];
     const mcpWork=workRows.find(work=>work.title==='Frente criada pelo MCP');

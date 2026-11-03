@@ -94,7 +94,20 @@ let cleanupFailurePhase=null;
       await new Promise(r=>setTimeout(r,100));}throw Error('ui_condition_timeout');})()`);
     phase='mission_project_selected';
     const projectId=await wait("document.getElementById('projectSelect').value");
-    const projectNavigation=await evaluate(`(()=>{const row=[...document.querySelectorAll('#projectNavList button')].find(b=>b.dataset.projectId==='${projectId}');return row?.getAttribute('aria-pressed')==='true'&&row?.textContent==='Projeto E2E isolado'})()`);
+    await wait("document.getElementById('activeProjectName').textContent==='Projeto E2E isolado'");
+    // The selected project owns the active card, not the list of OTHER
+    // projects. E2E must verify the new one-source UI contract, not the
+    // previous "legacy project" list that duplicated the selected project.
+    const projectNavigation=await evaluate(`(()=>{
+      const selector=document.getElementById('projectSelect');
+      const active=document.getElementById('activeProjectName');
+      const switcher=document.getElementById('projectSwitcher');
+      const others=[...document.querySelectorAll('#projectNavList button')];
+      return selector.value==='${projectId}' &&
+        selector.selectedOptions[0]?.textContent==='Projeto E2E isolado' &&
+        active.textContent==='Projeto E2E isolado' && switcher.hidden &&
+        others.length===0 && !!document.getElementById('quickNewProject');
+    })()`);
     if(!projectNavigation)throw Error('project_navigation_not_selected');
     phase='mission_persisted';
     await wait("document.getElementById('orchestrationNotice')?.textContent?.includes('Projeto e missão criados localmente')");
@@ -197,8 +210,65 @@ let cleanupFailurePhase=null;
     if(layoutResult.openedWork!=='Frente criada pela interface'||layoutResult.conversationCards!==2||
       layoutResult.analysisDisabled!==true)
       throw Error('work_conversation_layout_failed');
+    phase='project_switch_real';
+    // On the same packaged Electron profile, create a second project with
+    // the actual sidebar command and return to the first via its visible row.
+    // Neither operation contacts Groq, ChatGPT or an external MCP service.
+    phase='project_switch_reopen_admin';
+    await evaluate(`document.querySelector('#orchestratorNavList button.active').click()`);
+    await wait("!document.getElementById('orchestrationPanel').hidden");
+    phase='project_switch_create_second';
+    await evaluate(`(()=>{
+      const create=document.getElementById('quickNewProject');
+      if(getComputedStyle(create).display==='none')throw Error('project_create_not_visible');
+      create.click();
+      const f=document.getElementById('newProjectForm');
+      document.getElementById('projectName').value='Segundo projeto E2E';
+      document.getElementById('projectObjective').value='Verificar alternância sem enviar ao provedor';
+      f.requestSubmit();
+    })()`);
+    phase='project_switch_wait_second';
+    const secondProjectId=await wait("document.getElementById('activeProjectName').textContent==='Segundo projeto E2E'&&document.getElementById('projectSelect').value");
+    if(secondProjectId===projectId)throw Error('project_switch_not_isolated');
+    phase='project_switch_verify_second';
+    const secondSelected=await evaluate(`(()=>{
+      const list=document.querySelectorAll('#projectNavList button');
+      const previous=[...list].find(b=>b.dataset.projectId==='${projectId}');
+      return !document.getElementById('projectSwitcher').hidden&&
+        list.length===1&&previous?.textContent==='Projeto E2E isolado'&&
+        document.getElementById('activeProjectName').textContent==='Segundo projeto E2E';
+    })()`);
+    if(!secondSelected)throw Error('project_switch_not_isolated');
+    // Read only the currently selected project's Work set. Cross-project
+    // reads must never be used to relax the canonical scope gate in tests.
+    phase='project_switch_verify_second_work';
+    const alternateWorks=await evaluate(`(async()=>{
+      const selected=document.getElementById('projectSelect').value;
+      const works=(await window.ordax.orchestratorInvoke('work_list',{projectId:selected})).works;
+      return works?.map(work=>work.title);
+    })()`);
+    if(!Array.isArray(alternateWorks)||alternateWorks.length!==1||
+      alternateWorks[0]!=='Primeira frente')throw Error('project_switch_not_isolated');
+    phase='project_switch_return_first';
+    await evaluate(`document.querySelector('#projectNavList button').click()`);
+    await wait(`document.getElementById('projectSelect').value==='${projectId}'&&
+      document.getElementById('activeProjectName').textContent==='Projeto E2E isolado'&&
+      !document.getElementById('orchestrationPanel').hidden`);
+    phase='project_switch_verify_first';
+    const restored=await evaluate(`(async()=>{
+      const selected=document.getElementById('projectSelect').value;
+      const first=(await window.ordax.orchestratorInvoke('work_list',{projectId:selected})).works;
+      return {first:first.map(w=>w.title),
+        otherVisible:[...document.querySelectorAll('#projectNavList button')].some(b=>b.dataset.projectId==='${secondProjectId}')};
+    })()`);
+    if(!Array.isArray(restored?.first)||restored.first.length!==3||
+      !restored.first.includes('Primeira frente')||
+      !restored.first.includes('Frente criada pelo MCP')||
+      !restored.first.includes('Frente criada pela interface')||!restored.otherVisible)
+      throw Error('project_switch_lost_scoped_work');
     successReport={schema:'ordax.lab.orchestration-app-e2e.v1',ok:true,
       appMode:true,runtimeVerified:true,toolCount:summary.toolCount,sharedStateVerified:true,
+      projectSwitchVerified:true,
       projectFormVerified:true,missionDraftPersisted:true,missionStartBlockedWithoutSession:true,
       globalSettingsWithoutProjectVerified:true,coordinatorFormVerified:true,workVisibleInApp:true,
       projectNavigationVerified:true,coordinatorWorkspaceVerified:true,workConversationUiVerified:true,
