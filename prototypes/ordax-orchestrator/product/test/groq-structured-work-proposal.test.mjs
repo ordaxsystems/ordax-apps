@@ -102,3 +102,23 @@ test('ordinary Groq coordinator remains natural language without JSON format',as
   const {content}=await adapter.send({...args,prepareWork:false});
   assert.match(content,/exige prova externa/);
 });
+
+test('semantic technical review has dedicated bounded Groq reasoning budget and no hidden retry',async t=>{
+  const f=setup(t),args=await f.ids();
+  let requests=0;
+  const groq=createGroqCoordinatorConversation({store:f.store,getApiKey:()=> 'fixture-secret',
+    isEnabled:()=>true,fetchImpl:async (_url,options)=>{
+      requests++;
+      const body=JSON.parse(options.body);
+      assert.equal(body.max_completion_tokens,2600);
+      assert.equal(body.reasoning_effort,'low');
+      assert.equal(body.response_format,undefined);
+      assert.equal(body.tools,undefined);
+      return apiResponse('A resposta técnica está observada; sem recibos Git não há conclusão.');
+    }});
+  const result=await groq.send({...args,prepareWork:false,completionProfile:'technical_review',
+    analysisContext:{phase:'gpt_response_review',reviewEvidence:{answerStart:'Trecho técnico real'}}});
+  assert.match(result.content,/sem recibos Git/);
+  assert.equal(requests,1);
+  await assert.rejects(groq.send({...args,completionProfile:'unbounded'}),/orchestrator_completion_profile_invalid/);
+});

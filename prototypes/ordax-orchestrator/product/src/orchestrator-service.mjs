@@ -1289,7 +1289,7 @@ export class OrchestratorService {
         draftRevision:sendInput.draftRevision??null,
         taskKind:isWorkSend?'work':null,
         mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork,
-        workspaceObservation,repositoryUrl});
+        completionProfile:reviewSource?'technical_review':'standard',workspaceObservation,repositoryUrl});
       this.requireAccess(context,operation,input.projectId);
       if(!usesProvider) {
         // Pause can happen during the external Groq await. A durable receipt
