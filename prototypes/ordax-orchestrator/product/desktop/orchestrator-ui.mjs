@@ -1613,8 +1613,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       renderProjectNavigation(projects);
       syncProjectRepository();
       const items=await refreshOrchestrators();
-      const shouldRestoreTask=saved?.view==='task'&&typeof saved.taskId==='string'&&saved.taskId.length>0;
-      if(items.length&&!shouldRestoreTask&&saved?.view!=='home')await showCoordinator();
+      // The administrative Orchestrator is the canonical landing workspace.
+      // Persisted GPT Task identity stays in SQLite and its scoped Work list,
+      // but a cold start must never silently restore the executor as main chat.
+      if(items.length&&chatTaskId)await showCoordinator();
       else if(!items.length)await onNavigationChange?.({view:'home',projectId,orchestratorId:null,taskId:null});
       // One bounded read-only reconciliation after reopening the same project.
       // Never silently activate a scheduler, provider or foreign repository.

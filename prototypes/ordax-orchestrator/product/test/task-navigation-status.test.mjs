@@ -58,6 +58,27 @@ test('W3 provider errors do not print arbitrary URLs or session details in the A
   assert.doesNotMatch(result.message,/token|private|https:/i);
 });
 
+test('unresponsive GPT composer is explained without raw codes, retry or fake delivery',()=>{
+  const failure=taskNavigationStatus({
+    provider_navigation:'failed',
+    provider_navigation_reason:'provider_composer_observation_timeout'
+  });
+  assert.equal(failure.reason,'provider_composer_observation_timeout');
+  assert.equal(failure.threadRendered,'false');
+  assert.match(failure.message,/verificação de segurança do campo de mensagem/i);
+  assert.match(failure.message,/preservar qualquer rascunho/i);
+  assert.match(failure.message,/não enviou mensagens/i);
+  assert.doesNotMatch(failure.message,/provider_composer_observation_timeout|https:\/\//);
+  const afterReply=taskNavigationStatus({
+    provider_navigation:'post_commit_failed',
+    provider_navigation_reason:'provider_composer_observation_timeout'
+  });
+  assert.equal(afterReply.reason,'provider_composer_observation_timeout');
+  assert.match(afterReply.message,/resposta do GPT já foi registrada/i);
+  assert.match(afterReply.message,/nenhuma mensagem foi reenviada/i);
+  assert.doesNotMatch(afterReply.message,/provider_composer_observation_timeout|Esta ação não enviou mensagens/);
+});
+
 test('W3 local task load and successful navigation do not assert remote answer', () => {
   assert.equal(taskNavigationStatus({title:'Local'}),null);
   assert.equal(taskNavigationStatus({provider_navigation:'navigated'}),null);

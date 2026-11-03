@@ -85,12 +85,21 @@ test('Electron and Host expose the same validated workspace navigation command',
   assert.match(hostServer,/setWorkspaceNavigation:\['ordax:workspace:navigation:set',a=>\[a\[0\]\]\]/);
 });
 
-test('startup restores scoped navigation before deciding whether to show the coordinator',()=>{
+test('cold start preserves project selection but presents Orchestrator before any GPT executor',()=>{
   const ui=readFileSync(new URL('../desktop/orchestrator-ui.mjs',import.meta.url),'utf8');
   const renderer=readFileSync(new URL('../desktop/ui.js',import.meta.url),'utf8');
   assert.match(ui,/async start\(\{restoreNavigation=null\}=\{\}\)/);
   assert.match(ui,/projectId=projects\.some\(project=>project\.id===saved\?\.projectId\)/);
-  assert.match(ui,/shouldRestoreTask=saved\?\.view==='task'/);
+  assert.match(ui,/if\(saved\?\.projectId===projectId\)orchestratorId=saved\.orchestratorId\|\|null/);
+  assert.match(ui,/if\(items\.length&&chatTaskId\)await showCoordinator\(\)/);
+  assert.doesNotMatch(ui,/shouldRestoreTask=saved\?\.view==='task'/);
   assert.match(renderer,/orchestrationUi\.start\(\{restoreNavigation:savedNavigation\}\)/);
-  assert.match(renderer,/if\(inScope\)await openTask\(task\.id\)/);
+  const start=renderer.indexOf('const savedNavigation=workspace?.metadata?.navigation;');
+  const end=renderer.indexOf('refreshProvider();',start);
+  assert.ok(start>=0&&end>start,'cold start must have an explicit bounded destination');
+  const coldStart=renderer.slice(start,end);
+  assert.doesNotMatch(coldStart,/openTask\(/,'never navigate to a GPT Task on cold start');
+  assert.doesNotMatch(coldStart,/providerNavigation\(/,'never navigate to ChatGPT on cold start');
+  assert.match(renderer,/onOpenWork:async id=>\{await loadTasks\(\);await openTask\(id\);\}/,
+    'GPT Tasks are still explicitly inspectable through Mission navigation');
 });
