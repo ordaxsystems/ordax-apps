@@ -1008,6 +1008,56 @@ test('Groq rejected and uncertain requests never reroute to GPT Web',async t=>{
   }
 });
 
+test('canonical Groq receipts store only allowlisted finish diagnostics and never retry',async t=>{
+  const scenarios=[
+    {code:'groq_incomplete_response',reason:'length',tokens:3599,budget:3600},
+    {code:'groq_response_filtered',reason:'content_filter',tokens:6,budget:3600},
+    {code:'groq_unexpected_tool_call',reason:'tool_calls',tokens:15,budget:3600},
+    {code:'groq_incomplete_response',reason:'secret_injection_123',
+      tokens:1000000001,budget:1000000001}
+  ];
+  for(const [i,scenario] of scenarios.entries()){
+    let groqSends=0,gptSends=0;
+    const f=fixture(t,{provider:{send:async()=>{gptSends++;throw Error('GPT_send_forbidden');}},
+      coordinator:{available:()=>true,send:async()=>{
+        groqSends++;
+        const error=Error('groq_provider_private_response_never_persist');
+        error.orchestratorFailureCode=scenario.code;
+        error.orchestratorRequestOutcome='response_invalid';
+        error.orchestratorFinishReason=scenario.reason;
+        error.orchestratorCompletionTokens=scenario.tokens;
+        error.orchestratorCompletionBudget=scenario.budget;
+        throw error;
+      }}});
+    const a=await project(f);
+    f.store.setDraft(a.chat,'Analise esta tarefa sem criar uma conversa GPT.',1);
+    const input={requestId:'groq_diagnostic_'+i,projectId:a.p,orchestratorId:a.o,
+      content:'Analise esta tarefa sem criar uma conversa GPT.',draftRevision:1};
+    const receipt=await f.call('orchestrator_chat',input);
+    assert.equal(receipt.status,'failed');
+    assert.equal(receipt.result.reason,'coordinator_request_failed');
+    assert.equal(receipt.result.failureCode,scenario.code);
+    const accepted=['length','content_filter','tool_calls','function_call','unknown']
+      .includes(scenario.reason);
+    assert.equal(receipt.result.finishReason,accepted?scenario.reason:undefined);
+    assert.equal(receipt.result.completionTokens,
+      scenario.tokens<=1000000?scenario.tokens:undefined);
+    assert.equal(receipt.result.completionBudget,
+      scenario.budget<=1000000?scenario.budget:undefined);
+    assert.doesNotMatch(JSON.stringify(receipt),/provider_private|secret_injection/);
+    assert.equal(groqSends,1);
+    assert.equal(gptSends,0);
+    assert.deepEqual(await f.call('orchestrator_chat',input),receipt,
+      'a rejected coordinator response must be idempotent');
+    assert.equal(groqSends,1);
+    const saved=f.store.db.prepare('SELECT status,result FROM lab_command_receipts WHERE request_id=?')
+      .get(input.requestId);
+    assert.equal(saved.status,'failed');
+    assert.deepEqual(JSON.parse(saved.result),receipt.result);
+    assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+  }
+});
+
 test('backend serializes Groq chat, analysis and proposals on one Task without starving another project',async t=>{
   let release,entered,groqCalls=0,heldProjectId=null;
   const started=new Promise(resolve=>{entered=resolve;});

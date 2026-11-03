@@ -712,6 +712,15 @@ test('coordinator shows an actionable empty state and keeps mobile controls insi
   assert.match(css,/body:not\(\.orchestrator-focus\) \.left-rail \.orchestration-navigation \.nav-item:not\(\.active\),\s*body:not\(\.orchestrator-focus\) \.left-rail \.orchestration-navigation \.nav-empty\{display:none\}/);
 });
 
+test('Groq finish diagnostics are actionable without revealing raw provider content',()=>{
+  const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.match(orchestration,/groq_response_filtered:/);
+  assert.match(orchestration,/groq_unexpected_tool_call:/);
+  assert.match(orchestration,/diagnostics\.finishReason==='length'/);
+  assert.match(orchestration,/Nenhuma resposta parcial foi aceita ou enviada ao GPT/);
+  assert.match(orchestration,/const failureCode=receipt\.result\?\.failureCode/);
+});
+
 test('startup Task restoration initializes its controls before the first await',()=>{
   const controls=ui.indexOf("const labRoleSelect=document.getElementById('labSupervisorRole')");
   const listener=ui.indexOf("labRoleSelect.addEventListener('change'");

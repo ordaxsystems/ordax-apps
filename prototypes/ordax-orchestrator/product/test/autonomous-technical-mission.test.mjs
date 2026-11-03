@@ -12,7 +12,7 @@ const quote='nenhuma alteração externa foi comprovada';
 const response='O GPT investigou o código e propôs alterações e testes de regressão; nenhuma alteração externa foi comprovada. A validação de efeito deve ser realizada separadamente.';
 const instruction='Revise o resultado observado, defina se continua na conversa ou exige outra frente, e produza provas verificáveis.';
 
-function fixture(t,{first='continue_same_conversation',last='verify_external_effect',providerFailure=null,lateResponseAt=null,groqTruncateReviews=[],groqInvalidEvidenceReviews=[],holdAfterFirstReview=false,holdProviderBusyAfterFirstSend=false,
+function fixture(t,{first='continue_same_conversation',last='verify_external_effect',providerFailure=null,lateResponseAt=null,groqTruncateReviews=[],groqFilteredReviews=[],groqInvalidEvidenceReviews=[],holdAfterFirstReview=false,holdProviderBusyAfterFirstSend=false,
   holdProviderBusyAfterSecondSend=false,maxExpectedSends=2}={}){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-semantic-mission-'));
   const store=new Store(path.join(dir,'canonical.sqlite'));
@@ -33,10 +33,15 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
       }
       reviews++;
       assert.equal(completionProfile,'technical_review');
-      if(groqTruncateReviews.includes(reviews)){
-        const error=Error('groq_incomplete_response');
-        error.orchestratorFailureCode='groq_incomplete_response';
+      if(groqTruncateReviews.includes(reviews)||groqFilteredReviews.includes(reviews)){
+        const filtered=groqFilteredReviews.includes(reviews);
+        const code=filtered?'groq_response_filtered':'groq_incomplete_response';
+        const error=Error(code);
+        error.orchestratorFailureCode=code;
         error.orchestratorRequestOutcome='response_invalid';
+        error.orchestratorFinishReason=filtered?'content_filter':'length';
+        error.orchestratorCompletionTokens=filtered?14:3599;
+        error.orchestratorCompletionBudget=3600;
         throw error;
       }
       assert.equal(analysisContext.phase,'gpt_response_review');
@@ -709,6 +714,31 @@ test('repeated invalid final Groq citation stays quarantined after restart',asyn
   assert.deepEqual(f.metrics(),{plans:1,reviews:3,sends:2});
   assert.equal(f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE request_id=?')
     .get('technical_'+pending.missionId+'_final_recovery').status,'failed');
+});
+
+test('filtered Groq review is quarantined and never repeated after restart',async t=>{
+  const f=fixture(t,{first:'verify_external_effect',groqFilteredReviews:[1]}),ids=await f.setup();
+  await f.start(ids);
+  const pending=await f.waitFor(ids,['reconciliation_required']);
+  assert.equal(pending.lastError,'autonomous_semantic_review_unconfirmed');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:1});
+  const requestId='technical_'+pending.missionId+'_a';
+  const first=f.store.db.prepare('SELECT status,result FROM lab_command_receipts WHERE request_id=?')
+    .get(requestId);
+  assert.equal(first.status,'failed');
+  const result=JSON.parse(first.result);
+  assert.equal(result.failureCode,'groq_response_filtered');
+  assert.equal(result.finishReason,'content_filter');
+  assert.equal(result.completionTokens,14);
+  assert.equal(result.completionBudget,3600);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  assert.equal(restored.autonomous.status(f.context,ids).mission.state,'reconciliation_required');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id=?')
+    .get(requestId+'_recovery').n,0);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:1});
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
 test('terminal truncated Groq review can recover once without replaying the GPT Run',async t=>{

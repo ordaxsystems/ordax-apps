@@ -673,6 +673,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         groq_request_rejected:'Groq recusou a solicitação. Confira o modelo e a configuração da API.',
         groq_invalid_response:'Groq retornou uma resposta inválida; o app não a aceitou.',
         groq_incomplete_response:'Groq encerrou a resposta antes de concluí-la; o app não a aceitou.',
+        groq_response_filtered:'A resposta do Groq foi interrompida pelo filtro do provedor. Não foi aceita nem repetida.',
+        groq_unexpected_tool_call:'Groq tentou concluir com uma ação não solicitada. O app não executou ferramentas nem aceitou a resposta.',
         groq_invalid_work_proposal:'Groq não retornou uma proposta de frente válida; nenhuma frente foi criada.',
         chatgpt_auth_rejected:'A autorização do ChatGPT Plan foi rejeitada. Reconecte a conta e tente novamente.',
         chatgpt_access_denied:'A política de acesso ao plano ChatGPT impediu a solicitação. Nenhuma resposta foi registrada.',
@@ -685,7 +687,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         chatgpt_invalid_response:'O ChatGPT retornou uma resposta inválida; o app não a aceitou.',
         chatgpt_invalid_work_proposal:'O ChatGPT não retornou uma proposta válida; nenhuma frente foi criada.'
       };
-      status(failures[receipt.result?.failureCode]||'A solicitação falhou e não foi repetida. Confira a configuração e tente novamente quando estiver pronta.');
+      const diagnostics=receipt.result||{};
+      const groqLength=diagnostics.failureCode==='groq_incomplete_response'&&
+        diagnostics.finishReason==='length';
+      status(groqLength
+        ?'Groq atingiu o limite de geração antes de concluir a resposta. Nenhuma resposta parcial foi aceita ou enviada ao GPT.'
+        :failures[diagnostics.failureCode]||
+          'A solicitação falhou e não foi repetida. Confira a configuração e tente novamente quando estiver pronta.');
     } else {
       const failureCode=receipt.result?.failureCode||'';
       const provider=failureCode.startsWith('chatgpt_')?'ChatGPT Plan':'Groq';
