@@ -106,6 +106,7 @@ export class AutonomousDialogue {
     let decision=null;
     if(semanticReview){try{decision=JSON.parse(semanticReview);}catch{}}
     return {missionId:row.id,projectId:row.project_id,orchestratorId:row.orchestrator_id,
+      mission:row.mission,
       mode:story?'story':semantic?'technical':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,quality,reviewTasks,
       state:row.state,maxGPTSends:story?STORY_TURNS:row.max_gpt_sends,taskAId:row.task_a_id,taskBId:row.task_b_id,
       originMissionId:semantic?row.origin_mission_id||null:null,

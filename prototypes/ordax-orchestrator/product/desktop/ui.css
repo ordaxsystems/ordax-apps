@@ -848,3 +848,137 @@ body.orchestrator-focus #orchestratorWorkRail{display:flex!important;padding:19p
 body.orchestrator-focus .left-rail .new-task,
 body.orchestrator-focus .left-rail .search-wrap,
 body.orchestrator-focus .left-rail .tasks-wrap{display:none!important}
+
+
+/* Command centre — one existing Store, no fabricated agent/progress state. */
+body.orchestrator-focus{
+  --bg:#131313;--panel:#19191a;--panel-2:#222123;--panel-3:#2b292a;
+  --border:#423d3d;--border-soft:#333030;--border-strong:#68544e;
+  --text:#f2f0ee;--muted:#aaa5a4;--muted-2:#8e8887;
+  --accent:#df9f87;--accent-ink:#221716;--focus:#eeab91;
+}
+body.orchestrator-focus .app-shell{grid-template-columns:265px minmax(390px,1fr) minmax(320px,385px)}
+body.orchestrator-focus .left-rail{background:#181818;border-right:1px solid #383333}
+body.orchestrator-focus .brand-row{padding-bottom:20px;border-bottom:1px solid var(--border-soft)}
+body.orchestrator-focus .brand-copy h1{font-size:18px;letter-spacing:-.035em}
+body.orchestrator-focus .project-identity{padding:14px;border:1px solid #73594e;border-radius:13px;background:linear-gradient(115deg,#332724,#211e1e)}
+body.orchestrator-focus .project-identity-kicker{color:#dcaa95}
+body.orchestrator-focus .workspace-modes{margin-top:14px}
+body.orchestrator-focus .workspace-mode{border-radius:11px}
+body.orchestrator-focus .workspace-mode[aria-pressed="true"]{background:#302522;border-color:#8c5c49}
+body.orchestrator-focus .coordinator-head{background:#181818;min-height:106px;padding:22px 25px}
+body.orchestrator-focus .coordinator-avatar{border-color:#ac7564;background:#352725;color:#e6a58c}
+body.orchestrator-focus .coordinator-title h2{font-size:22px;letter-spacing:-.025em}
+body.orchestrator-focus .coordinator-title p{font-size:12px}
+body.orchestrator-focus .coordinator-transport{background:#1b1a1a}
+body.orchestrator-focus .orchestration-panel{background:#151515}
+body.orchestrator-focus #contextRail{border-left:1px solid #393334;background:#181818}
+body.orchestrator-focus #contextRail>.right-pane-tabs{display:none!important}
+body.orchestrator-focus #contextRail>:not(#contextPanel):not(#executionOverview){display:none!important}
+body.orchestrator-focus #contextRail #contextPanel{display:none!important}
+body.orchestrator-focus #contextRail #executionOverview{display:flex!important}
+body.orchestrator-focus.orchestrator-rail-open #contextRail #executionOverview{display:none!important}
+body.orchestrator-focus.orchestrator-rail-open #contextRail #contextPanel{display:flex!important;overflow:hidden;padding:0}
+body.orchestrator-focus #contextPanel>:not(#orchestratorWorkRail){display:none!important}
+body.orchestrator-focus #orchestratorWorkRail{display:flex!important;padding:18px 15px}
+.execution-overview{flex:1;min-width:0;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:22px;padding:24px 19px 24px;scrollbar-gutter:stable}
+.execution-overview[hidden]{display:none}
+.execution-overview-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.command-eyebrow{display:block;color:#dba78e;font-size:9px;font-weight:750;letter-spacing:.14em;margin-bottom:10px}
+.execution-overview-head h2{font-size:22px;line-height:1.2;margin:0 0 5px;letter-spacing:-.03em}
+.execution-overview-head p{color:var(--muted);font-size:11px;line-height:1.45;margin:0}
+.execution-overview-head button{width:34px;height:34px;flex:none;background:#292626;border:1px solid #4b4240;border-radius:9px;color:var(--text);cursor:pointer;font-size:19px}
+.execution-overview-head button:disabled{opacity:.5;cursor:wait}
+.execution-mission-card{border:1px solid #4a403d;background:linear-gradient(145deg,#282323,#1e1d1d);border-radius:13px;padding:15px}
+.execution-mission-label{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:740}
+.execution-mission-icon{display:grid;place-items:center;color:#dfa68c;font-size:22px}
+.execution-badge{margin-left:auto;border:1px solid #514943;background:#32302b;border-radius:99px;padding:5px 8px;line-height:1.1;font-size:10px;color:#d6c2ae;white-space:nowrap}
+.execution-badge[data-state="running"]{border-color:#477358;color:#9ee1b7;background:#243a2c}
+.execution-badge[data-state="attention"]{border-color:#866746;color:#f2c38a;background:#342b23}
+.execution-badge[data-state="blocked"]{border-color:#864d4d;color:#ebaaa3;background:#352323}
+.execution-mission-card h3{margin:16px 0 8px;font-size:16px;line-height:1.35;overflow-wrap:anywhere}
+.execution-mission-card p{margin:0;color:var(--muted);font-size:11px;line-height:1.6;overflow-wrap:anywhere}
+.execution-mission-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-top:15px;padding-top:14px;border-top:1px solid #473b37}
+.execution-mission-metrics span{display:grid;gap:3px;color:var(--muted);font-size:10px}
+.execution-mission-metrics strong{font-size:20px;color:var(--text);font-variant-numeric:tabular-nums}
+.execution-monitor-section{display:grid;gap:11px;min-width:0}
+.execution-section-heading{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.execution-section-heading h3{margin:0;font-size:13px;font-weight:740}
+.execution-section-heading button{background:transparent;border:0;color:#e2aa91;padding:5px;cursor:pointer;font-size:11px}
+.execution-work-list{display:grid;gap:7px;min-width:0}
+.execution-work-item{width:100%;display:grid;grid-template-columns:25px minmax(0,1fr) auto;align-items:center;gap:10px;text-align:left;padding:12px 10px;border:1px solid #393536;border-radius:10px;background:#242122;cursor:pointer}
+.execution-work-item:hover{border-color:#9b6d5c;background:#2b2524}
+.execution-work-item .execution-work-symbol{display:grid;place-items:center;width:25px;height:25px;border-radius:8px;background:#342b29;color:#dda48a;font-size:14px}
+.execution-work-item .execution-work-copy{display:grid;gap:4px;min-width:0}
+.execution-work-item strong{color:var(--text);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.execution-work-item small{color:var(--muted);font-size:10px}
+.execution-work-item .execution-work-state{color:#d0b9a8;font-size:10px;white-space:nowrap}
+.execution-work-item[data-state="running"] .execution-work-state{color:#a0ddb5}
+.execution-work-item[data-state="attention"] .execution-work-state{color:#f0c087}
+.execution-empty{margin:0;padding:18px 13px;border:1px dashed #4d4441;border-radius:11px;color:var(--muted);font-size:11px;line-height:1.55}
+.execution-activity{padding:0 0 0 16px;margin:0;display:grid;gap:12px;border-left:1px solid #504442;list-style:none}
+.execution-activity li{position:relative;display:grid;gap:4px;margin-left:2px;color:var(--muted);font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+.execution-activity li:before{content:"";position:absolute;left:-23px;top:6px;width:8px;height:8px;border-radius:50%;background:#c3927f;box-shadow:0 0 0 3px #221b1b}
+.execution-activity li strong{color:var(--text);font-weight:700}
+.execution-monitor-details{border-top:1px solid #3e3635;padding-top:12px;color:var(--muted);font-size:11px;line-height:1.6}
+.execution-monitor-details summary{cursor:pointer;color:#ddae99}
+.execution-monitor-details p{margin:8px 0 0}
+body.orchestrator-focus .orchestration-integrations:not([open]){border-bottom:1px solid var(--border-soft)}
+@media(max-width:1180px) and (min-width:1025px){
+ body.orchestrator-focus .app-shell{grid-template-columns:225px minmax(385px,1fr) minmax(300px,340px)}
+ .execution-overview{padding:18px 13px}
+}
+@media(max-width:1024px){
+ body.orchestrator-focus .app-shell{grid-template-columns:220px minmax(0,1fr)}
+ body.orchestrator-focus #contextRail.open{display:flex}
+}
+@media(max-width:820px){
+ body.orchestrator-focus .app-shell{grid-template-columns:minmax(0,1fr)}
+}
+
+
+/* Administrative channel stays primary; technical controls are accessible, not dominant. */
+body.orchestrator-focus .command-advanced{flex:none;border-bottom:1px solid var(--border-soft);background:#191818}
+body.orchestrator-focus .command-advanced>summary{cursor:pointer;padding:10px 25px;color:#c8b2a9;font-size:11px;font-weight:650;list-style:none}
+body.orchestrator-focus .command-advanced>summary::before{content:"▸";color:#dd9e85;margin-right:8px}
+body.orchestrator-focus .command-advanced[open]>summary::before{content:"▾"}
+body.orchestrator-focus .command-advanced>summary::-webkit-details-marker{display:none}
+body.orchestrator-focus .command-advanced .project-pulse{max-height:32vh;overflow:auto}
+body.orchestrator-focus .coordinator-messages{padding:24px 30px;gap:15px}
+body.orchestrator-focus .coordinator-message{background:#242222;border-color:#3c3635;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.1)}
+body.orchestrator-focus .coordinator-message strong{color:#dca58d}
+body.orchestrator-focus .coordinator-message p{color:#eae6e2}
+body.orchestrator-focus #coordinatorComposer{background:#242121;border-color:#846050;box-shadow:0 8px 30px rgba(0,0,0,.24)}
+body.orchestrator-focus #coordinatorComposer textarea::placeholder{color:#9e9691}
+body.orchestrator-focus .coordinator-route-note{color:#948c88}
+body.orchestrator-focus .coordinator-proposal{border-color:#685248;background:#272321}
+body.orchestrator-focus .workspace-mode-copy strong{font-weight:700}
+body.orchestrator-focus .workspace-mode-symbol{color:#dfab94}
+@media(max-width:820px){
+ body.orchestrator-focus .workspace-modes{overflow-x:auto;scrollbar-width:thin}
+ body.orchestrator-focus .workspace-mode{flex:0 0 min(33vw,170px)}
+ body.orchestrator-focus .coordinator-messages{padding:13px}
+}
+
+
+/* The Missions route is a second workspace, not a narrow permanent sidebar. */
+@media(min-width:821px){
+ body.orchestrator-focus.orchestrator-rail-open #contextRail{
+   position:fixed!important;inset:0 0 0 265px!important;width:auto!important;
+   height:100vh;max-width:none;z-index:60;display:flex!important;
+   box-shadow:-15px 0 45px rgba(0,0,0,.42);
+ }
+ body.orchestrator-focus.orchestrator-rail-open #orchestratorWorkRail{width:100%;padding:24px clamp(18px,4vw,54px)}
+}
+@media(min-width:821px) and (max-width:1180px){
+ body.orchestrator-focus.orchestrator-rail-open #contextRail{left:225px!important}
+}
+@media(max-width:820px){
+ body.orchestrator-focus.orchestrator-rail-open #contextRail{
+   position:fixed!important;inset:62px 0 0!important;width:100vw!important;
+   display:flex!important;z-index:60;box-shadow:0 -10px 35px rgba(0,0,0,.35);
+ }
+}
+@media(max-width:620px){
+ body.orchestrator-focus.orchestrator-rail-open #contextRail{top:98px!important}
+}

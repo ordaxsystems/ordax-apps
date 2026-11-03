@@ -1324,9 +1324,12 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
     document.body.classList.add('orchestrator-focus');
     setWorkspaceRoute('coordinator');
     $('#orchestratorWorkRail').hidden=false;
-    // Hide the embedded GPT browser while speaking to Groq. The right rail is
-    // the project's work list, not a second input to a different model.
+    // The admin channel hides the GPT browser; the right pane displays
+    // the existing project's observed execution, never a second chat input.
     flushDraft();await selectRightPane('context');
+    // Responsive views must not open the operation rail over the admin chat.
+    if(window.matchMedia('(max-width:1024px)').matches)
+      $('#contextRail').classList.remove('open');
     currentTaskId=null;currentTask=null;navigationEpoch++;syncComposerAvailability();
     $('#taskPanel').classList.add('hidden');$('#empty').classList.add('hidden');
   }
