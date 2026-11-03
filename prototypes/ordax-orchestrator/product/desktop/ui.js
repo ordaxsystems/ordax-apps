@@ -2,11 +2,14 @@ import { renderLiveStage } from './ui-stage.mjs';
 import { providerComposeAvailability, canStartFreshProviderChat, COMPOSE_STATUS_MESSAGES } from '../src/provider-compose-availability.mjs';
 import { resolveProviderLoginAction } from '../src/provider-login-action.mjs';
 import { taskListStatusLabel, taskNavigationStatus } from '../src/task-navigation-status.mjs';
+import { reviewCandidateRun, confirmedRunReview } from '../src/run-review-eligibility.mjs';
 import { SUPERVISOR_ROLES, supervisorRole } from '../src/supervisor-role-presets.mjs';
 import { mountOrchestratorUi } from './orchestrator-ui.mjs';
 const $ = selector => document.querySelector(selector);
 let currentTaskId = null;
 let currentTask = null;
+let runReviewBusy = false;
+const runReviewAttempted = new Set();
 let pendingReplyRecovery=null;
 let workspace = null;
 let workspaceNavigationWrite=Promise.resolve();
@@ -666,6 +669,64 @@ function renderTaskNavigationStatus(task) {
   status.textContent=navigationStatus.message;
 }
 
+function syncRunReviewAction(task=currentTask) {
+  const binding=allTasks.find(item=>item.id===task?.id)?.lab_binding;
+  const runId=reviewCandidateRun({
+    task,binding,projectId:orchestrationUi?.getProjectId(),
+    orchestratorId:orchestrationUi?.getOrchestratorId()
+  });
+  const button=$('#reviewLatestRun'),panel=$('#runReviewActions');
+  panel.classList.toggle('hidden',!runId);
+  button.dataset.runId=runId||'';
+  button.disabled=!runId||runReviewBusy||runReviewAttempted.has(runId);
+  if(!runId)$('#runReviewState').textContent='';
+  else if(runReviewAttempted.has(runId)&&!$('#runReviewState').textContent)
+    $('#runReviewState').textContent='Revisão já solicitada nesta sessão. Consulte o histórico antes de repetir.';
+}
+
+$('#reviewLatestRun').addEventListener('click',async()=>{
+  const taskId=currentTaskId,task=currentTask,epoch=navigationEpoch;
+  const runId=reviewCandidateRun({
+    task,binding:allTasks.find(item=>item.id===taskId)?.lab_binding,
+    projectId:orchestrationUi?.getProjectId(),orchestratorId:orchestrationUi?.getOrchestratorId()
+  });
+  const button=$('#reviewLatestRun'),notice=$('#runReviewState');
+  if(!runId||runId!==button.dataset.runId||runReviewBusy||
+     runReviewAttempted.has(runId)||button.disabled)return;
+  // A second click, a late response or an unknown receipt cannot replay Groq.
+  runReviewAttempted.add(runId);
+  runReviewBusy=true;button.disabled=true;
+  notice.textContent='Solicitando revisão deste Run ao Groq. Nenhuma mensagem será enviada ao GPT.';
+  try {
+    const receipt=await orchestrationUi.reviewGptRun({taskId,runId});
+    if(epoch!==navigationEpoch||currentTaskId!==taskId)return;
+    if(!confirmedRunReview(receipt,runId)) {
+      notice.textContent='Revisão não confirmada para este Run. Consulte os recibos antes de tentar novamente.';
+      return;
+    }
+    const decision=receipt.result.reviewDecision;
+    const labels={
+      verify_external_effect:'verificar efeitos externos',
+      blocked:'aguardar dependência',
+      candidate_complete:'possível conclusão, ainda sem prova externa',
+      request_correction:'solicitar correção',
+      continue_same_conversation:'continuar conversa',
+      new_conversation:'nova conversa',
+      new_work:'nova frente'
+    };
+    notice.textContent='Revisão do Run '+runId.slice(0,12)+' confirmada: '+
+      (labels[decision.decision]||'decisão consultiva')+
+      '. Efeitos externos não verificados. Nenhum envio GPT autorizado.';
+  } catch {
+    if(epoch===navigationEpoch&&currentTaskId===taskId)
+      notice.textContent='Não foi possível confirmar a revisão. Confira o histórico antes de outra solicitação; nada será reenviado.';
+  } finally {
+    runReviewBusy=false;
+    if(epoch===navigationEpoch&&currentTaskId===taskId)button.disabled=true;
+    else if(currentTaskId)syncRunReviewAction(currentTask);
+  }
+});
+
 function clearLinkedReplyRecovery() {
   pendingReplyRecovery=null;
   const panel=$('#linkedReplyRecovery');
@@ -676,6 +737,8 @@ function clearLinkedReplyRecovery() {
 
 async function openTask(id) {
   clearLinkedReplyRecovery();
+  $('#runReviewActions').classList.add('hidden');
+  $('#runReviewState').textContent='';
   orchestrationUi?.hide();
   document.body.classList.remove('orchestrator-focus','orchestrator-rail-open');
   $('#contextRail').classList.remove('open');
@@ -745,6 +808,7 @@ async function openTask(id) {
   }
   await loadTasks();
   if(epoch!==navigationEpoch||currentTaskId!==id)return;
+  syncRunReviewAction(task);
   try {await persistWorkspaceNavigation({view:'task',taskId:id});}
   catch {$('#orchestrationNotice').textContent='A conversa abriu, mas a seleção não pôde ser salva para o próximo início.';}
 }
@@ -1220,6 +1284,7 @@ async function submitTaskMessage(contentOverride = null) {
       $('#taskCheckpoint').textContent = `Memória local v${version} • ${plural(task.continuation?.total_messages || task.messages.length, 'mensagem', 'mensagens')}`;
     }
     await loadTasks();
+    if(currentTaskId===taskId)syncRunReviewAction(currentTask);
     sent = true;
   } catch (error) {
     const message = friendlyError(error);
