@@ -1049,7 +1049,8 @@ test('Groq and ChatGPT workspaces have distinct visible destinations and fail-cl
   assert.match(uiHtml,/CONVERSA DE TRABALHO · CHATGPT WEB/);
   assert.match(uiHtml,/id="coordinatorComposer"/);
   assert.match(uiHtml,/id="composer"/);
-  assert.match(uiHtml,/Enviar à Groq/);
+  assert.match(uiHtml,/Enviar pedido/);
+  assert.match(uiHtml,/id="coordinatorChatOnly"/);
   assert.match(uiHtml,/Enviar ao GPT/);
   assert.match(ui,/setWorkspaceRoute\('coordinator'\)/);
   assert.match(ui,/setWorkspaceRoute\('gpt'\)/);
@@ -1079,11 +1080,18 @@ test('coordinator UI admits a single Groq chat or proposal while an async draft 
   assert.match(admission,/\$\('prepareWork'\)\.disabled=[^\n]*coordinatorSubmitting/);
   const chat=source.slice(source.indexOf("\$('coordinatorComposer')\.addEventListener('submit'"),
     source.indexOf("\$('analyzeWorks')\.addEventListener('click'"));
-  assert.match(chat,/if\(coordinatorSubmitting\|\|analysisBusy\|\|\$\('coordinatorSend'\)\.disabled\)return/);
+  assert.match(chat,/if\(coordinatorSubmitting\|\|analysisBusy\|\|submitter\.disabled\)return/);
+  assert.match(chat,/const chatOnly=event\.submitter===\$\('coordinatorChatOnly'\)/);
   const locked=chat.indexOf('coordinatorSubmitting=true;syncCoordinatorActions()');
   const draft=chat.indexOf('await prepareCoordinatorDraft(t)');
-  const dispatch=chat.indexOf("command('orchestrator_chat'");
-  assert.ok(locked>=0&&draft>locked&&dispatch>draft,'acquire before the first await and dispatch');
+  const consult=chat.indexOf("command('orchestrator_chat'");
+  const dispatch=chat.indexOf("command('autonomous_dialogue_start'");
+  assert.ok(locked>=0&&draft>locked&&consult>draft&&dispatch>draft,'acquire before the first await and both dispatch paths');
+  assert.ok(chat.indexOf('providerComposeAvailability(await api.providerStatus()')<dispatch,
+    'fresh GPT availability must precede a natural-language mission');
+  assert.ok(chat.indexOf("if(receipt.status==='succeeded')",dispatch)<chat.indexOf("api.setDraft(t,'',draft.draftRevision+1)",dispatch),
+    'clear a submitted request only after the durable mission receipt');
+  assert.doesNotMatch(chat,/command\('work_send'/,'the UI must not bypass the mission executor');
   assert.match(chat,/if\(p!==projectId\|\|o!==orchestratorId\|\|t!==chatTaskId\|\|!content\)return/);
   assert.match(chat,/\.finally\(\(\)=>\{coordinatorSubmitting=false;syncCoordinatorActions\(\);\}\)/);
   const proposal=source.slice(source.indexOf("\$('prepareWork')\.addEventListener('click'"),
