@@ -1093,6 +1093,8 @@ test('coordinator UI admits a single Groq chat or proposal while an async draft 
   assert.ok(locked>=0&&draft>locked&&consult>draft&&dispatch>draft,'acquire before the first await and both dispatch paths');
   assert.ok(chat.indexOf('providerComposeAvailability(await api.providerStatus()')<dispatch,
     'fresh GPT availability must precede a natural-language mission');
+  assert.match(chat,/requestId:'natural_'\+t\.slice\(-64\)\+'_'\+draft\.draftRevision/,
+    'the same saved draft must retain its canonical mission request identity');
   assert.ok(chat.indexOf("if(receipt.status==='succeeded')",dispatch)<chat.indexOf("api.setDraft(t,'',draft.draftRevision+1)",dispatch),
     'clear a submitted request only after the durable mission receipt');
   assert.doesNotMatch(chat,/command\('work_send'/,'the UI must not bypass the mission executor');
