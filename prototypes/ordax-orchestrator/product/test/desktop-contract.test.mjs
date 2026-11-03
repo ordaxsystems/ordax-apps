@@ -453,6 +453,11 @@ test('project hub exposes creation and switching before the administrative navig
   assert.match(orchestration,/addProject'\)\.addEventListener\('click',openNewProjectForm\)/);
   assert.match(css,/body\.orchestrator-focus #quickNewProject/);
   assert.match(css,/body\.orchestrator-focus \.project-chooser/);
+  // New projects start outside orchestrator-focus. Their form must still
+  // escape the scrolling rail and the GPT history controls on first use.
+  assert.match(css,/\.left-rail #projectSetup\[open\]\{[\s\S]*?position:fixed/);
+  assert.match(css,/\.left-rail #projectSetup\[open\]\{[\s\S]*?z-index:110/);
+  assert.doesNotMatch(css,/body\.orchestrator-focus #projectSetup\[open\]/);
   assert.doesNotMatch(html,/Trocar de projeto anterior/);
   assert.match(orchestration,/activeProjectName'\)\.textContent=current\?\.name/);
   assert.match(orchestration,/GitHub vinculado por URL · leitura não verificada/);
