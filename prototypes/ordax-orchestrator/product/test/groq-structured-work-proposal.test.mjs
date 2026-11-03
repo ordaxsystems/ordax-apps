@@ -112,7 +112,14 @@ test('semantic technical review has dedicated bounded Groq reasoning budget and 
       const body=JSON.parse(options.body);
       assert.equal(body.max_completion_tokens,2600);
       assert.equal(body.reasoning_effort,'low');
-      assert.equal(body.response_format,undefined);
+      assert.equal(body.response_format.type,'json_schema');
+      assert.equal(body.response_format.json_schema.strict,true);
+      const schema=body.response_format.json_schema.schema;
+      assert.equal(schema.additionalProperties,false);
+      assert.deepEqual(schema.required,['runId','decision','summary','reason','observedExcerpt','nextPrompt']);
+      assert.ok(schema.properties.decision.enum.includes('verify_external_effect'));
+      assert.deepEqual(schema.properties.nextPrompt.type,['string','null']);
+      assert.equal(body.reasoning_format,'hidden');
       assert.equal(body.tools,undefined);
       return apiResponse('A resposta técnica está observada; sem recibos Git não há conclusão.');
     }});

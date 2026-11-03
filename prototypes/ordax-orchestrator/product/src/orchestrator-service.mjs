@@ -1301,8 +1301,26 @@ export class OrchestratorService {
           throw Error('orchestrator_reply_invalid');
         // Parse an evidence-anchored decision before it becomes a completed
         // receipt. The model response is never itself permission to execute.
-        const reviewDecision=reviewSource?interpretGPTWorkReview(reply.content,{
-          runId:reviewSource.runId,observedAnswer:reviewSource.observedAnswer}):null;
+        let reviewDecision=null;
+        if(reviewSource){
+          try{
+            reviewDecision=interpretGPTWorkReview(reply.content,{
+              runId:reviewSource.runId,observedAnswer:reviewSource.observedAnswer});
+          }catch(error){
+            // A completed Groq reply rejected by our local review contract is
+            // a terminal invalid response, NOT an unknown transport outcome.
+            // Unexpected Store/session/authorization errors remain uncertain.
+            const codes={gpt_review_invalid_json:'groq_review_invalid_json',
+              gpt_review_invalid_evidence:'groq_review_invalid_evidence',
+              gpt_review_invalid_next_step:'groq_review_invalid_next_step'};
+            const code=codes[String(error?.message||'')];
+            if(!code)throw error;
+            const invalid=Error(code);
+            invalid.orchestratorFailureCode=code;
+            invalid.orchestratorRequestOutcome='response_invalid';
+            throw invalid;
+          }
+        }
         return this.transaction(()=>{
           let proposalActionId=null;
           if(prepareWork) {
