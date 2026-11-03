@@ -1260,6 +1260,9 @@ export class OrchestratorService {
       // Reuse the canonical receipt (including older reviewDecision records).
       if(reviewSource && this.db.prepare(`SELECT 1 FROM lab_command_receipts
         WHERE workspace_session_id=? AND project_id=? AND operation='orchestrator_analyze'
+          -- A terminal *confirmed-invalid* model reply may be retried by the
+          -- existing bounded mission recovery; unknown/successful effects may not.
+          AND status IN ('running','uncertain','succeeded')
           AND CASE WHEN json_valid(result) THEN
             COALESCE(json_extract(result,'$.reviewRunId'),
               json_extract(result,'$.reviewDecision.sourceRunId')) END=?
