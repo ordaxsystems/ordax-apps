@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import providerDomSelectors from '../src/provider-dom-selectors.cjs';
+import {providerSubmissionConfirmed} from '../src/provider-submit-receipt.mjs';
 
 const {providerMessageSelectors,queryProviderMessageNodes,readProviderHistoricalUserText,providerMessageQueryBootstrap,providerHistoricalUserTextBootstrap}=providerDomSelectors;
 
@@ -87,4 +88,75 @@ test('historical CDP reader rejects incomplete user markup rather than trimming 
   assert.ok(section.includes('user.complete!==true'));
   assert.match(section,/textTruncated:/);
   assert.equal(section.includes(".replace('Copiar'"),false);
+});
+
+function inlineCodeBubble(source){
+  const mark=String.fromCharCode(96);
+  const parts=source.split(mark);
+  assert.equal(parts.length%2,1,'inline-code fixture requires balanced delimiters');
+  const root={innerText:parts.join(''),textContent:parts.join(''),
+    parentElement:{closest:()=>null},childNodes:[],
+    querySelectorAll:s=>s==='code'?codeNodes:[]};
+  const codeNodes=[];
+  for(let index=0;index<parts.length;index++){
+    const text={nodeType:3,nodeValue:parts[index],textContent:parts[index]};
+    if(index%2===0)root.childNodes.push(text);
+    else{
+      const code={nodeType:1,tagName:'CODE',parentElement:root,
+        childNodes:[text],firstChild:text,textContent:parts[index]};
+      codeNodes.push(code);root.childNodes.push(code);
+    }
+  }
+  const bubble={matches:s=>s.includes('data-user-message-bubble'),
+    innerText:root.innerText+'\nCopiar',querySelectorAll:s=>s==='.whitespace-pre-wrap'?[root]:[]};
+  return {root,codeNodes,bubble};
+}
+
+test('7 physical inline CODE elements restore exactly 14 rendered-away Markdown delimiters',()=>{
+  const tick=String.fromCharCode(96);
+  const words=['innerText','textContent','provider','SHA-256','DOM','provenance','checkpoint'];
+  const prompt='Analise '+words.map(x=>tick+x+tick).join(', ')+' e documente testes externos.';
+  const {root,codeNodes,bubble}=inlineCodeBubble(prompt);
+  assert.equal(codeNodes.length,7);
+  assert.equal(prompt.length-root.innerText.length,14);
+  const actual=readProviderHistoricalUserText(bubble);
+  assert.deepEqual(actual,{text:prompt,complete:true});
+  const browser=new Function(providerHistoricalUserTextBootstrap+'return readProviderHistoricalUserText;')();
+  assert.deepEqual(browser(bubble),actual);
+  const baseline={userCount:0,latestUserText:''};
+  const current={userCount:1,latestUserText:actual.text};
+  assert.equal(providerSubmissionConfirmed({baseline,current,prompt}),true);
+  assert.equal(providerSubmissionConfirmed({baseline,current:{...current,latestUserText:root.innerText},prompt}),false);
+  assert.equal(providerSubmissionConfirmed({baseline,current,prompt:prompt.replace('checkpoint','checkpoint-falso')}),false);
+});
+
+test('reconstruction rejects nested CODE, other elements, delimiter ambiguity and incomplete messages',()=>{
+  const mark=String.fromCharCode(96);
+  const prompt='Teste '+mark+'digest'+mark+' obrigatório.';
+  const nested=inlineCodeBubble(prompt);
+  nested.codeNodes[0].parentElement={};
+  assert.deepEqual(readProviderHistoricalUserText(nested.bubble),{text:'',complete:false});
+  const nonText=inlineCodeBubble(prompt);
+  nonText.root.childNodes.push({nodeType:1,tagName:'BUTTON',textContent:'Copiar'});
+  assert.deepEqual(readProviderHistoricalUserText(nonText.bubble),{text:'',complete:false});
+  const delimited=inlineCodeBubble(prompt);
+  delimited.codeNodes[0].textContent='digest'+mark;
+  assert.deepEqual(readProviderHistoricalUserText(delimited.bubble),{text:'',complete:false});
+  const mixed=inlineCodeBubble(prompt);
+  mixed.codeNodes[0].childNodes.push({nodeType:3,nodeValue:'outra',textContent:'outra'});
+  assert.deepEqual(readProviderHistoricalUserText(mixed.bubble),{text:'',complete:false});
+  const truncated=inlineCodeBubble(prompt.slice(0,-3));
+  assert.equal(providerSubmissionConfirmed({baseline:{userCount:0,latestUserText:''},
+    current:{userCount:1,latestUserText:readProviderHistoricalUserText(truncated.bubble).text},prompt}),false);
+});
+
+test('both live submit receipt and response correlation use the same canonical author-only extractor',()=>{
+  const source=fs.readFileSync(new URL('../desktop/embedded-worker.mjs',import.meta.url),'utf8');
+  const snapshot=source.split('  async #assistantSnapshot() {')[1]?.split('  async #setComposerAndSend(')[0]||'';
+  const submission=source.split('  async #submissionState() {')[1]?.split('  async #expandLatestUserMessageForVerification()')[0]||'';
+  assert.match(snapshot,/providerHistoricalUserTextBootstrap/);
+  assert.match(snapshot,/readProviderHistoricalUserText\(latestUserNode\)/);
+  assert.match(submission,/providerHistoricalUserTextBootstrap/);
+  assert.match(submission,/readProviderHistoricalUserText\(latestUserNode\)/);
+  assert.match(source,/providerUserMessageIsCollapsedPromptPrefix\(state\.latestUserText,prompt/);
 });
