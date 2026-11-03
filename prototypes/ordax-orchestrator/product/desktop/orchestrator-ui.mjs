@@ -1616,6 +1616,21 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     await refreshWorks();await onOpenWork(receipt.result.taskId);
     return receipt.result.taskId;
   }
+  // Read-only status of the selected Run from the existing work_get endpoint.
+  // The service owns the SQLite receipt; the renderer cannot infer success
+  // from an earlier generic project analysis or a stale local button state.
+  async function getRunReviewStatus({taskId,runId}={}) {
+    const p=projectId,o=orchestratorId;
+    if(!p||!o||typeof taskId!=='string'||typeof runId!=='string')
+      throw Error('orchestrator_run_review_scope_missing');
+    const work=await call('work_get',{projectId:p,taskId});
+    if(p!==projectId||o!==orchestratorId||work?.kind!=='work'||
+       work?.orchestrator_id!==o||work?.runs?.[0]?.id!==runId||
+       work?.runs?.[0]?.status!=='succeeded'||
+       work?.latestRunReview?.runId!==runId)
+      throw Error('orchestrator_run_review_scope_changed');
+    return work.latestRunReview;
+  }
   // Explicit, Run-scoped review using the existing administrative Groq path.
   // The service verifies the Run, owning project, delivery receipt and quoted
   // response before persisting a review decision. This never sends GPT work.
@@ -1677,7 +1692,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         refreshRequested=true;
         if(!refreshPending)void refreshAfterChange();
       });},
-    createWork,reviewGptRun,hasProject:()=>Boolean(projectId),hasOrchestrator:()=>Boolean(chatTaskId),
+    createWork,reviewGptRun,getRunReviewStatus,hasProject:()=>Boolean(projectId),hasOrchestrator:()=>Boolean(chatTaskId),
     getProjectId:()=>projectId,
     getOrchestratorId:()=>orchestratorId,
     showCoordinator,

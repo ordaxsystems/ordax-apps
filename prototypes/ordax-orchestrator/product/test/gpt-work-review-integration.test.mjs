@@ -99,6 +99,15 @@ test('a Run-specific Groq review is at-most-once across new request IDs, Store r
   let serial=0;
   const call=(operation,input={})=>service.invoke(context,operation,{requestId:'review-once-'+(++serial),...input});
   const projectId=(await call('project_create',{name:'Projeto',objective:'E2E de revisao'})).result.projectId;
+  const readReview=async runId=>{
+    const taskId=store.db.prepare('SELECT task_id FROM runs WHERE id=?').get(runId).task_id;
+    const before=store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts').get().n;
+    const result=await service.invoke(context,'work_get',{projectId,taskId});
+    assert.equal(store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts').get().n,before,
+      'work_get must not create a receipt or call Groq');
+    assert.equal(result.runs[0].id,runId);
+    return result.latestRunReview;
+  };
   const orchestratorId=(await call('orchestrator_create',{projectId,name:'Groq',mission:'Revisar GPT'})).result.orchestratorId;
   let chatSerial=0;
   const attach=async title=>{
@@ -115,25 +124,38 @@ test('a Run-specific Groq review is at-most-once across new request IDs, Store r
     return started.runId;
   };
   const runId=await attach('Primeira frente');
+  assert.deepEqual(await readReview(runId),{runId,status:'not_requested',updatedAt:null});
   const input={projectId,orchestratorId,reviewRunId:runId};
   const first=await call('orchestrator_analyze',input);
   assert.equal(first.status,'succeeded');
   assert.equal(first.result.reviewDecision.sourceRunId,runId);
+  assert.equal((await readReview(runId)).status,'succeeded');
   assert.equal(sends,1);
   const same=await service.invoke(context,'orchestrator_analyze',{...input,requestId:'review-once-'+serial});
   assert.deepEqual(same,first,'repeated exact request returns the existing receipt');
   await assert.rejects(call('orchestrator_analyze',input),/orchestrator_run_review_already_attempted/);
   assert.equal(sends,1);
+  // Older successful receipts may lack the top-level reviewRunId marker.
+  // Their validated reviewDecision still prevents a duplicate after reboot.
+  const historical=store.db.prepare("SELECT id,result FROM lab_command_receipts WHERE operation='orchestrator_analyze' ORDER BY rowid DESC LIMIT 1").get();
+  const historicalResult=JSON.parse(historical.result);
+  delete historicalResult.reviewRunId;
+  store.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
+    .run(JSON.stringify(historicalResult),historical.id);
+  assert.equal((await readReview(runId)).status,'succeeded');
   store.close();
   store=new Store(file);
   context={...context,workspaceSessionId:store.getWorkspaceSession().id};
   service=newService();
+  assert.equal((await readReview(runId)).status,'succeeded');
   await assert.rejects(call('orchestrator_analyze',input),/orchestrator_run_review_already_attempted/);
   assert.equal(sends,1,'restart cannot trigger a second Groq call');
   const independentRunId=await attach('Segunda frente');
+  assert.equal((await readReview(independentRunId)).status,'not_requested');
   const second=await call('orchestrator_analyze',{projectId,orchestratorId,reviewRunId:independentRunId});
   assert.equal(second.status,'succeeded');
   assert.equal(second.result.reviewDecision.sourceRunId,independentRunId);
+  assert.equal((await readReview(independentRunId)).status,'succeeded');
   assert.equal(sends,2,'distinct verified work remains eligible');
   // Crash after reserve, with a lost Groq acknowledgement: the receipt keeps
   // the Run identity. Another UI and a subsequent restart cannot replay it.
@@ -146,11 +168,13 @@ test('a Run-specific Groq review is at-most-once across new request IDs, Store r
   const inflightReceipt=store.db.prepare("SELECT id,status,result FROM lab_command_receipts WHERE operation='orchestrator_analyze' ORDER BY rowid DESC LIMIT 1").get();
   assert.equal(inflightReceipt.status,'running');
   assert.equal(JSON.parse(inflightReceipt.result).reviewRunId,interruptedRunId);
+  assert.equal((await readReview(interruptedRunId)).status,'running');
   await assert.rejects(call('orchestrator_analyze',interruptedInput),
     /orchestrator_run_review_already_attempted|orchestrator_coordinator_busy/);
   assert.equal(sends,3);
   service.recoverInterruptedCommands();
   assert.equal(store.db.prepare('SELECT status FROM lab_command_receipts WHERE id=?').get(inflightReceipt.id).status,'uncertain');
+  assert.equal((await readReview(interruptedRunId)).status,'uncertain');
   releaseInterrupted();
   holdNext=null;
   const unreconciled=await pending;
@@ -160,6 +184,7 @@ test('a Run-specific Groq review is at-most-once across new request IDs, Store r
   store=new Store(file);
   context={...context,workspaceSessionId:store.getWorkspaceSession().id};
   service=newService();
+  assert.equal((await readReview(interruptedRunId)).status,'uncertain');
   await assert.rejects(call('orchestrator_analyze',interruptedInput),/orchestrator_run_review_already_attempted/);
   assert.equal(sends,3,'lost acknowledgement never causes a fourth Groq request');
 
@@ -177,6 +202,7 @@ test('a Run-specific Groq review is at-most-once across new request IDs, Store r
   const quarantined=store.db.prepare('SELECT status,result FROM lab_command_receipts WHERE id=?').get(pausedReceipt.id);
   assert.equal(quarantined.status,'uncertain');
   assert.equal(JSON.parse(quarantined.result).reviewRunId,pausedRunId);
+  assert.equal((await readReview(pausedRunId)).status,'uncertain');
   await call('orchestrator_pause',{projectId,orchestratorId,paused:false});
   releasePaused();
   holdNext=null;

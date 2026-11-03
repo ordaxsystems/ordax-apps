@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {reviewCandidateRun,confirmedRunReview} from '../src/run-review-eligibility.mjs';
+import {reviewCandidateRun,confirmedRunReview,runReviewButtonState,runReviewLookupCurrent} from '../src/run-review-eligibility.mjs';
 
 const runId='run_446d0fd8-c3c0-4a93-b8ff-723224eddfaf';
 const task={
@@ -65,4 +65,54 @@ test('UI binds an explicit review to the selected task without a GPT send fallba
   const segment=orchestration.slice(orchestration.indexOf('async function reviewGptRun'),
     orchestration.indexOf('  return Object.freeze({',orchestration.indexOf('async function reviewGptRun')));
   assert.doesNotMatch(segment,/work_send|proposal_send|\.send\(/);
+});
+
+test('Run review UI admission is closed until matching durable receipt is read',()=>{
+  const state=(receipt,extra={})=>runReviewButtonState({runId,receipt,...extra});
+  assert.deepEqual(state({runId,status:'not_requested',updatedAt:null}),{enabled:true,message:''});
+  assert.equal(state(null).enabled,false,'missing receipt must never enable Groq');
+  assert.equal(state({runId:'run_00000000-0000-0000-0000-000000000000',status:'not_requested'}).enabled,false);
+  assert.equal(state({runId,status:'mystery'}).enabled,false);
+  for(const status of ['running','uncertain','succeeded','failed']){
+    assert.equal(state({runId,status}).enabled,false,status);
+    assert.ok(state({runId,status}).message.length>15,status);
+  }
+  assert.match(state({runId,status:'uncertain'}).message,/reconcilia/i);
+  assert.match(state({runId,status:'succeeded'}).message,/j. registrada/i);
+  assert.equal(state({runId,status:'not_requested'},{attempted:true}).enabled,false);
+  assert.equal(state({runId,status:'not_requested'},{busy:true}).enabled,false);
+  assert.equal(runReviewButtonState({runId:null,receipt:{runId,status:'not_requested'}}).enabled,false);
+});
+
+test('UI derives a fail-closed Run review button from the existing scoped work_get read model',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const root=new URL('../',import.meta.url);
+  const ui=await readFile(new URL('desktop/ui.js',root),'utf8');
+  const orchestration=await readFile(new URL('desktop/orchestrator-ui.mjs',root),'utf8');
+  assert.match(ui,/button\.disabled=true;[\s\S]*?getRunReviewStatus\(\{taskId:request\.taskId,runId\}\)/);
+  assert.match(ui,/runReviewLookupCurrent\(request,active\)/);
+  assert.match(ui,/runReviewButtonState\(\{runId,receipt,/);
+  assert.match(orchestration,/call\('work_get',\{projectId:p,taskId\}\)/);
+  assert.match(orchestration,/work\?\.latestRunReview\?\.runId!==runId/);
+  assert.doesNotMatch(orchestration.slice(orchestration.indexOf('async function getRunReviewStatus'),
+    orchestration.indexOf('async function reviewGptRun')),/orchestrator_analyze|work_send|\.send\(/);
+});
+
+test('delayed receipt reads cannot enable a different task, project, Run, or navigation epoch',()=>{
+  const request={lookup:7,epoch:42,taskId:'task-a',runId,projectId:'project-a',orchestratorId:'admin-a'};
+  assert.equal(runReviewLookupCurrent(request,{...request}),true);
+  for(const [key,value] of [
+    ['lookup',8],['epoch',43],['taskId','task-b'],
+    ['runId','run_00000000-0000-0000-0000-000000000000'],
+    ['projectId','project-b'],['orchestratorId','admin-b']
+  ]){
+    assert.equal(runReviewLookupCurrent(request,{...request,[key]:value}),false,key);
+  }
+  assert.equal(runReviewLookupCurrent(null,request),false);
+  assert.equal(runReviewLookupCurrent(request,null),false);
+  const lateReceipt={runId,status:'not_requested'};
+  // A positive old result is harmless when the active selection changed.
+  const state=runReviewButtonState({runId,receipt:lateReceipt});
+  assert.equal(state.enabled,true);
+  assert.equal(runReviewLookupCurrent(request,{...request,taskId:'task-b'}),false);
 });
