@@ -38,12 +38,12 @@
         <span class="workspace-modes-caption">Áreas do projeto</span>
         <button id="openOrchestrator" class="workspace-mode workspace-mode-coordinator" type="button" aria-pressed="false" disabled>
           <span class="workspace-mode-symbol" aria-hidden="true">◇</span>
-          <span class="workspace-mode-copy"><strong>Visão geral</strong><small id="coordinatorNavProvider">Conversar com Orchestrator</small></span>
+          <span class="workspace-mode-copy"><strong>Administrador · Groq</strong><small id="coordinatorNavProvider">Canal administrativo · Groq</small></span>
           <span class="workspace-mode-arrow" aria-hidden="true">↗</span>
         </button>
         <button id="openWorks" class="workspace-mode workspace-mode-gpt" type="button" aria-pressed="false" aria-controls="orchestratorWorkRail" aria-expanded="false" disabled>
           <span class="workspace-mode-symbol" aria-hidden="true">⌘</span>
-          <span class="workspace-mode-copy"><strong>Missões</strong><small>Frentes e conversas GPT</small></span>
+          <span class="workspace-mode-copy"><strong>Missões</strong><small>Conversas e Runs · GPT Web</small></span>
           <span class="workspace-mode-arrow" aria-hidden="true">↗</span>
         </button>
         <button id="openHistory" class="workspace-mode" type="button" disabled>
@@ -328,9 +328,9 @@
       <section id="previewPanel" class="right-pane-panel preview-panel" role="tabpanel" aria-labelledby="previewPaneTab" hidden>
         <div class="preview-state-card"><span class="eyebrow">Preview do projeto</span><h3>Runtime ainda não forneceu uma visualização</h3><p>Quando houver um preview autorizado do workspace pelo Runtime, ele aparecerá aqui. Esta tela não cria servidor nem simula arquivos.</p><span id="previewRuntimeState" class="preview-runtime-state">Aguardando conexão do Runtime</span></div>
       </section>
-      <section id="executionOverview" class="execution-overview" aria-label="Execução ativa e evidências do projeto" hidden>
+      <section id="executionOverview" class="execution-overview" aria-label="Estado real dos Runs e evidências do projeto" hidden>
         <header class="execution-overview-head">
-          <div><span class="command-eyebrow">CENTRAL DE OPERAÇÕES</span><h2>Execução ativa</h2><p>Missões, decisões e estados observados no projeto.</p></div>
+          <div><span class="command-eyebrow">CENTRAL DE OPERAÇÕES</span><h2 id="executionOverviewTitle">Acompanhamento do projeto</h2><p id="executionOverviewDescription">Lendo os Runs e evidências registrados neste projeto.</p></div>
           <button id="refreshExecutionOverview" type="button" aria-label="Atualizar execução" title="Atualizar dados locais">↻</button>
         </header>
         <article class="execution-mission-card">
