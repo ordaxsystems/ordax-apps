@@ -1616,6 +1616,30 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     await refreshWorks();await onOpenWork(receipt.result.taskId);
     return receipt.result.taskId;
   }
+  // Explicit, Run-scoped review using the existing administrative Groq path.
+  // The service verifies the Run, owning project, delivery receipt and quoted
+  // response before persisting a review decision. This never sends GPT work.
+  async function reviewGptRun({taskId,runId}={}) {
+    const p=projectId,o=orchestratorId;
+    const owner=orchestrators.find(item=>item.id===o);
+    if(!p||!o||owner?.status!=='ready'||!coordinatorAvailable||
+       analysisBusy||preflightBusy||coordinatorSubmitting)
+      throw Error('orchestrator_run_review_unavailable');
+    if(typeof taskId!=='string'||!/^task_[a-f0-9-]{36}$/i.test(taskId)||
+       typeof runId!=='string'||!/^run_[a-f0-9-]{36}$/i.test(runId))
+      throw Error('orchestrator_run_review_identity_invalid');
+    analysisBusy=true;syncCoordinatorActions();
+    try {
+      const receipt=await command('orchestrator_analyze',{
+        projectId:p,orchestratorId:o,reviewRunId:runId
+      });
+      if(p!==projectId||o!==orchestratorId)
+        throw Error('orchestrator_run_review_scope_changed');
+      return receipt;
+    } finally {
+      analysisBusy=false;syncCoordinatorActions();
+    }
+  }
   return Object.freeze({
     async start({restoreNavigation=null}={}){const projects=await refreshProjects();
       await refreshApiStatus();
@@ -1653,7 +1677,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         refreshRequested=true;
         if(!refreshPending)void refreshAfterChange();
       });},
-    createWork,hasProject:()=>Boolean(projectId),hasOrchestrator:()=>Boolean(chatTaskId),
+    createWork,reviewGptRun,hasProject:()=>Boolean(projectId),hasOrchestrator:()=>Boolean(chatTaskId),
     getProjectId:()=>projectId,
     getOrchestratorId:()=>orchestratorId,
     showCoordinator,

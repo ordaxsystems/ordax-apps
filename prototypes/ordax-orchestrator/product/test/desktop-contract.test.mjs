@@ -739,7 +739,7 @@ test('startup Task restoration initializes its controls before the first await',
   const listener=ui.indexOf("labRoleSelect.addEventListener('change'");
   const startup=ui.indexOf('await orchestrationUi.start({restoreNavigation:savedNavigation})');
   assert.ok(controls>=0&&listener>=0&&startup>controls&&startup>listener);
-  assert.match(ui,/if\(epoch!==navigationEpoch\|\|currentTaskId!==id\)return;\s*try \{await persistWorkspaceNavigation/);
+  assert.match(ui,/if\(epoch!==navigationEpoch\|\|currentTaskId!==id\)return;\s*syncRunReviewAction\(task\);\s*try \{await persistWorkspaceNavigation/);
 });
 
 test('Host keeps execution truth visible while collapsing project setup below the conversation',()=>{
