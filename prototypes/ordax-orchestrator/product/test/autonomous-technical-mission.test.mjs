@@ -12,7 +12,8 @@ const quote='nenhuma alteração externa foi comprovada';
 const response='O GPT investigou o código e propôs alterações e testes de regressão; nenhuma alteração externa foi comprovada. A validação de efeito deve ser realizada separadamente.';
 const instruction='Revise o resultado observado, defina se continua na conversa ou exige outra frente, e produza provas verificáveis.';
 
-function fixture(t,{first='continue_same_conversation',last='verify_external_effect',providerFailure=null,lateResponseAt=null,groqTruncateReviews=[],holdAfterFirstReview=false}={}){
+function fixture(t,{first='continue_same_conversation',last='verify_external_effect',providerFailure=null,lateResponseAt=null,groqTruncateReviews=[],holdAfterFirstReview=false,holdProviderBusyAfterFirstSend=false,
+  holdProviderBusyAfterSecondSend=false}={}){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-semantic-mission-'));
   const store=new Store(path.join(dir,'canonical.sqlite'));
   t.after(()=>{store.close();fs.rmSync(dir,{force:true,recursive:true})});
@@ -54,7 +55,9 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
     }
   };
   const provider={
-    available:()=>true,busy:()=>holdAfterFirstReview&&sends===1&&reviews>=1&&!released,
+    available:()=>true,busy:()=>!released&&(
+      sends===1&&(holdProviderBusyAfterFirstSend||holdAfterFirstReview&&reviews>=1)||
+      sends===2&&holdProviderBusyAfterSecondSend),
     send:async({taskId,content})=>{
       sends++;
       if(lateResponseAt===sends){
@@ -175,6 +178,30 @@ test('Groq may stop after first GPT reply when external proof is required',async
   assert.equal(m.decision.decision,'verify_external_effect');
   assert.equal(m.taskBId,null);
   assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:1});
+});
+
+test('Groq evidence review proceeds while the independent GPT executor is occupied',async t=>{
+  const f=fixture(t,{first:'verify_external_effect',holdProviderBusyAfterFirstSend:true}),ids=await f.setup();
+  await f.start(ids);
+  const m=await f.wait(ids);
+  assert.equal(m.state,'verification_required');
+  assert.equal(m.decision.decision,'verify_external_effect');
+  assert.equal(m.decision.externalEffectVerified,false);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:1});
+  assert.equal(f.service.executorAdmission().availableSlots,0,
+    'a busy GPT provider stays unavailable even though Groq completed its review');
+});
+
+test('final Groq evidence review completes while GPT transport remains busy',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',last:'verify_external_effect',
+    holdProviderBusyAfterSecondSend:true}),ids=await f.setup();
+  await f.start(ids);
+  const m=await f.wait(ids);
+  assert.equal(m.state,'verification_required');
+  assert.equal(m.decision.decision,'verify_external_effect');
+  assert.equal(m.decision.externalEffectVerified,false);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
+  assert.equal(f.service.executorAdmission().availableSlots,0);
 });
 
 test('two-send budget is a hard stop even if Groq requests further corrections',async t=>{
