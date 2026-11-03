@@ -6,12 +6,13 @@ import path from 'node:path';
 import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {recordProviderSubmissionProvenance} from '../src/provider-submission-provenance.mjs';
+import {inspectProviderLinkedThread,reconcileProviderLinkedReply} from '../src/provider-linked-thread-recovery.mjs';
 
 const quote='nenhuma alteração externa foi comprovada';
 const response='O GPT investigou o código e propôs alterações e testes de regressão; nenhuma alteração externa foi comprovada. A validação de efeito deve ser realizada separadamente.';
 const instruction='Revise o resultado observado, defina se continua na conversa ou exige outra frente, e produza provas verificáveis.';
 
-function fixture(t,{first='continue_same_conversation',last='verify_external_effect',providerFailure=null,holdAfterFirstReview=false}={}){
+function fixture(t,{first='continue_same_conversation',last='verify_external_effect',providerFailure=null,lateResponseAt=null,holdAfterFirstReview=false}={}){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-semantic-mission-'));
   const store=new Store(path.join(dir,'canonical.sqlite'));
   t.after(()=>{store.close();fs.rmSync(dir,{force:true,recursive:true})});
@@ -49,6 +50,22 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
     available:()=>true,busy:()=>holdAfterFirstReview&&sends===1&&reviews>=1&&!released,
     send:async({taskId,content})=>{
       sends++;
+      if(lateResponseAt===sends){
+        // A real provider can acknowledge the exact GPT submission, but its
+        // answer may arrive only after the bounded observation deadline.
+        const {runId}=store.beginProviderRun(taskId,content);
+        const chatUrl='https://chatgpt.com/c/'+String(sends).padStart(8,'0')+'-2222-4333-8444-555555555555';
+        store.setChatUrl(taskId,chatUrl);
+        const messageId=store.db.prepare("SELECT id FROM messages WHERE task_id=? AND role='user' ORDER BY rowid DESC LIMIT 1").get(taskId).id;
+        assert.equal(recordProviderSubmissionProvenance({
+          store,taskId,runId,messageId,providerPrompt:content,
+          chatUrl,submittedAt:Date.now()
+        }).recorded,true);
+        store.finishRun(taskId,runId,'await-response:response_not_observed');
+        const error=Error('response_not_observed');
+        error.providerDeliveryState='submitted';
+        throw error;
+      }
       if(providerFailure&&providerFailure.at===sends){
         const e=Error('provider_delivery_unknown');
         if(providerFailure.beforeSubmit)e.providerDeliveryState='not_submitted';
@@ -98,7 +115,7 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
     }
     throw Error('technical_mission_not_terminal_'+service.autonomous.status(context,ids).mission?.state);
   };
-  return {store,service,context,setup,start,wait,waitFor,release:()=>{released=true},metrics:()=>({plans,reviews,sends})};
+  return {store,service,coordinator,provider,context,setup,start,wait,waitFor,release:()=>{released=true},metrics:()=>({plans,reviews,sends})};
 }
 
 test('semantic owner authorization leads Groq -> GPT -> Groq decision -> same GPT thread -> Groq verification gate',async t=>{
@@ -226,4 +243,102 @@ test('a previously accepted technical mission request is idempotent and cannot c
   const m=await f.wait(ids);
   assert.equal(m.state,'blocked');
   assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:1});
+});
+
+async function reconcileLateTechnicalAnswer(f,taskId) {
+  const run=f.store.db.prepare('SELECT id,status FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1').get(taskId);
+  assert.equal(run.status,'failed');
+  const chatUrl=f.store.db.prepare('SELECT chat_url FROM tasks WHERE id=?').get(taskId).chat_url;
+  const question=f.store.db.prepare("SELECT content FROM messages WHERE task_id=? AND role='user' ORDER BY rowid DESC LIMIT 1").get(taskId).content;
+  let reads=0;
+  const worker={
+    inspectConversationReadOnly:async requested=>{
+      reads++;
+      assert.equal(requested,chatUrl);
+      return {available:true,domReliable:true,truncated:false,url:chatUrl,
+        responseCompletionObserved:true,generationStopVisible:false,
+        messages:[{role:'user',text:question},{role:'assistant',text:response}]};
+    },
+    sendPrompt:async()=>{throw Error('late_recovery_must_never_send')}
+  };
+  const inspected=await inspectProviderLinkedThread({store:f.store,worker,taskId});
+  assert.equal(inspected.threadRendered,true);
+  assert.ok(inspected.recoveryPreview?.responseSha256);
+  assert.equal((await reconcileProviderLinkedReply({store:f.store,worker,taskId,
+    responseSha256:inspected.recoveryPreview.responseSha256})).reconciled,true);
+  assert.ok(reads>=2,'reconciliation independently re-observes the completed reply');
+  assert.equal(f.store.db.prepare('SELECT status FROM runs WHERE id=?').get(run.id).status,'succeeded');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='provider.response.reconciled'").get(taskId).n,1);
+  return run.id;
+}
+
+test('late GPT reply resumes a quarantined technical mission after physical-style Store reconciliation',async t=>{
+  const f=fixture(t,{first:'verify_external_effect',lateResponseAt:1}),ids=await f.setup();
+  await f.start(ids);
+  const blocked=await f.waitFor(ids,['reconciliation_required']);
+  assert.equal(blocked.lastError,'response_not_observed');
+  assert.equal((await f.service.autonomous.tick(f.context)).state,'idle','unreconciled response never triggers Groq');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:0,sends:1});
+  const originalRun=await reconcileLateTechnicalAnswer(f,blocked.taskAId);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  const resumed=restored.autonomous.status(f.context,ids).mission;
+  assert.equal(resumed.state,'verification_required');
+  assert.equal(resumed.decision.decision,'verify_external_effect');
+  assert.equal(resumed.decision.sourceRunId,originalRun);
+  assert.equal(resumed.decision.externalEffectVerified,false);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:1},'no GPT resend and exactly one Groq review');
+  assert.equal((await restored.autonomous.tick(f.context)).state,'idle');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='orchestrator_analyze'").get().n,1);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('reconciled GPT reply can authorize one new Groq-selected question, never repeat the first send',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',last:'candidate_complete',lateResponseAt:1}),ids=await f.setup();
+  await f.start(ids);
+  const blocked=await f.waitFor(ids,['reconciliation_required']);
+  await reconcileLateTechnicalAnswer(f,blocked.taskAId);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  await restored.autonomous.tick(f.context);
+  const resumed=restored.autonomous.status(f.context,ids).mission;
+  assert.equal(resumed.state,'verification_required');
+  assert.equal(resumed.taskAId,resumed.taskBId,'second GPT question continues in the same Task');
+  assert.equal(resumed.decision.decision,'candidate_complete');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=?').get(blocked.taskAId).n,2);
+  assert.equal((await restored.autonomous.tick(f.context)).state,'idle');
+});
+
+test('a late answer cannot revive its mission after a newer human Run supersedes that Task',async t=>{
+  const f=fixture(t,{first:'verify_external_effect',lateResponseAt:1}),ids=await f.setup();
+  await f.start(ids);
+  const blocked=await f.waitFor(ids,['reconciliation_required']);
+  await reconcileLateTechnicalAnswer(f,blocked.taskAId);
+  const human=f.store.beginProviderRun(blocked.taskAId,'Pedido humano posterior, separado da missão.');
+  f.store.appendMessage(blocked.taskAId,'assistant','Resposta posterior da intervenção humana, sem revisão Groq da missão.');
+  f.store.finishRun(blocked.taskAId,human.runId);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  assert.equal(restored.autonomous.resumeReconciledTechnical(f.context),false);
+  assert.equal((await restored.autonomous.tick(f.context)).state,'idle');
+  assert.equal(restored.autonomous.status(f.context,ids).mission.state,'reconciliation_required');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:0,sends:1});
+});
+
+test('a human draft written during late-response recovery prevents autonomous continuation',async t=>{
+  const f=fixture(t,{first:'verify_external_effect',lateResponseAt:1}),ids=await f.setup();
+  await f.start(ids);
+  const blocked=await f.waitFor(ids,['reconciliation_required']);
+  await reconcileLateTechnicalAnswer(f,blocked.taskAId);
+  const draft='Revisão humana: nenhuma mensagem pode continuar até minha verificação.';
+  f.store.setDraft(blocked.taskAId,draft,1);
+  const restored=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  assert.equal(restored.autonomous.resumeReconciledTechnical(f.context),false);
+  assert.equal((await restored.autonomous.tick(f.context)).state,'idle');
+  assert.equal(restored.autonomous.status(f.context,ids).mission.state,'reconciliation_required');
+  assert.equal(f.store.getTaskDraft(blocked.taskAId).draft,draft);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:0,sends:1});
 });

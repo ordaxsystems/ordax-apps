@@ -401,6 +401,45 @@ export class AutonomousDialogue {
       return {state:unknown?'reconciliation_required':'blocked',error:boundedError(error)};
     }
   }
+  // A previously confirmed GPT send can outlive the response observation
+  // deadline. The linked-thread reconciler may later commit exactly that
+  // response; re-enter semantic review ONLY after immutable Run evidence.
+  // No provider interaction or replay occurs in this method.
+  resumeReconciledTechnical(context) {
+    const session=this.store.getWorkspaceSession();
+    if(!context||session?.status!=='active'||
+       context.workspaceSessionId!==session.id)return false;
+    // Never revive an older mission after the owner started a newer one.
+    const row=this.db.prepare('SELECT * FROM lab_autonomous_dialogues WHERE '+
+      'workspace_session_id=? AND actor_id=? AND client_id=? ORDER BY rowid DESC LIMIT 1')
+      .get(session.id,context.actorId,context.clientId);
+    if(!row||row.state!=='reconciliation_required'||row.strategy!=='semantic'||
+       row.mode!=='dialogue'||row.last_error!=='response_not_observed'||
+       !row.task_a_id||!row.question_a||
+       row.task_b_id||row.question_b||row.question_final||
+       row.review_a_json||row.review_b_json)return false;
+    this.assertMissionSession(context,row,{allowPaused:true});
+    if(this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
+       this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status IN ('running','uncertain') LIMIT 1").get())
+      return false;
+    const task=this.db.prepare('SELECT status FROM tasks WHERE id=?').get(row.task_a_id);
+    const count=this.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=?').get(row.task_a_id)?.n;
+    const run=this.db.prepare('SELECT id,status FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1').get(row.task_a_id);
+    const user=this.db.prepare("SELECT content FROM messages WHERE task_id=? AND role='user' ORDER BY rowid DESC LIMIT 1").get(row.task_a_id);
+    if(task?.status!=='ready'||count!==1||run?.status!=='succeeded'||
+       user?.content?.trim()!==row.question_a.trim()||
+       String(this.store.getTaskDraft(row.task_a_id)?.draft||'').trim())return false;
+    const event=kind=>this.db.prepare("SELECT 1 FROM events WHERE task_id=? AND kind=? "+
+      "AND json_extract(payload,'$.run_id')=? LIMIT 1").get(row.task_a_id,kind,run.id);
+    if(!event('provider.submission.provenance')||
+       !event('provider.response.reconciled')||
+       !this.service.reviewableGPTResult(row.project_id,row.orchestrator_id,run.id))
+      return false;
+    // A state transition, never a second GPT submission. The existing
+    // reviewTechnical() owns the deterministic Groq review request receipt.
+    this.move(row.id,'reconciliation_required','ready_b',{last_error:null});
+    return true;
+  }
   async tick(context){
     const session=this.store.getWorkspaceSession();
     if(!context||session?.status!=='active'||session.id!==context.workspaceSessionId)
@@ -408,6 +447,10 @@ export class AutonomousDialogue {
     if(this.inFlight)return {state:'busy'};
     this.inFlight=true;
     try {
+      // Recovery changes only the mission state after canonical reconciliation.
+      // The ordinary state machine performs the Groq review and any authorized
+      // next step, with its existing two-send budget and idempotent receipts.
+      this.resumeReconciledTechnical(context);
       // One complete authorized mission in one handoff. Yield between durable
       // stages, while allowing a separate App event to stop at any blocker.
       let result={state:'idle'};
