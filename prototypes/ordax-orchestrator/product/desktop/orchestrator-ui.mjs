@@ -228,17 +228,14 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     // Read-only projection of the selected canonical project: not a second
     // project store and never proof that a GitHub URL was actually read.
     $('activeProjectName').textContent=current?.name||'Conecte seu projeto';
-    const legacyCount=Math.max(0,projects.length-1);
+    const otherProjects=projects.filter(project=>project.id!==projectId);
     const repository=current?.repository_url?'GitHub vinculado por URL · leitura não verificada':'Repositório GitHub ainda não vinculado';
-    $('activeProjectDetail').textContent=current
-      ?repository+(legacyCount?' · '+legacyCount+' outro(s) projeto(s) existente(s)':'')
-      :'Configure um projeto para começar';
-    // Legacy projects remain selectable for safe migration, but they do not
-    // compete with the active instance as primary navigation.
-    $('legacyProjectAccess').hidden=projects.length<=1;
+    $('activeProjectDetail').textContent=current?repository:'Crie seu primeiro projeto usando Novo projeto.';
+    // One canonical Store supplies the active project and switchable others.
+    // Previously created projects are first-class, never hidden as legacy.
+    $('projectSwitcher').hidden=otherProjects.length===0;
     const list=$('projectNavList');list.replaceChildren();
-    if(!projects.length){const empty=document.createElement('p');empty.className='nav-empty';empty.textContent='Conecte seu primeiro projeto.';list.append(empty);return;}
-    for(const project of projects){
+    for(const project of otherProjects){
       const button=document.createElement('button');button.type='button';button.className='nav-item project-nav-item';
       button.textContent=project.name;button.dataset.projectId=project.id;
       button.setAttribute('aria-pressed',String(project.id===projectId));
@@ -796,7 +793,16 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     syncCoordinatorActions();
   }
   $('coordinatorApiSettings').addEventListener('click',()=>onOpenAppSettings?.('providers'));
-  $('addProject').addEventListener('click',()=>{ $('projectSetup').open=true;$('projectObjective').focus(); });
+  function openNewProjectForm(){
+    const form=$('projectSetup');
+    form.open=true;
+    // The same canonical form serves the desktop shortcut and compact header.
+    // No separate project-creation implementation or duplicate draft.
+    form.scrollIntoView({block:'nearest',behavior:'auto'});
+    $('projectName').focus();
+  }
+  $('addProject').addEventListener('click',openNewProjectForm);
+  $('quickNewProject').addEventListener('click',openNewProjectForm);
   $('renameProjectButton').addEventListener('click',()=>{
     if(!projectId)return;
     $('renameProjectInput').value=projectsCache.find(item=>item.id===projectId)?.name||'';

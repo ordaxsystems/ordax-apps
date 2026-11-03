@@ -18,10 +18,20 @@
         <button id="openAppSettings" class="app-settings-trigger" type="button" aria-label="Configurações do aplicativo" title="Configurações do aplicativo" aria-haspopup="dialog" aria-controls="appSettingsDialog">⚙</button>
       </header>
 
-      <section class="project-identity" aria-label="Identidade do projeto atual">
-        <span class="project-identity-kicker">PROJETO ATIVO</span>
-        <strong id="activeProjectName">Conecte um projeto</strong>
-        <small id="activeProjectDetail">Repositório e acesso ainda não definidos</small>
+      <section class="project-hub" aria-label="Gerenciar e alternar projetos">
+        <div class="project-hub-heading">
+          <strong>Projetos</strong>
+          <button id="quickNewProject" type="button" aria-controls="projectSetup" aria-label="Criar novo projeto">+ Novo projeto</button>
+        </div>
+        <section class="project-identity" aria-label="Projeto selecionado">
+          <span class="project-identity-kicker">PROJETO ATIVO</span>
+          <strong id="activeProjectName">Nenhum projeto selecionado</strong>
+          <small id="activeProjectDetail">Crie um projeto para começar</small>
+        </section>
+        <section id="projectSwitcher" class="project-chooser" aria-label="Alternar para outro projeto" hidden>
+          <span class="project-chooser-label">Alternar projeto</span>
+          <div id="projectNavList" class="nav-item-list" aria-label="Outros projetos disponíveis"></div>
+        </section>
       </section>
 
       <nav class="workspace-modes" aria-label="Selecionar destino da conversa">
@@ -47,10 +57,7 @@
       </nav>
       <section class="orchestration-navigation" aria-label="Configuração do projeto e administração">
         <div class="nav-section-heading"><span>Configuração do projeto</span><div class="nav-heading-actions"><button id="renameProjectButton" class="nav-add" type="button" aria-label="Renomear projeto" disabled>✎</button><button id="addProject" class="nav-add" type="button" aria-label="Conectar projeto">+</button></div></div>
-        <details id="legacyProjectAccess" class="legacy-project-access" hidden>
-          <summary>Trocar de projeto anterior</summary>
-          <div id="projectNavList" class="nav-item-list" aria-label="Selecionar projeto existente"></div>
-        </details>
+
         <select id="projectSelect" class="native-state-control" aria-label="Selecionar projeto ativo" title="Projeto ativo"><option value="">Conversas sem projeto</option></select>
         <details id="projectSetup" class="nav-setup">
           <summary>Conectar projeto</summary>
