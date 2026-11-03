@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {resolveProjectOnboardingMission,describeProjectPreflight} from '../desktop/orchestrator-ui.mjs';
+import {resolveProjectOnboardingMission,describeProjectPreflight,describeExecutionMonitor} from '../desktop/orchestrator-ui.mjs';
 const root = path.resolve(import.meta.dirname, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
 const bootstrap = JSON.parse(fs.readFileSync(path.join(root,'..','package.json'),'utf8'));
@@ -18,6 +18,24 @@ const ui = fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
 const uiHtml = fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
 const e2eLock = fs.readFileSync(path.join(root,'scripts','e2e-lock.cjs'),'utf8');
 const liveText = fs.readFileSync(path.join(root,'scripts','live-ui-text-smoke.cjs'),'utf8');
+
+test('physical frontend monitor describes registered execution, not fictitious active work',()=>{
+  assert.deepEqual(describeExecutionMonitor({running:0,attention:2}),{
+    title:'Revisões pendentes',
+    description:'Nenhum Run GPT ativo. 2 frente(s) aguardam revisão ou reconciliação.'
+  });
+  assert.equal(describeExecutionMonitor({running:1,attention:2}).title,'Execução em andamento');
+  assert.equal(describeExecutionMonitor({running:0,attention:0}).title,'Nenhuma execução ativa');
+  for(const invalid of [{running:-1,attention:0},{running:0,attention:NaN},{running:'0',attention:0}])
+    assert.throws(()=>describeExecutionMonitor(invalid),/invalid_execution_monitor_counts/);
+  assert.match(uiHtml,/id="executionOverviewTitle"/);
+  assert.match(uiHtml,/id="executionOverviewDescription"/);
+  assert.match(uiHtml,/Administrador · Groq/);
+  assert.match(uiHtml,/Conversas e Runs · GPT Web/);
+  const renderer=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.match(renderer,/\$\('executionOverviewTitle'\)\.textContent=overview\.title/);
+  assert.match(renderer,/\$\('executionOverviewDescription'\)\.textContent=overview\.description/);
+});
 
 test('desktop package ships only canonical desktop runtime', () => {
   assert.equal(pkg.main, 'desktop/bootstrap.mjs');
@@ -475,7 +493,7 @@ test('GPT execution navigation opens scoped work chooser, including an empty pro
   const orchestrator=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const shell=fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
   assert.match(html,/id="openWorks"[^>]*aria-controls="orchestratorWorkRail"[^>]*aria-expanded="false"/);
-  assert.match(html,/Missões<\/strong><small>Frentes e conversas GPT/);
+  assert.match(html,/Missões<\/strong><small>Conversas e Runs · GPT Web/);
   assert.match(orchestrator,/\$\('openWorks'\)\.disabled=!projectId\|\|!orchestratorId;/);
   assert.match(orchestrator,/\$\('openWorks'\)\.disabled=!p\|\|!selected;/);
   const start=orchestrator.indexOf('  function openMissionNavigation(');

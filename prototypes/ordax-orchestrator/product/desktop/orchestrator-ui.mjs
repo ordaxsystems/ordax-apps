@@ -1,6 +1,26 @@
 // Native App UI is a client of the same command service as MCP. No DOM of
 // ChatGPT, coordinates or direct SQLite access is used to operate the Lab.
 import {providerComposeAvailability,COMPOSE_STATUS_MESSAGES} from '../src/provider-compose-availability.mjs';
+
+// Only canonical Works count as active/reviewable. An idle session must never
+// be presented as an active execution just because a historical mission exists.
+export function describeExecutionMonitor({running,attention}) {
+  if(!Number.isSafeInteger(running)||running<0||
+     !Number.isSafeInteger(attention)||attention<0)
+    throw Error('invalid_execution_monitor_counts');
+  if(running>0)return {
+    title:'Execução em andamento',
+    description:`${running} frente(s) com Run GPT ativo. Resultados externos continuam não verificados.`
+  };
+  if(attention>0)return {
+    title:'Revisões pendentes',
+    description:`Nenhum Run GPT ativo. ${attention} frente(s) aguardam revisão ou reconciliação.`
+  };
+  return {
+    title:'Nenhuma execução ativa',
+    description:'Nenhum Run GPT em andamento ou frente pendente de revisão neste projeto.'
+  };
+}
 // Name-only onboarding uses the existing mission_create contract. This
 // description is coordination guidance, never permission to inspect GitHub,
 // execute work or send messages to GPT Web.
@@ -283,6 +303,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('executionWorkCount').textContent=String(works.length);
     $('executionRunningCount').textContent=String(stats.running);
     $('executionReviewCount').textContent=String(stats.attention);
+    const overview=describeExecutionMonitor(stats);
+    $('executionOverviewTitle').textContent=overview.title;
+    $('executionOverviewDescription').textContent=overview.description;
     const state=active?.state||'idle';
     const stateLabels={
       idle:'Sem missão',queued:'Preparando',ready_a:'Aguardando GPT',
