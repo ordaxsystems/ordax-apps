@@ -509,10 +509,21 @@ export class AutonomousDialogue {
       .replace(/\s+/gu,' ').trim();
     const reason=redactOrchestratorAnalysisText(decision.reason,220)
       .replace(/\s+/gu,' ').trim();
+    const acceptance=decision.acceptance;
+    const acceptanceLabels={
+      answer_indicates_progress:'a resposta sugere progresso, sem prova externa',
+      requires_external_verification:'aguarda verificacao independente',
+      not_met:'criterio ainda nao atendido'
+    };
+    const acceptanceNote=acceptance&&acceptanceLabels[acceptance.status]
+      ?' Criterio de aceite proposto: '+
+        redactOrchestratorAnalysisText(acceptance.criterion,180).replace(/\s+/gu,' ').trim()+
+        ' ('+acceptanceLabels[acceptance.status]+').'
+      :'';
     this.store.appendMessage(chatTaskId,'assistant',
       'Ciclo '+cycle+': recebi a '+phaseLabel+' resposta GPT e registrei a revisão Groq. '+
       'Avaliação Groq (não certificada): '+summary+'. '+
-      'Motivo informado: '+reason+'. '+note+
+      'Motivo informado: '+reason+'. '+note+acceptanceNote+
       ' Nenhuma alteração externa foi certificada por esta revisão.');
     this.store.event(chatTaskId,'orchestrator.technical_review',{
       mission_id:row.id,run_id:runId,task_id:taskId,phase,

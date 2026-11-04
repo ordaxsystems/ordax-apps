@@ -1278,7 +1278,11 @@ export class OrchestratorService {
           'Não afirme que código foi alterado, testado ou implantado sem evidência externa; um Run succeeded comprova só a resposta. '+
           'Decida o próximo passo específico para a missão e as pendências. '+
           'Responda SOMENTE JSON conforme o formato do provedor, incluindo o Run, a decisao, resumo, '+
-          'justificativa, trecho literal observado e proxima instrucao conforme a decisao. '+
+          'justificativa, trecho literal observado, aceite e proxima instrucao conforme a decisao. '+
+          'acceptance deve conter {criterion,status,observedExcerpt}: um criterio de aceite '+
+          'especifico do objetivo, status answer_indicates_progress, requires_external_verification '+
+          'ou not_met, e um trecho literal de 16 a 180 caracteres da resposta observada. '+
+          'Nao declare criterio externo como comprovado so pelo texto GPT. '+
           'decision deve ser continue_same_conversation, new_conversation, new_work, request_correction, '+
           'verify_external_effect, candidate_complete ou blocked. observedExcerpt deve copiar literalmente '+
           'um trecho de 16 a 180 caracteres da resposta GPT fornecida. nextPrompt é uma instrução concreta '+
@@ -1390,6 +1394,7 @@ export class OrchestratorService {
             // Unexpected Store/session/authorization errors remain uncertain.
             const codes={gpt_review_invalid_json:'groq_review_invalid_json',
               gpt_review_invalid_evidence:'groq_review_invalid_evidence',
+              gpt_review_invalid_acceptance:'groq_review_invalid_evidence',
               gpt_review_invalid_next_step:'groq_review_invalid_next_step'};
             const code=codes[String(error?.message||'')];
             if(!code)throw error;
