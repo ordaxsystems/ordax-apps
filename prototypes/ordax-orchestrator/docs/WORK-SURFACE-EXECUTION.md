@@ -1,6 +1,6 @@
 # ORCHESTRATOR — MISSÃO CANÔNICA: WORK SURFACE E PREVIEW
 
-> Estado: **ATIVA** · 2026-11-04 · Owner: `ordaxsystems/ordax-apps` · SSOT: esta missão + código + PR #445.  
+> Estado: **ATIVA** · 2026-11-04 · Owner: `ordaxsystems/ordax-apps` · SSOT: esta missão + código + PR #445.
 > Continuidade: ao abrir novo chat, ler primeiro `ORCHESTRATOR-CANONICAL-PRODUCT.md` e este documento, consultar `main`, PR #445, CI e a instalação canônica no DESKTOP-4UFL03B. **Não refazer pesquisa nem abrir PR/branch paralelas.**
 
 ## Objetivo inegociável
