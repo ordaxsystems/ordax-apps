@@ -31,6 +31,8 @@ test('confirmed HTML artifact download stays scoped to a succeeded Run and never
   assert.match(main,/conversation_completed_runs WHERE run_id=\? AND task_id=\?/);
   assert.match(main,/run\?\.status!=='succeeded'/);
   assert.match(main,/verifyLocalHtmlArtifact\(filePath\)/);
+  assert.match(main,/inspectProviderLinkedThread\(\{store,worker,taskId\}\)/);
+  assert.match(main,/inspection\.threadRendered!==true/);
   assert.match(main,/if \(!asset \|\| asset.kind!=='image'/,
     'app asset protocol must not render untrusted HTML');
   assert.match(host,/asset.kind!=='image'/,

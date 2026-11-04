@@ -801,7 +801,7 @@ async function openTask(id) {
   $('#taskId').textContent = task.id;
   $('#inspectLinkedThread').disabled = !task.chat_url;
   const hasLocalHtml=(task.messages||[]).some(m=>(m.assets||[]).some(a=>a.kind==='file'&&a.mime_type==='text/html'));
-  const htmlExpected=Boolean(typeof window.ordax.saveHtmlArtifact==='function'&&task.chat_url&&task.latest_run?.status==='succeeded'&&
+  const htmlExpected=Boolean(window.ordaxHost?.hostMode!==true&&typeof window.ordax.saveHtmlArtifact==='function'&&task.chat_url&&task.latest_run?.status==='succeeded'&&
     (task.messages||[]).some(m=>m.role==='assistant'&&m.content?.includes('index.html')));
   $('#saveConfirmedHtml').hidden=!htmlExpected||hasLocalHtml;
   $('#saveConfirmedHtml').disabled=!htmlExpected||hasLocalHtml;

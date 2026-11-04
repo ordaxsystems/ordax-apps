@@ -781,9 +781,21 @@ registerUiHandler('ordax:tasks:html-artifact:save',async(event,requestedId)=>{
   htmlArtifactCaptureBusy=true;
   const dir=path.join(assetsRoot,taskId);
   fs.mkdirSync(dir,{recursive:true});
+  // Refuse a maliciously replaced/symlinked Task directory even when its
+  // lexical path is under the private asset root.
+  assertLocalArtifactPath(fs.realpathSync.native(assetsRoot),fs.realpathSync.native(dir));
   const assetId='asset_'+randomUUID();
   const filePath=assertLocalArtifactPath(assetsRoot,path.join(dir,assetId+'.html'));
   try{
+    // Navigate and attribute the existing linked GPT thread using the
+    // canonical read-only inspector. A filename in a model answer is not
+    // evidence: require one completed reply bound to this exact Task/Run.
+    const inspection=await inspectProviderLinkedThread({store,worker,taskId});
+    if(inspection?.kind!=='response_candidate'||inspection.threadRendered!==true||
+       inspection.inspectionReason!=='thread_rendered')
+      throw Error('provider_html_thread_unverified');
+    if(liveRun||worker.active||providerScheduler?.snapshot()?.pendingTasks)
+      throw Error('provider_html_capture_unavailable');
     const downloaded=await worker.downloadLinkedHtmlArtifact({
       chatUrl:task.chat_url,expectedAnswer:response.content,
       destinationPath:filePath,filename:'index.html'

@@ -23,6 +23,12 @@ O pedido explícito de criar é a autorização para sua execução limitada; a 
 
 **Evidência física de 04/11/2026 (Windows, projeto E2E Estação Café):** o texto natural de 68 caracteres chegou sem expansão ao primeiro Run GPT, que terminou com resposta confirmada. A revisão Groq sugeriu publicar o site, operação não solicitada, e um segundo envio foi iniciado antes da interrupção controlada do processo. O recibo de submissão existe, mas o segundo resultado e eventuais efeitos externos não foram confirmados; o perfil de prova deve ser preservado até reconciliação. A correção usa `followup_policy=review_only` no ledger da missão natural: depois do primeiro Run há revisão interna e estado de atenção, **nunca um segundo envio automático**. O modo técnico explicitamente autorizado mantém o contrato anterior de até dois envios.
 
+### Arquivos de resultado verificáveis — HTML local (candidato 04/11/2026)
+
+Quando o GPT Web devolve um cartão **index.html** vinculado a uma resposta concluída, o aplicativo pode oferecer **Guardar HTML entregue** dentro da tarefa. A ação é explicitamente local e **não envia prompts nem cria Runs**. A mesma inspeção somente leitura da conversa verifica o vínculo exato entre Task, recibo de submissão e resposta observada; o Worker só aciona um botão de download de arquivo pertencente à resposta identificada. O download é limitado a 2 MiB, nome `index.html` e diretório privado de assets, sem acessar um caminho arbitrário. O aplicativo valida bytes e estrutura HTML mínima, calcula SHA-256 e grava um `message_assets` canônico com `kind=file`, ligado à resposta e ao Run existentes. Uma segunda solicitação apenas confirma a integridade do mesmo arquivo, sem duplicar download.
+
+O HTML **não é renderizado no protocolo `ordax-asset` nem na rota de assets do Host**, e não é executado automaticamente: o botão **Mostrar arquivo** apenas o destaca no Explorador após verificar novamente caminho e SHA-256. Isso comprova arquivo local presente, **não** testes de navegador, acessibilidade, integridade funcional ou publicação na internet. A capacidade está limitada ao Electron Windows e não constitui um workspace ou runtime genérico de edição. O histórico GPT anterior permanece intacto.
+
 ## 2. Inicialização sem mensagem humana
 
 1. **Connect/onboarding**: nome, missão geral opcional, organização/repositórios GitHub autorizados, vínculos de workspace quando grants reais existirem, budget, capacidades e policy. Não inferir autorização apenas de URL.
