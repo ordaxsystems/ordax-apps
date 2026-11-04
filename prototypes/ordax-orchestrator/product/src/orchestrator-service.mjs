@@ -533,7 +533,7 @@ export class OrchestratorService {
     if(operation==='work_messages') {
       this.task(input.projectId,input.taskId);
       const page=this.store.messagesPage(input.taskId,{before:input.before||null,limit:input.limit||50});
-      return {...page,messages:page.messages.map(m=>({id:m.id,role:m.role,content:m.content,created_at:m.created_at}))};
+      return {...page,messages:page.messages.map(m=>({id:m.id,role:m.role,content:m.content,created_at:m.created_at,author_source:m.author_source}))};
     }
     if(operation==='command_get')return this.getReceipt(context,input.commandId);
     throw Error('orchestrator_unknown_operation');
@@ -1306,7 +1306,9 @@ export class OrchestratorService {
             throw Error('task_draft_revision_conflict');
           if(!Number.isSafeInteger(input.draftRevision+1))throw Error('invalid_task_draft_revision');
         }
-        this.store.appendMessage(task.id,'user',content);
+        // Run-specific review is an internal decision stored in the
+        // canonical receipt and mission ledger, not a human chat turn.
+        if(!reviewSource)this.store.appendMessage(task.id,'user',content);
         if(coordinatorDraft) {
           const cleared=this.store.setDraft(task.id,'',input.draftRevision+1);
           if(cleared.draft!==''||cleared.draft_revision!==input.draftRevision+1)
@@ -1323,7 +1325,8 @@ export class OrchestratorService {
         draftRevision:sendInput.draftRevision??null,
         taskKind:isWorkSend?'work':null,
         mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork,
-        completionProfile:reviewSource?'technical_review':'standard',workspaceObservation,repositoryUrl});
+        completionProfile:reviewSource?'technical_review':'standard',workspaceObservation,repositoryUrl,
+        delegateWork:operation==='orchestrator_chat'&&input.delegateWork===true});
       this.requireAccess(context,operation,input.projectId);
       if(!usesProvider) {
         // Pause can happen during the external Groq await. A durable receipt
@@ -1335,6 +1338,9 @@ export class OrchestratorService {
           throw Error('orchestrator_reply_invalid');
         // Parse an evidence-anchored decision before it becomes a completed
         // receipt. The model response is never itself permission to execute.
+        if(operation==='orchestrator_chat'&&input.delegateWork===true&&
+          !['technical','none'].includes(reply.delegation))
+          throw Error('orchestrator_jarvis_decision_unconfirmed');
         let reviewDecision=null;
         if(reviewSource){
           try{
@@ -1363,8 +1369,40 @@ export class OrchestratorService {
               {projectId:input.projectId,orchestratorId:owner.id,actorId:context.actorId,clientId:context.clientId,proposal});
             this.store.requestApproval(task.id,proposalActionId,'Revisar nova frente e rascunho; nenhum envio ao GPT');
           }
-          this.store.appendMessage(task.id,'assistant',reply.content);
+          let delegation=null;
+          if(operation==='orchestrator_chat'&&input.delegateWork===true){
+            if(reply.delegation==='none')delegation={status:'not_needed'};
+            else {
+              // One explicit UI command authorizes at most the existing two-send
+              // technical mission. Groq only classifies; it cannot create
+              // grants or dispatch through an unrecognized model reply.
+              this.db.exec('SAVEPOINT jarvis_delegation');
+              try {
+                const accepted=this.autonomous.start(context,{
+                  projectId:input.projectId,orchestratorId:input.orchestratorId,
+                  mission:input.content,mode:'technical',directUserPrompt:true,
+                  requestId:'jarvis_'+reserved.commandId
+                });
+                this.db.exec('RELEASE SAVEPOINT jarvis_delegation');
+                delegation={status:'accepted',missionId:accepted.missionId};
+              } catch {
+                this.db.exec('ROLLBACK TO SAVEPOINT jarvis_delegation');
+                this.db.exec('RELEASE SAVEPOINT jarvis_delegation');
+                delegation={status:'blocked'};
+              }
+            }
+          }
+          // The coordinator's internal routing wording is not a user reply.
+          // Report only what the App actually accepted. A model cannot claim
+          // a send, an artifact or a completed run by composing prose.
+          const userReply=delegation?.status==='accepted'
+            ?'Vou cuidar disso.'
+            :delegation?.status==='blocked'
+              ?'Não consegui iniciar essa tarefa. Confira a conexão para continuar.'
+              :reply.content;
+          if(!reviewSource)this.store.appendMessage(task.id,'assistant',userReply);
           return this.finish(reserved.commandId,{taskId:task.id,responseObserved:true,
+            ...(delegation?{delegation}:{}),
             ...(reviewSource?{reviewRunId:reviewSource.runId}:{}),
             ...(proposalActionId?{proposalActionId}:{}),
             ...(reviewDecision?{reviewDecision}:{}),

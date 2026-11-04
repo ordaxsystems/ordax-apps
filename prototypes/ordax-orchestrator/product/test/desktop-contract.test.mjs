@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {resolveProjectOnboardingMission,describeProjectPreflight,describeExecutionMonitor} from '../desktop/orchestrator-ui.mjs';
+import {resolveProjectOnboardingMission,describeProjectPreflight,describeExecutionMonitor,describeConversationOutcome} from '../desktop/orchestrator-ui.mjs';
 const root = path.resolve(import.meta.dirname, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
 const bootstrap = JSON.parse(fs.readFileSync(path.join(root,'..','package.json'),'utf8'));
@@ -19,6 +19,70 @@ const uiHtml = fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
 const e2eLock = fs.readFileSync(path.join(root,'scripts','e2e-lock.cjs'),'utf8');
 const liveText = fs.readFileSync(path.join(root,'scripts','live-ui-text-smoke.cjs'),'utf8');
 
+test('GPT Work visibly attributes autonomous messages to OrdaX, never the human author',()=>{
+  const source=fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
+  const service=fs.readFileSync(path.join(root,'src','orchestrator-service.mjs'),'utf8');
+  const desktop=fs.readFileSync(path.join(root,'desktop','main.mjs'),'utf8');
+  assert.match(source,/message\.author_source==='orchestrator'/);
+  assert.match(source,/automatic\?'orchestrator':message\.role/);
+  assert.match(source,/OrdaX · envio automático/);
+  assert.doesNotMatch(source,/message\.role === 'user' \? 'Você' : 'ChatGPT'/,
+    'machine-created work must never silently become user-authored chat');
+  assert.match(source,/author_source:userMessage\.author_source\|\|'human'/);
+  assert.match(service,/author_source:m\.author_source/);
+  assert.match(desktop,/authorSource/);
+});
+
+test('natural project UI does not show model-generated publishing proposals as instructions',()=>{
+  const code=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  const summary=code.match(/\$\('executionMissionDetail'\)\.textContent=([\s\S]*?)\n    const workList/);
+  assert.ok(summary,'execution summary exists');
+  assert.doesNotMatch(summary[1],/\.decision\.summary|questionFinal/);
+  const raw=code.match(/\$\('autonomousDialogueState'\)\.textContent=([\s\S]*?)\n    \/\//);
+  assert.ok(raw,'mission status exists');
+  assert.doesNotMatch(raw[1],/\.decision\.summary|questionFinal|lastError/);
+  assert.match(raw[1],/describeConversationOutcome\(job\)/);
+});
+
+test('human conversation presents a read-only result instead of leaking technical routing',()=>{
+  const base={missionId:'autonomous_fixture',mode:'technical',maxGPTSends:1,
+    taskAId:'task_first',taskBId:null,reviewedTaskId:'task_first',
+    reviewTasks:[{taskId:'task_first',label:'Trabalho GPT'}]};
+  const ready=describeConversationOutcome({...base,state:'verification_required',
+    decision:{sourceRunId:'run_verified'}});
+  assert.equal(ready.taskId,'task_first');
+  assert.equal(describeConversationOutcome({...base,taskBId:'task_unconfirmed',
+    reviewTasks:[...base.reviewTasks,{taskId:'task_unconfirmed'}],
+    state:'reconciliation_required',decision:{sourceRunId:'run_verified'}}).taskId,'task_first',
+    'a second interrupted Task must never replace the confirmed answer link');
+  assert.match(ready.message,/Resposta recebida/);
+  assert.match(ready.message,/não foram verificados/);
+  assert.doesNotMatch(ready.message,/Groq|GPT|API|token|JSON/);
+  assert.deepEqual(describeConversationOutcome({...base,state:'sending_a',decision:null}),
+    {message:'Trabalhando no seu pedido…',taskId:null});
+  const uncertain=describeConversationOutcome({...base,state:'reconciliation_required',
+    decision:{sourceRunId:'run_verified'}});
+  assert.equal(uncertain.taskId,'task_first');
+  assert.match(uncertain.message,/Nada será reenviado automaticamente/);
+  assert.equal(describeConversationOutcome({...base,state:'reconciliation_required',
+    decision:null}).taskId,null,'an unverified run cannot open as confirmed result');
+  assert.equal(describeConversationOutcome({...base,reviewedTaskId:null,
+    state:'verification_required',decision:{sourceRunId:'run_verified'}}).taskId,null,
+    'a missing owner match is never a confirmed result');
+  assert.equal(describeConversationOutcome(null),null);
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const uiSource=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  for(const id of ['coordinatorOutcome','coordinatorOutcomeText','coordinatorOutcomeOpen'])
+    assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1);
+  assert.match(uiSource,/describeConversationOutcome\(job\)/);
+  assert.match(uiSource,/box\.replaceChildren\(recoveryNotice,\$\('coordinatorOutcome'\)\)/,
+    'chat redraw must not remove the sole result node from the DOM');
+  assert.match(uiSource,/await onOpenWork\(taskId\)/);
+  assert.doesNotMatch(uiSource.slice(uiSource.indexOf("  $('coordinatorOutcomeOpen').addEventListener"),uiSource.indexOf("  $('executionOpenWorks').addEventListener")),/command\(|provider\.send|window\.ordax\.send/);
+  assert.match(css,/\.coordinator-outcome\[hidden\]/);
+});
+
 test('physical frontend monitor describes registered execution, not fictitious active work',()=>{
   assert.deepEqual(describeExecutionMonitor({running:0,attention:2}),{
     title:'Revisões pendentes',
@@ -30,8 +94,8 @@ test('physical frontend monitor describes registered execution, not fictitious a
     assert.throws(()=>describeExecutionMonitor(invalid),/invalid_execution_monitor_counts/);
   assert.match(uiHtml,/id="executionOverviewTitle"/);
   assert.match(uiHtml,/id="executionOverviewDescription"/);
-  assert.match(uiHtml,/Administrador · Groq/);
-  assert.match(uiHtml,/Conversas e Runs · GPT Web/);
+  assert.match(uiHtml,/Assistente OrdaX/);
+  assert.match(uiHtml,/Tarefas e resultados/);
   const renderer=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.match(renderer,/\$\('executionOverviewTitle'\)\.textContent=overview\.title/);
   assert.match(renderer,/\$\('executionOverviewDescription'\)\.textContent=overview\.description/);
@@ -462,7 +526,7 @@ test('project hub exposes creation and switching before the administrative navig
   assert.ok(html.indexOf('id="projectNavList"')<html.indexOf('id="openOrchestrator"'),
     'switching projects must be immediately discoverable in the sidebar');
   assert.match(html,/Administrador Geral/);
-  assert.match(html,/id="openWorks"[\s\S]*?<strong>Missões<\/strong>/);
+  assert.match(html,/id="openWorks"[\s\S]*?<strong>Atividades<\/strong>/);
   assert.match(html,/id="executionOverview"/);
   assert.match(html,/<section id="projectSwitcher" class="project-chooser"[^>]*hidden>/);
   assert.match(orchestration,/projectSwitcher'\)\.hidden=otherProjects\.length===0/);
@@ -479,7 +543,7 @@ test('project hub exposes creation and switching before the administrative navig
   assert.doesNotMatch(html,/Trocar de projeto anterior/);
   assert.match(orchestration,/activeProjectName'\)\.textContent=current\?\.name/);
   assert.match(orchestration,/GitHub vinculado por URL · leitura não verificada/);
-  assert.match(orchestration,/CANAL ADMINISTRATIVO ·/);
+  assert.match(orchestration,/ASSISTENTE ORDAX/);
   assert.match(css,/--font-ui:/);
   for(const token of ['--bg:','--panel:','--panel-2:','--border:','--text:','--muted:','--focus:'])
     assert.ok(css.includes(token),token+' should be defined in the canonical CSS root');
@@ -493,7 +557,7 @@ test('GPT execution navigation opens scoped work chooser, including an empty pro
   const orchestrator=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const shell=fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
   assert.match(html,/id="openWorks"[^>]*aria-controls="orchestratorWorkRail"[^>]*aria-expanded="false"/);
-  assert.match(html,/Missões<\/strong><small>Conversas e Runs · GPT Web/);
+  assert.match(html,/Atividades<\/strong><small>Tarefas e resultados/);
   assert.match(orchestrator,/\$\('openWorks'\)\.disabled=!projectId\|\|!orchestratorId;/);
   assert.match(orchestrator,/\$\('openWorks'\)\.disabled=!p\|\|!selected;/);
   const start=orchestrator.indexOf('  function openMissionNavigation(');
@@ -522,7 +586,7 @@ test('compact administrator navigation retains both accessible selectors and the
   assert.equal((css.match(/:root\{/g)||[]).length,1,'one visual token root');
   assert.match(html,/id="projectSelect"[^>]*aria-label="Selecionar projeto ativo"/);
   assert.match(html,/id="orchestratorSelect"[^>]*aria-label="Selecionar administrador do projeto"/);
-  assert.match(html,/id="coordinatorApiSettings"[^>]*aria-label="Configurar modelo do Administrador Geral"/);
+  assert.match(html,/id="coordinatorApiSettings"[^>]*aria-label="Abrir configurações de modelos"/);
   assert.match(css,/body\.orchestrator-focus \.app-shell\{grid-template-rows:98px minmax\(0,1fr\)\}/);
   assert.match(css,/body\.orchestrator-focus \.orchestration-navigation\{grid-column:1\/-1;grid-row:2;/);
   assert.match(css,/body\.orchestrator-focus \.left-footer\{grid-column:2;grid-row:1\}/);
@@ -725,11 +789,11 @@ test('coordinator shows an actionable empty state and keeps mobile controls insi
   assert.match(orchestration,/page\.messages\.length===0/);
   assert.match(orchestration,/uncertainCommands/);
   assert.match(orchestration,/nada foi reenviado automaticamente/);
-  assert.match(orchestration,/Conversa de coordenação ainda vazia/);
-  assert.match(orchestration,/Este é o chat do Orquestrador via/);
-  assert.match(orchestration,/Configurar '\+model/);
+  assert.match(orchestration,/Como posso ajudar\?/);
+  assert.match(orchestration,/Descreva o que deseja criar/);
+  assert.match(orchestration,/settings.textContent='Ajustes'/);
   assert.match(orchestration,/ChatGPT Plan · autorizado/);
-  assert.match(html,/id="coordinatorApiSettings"[^>]*>Configurar Groq</);
+  assert.match(html,/id="coordinatorApiSettings"[^>]*>Ajustes</);
   assert.match(css,/coordinator-head-actions #coordinatorApiSettings\{font-size:9px;width:auto/);
   assert.match(orchestration,/groq_auth_rejected:/);
   assert.match(orchestration,/O tempo de resposta do \$\{provider\} expirou sem confirmação/);
@@ -1045,11 +1109,11 @@ test('Groq and ChatGPT workspaces have distinct visible destinations and fail-cl
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   assert.match(uiHtml,/id="openOrchestrator"/);
   assert.match(uiHtml,/id="openWorks"/);
-  assert.match(uiHtml,/ADMINISTRAÇÃO · GROQ/);
+  assert.match(uiHtml,/ASSISTENTE ORDAX/);
   assert.match(uiHtml,/CONVERSA DE TRABALHO · CHATGPT WEB/);
   assert.match(uiHtml,/id="coordinatorComposer"/);
   assert.match(uiHtml,/id="composer"/);
-  assert.match(uiHtml,/Enviar à Groq/);
+  assert.match(uiHtml,/id="coordinatorSend"[^>]*>Enviar</);
   assert.match(uiHtml,/Enviar ao GPT/);
   assert.match(ui,/setWorkspaceRoute\('coordinator'\)/);
   assert.match(ui,/setWorkspaceRoute\('gpt'\)/);
@@ -1059,7 +1123,8 @@ test('Groq and ChatGPT workspaces have distinct visible destinations and fail-cl
   assert.doesNotMatch(orchestratorUi,/orchestratorChatAvailable=gptWebTransportAvailable/);
   assert.match(orchestratorUi,/\$\('coordinatorComposer'\)\.addEventListener\('submit'/);
   assert.match(orchestratorUi,/command\('orchestrator_chat'/);
-  assert.match(contract,/\['orchestrator_chat'.*configured coordinator/);
+  assert.match(contract,/\['orchestrator_chat'.*coordinator turn/);
+  assert.match(contract,/For local user creation requests with delegateWork enabled/);
   assert.match(service,/const usesProvider=isWorkSend;/);
   assert.match(service,/const port=usesProvider\?this\.provider:this\.coordinator/);
   assert.doesNotMatch(service,/const gptWebChat=operation==='orchestrator_chat'/);

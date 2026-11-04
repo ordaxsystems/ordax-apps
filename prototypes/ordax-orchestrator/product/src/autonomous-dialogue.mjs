@@ -40,6 +40,7 @@ export class AutonomousDialogue {
       request_id TEXT NOT NULL,mission TEXT NOT NULL,
       state TEXT NOT NULL,
       max_gpt_sends INTEGER NOT NULL CHECK(max_gpt_sends=2),
+      followup_policy TEXT NOT NULL DEFAULT 'two_send' CHECK(followup_policy IN ('two_send','review_only')),
       task_a_id TEXT REFERENCES tasks(id),task_b_id TEXT REFERENCES tasks(id),
       question_a TEXT,question_b TEXT,question_final TEXT,
       last_error TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
@@ -56,6 +57,7 @@ export class AutonomousDialogue {
     for(const [column,definition] of [
       ['strategy',"TEXT NOT NULL DEFAULT 'legacy' CHECK(strategy IN ('legacy','semantic'))"],
       ['review_a_json','TEXT'],
+      ['followup_policy',"TEXT NOT NULL DEFAULT 'two_send' CHECK(followup_policy IN ('two_send','review_only'))"],
       ['review_b_json','TEXT'],
       // A new explicit consent renews the existing two-send budget while
       // preserving the exact previous mission and source GPT Run.
@@ -75,6 +77,33 @@ export class AutonomousDialogue {
       report_json TEXT NOT NULL,
       created_at TEXT NOT NULL
     );`);
+    // Older releases persisted automated GPT submissions with role=user
+    // and no author_source, making the UI falsely call them "Você".
+    // Reclassify only messages whose exact text, Task and Run timestamp
+    // match the original mission ledger. Do not change the transcript,
+    // submission receipts, run state or replay any provider request.
+    if(!this.db.prepare(
+      "SELECT 1 FROM store_migrations WHERE name='automatic-message-author-v1'").get()){
+      this.db.exec('BEGIN IMMEDIATE');
+      try{
+        this.db.prepare(`UPDATE messages SET author_source='orchestrator'
+          WHERE role='user' AND author_source='human' AND EXISTS (
+            SELECT 1 FROM lab_autonomous_dialogues a
+            JOIN runs r ON r.task_id=messages.task_id
+            WHERE (
+              (a.task_a_id=messages.task_id AND a.question_a=messages.content) OR
+              (a.task_b_id=messages.task_id AND a.question_b=messages.content)
+            )
+            AND ABS(unixepoch(r.started_at)-unixepoch(messages.created_at))<=2
+          )`).run();
+        this.db.prepare('INSERT INTO store_migrations(name,applied_at) VALUES(?,?)')
+          .run('automatic-message-author-v1',this.store.now());
+        this.db.exec('COMMIT');
+      }catch(error){
+        if(this.db.isTransaction)this.db.exec('ROLLBACK');
+        throw error;
+      }
+    }
     this.db.prepare(`UPDATE lab_autonomous_dialogues SET
       state='reconciliation_required',
       last_error='interrupted_story_stage_requires_reconciliation',updated_at=?
@@ -108,10 +137,22 @@ export class AutonomousDialogue {
     const semanticReview=semantic?(row.review_b_json||row.review_a_json):null;
     let decision=null;
     if(semanticReview){try{decision=JSON.parse(semanticReview);}catch{}}
+    // Link the user's result action to the Run actually reviewed, not to
+    // the last Task in the mission. A newer Task may have an interrupted or
+    // indeterminate provider submission and must never masquerade as a result.
+    let reviewedTaskId=null;
+    if(semantic&&typeof decision?.sourceRunId==='string'){
+      const reviewed=this.db.prepare('SELECT task_id,status FROM runs WHERE id=?')
+        .get(decision.sourceRunId);
+      if(reviewed?.status==='succeeded'&&
+        [row.task_a_id,row.task_b_id].includes(reviewed.task_id))
+        reviewedTaskId=reviewed.task_id;
+    }
     return {missionId:row.id,projectId:row.project_id,orchestratorId:row.orchestrator_id,
       mission:row.mission,
       mode:story?'story':semantic?'technical':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,quality,reviewTasks,
-      state:row.state,maxGPTSends:story?STORY_TURNS:row.max_gpt_sends,taskAId:row.task_a_id,taskBId:row.task_b_id,
+      state:row.state,maxGPTSends:story?STORY_TURNS:row.followup_policy==='review_only'?1:row.max_gpt_sends,
+      taskAId:row.task_a_id,taskBId:row.task_b_id,reviewedTaskId,
       originMissionId:semantic?row.origin_mission_id||null:null,
       canContinue:semantic&&row.state==='budget_exhausted'&&
         ['continue_same_conversation','request_correction','new_conversation','new_work'].includes(decision?.decision)&&
@@ -131,11 +172,13 @@ export class AutonomousDialogue {
       .get(context.workspaceSessionId,context.actorId,context.clientId,projectId,orchestratorId);
     return {mission:this.summary(row)};
   }
-  start(context,{projectId,orchestratorId,mission,requestId,mode='dialogue'}) {
+  start(context,{projectId,orchestratorId,mission,requestId,mode='dialogue',directUserPrompt=false}) {
     this.service.requireAccess(context,'autonomous_dialogue_start',projectId);
     const owner=this.service.orchestrator(projectId,orchestratorId);
     if(owner.status!=='ready')throw Error('orchestrator_paused');
-    if(!noExtra(mission)||mission.length>4000||!['dialogue','story','technical'].includes(mode))throw Error('autonomous_mission_invalid');
+    if(!noExtra(mission)||mission.length>4000||!['dialogue','story','technical'].includes(mode)||
+       typeof directUserPrompt!=='boolean'||(directUserPrompt&&mode!=='technical'))
+      throw Error('autonomous_mission_invalid');
     if(typeof this.service.coordinator?.send!=='function'||
        this.service.coordinator.available?.(projectId,orchestratorId)!==true||
        typeof this.service.provider?.send!=='function')throw Error('autonomous_provider_unavailable');
@@ -144,7 +187,8 @@ export class AutonomousDialogue {
       .get(context.workspaceSessionId,context.actorId,context.clientId,requestId);
     if(existing) {
       if(existing.project_id!==projectId||existing.orchestrator_id!==orchestratorId||existing.mission!==mission||
-        (existing.mode==='story'?'story':existing.strategy==='semantic'?'technical':'dialogue')!==mode)
+        (existing.mode==='story'?'story':existing.strategy==='semantic'?'technical':'dialogue')!==mode||
+        (directUserPrompt&&(existing.question_a!==mission||existing.followup_policy!=='review_only')))
         throw Error('autonomous_request_conflict');
       return this.summary(existing);
     }
@@ -158,13 +202,29 @@ export class AutonomousDialogue {
       LIMIT 1`).get(context.workspaceSessionId))
       throw Error('autonomous_mission_already_running');
     const id='autonomous_'+randomUUID(),now=this.store.now();
-    this.db.prepare(`INSERT INTO lab_autonomous_dialogues
-      (id,workspace_session_id,actor_id,client_id,project_id,orchestrator_id,request_id,mission,
-        state,max_gpt_sends,created_at,updated_at,mode,strategy)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(id,context.workspaceSessionId,context.actorId,context.clientId,projectId,orchestratorId,
-        requestId,mission,mode==='story'?'story_queued_1':'queued',LIMIT,now,now,
-        mode==='story'?'story':'dialogue',mode==='technical'?'semantic':'legacy');
+    // The first execution of a conversational request must send the user's
+    // exact message. Do not let the planner add requirements that were never
+    // asked for. Reuse the existing Work/Task, Run and two-send mission ledger.
+    this.db.exec('SAVEPOINT autonomous_start_atomic');
+    try {
+      const initialTask=directUserPrompt?this.service.mutate('work_create',{
+        projectId,orchestratorId,title:Array.from(mission.trim().split(/\\r?\\n/u,1)[0]).slice(0,130).join('')
+      }).taskId:null;
+      this.db.prepare(`INSERT INTO lab_autonomous_dialogues
+        (id,workspace_session_id,actor_id,client_id,project_id,orchestrator_id,request_id,mission,
+          state,max_gpt_sends,task_a_id,question_a,created_at,updated_at,mode,strategy,followup_policy)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(id,context.workspaceSessionId,context.actorId,context.clientId,projectId,orchestratorId,
+          requestId,mission,directUserPrompt?'ready_a':mode==='story'?'story_queued_1':'queued',
+          LIMIT,initialTask,directUserPrompt?mission:null,now,now,
+          mode==='story'?'story':'dialogue',mode==='technical'?'semantic':'legacy',
+          directUserPrompt?'review_only':'two_send');
+      this.db.exec('RELEASE SAVEPOINT autonomous_start_atomic');
+    } catch(error) {
+      this.db.exec('ROLLBACK TO SAVEPOINT autonomous_start_atomic');
+      this.db.exec('RELEASE SAVEPOINT autonomous_start_atomic');
+      throw error;
+    }
     this.notify();
     // Initiating a mission is the ONLY operator action. The existing App
     // lifetime tick also resumes queued/ready (never indeterminate) stages.
@@ -377,7 +437,7 @@ export class AutonomousDialogue {
       if(decision.decision==='new_conversation')
         this.store.rotateConversation(taskId,'technical_mission_review');
     }
-    const r=await this.service.provider.send({taskId,content,draftRevision:null,taskKind:'work'});
+    const r=await this.service.provider.send({taskId,content,draftRevision:null,taskKind:'work',authorSource:'orchestrator'});
     requireConfirmedChatReceipt(r);
     if(row.strategy==='semantic') {
       const run=this.db.prepare("SELECT id,status FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1").get(taskId);
@@ -448,7 +508,14 @@ export class AutonomousDialogue {
         const decision=await this.reviewTechnical(row,'a',context);
         this.assertMissionSession(context,row);
         const review_a_json=JSON.stringify(decision);
-        if(['verify_external_effect','candidate_complete','blocked'].includes(decision.decision)) {
+        // A natural conversation authorizes one exact initial GPT request.
+        // Any model-suggested next task (including publishing, deploying or
+        // unrelated work) is advisory until the owner submits a NEW request.
+        // This is a persisted capability boundary, not a textual prompt rule.
+        if(row.followup_policy==='review_only'){
+          this.move(row.id,working,decision.decision==='blocked'?'blocked':'verification_required',
+            {review_a_json});
+        }else if(['verify_external_effect','candidate_complete','blocked'].includes(decision.decision)) {
           this.move(row.id,working,decision.decision==='blocked'?'blocked':'verification_required',
             {review_a_json});
         }else{

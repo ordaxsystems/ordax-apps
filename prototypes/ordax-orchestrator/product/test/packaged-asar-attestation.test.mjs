@@ -12,7 +12,7 @@ import {verifyRuntimeManifest} from '../src/runtime-build-identity.mjs';
 const require=createRequire(import.meta.url);
 const asar=require('@electron/asar');
 const packagerHooks=require('../scripts/attest-packaged-asar.cjs');
-const {attestPackagedAsar,sourceCommitFromGit}=packagerHooks;
+const {attestPackagedAsar,sourceCommitFromGit,writePackagedProofReceipt}=packagerHooks;
 const commit='1234567890abcdef1234567890abcdef12345678';
 
 function fixture(t,entry='desktop/bootstrap.mjs') {
@@ -39,6 +39,31 @@ test('electron-builder runs clean-source capture and ASAR attestation hooks',()=
   assert.equal(typeof packagerHooks.beforePack,'function');
   assert.equal(typeof packagerHooks.afterPack,'function');
   assert.equal(packagerHooks.afterPack,packagerHooks.default);
+});
+test('repeat Windows packaging replaces only the previous owned proof atomically',t=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-repeatable-proof-'));
+  t.after(()=>fs.rmSync(dir,{force:true,recursive:true}));
+  const receipt=path.join(dir,'orchestrator-packaged-proof.json');
+  const initial={schema:'ordax.lab.packaged-runtime-proof.v1',status:'verified',
+    sourceCommit:commit,contentDigest:'a'.repeat(64),asarSha256:'b'.repeat(64)};
+  const updated={...initial,sourceCommit:'f'.repeat(40),contentDigest:'c'.repeat(64),
+    asarSha256:'d'.repeat(64)};
+  writePackagedProofReceipt(receipt,initial);
+  assert.deepEqual(JSON.parse(fs.readFileSync(receipt,'utf8')),initial);
+  writePackagedProofReceipt(receipt,updated);
+  assert.deepEqual(JSON.parse(fs.readFileSync(receipt,'utf8')),updated);
+  assert.equal(fs.readdirSync(dir).filter(name=>name.endsWith('.tmp')).length,0);
+});
+test('repeat packaging fails closed when the receipt destination is not a regular file',t=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-unsafe-proof-'));
+  t.after(()=>fs.rmSync(dir,{force:true,recursive:true}));
+  const receipt=path.join(dir,'orchestrator-packaged-proof.json');
+  fs.mkdirSync(receipt);
+  assert.throws(()=>writePackagedProofReceipt(receipt,{
+    schema:'ordax.lab.packaged-runtime-proof.v1',sourceCommit:commit}),
+  /packaged_receipt_target_unsafe/);
+  assert.equal(fs.statSync(receipt).isDirectory(),true);
+  assert.equal(fs.readdirSync(dir).filter(name=>name.endsWith('.tmp')).length,0);
 });
 test('packaging source identity is captured only from a clean checkout',t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-clean-source-'));

@@ -6,6 +6,7 @@ import path from 'node:path';
 import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {createGroqCoordinatorConversation} from '../supervisor/groq-conversation.mjs';
+import {buildCoordinatorRequestContext} from '../supervisor/coordinator-request-context.mjs';
 import {parseStructuredModelObject} from '../src/structured-model-object.mjs';
 import {GPT_REVIEW_FOLLOWUP_DECISIONS,GPT_REVIEW_TERMINAL_DECISIONS} from '../src/gpt-work-review.mjs';
 
@@ -54,6 +55,38 @@ test('strict structured Groq proposal uses a JSON schema and stays locally valid
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,0);
 });
 
+test('autonomous Groq planning creates one explicit current user turn after an earlier assistant reply',async t=>{
+  const f=setup(t),args=await f.ids();
+  f.store.appendMessage(args.taskId,'user','Crie um site com o executor GPT.');
+  f.store.appendMessage(args.taskId,'assistant','Vou delegar após registrar o consentimento.');
+  const previousCount=f.store.messages(args.taskId).length;
+  const directive='MISSÃO AUTÔNOMA: prepare para o GPT uma tarefa de HTML e exija evidências reais.';
+  const groq=createGroqCoordinatorConversation({store:f.store,getApiKey:()=> 'fixture-secret',
+    isEnabled:()=>true,fetchImpl:async(_url,request)=>{
+      const body=JSON.parse(request.body);
+      assert.equal(body.messages.at(-1).role,'user');
+      assert.match(body.messages.at(-1).content,/MISSÃO AUTÔNOMA/);
+      assert.equal(body.messages.at(-2).role,'assistant');
+      assert.equal(body.response_format.type,'json_schema');
+      return apiResponse(JSON.stringify(proposal));
+    }});
+  const planned=await groq.send({...args,mission:directive});
+  assert.equal(planned.proposal.title,proposal.title);
+  assert.equal(f.store.messages(args.taskId).length,previousCount,
+    'synthetic provider turn must never be written as a fake user message');
+});
+
+test('focused Groq review uses an explicit user turn even with intentionally suppressed history',async t=>{
+  const f=setup(t),args=await f.ids();
+  const context=buildCoordinatorRequestContext({...args,store:f.store,
+    analysisContext:{phase:'gpt_response_review',reviewEvidence:{
+      runId:'run_1',answerStart:'GPT respondeu ao trabalho e requer verificação independente.'}},
+    currentRequest:'Revise este Run real sem alegar que o arquivo foi salvo.'});
+  assert.deepEqual(context.history.map(m=>m.role),['user']);
+  assert.match(context.history[0].content,/Revise este Run/);
+  assert.equal(f.store.messages(args.taskId).length,0);
+});
+
 test('single fenced JSON object accepted; extra commentary or blocks fail closed',()=>{
   const valid=fence(JSON.stringify(proposal));
   assert.deepEqual(parseStructuredModelObject(valid),proposal);
@@ -88,6 +121,52 @@ test('model output may not smuggle extra fields or invalid proposals',async t=>{
   await assert.rejects(adapter.send(args),/groq_invalid_work_proposal/);
   raw=JSON.stringify({...proposal,content:'   '});
   await assert.rejects(adapter.send(args),/groq_invalid_work_proposal/);
+});
+
+test('Jarvis Groq route classifies a technical artifact request without writing the artifact',async t=>{
+  const f=setup(t),args=await f.ids();
+  const groq=createGroqCoordinatorConversation({store:f.store,getApiKey:()=> 'fixture-secret',
+    isEnabled:()=>true,fetchImpl:async(_url,request)=>{
+      const data=JSON.parse(request.body);
+      assert.equal(data.response_format.type,'json_schema');
+      assert.equal(data.response_format.json_schema.json_schema,undefined);
+      assert.equal(data.response_format.json_schema.strict,true);
+      assert.deepEqual(data.response_format.json_schema.schema.required,['action','reply']);
+      assert.ok(data.messages[0].content.includes('action=delegate'));
+      assert.equal(data.tools,undefined);
+      return apiResponse(JSON.stringify({action:'delegate',
+        reply:'Vou coordenar esta missão com o executor GPT e observar o resultado.'}));
+    }});
+  const result=await groq.send({...args,prepareWork:false,delegateWork:true});
+  assert.equal(result.delegation,'technical');
+  assert.match(result.content,/executor GPT/);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,0);
+});
+
+test('Jarvis Groq route keeps ordinary chat local and rejects code masquerading as coordination',async t=>{
+  const f=setup(t),args=await f.ids();
+  let raw=JSON.stringify({action:'respond',reply:'Olá! Como posso ajudar?'});
+  const groq=createGroqCoordinatorConversation({store:f.store,getApiKey:()=> 'fixture-secret',
+    isEnabled:()=>true,model:'llama-3.3-70b-versatile',
+    fetchImpl:async(_url,request)=>{
+      const data=JSON.parse(request.body);
+      assert.deepEqual(data.response_format,{type:'json_object'});
+      return apiResponse(raw);
+    }});
+  const answer=await groq.send({...args,prepareWork:false,delegateWork:true});
+  assert.equal(answer.delegation,'none');
+  assert.match(answer.content,/Olá/);
+  for(const invalid of [
+    {action:'delegate',reply:'<!DOCTYPE html><html><script></script></html>'},
+    {action:'delegate',reply:'Enviarei.',autoSend:true},
+    {action:'unknown',reply:'Talvez'},
+    {action:'delegate',reply:' '.repeat(501)},
+  ]){
+    raw=JSON.stringify(invalid);
+    await assert.rejects(groq.send({...args,prepareWork:false,delegateWork:true}),
+      /groq_invalid_jarvis_decision/);
+  }
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,0);
 });
 
 test('ordinary Groq coordinator remains natural language without JSON format',async t=>{

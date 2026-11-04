@@ -299,8 +299,10 @@ function assetHtml(asset) {
 }
 
 function messageHtml(message) {
-  const role = message.role === 'user' ? 'Você' : 'ChatGPT';
-  return `<article class="message ${esc(message.role)}">
+  const automatic=message.role==='user'&&message.author_source==='orchestrator';
+  const role = automatic ? 'OrdaX · envio automático (não escrito por você)' :
+    message.role==='user'?'Você':'ChatGPT';
+  return `<article class="message ${esc(automatic?'orchestrator':message.role)}">
     <div class="message-body">
       <div class="message-role">${role}</div>
       ${message.content ? `<div class="message-content">${esc(message.content)}</div>` : ''}
@@ -313,7 +315,8 @@ function appendLiveRun(runId, userMessage) {
   const box = $('#messages');
   // Temporary messages belong to the same replaceable page as the durable history.
   // Appending to #messages would leave orphan live nodes after renderHistory().
-  $('#messageList').insertAdjacentHTML('beforeend', messageHtml({ role:'user', content:userMessage.content, assets:[] }) +
+  $('#messageList').insertAdjacentHTML('beforeend', messageHtml({ role:'user', content:userMessage.content,
+    author_source:userMessage.author_source||'human',assets:[] }) +
     `<article class="message assistant live" id="live-${esc(runId)}"><div class="message-body"><div class="message-role">ChatGPT</div><div class="message-content live-content">Preparando…</div></div></article>`);
   box.scrollTop = box.scrollHeight;
 }

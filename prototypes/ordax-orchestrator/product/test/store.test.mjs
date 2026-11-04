@@ -20,6 +20,34 @@ function cleanup(t, dir, getStore) {
   });
 }
 
+test('GPT task transcript distinguishes direct user input from autonomous OrdaX submissions',t=>{
+  const {dir,dbPath}=tempStore();
+  let store=new Store(dbPath);
+  cleanup(t,dir,()=>store);
+  const direct=store.createTask('Mensagem digitada pelo usuário');
+  const automatic=store.createTask('Execução autorizada pelo OrdaX');
+  const human=store.beginProviderRun(direct.id,'Quero criar um site simples.');
+  const originalSuggestion=store.memoryCandidates.suggestFromMessage;
+  store.memoryCandidates.suggestFromMessage=(taskId,...args)=>{
+    if(taskId===automatic.id)throw Error('automated_message_must_not_be_user_memory');
+    return originalSuggestion.call(store.memoryCandidates,taskId,...args);
+  };
+  const managed=store.beginProviderRun(automatic.id,'Requisito interno do executor.',{
+    authorSource:'orchestrator'});
+  assert.equal(human.userMessage.author_source,'human');
+  assert.equal(managed.userMessage.author_source,'orchestrator');
+  assert.equal(store.messages(direct.id)[0].author_source,'human');
+  assert.equal(store.messagesPage(automatic.id,{limit:5}).messages[0].author_source,'orchestrator');
+  assert.equal(store.getTask(automatic.id).messages[0].author_source,'orchestrator');
+  assert.throws(()=>store.beginProviderRun(store.createTask('Fonte inválida').id,
+    'Não executar', {authorSource:'untrusted'}),/invalid_message_author_source/);
+  store.close();
+  store=new Store(dbPath);
+  assert.equal(store.messages(automatic.id)[0].author_source,'orchestrator');
+  assert.equal(store.messages(direct.id)[0].author_source,'human');
+  assert.equal(store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
 test('standalone message append commits its ledger and memory effects atomically',t=>{
   const {dir,dbPath}=tempStore();
   const store=new Store(dbPath);

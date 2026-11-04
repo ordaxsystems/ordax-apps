@@ -33,6 +33,33 @@ export function resolveProjectOnboardingMission(name,objective) {
 }
 // Pure presentation of the SAME read-only project_preflight projection.
  // It cannot confer GitHub/Runtime authority or issue a provider request.
+export function describeConversationOutcome(mission) {
+  if(!mission||typeof mission.missionId!=='string')return null;
+  // The canonical Store has independently matched the reviewed Run ID,
+  // confirmed its status and returned only its owning Task.
+  const taskId=typeof mission.decision?.sourceRunId==='string'&&
+    typeof mission.reviewedTaskId==='string'&&mission.reviewedTaskId.length>0
+      ?mission.reviewedTaskId:null;
+  switch(mission.state) {
+    case 'queued':case 'planning_a':case 'ready_a':
+      return {message:'Preparando seu pedido…',taskId:null};
+    case 'sending_a':
+      return {message:'Trabalhando no seu pedido…',taskId:null};
+    case 'ready_b':case 'reviewing_a':case 'ready_review_final':case 'reviewing_final':
+      return {message:'Analisando o resultado recebido…',taskId};
+    case 'sending_b':case 'planning_b':case 'ready_final':
+      return {message:'Continuando o trabalho autorizado…',taskId};
+    case 'verification_required':case 'succeeded':case 'budget_exhausted':
+      return {message:'Resposta recebida. Confira o resultado; arquivos locais, testes e publicação ainda não foram verificados.',taskId};
+    case 'reconciliation_required':
+      return {message:'Uma etapa foi interrompida e precisa de verificação. Nada será reenviado automaticamente.',taskId};
+    case 'blocked':
+      return {message:'Não foi possível concluir esta tarefa. Nenhum envio será repetido automaticamente.',taskId};
+    default:
+      return {message:'Verificando o andamento da tarefa…',taskId:null};
+  }
+}
+
 export function describeProjectPreflight(snapshot) {
   if(snapshot?.schema!=='ordax.orchestrator.project-preflight/2'||
     snapshot.provenance?.source!=='app_sqlite'||snapshot.provenance.externalObservation!==false||
@@ -323,12 +350,12 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         ?'attention':state==='blocked'?'blocked':'idle';
     const title=active?.mission?.trim()||'Nenhuma missão técnica registrada';
     $('executionMissionTitle').textContent=title.length>140?title.slice(0,137)+'…':title;
-    $('executionMissionDetail').textContent=active?.decision?.summary
-      ?'Decisão Groq registrada: '+active.decision.summary
-      :active?.lastError
-        ?'Interrupção registrada: '+active.lastError+'. Consulte os recibos antes de agir.'
-        :active?'Missão vinculada ao projeto; resultados externos ainda não certificados.'
-          :'Inicie ou inspecione uma missão para acompanhar as decisões do administrador.';
+    $('executionMissionDetail').textContent=active?.state==='reconciliation_required'
+      ?'Uma etapa foi interrompida. Confira a tarefa existente; nenhum envio será repetido automaticamente.'
+      :active?.state==='verification_required'
+        ?'Resposta recebida. Arquivos, testes e publicação ainda precisam de verificação independente.'
+        :active?'Missão vinculada ao projeto. Nenhuma ação adicional é autorizada por sugestões internas.'
+          :'Acompanhe aqui tarefas e resultados confirmados.';
     const workList=$('executionWorkList');workList.replaceChildren();
     const priority={running:0,attention:1,ready:2,completed:3};
     const ordered=[...works].sort((a,b)=>
@@ -367,8 +394,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const timeline=$('executionActivity');timeline.replaceChildren();
     const entries=[];
     if(active)entries.push(['Missão registrada',stateLabels[state]||state]);
-    if(active?.decision)entries.push(['Análise Groq',active.decision.summary||
-      'Uma decisão foi registrada; consulte a revisão completa.']);
+    if(active?.decision)entries.push(['Revisão registrada',
+      'As sugestões internas não autorizam novas tarefas. Consulte a execução existente.']);
     for(const work of ordered.filter(w=>w.latest_run_status||w.running_runs>0).slice(0,3)){
       entries.push([work.title,work.running_runs>0?'Run GPT em andamento':
         work.latest_run_status==='succeeded'?'Resposta observada; verificação externa pendente':
@@ -800,18 +827,15 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(!coordinatorDraftCommitAvailable)setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
     else if($('coordinatorDraftState').textContent.includes('backend anterior'))
       setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
-    const routingName=nodeHost
-      ?coordinatorProvider==='chatgpt_plan'?'ChatGPT Plan':'Groq'
-      :'Groq';
-    $('coordinatorNavProvider').textContent='Canal administrativo · '+routingName;
-    $('coordinatorRouteLabel').textContent='CANAL ADMINISTRATIVO · '+routingName.toLocaleUpperCase('pt-BR');
-    $('coordinatorApiSettings').textContent='Configurar '+routingName;
-    $('coordinatorPrompt').placeholder='Mensagem para o Orquestrador · '+routingName;
-    $('coordinatorSend').textContent='Enviar à '+(routingName==='Groq'?'Groq':routingName);
-    $('coordinatorSend').setAttribute('aria-label','Enviar mensagem ao Orquestrador via '+routingName);
+    $('coordinatorNavProvider').textContent='Conversa do projeto';
+    $('coordinatorRouteLabel').textContent='ASSISTENTE ORDAX';
+    $('coordinatorApiSettings').textContent='Ajustes';
+    $('coordinatorPrompt').placeholder='O que você quer criar?';
+    $('coordinatorSend').textContent='Enviar';
+    $('coordinatorSend').setAttribute('aria-label','Enviar mensagem');
     $('orchestrationConnection').textContent=coordinatorAvailable
-      ?'Destino: Orquestrador via '+routingName+'. Nenhuma mensagem deste campo vai às conversas do ChatGPT Web.'
-      :'Orquestrador indisponível: configure '+routingName+' para conversar. Nenhuma mensagem será redirecionada ao ChatGPT Web.';
+      ?'Descreva seu pedido normalmente. O OrdaX cuida das etapas disponíveis.'
+      :'Assistente indisponível. Verifique as conexões em Ajustes para continuar.';
     syncCapabilitySummary();
     syncCoordinatorActions();
   }
@@ -858,6 +882,19 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       if(document.body.classList.contains('orchestrator-rail-open'))$('workSearch').focus();
     });
   };
+  $('coordinatorOutcomeOpen').addEventListener('click',async event=>{
+    const button=event.currentTarget,p=projectId,o=orchestratorId;
+    const taskId=button.dataset.taskId;
+    if(button.disabled||!taskId||!p||!o)return;
+    button.disabled=true;
+    try{
+      if(p!==projectId||o!==orchestratorId)return;
+      coordinatorOpen=false;$('orchestrationPanel').hidden=true;
+      await onOpenWork(taskId);
+    }catch{
+      status('Não foi possível abrir o resultado. Nenhuma mensagem foi reenviada.');
+    }finally{button.disabled=false;}
+  });
   $('executionOpenWorks').addEventListener('click',()=>openFilteredWorks('all',$('executionOpenWorks')));
   $('refreshExecutionOverview').addEventListener('click',async()=>{
     const button=$('refreshExecutionOverview'),p=projectId,o=orchestratorId;
@@ -1047,7 +1084,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('orchestratorMission').textContent=selected
       ?selected.name+' · '+selected.mission
       :'Configure o Administrador Geral deste projeto.';
-    $('orchestratorTitle').textContent='Conversar com Orchestrator';
+    $('orchestratorTitle').textContent='Conversa';
     syncCoordinatorActions();
     renderOrchestratorNavigation();
     await refreshWorks();
@@ -1064,10 +1101,23 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(p!==projectId||o!==orchestratorId)return;
     const job=result?.mission;
     executionMission=job||null;executionMissionScope=executionScope();renderExecutionMonitor();
+    const outcome=describeConversationOutcome(job),outcomePanel=$('coordinatorOutcome');
+    outcomePanel.hidden=!outcome;
+    if(outcome){
+      $('coordinatorOutcomeText').textContent=outcome.message;
+      $('coordinatorOutcomeOpen').hidden=!outcome.taskId;
+      $('coordinatorOutcomeOpen').dataset.taskId=outcome.taskId||'';
+      // Reuse the same read-only mission projection inside the human chat.
+      // renderCoordinator may rebuild messages, so re-attach this ONE node.
+      const messages=$('coordinatorMessages');
+      if(messages.lastElementChild!==outcomePanel)messages.append(outcomePanel);
+    }
     const labels={queued:'Missão aceita; planejamento automático pendente',planning_a:'Groq preparando GPT A',ready_a:'Preparado para enviar GPT A',sending_a:'GPT A em execução',ready_b:'GPT A confirmado; preparando GPT B',planning_b:'Groq analisando resposta A',ready_final:'Pergunta B pronta',sending_b:'GPT B em execução',planning_final:'Groq interpretando resposta B',succeeded:'Concluído: duas respostas GPT e proposta final confirmadas',blocked:'Falha comprovada; sem reenvio automático',reconciliation_required:'Resultado incerto: exige reconciliação, sem reenvio'};
     const technicalLabel=job?.mode==='technical'?(
       job.state==='verification_required'
-        ?'GPT respondeu; verificação externa de alterações/testes é necessária'
+        ?job.maxGPTSends===1
+          ?'Primeira resposta recebida; outras ações precisam de novo pedido do usuário'
+          :'GPT respondeu; verificação externa de alterações/testes é necessária'
         :job.state==='budget_exhausted'
           ?'Ciclo de dois envios concluído; decisão Groq registrada'+
             (job.canContinue?'; é possível autorizar outro ciclo':'')
@@ -1082,8 +1132,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       :job.state==='succeeded'
       ?'História final montada pelo Groq, após duas rodadas GPT A/B'
       :job.state.startsWith('story_')?'História colaborativa: '+job.state.replaceAll('_',' '):null):null;
-    $('autonomousDialogueState').textContent=job?`${technicalLabel||storyLabel||labels[job.state]||job.state}. ${job.lastError||''}${job.decision?.summary?' Decisão Groq: '+job.decision.summary:''}${job.questionFinal?(job.mode==='story'?' História final: ':' Próximo passo proposto (não enviado): ')+job.questionFinal:''}`:
-      'Uma missão autoriza duas perguntas ou quatro cenas em duas rodadas. Groq conduz tudo sem comandos adicionais.';
+    $('autonomousDialogueState').textContent=job
+      ?describeConversationOutcome(job)?.message||technicalLabel||storyLabel||labels[job.state]||'Estado registrado'
+      :'Nenhuma execução ativa. Descreva o que deseja realizar.';
     // A failed or uncertain mission remains read-only. Reuse the canonical
     // Task navigator to inspect confirmed records, never schedule a retry.
     const reviews=$('autonomousReviewActions');
@@ -1127,7 +1178,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     ]);
     if(p!==projectId||t!==chatTaskId)return;
     const box=$('coordinatorMessages'),recoveryNotice=$('coordinatorRecoveryNotice');
-    box.replaceChildren(recoveryNotice);
+    // Preserve the one result node while rebuilding chat history. Removing it
+    // before refreshAutonomousDialogue would make the ID unresolvable.
+    box.replaceChildren(recoveryNotice,$('coordinatorOutcome'));
     const uncertainCommands=Number.isSafeInteger(engineStatus?.uncertainCommands)
       ?engineStatus.uncertainCommands:0;
     recoveryNotice.classList.toggle('hidden',uncertainCommands===0);
@@ -1141,17 +1194,16 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     }
     if(page.messages.length===0) {
       const empty=document.createElement('div');empty.className='coordinator-empty';
-      const title=document.createElement('strong');title.textContent='Conversa de coordenação ainda vazia';
+      const title=document.createElement('strong');title.textContent='Como posso ajudar?';
       const copy=document.createElement('p');
-      const model=nodeHost&&coordinatorProvider==='chatgpt_plan'?'ChatGPT Plan':'Groq';
-      copy.textContent='Este é o chat do Orquestrador via '+model+'. As conversas GPT de execução ficam no outro ambiente. Configure o modelo para começar; esta área não envia mensagens ao GPT Web.';
-      const settings=document.createElement('button');settings.type='button';settings.className='mini-secondary';settings.textContent='Configurar '+model;
+      copy.textContent='Descreva o que deseja criar, mudar ou entender. Basta escrever normalmente.';
+      const settings=document.createElement('button');settings.type='button';settings.className='mini-secondary';settings.textContent='Ajustes';
       settings.addEventListener('click',()=>$('coordinatorApiSettings').click());
       empty.append(title,copy,settings);box.append(empty);
     }
     for(const message of page.messages) {
       const article=document.createElement('article');article.className='coordinator-message';
-      const role=document.createElement('strong');role.textContent=message.role==='user'?'Você':'Resposta registrada (origem no recibo)';
+      const role=document.createElement('strong');role.textContent=message.role==='user'?'Você':'OrdaX';
       const text=document.createElement('p');text.textContent=message.content;
       article.append(role,text);box.append(article);
     }
@@ -1411,6 +1463,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     // Acquire the single-flight lock BEFORE the first async draft read.
     // The form's button restoration must not allow a second Groq dispatch.
     if(coordinatorSubmitting||analysisBusy||$('coordinatorSend').disabled)return;
+    const delegateWork=!nodeHost;
     coordinatorSubmitting=true;syncCoordinatorActions();
     void formAction(event.currentTarget,async()=>{
       const p=projectId,o=orchestratorId,t=chatTaskId;
@@ -1418,13 +1471,19 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       // Selection can change while awaiting the durable draft. Never send a
       // stale coordinator message to the old project after navigation.
       if(p!==projectId||o!==orchestratorId||t!==chatTaskId||!content)return;
-      status('Consultando o orquestrador…');
-      const receipt=await command('orchestrator_chat',{projectId:p,orchestratorId:o,content,draftRevision:draft.draftRevision});
+      status('Entendendo o pedido…');
+      const receipt=await command('orchestrator_chat',{projectId:p,orchestratorId:o,content,delegateWork,draftRevision:draft.draftRevision});
       if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
       await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
-      if(receipt.status==='succeeded')
-        status('Resposta do Orquestrador registrada via '+(receipt.result?.provider||'modelo configurado')+'. Nenhuma mensagem foi enviada às conversas GPT.');
-      else status('Resposta do Orquestrador não confirmada ('+receipt.status+'). O envio não será repetido automaticamente.');
+      if(receipt.status==='succeeded'){
+        const delegation=receipt.result?.delegation;
+        status(delegation?.status==='accepted'
+          ?'Pedido recebido. Preparando a execução…'
+          :delegation?.status==='blocked'
+            ?'Não foi possível começar essa tarefa. Verifique as conexões em Ajustes.'
+            :'Resposta registrada.');
+      }
+      else status('Não foi possível confirmar a resposta. Confira o histórico antes de tentar novamente.');
       await renderCoordinator();
     }).finally(()=>{coordinatorSubmitting=false;syncCoordinatorActions();});
   });

@@ -7,6 +7,12 @@ import {buildCoordinatorRequestContext,validateCoordinatorReply} from './coordin
 // the canonical work-proposal policy (field limits, scope and no extra keys).
 // Supported GPT-OSS models receive Groq strict structured output; other
 // configured models use JSON object mode with the same local validation.
+const JARVIS_TURN_SCHEMA=Object.freeze({
+  type:'object',properties:{
+    action:{type:'string',enum:['respond','delegate']},
+    reply:{type:'string'}
+  },required:['action','reply'],additionalProperties:false
+});
 const WORK_PROPOSAL_SCHEMA=Object.freeze({
   type:'object',properties:{
     title:{type:'string'},
@@ -34,6 +40,9 @@ const WORK_REVIEW_SCHEMA=Object.freeze({
   },required:['runId','step','summary','reason','observedExcerpt'],
   additionalProperties:false
 });
+const groqJarvisFormat=model=>/^openai\/gpt-oss-(20b|120b)$/.test(model)
+  ?{type:'json_schema',json_schema:{name:'ordax_jarvis_turn',strict:true,schema:JARVIS_TURN_SCHEMA}}
+  :{type:'json_object'};
 const groqProposalFormat=model=>/^openai\/gpt-oss-(20b|120b)$/.test(model)
   ?{type:'json_schema',json_schema:{name:'ordax_work_proposal',strict:true,schema:WORK_PROPOSAL_SCHEMA}}
   :{type:'json_object'};
@@ -133,8 +142,8 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
     throw Error('orchestrator_coordinator_ports_required');
   return Object.freeze({
     available:(projectId,orchestratorId)=>isEnabled(projectId,orchestratorId)===true&&Boolean(getApiKey()),
-    async send({taskId,mission,projectId,orchestratorId,analysisContext=null,prepareWork=false,
-      workspaceObservation=null,repositoryUrl=null,completionProfile='standard'}) {
+    async send({taskId,mission,content:currentRequest=null,projectId,orchestratorId,analysisContext=null,prepareWork=false,
+      workspaceObservation=null,repositoryUrl=null,delegateWork=false,completionProfile='standard'}) {
       if(isEnabled(projectId,orchestratorId)!==true)throw Error('supervisor_disabled');
       const apiKey=getApiKey();
       if(typeof apiKey!=='string'||!apiKey.trim()||/[\r\n]/.test(apiKey))throw Error('supervisor_api_key_missing');
@@ -152,9 +161,9 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
       const maxCompletionTokens=completionProfile==='narrative_recovery'?3200:
         technicalReview?3600:narrative?2600:prepareWork?1800:2400;
       const request=buildCoordinatorRequestContext({store,taskId,mission,projectId,orchestratorId,
-        analysisContext,prepareWork,workspaceObservation,repositoryUrl});
+        analysisContext,prepareWork,workspaceObservation,repositoryUrl,currentRequest});
       const responseFormat=prepareWork?groqProposalFormat(model):
-        technicalReview?groqReviewFormat(model,analysisContext):null;
+        technicalReview?groqReviewFormat(model,analysisContext):delegateWork?groqJarvisFormat(model):null;
       const standardChat=completionProfile==='standard'&&!prepareWork;
       const strictReview=technicalReview&&/^openai\/gpt-oss-(20b|120b)$/.test(model);
       const outputInstructions=technicalReview
@@ -167,6 +176,15 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
           :' FORMATO JSON: devolva exatamente runId,decision,summary,reason,observedExcerpt,nextPrompt '+
             'na raiz. Para continuar ou corrigir, nextPrompt deve ter pelo menos 20 caracteres; '+
             'para verificar, concluir como candidato ou bloquear, use nextPrompt null.'
+        :delegateWork?' FORMATO JSON OBRIGATÓRIO: retorne somente action e reply. '+
+          'Você é o assistente único do produto; a escolha do executor e as etapas internas são invisíveis na conversa normal. '+
+          'action=delegate quando o usuário pede criar, alterar ou corrigir um artefato ou site; '+
+          'mesmo um pedido curto e informal, por exemplo Quero um site para minha cafeteria, já é suficiente. '+
+          'action=respond para perguntas, explicações e diálogo sem solicitação de execução. '+
+          'Se action=delegate, reply deve ser apenas uma confirmação breve e natural ao usuário, '+
+          'sem citar Groq, GPT, modelos, API, prompts, delegação ou ferramentas. Não escreva código nem especifique detalhes não pedidos. '+
+          'Se action=respond, reply deve responder diretamente ao usuário sem narrar processos internos. '+
+          'A decisão JSON não executa uma tarefa; somente o aplicativo controla autorizações, envios e recibos.'
         :'';
       let response;
       try {
@@ -200,7 +218,7 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
       const content=strictReview
         ?flattenStrictReview(parsed?.choices?.[0]?.message?.content)
         :parsed?.choices?.[0]?.message?.content;
-      try {return validateCoordinatorReply(content,{prepareWork,errorPrefix:'groq'});}
+      try {return validateCoordinatorReply(content,{prepareWork,delegateWork,errorPrefix:'groq'});}
       catch(error) {throw coordinatorFailure(error.message,'response_invalid');}
     }
   });

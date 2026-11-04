@@ -31,7 +31,7 @@ function sanitizeWorkspaceObservation(value) {
 
 /** Builds the single sanitized coordinator context shared by every model port. */
 export function buildCoordinatorRequestContext({store,taskId,mission,projectId,orchestratorId,
-  analysisContext=null,prepareWork=false,workspaceObservation=null,repositoryUrl=null}={}) {
+  analysisContext=null,prepareWork=false,workspaceObservation=null,repositoryUrl=null,currentRequest=null}={}) {
   if(!store?.db||typeof taskId!=='string'||typeof projectId!=='string'||typeof mission!=='string')
     throw Error('orchestrator_coordinator_context_invalid');
   // A focused review must not be displaced by older Groq conversation turns.
@@ -40,6 +40,15 @@ export function buildCoordinatorRequestContext({store,taskId,mission,projectId,o
   const historyMessageLimit=analysisContext===null?4000:2000;
   const history=focusedGPTReview?[]:store.messages(taskId,{limit:historyLimit}).map(message=>({role:message.role,
     content:redactOrchestratorAnalysisText(message.content,historyMessageLimit)}));
+  // Internally planned turns (autonomous missions and focused reviews) are
+  // not persisted as a new user message. Without an explicit current request,
+  // the API would see a trailing assistant turn or only a system message.
+  // Add that turn to this bounded request, not to the canonical Store.
+  if(focusedGPTReview||history.at(-1)?.role!=='user'){
+    const current=typeof currentRequest==='string'&&currentRequest.trim()
+      ?currentRequest:mission;
+    history.push({role:'user',content:redactOrchestratorAnalysisText(current,4000)});
+  }
   const rawProject=store.db.prepare('SELECT name,objective FROM lab_projects WHERE id=?').get(projectId);
   const project=rawProject?{name:redactOrchestratorAnalysisText(rawProject.name,160),
     objective:redactOrchestratorAnalysisText(rawProject.objective,3000)}:null;
@@ -97,9 +106,24 @@ export function buildCoordinatorRequestContext({store,taskId,mission,projectId,o
   return {system,history,prepareWork};
 }
 
-export function validateCoordinatorReply(content,{prepareWork=false,errorPrefix='coordinator'}={}) {
+export function validateCoordinatorReply(content,{prepareWork=false,delegateWork=false,errorPrefix='coordinator'}={}) {
   if(typeof content!=='string'||!content.trim()||content.length>12000)
     throw Error(`${errorPrefix}_invalid_response`);
+  if(delegateWork){
+    let decision;
+    try {decision=parseStructuredModelObject(content);}
+    catch {throw Error(`${errorPrefix}_invalid_jarvis_decision`);}
+    if(!decision||typeof decision!=='object'||Array.isArray(decision)||
+      Object.keys(decision).length!==2||
+      !Object.hasOwn(decision,'action')||!Object.hasOwn(decision,'reply')||
+      !['respond','delegate'].includes(decision.action)||
+      typeof decision.reply!=='string'||
+      !decision.reply.trim()||decision.reply.length>500||
+      /<!(?:doctype)|<html\b|<script\b|\x60\x60\x60/i.test(decision.reply))
+      throw Error(`${errorPrefix}_invalid_jarvis_decision`);
+    return {content:decision.reply.trim(),
+      delegation:decision.action==='delegate'?'technical':'none'};
+  }
   if(!prepareWork)return {content};
   let proposal;
   try {proposal=parseStructuredModelObject(content);}
