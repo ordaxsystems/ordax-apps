@@ -614,7 +614,8 @@ export class AutonomousDialogue {
       'workspace_session_id=? AND actor_id=? AND client_id=? ORDER BY rowid DESC LIMIT 1')
       .get(session.id,context.actorId,context.clientId);
     if(!row||row.state!=='reconciliation_required'||row.strategy!=='semantic'||
-       row.mode!=='dialogue'||!['response_not_observed','autonomous_semantic_review_unconfirmed'].includes(row.last_error)||
+       row.mode!=='dialogue'||!['response_not_observed','response_completion_unconfirmed',
+         'autonomous_semantic_review_unconfirmed'].includes(row.last_error)||
        !row.task_a_id||!row.question_a||row.question_final||row.review_b_json)return false;
     // Recovery is possible after either confirmed GPT turn, never between
     // turns or when the prior Groq decision has been replaced.
@@ -653,7 +654,19 @@ export class AutonomousDialogue {
     const initialCount=previous&&taskId===previous.task_b_id
       ?this.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=? AND rowid BETWEEN 1 AND (SELECT rowid FROM runs WHERE id=?)').get(taskId,row.origin_run_id).n
       :0;
-    const expectedRuns=initialCount+(finalPhase&&taskId===row.task_a_id?2:1);
+    // Natural edit missions reuse a verified site Task that already owns a
+    // succeeded Run. Count its pre-mission history ONLY if every earlier
+    // provider turn was conclusively completed in the canonical conversation.
+    // Never let an uncertain earlier submission be hidden by this offset.
+    const priorRuns=this.db.prepare(`SELECT r.id,r.status,
+      EXISTS(SELECT 1 FROM conversation_completed_runs c WHERE c.run_id=r.id AND c.task_id=r.task_id) AS confirmed
+      FROM runs r WHERE r.task_id=? AND r.started_at<? ORDER BY r.rowid`)
+      .all(taskId,row.created_at);
+    const priorSiteTurns=!finalPhase&&row.followup_policy==='review_only'&&
+      priorRuns.length>0&&priorRuns.every(r=>r.status==='succeeded'&&r.confirmed===1)
+      ?priorRuns.length:0;
+    const expectedRuns=initialCount+priorSiteTurns+
+      (finalPhase&&taskId===row.task_a_id?2:1);
     const task=this.db.prepare('SELECT status FROM tasks WHERE id=?').get(taskId);
     const count=this.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=?').get(taskId)?.n;
     const run=this.db.prepare('SELECT id,status FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1').get(taskId);
@@ -664,7 +677,8 @@ export class AutonomousDialogue {
     const event=kind=>this.db.prepare("SELECT 1 FROM events WHERE task_id=? AND kind=? "+
       "AND json_extract(payload,'$.run_id')=? LIMIT 1").get(taskId,kind,run.id);
     if(!event('provider.submission.provenance')||
-       (row.last_error==='response_not_observed'&&!event('provider.response.reconciled'))||
+       (['response_not_observed','response_completion_unconfirmed'].includes(row.last_error)&&
+         !event('provider.response.reconciled'))||
        !this.service.reviewableGPTResult(row.project_id,row.orchestrator_id,run.id))
       return false;
     if(row.last_error==='autonomous_semantic_review_unconfirmed'){

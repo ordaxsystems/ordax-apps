@@ -54,7 +54,9 @@ export function describeConversationOutcome(mission,{artifactVerified=false}={})
         ?'O arquivo do site está disponível na prévia à direita. Ainda não foi publicado.'
         :'Resposta recebida, mas nenhum arquivo novo foi verificado. A última prévia disponível foi preservada; não foi publicado.',taskId};
     case 'reconciliation_required':
-      return {message:'Uma etapa foi interrompida e precisa de verificação. Nada será reenviado automaticamente.',taskId};
+      return {message:artifactVerified&&taskId
+        ?'A versão do site foi recuperada e está verificada. A análise de acompanhamento ainda precisa de confirmação; nada será reenviado automaticamente.'
+        :'Uma etapa foi interrompida e precisa de verificação. Nada será reenviado automaticamente.',taskId};
     case 'blocked':
       return {message:'Não foi possível concluir esta tarefa. Nenhum envio será repetido automaticamente.',taskId};
     default:
@@ -1123,7 +1125,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     // Once the verified delivery is in the project conversation as a real
     // assistant message, do not keep a redundant terminal status card pinned.
     outcomePanel.hidden=!outcome||Boolean(proof?.currentDelivery&&currentJob&&
-      ['verification_required','succeeded','budget_exhausted'].includes(currentJob.state));
+      ['verification_required','succeeded','budget_exhausted','reconciliation_required','blocked'].includes(currentJob.state));
     if(outcome){
       $('coordinatorOutcomeText').textContent=outcome.message;
       $('coordinatorOutcomeOpen').hidden=!outcome.taskId;

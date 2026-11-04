@@ -757,9 +757,13 @@ registerUiHandler('ordax:tasks:inspect-linked-thread', async (event, requestedId
 registerUiHandler('ordax:tasks:reconcile-linked-reply', async (event, payload={}) => {
   requireTrustedSupervisorRenderer(event);
   if(liveRun)throw new Error('provider_reply_recovery_run_active');
-  return reconcileProviderLinkedReply({
+  const result=await reconcileProviderLinkedReply({
     store,worker,taskId:payload?.taskId,responseSha256:payload?.responseSha256
   });
+  if(result?.reconciled===true)
+    await finalizeReconciledSiteDelivery(String(payload?.taskId||''),{captureMissing:true})
+      .catch(()=>{});
+  return result;
 });
 let htmlArtifactCaptureBusy=false;
 // Canonical capture operation: both automatic post-Run completion and the
@@ -1140,9 +1144,72 @@ registerUiHandler('ordax:orchestrator:mcp',async(event,message)=>{
   return result;
 });
 
+// A confirmed delayed GPT reply is not another send. The canonical
+// reconciler has already attested the original Run; only a hash-verified
+// file on that SAME reply can produce a natural completion message.
+async function finalizeReconciledSiteDelivery(taskId,{captureMissing=false}={}){
+  const run=store.db.prepare('SELECT id,status FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1')
+    .get(taskId);
+  if(run?.status!=='succeeded'||!store.db.prepare(`SELECT 1 FROM events
+      WHERE task_id=? AND kind='provider.response.reconciled'
+        AND json_extract(payload,'$.run_id')=? LIMIT 1`).get(taskId,run.id))
+    return false;
+  let current=store.db.prepare(`SELECT a.local_path,a.sha256
+      FROM message_assets a JOIN messages m ON m.id=a.message_id
+      WHERE m.task_id=? AND m.role='assistant'
+        AND m.sequence=(SELECT MAX(sequence) FROM messages WHERE task_id=? AND role='assistant')
+        AND a.kind='file' AND a.mime_type='text/html'
+      ORDER BY a.rowid DESC LIMIT 1`).get(taskId,taskId);
+  if(!current&&captureMissing){
+    try{await captureConfirmedHtmlArtifact(taskId);}
+    catch{} // No official card, no invented site and no second GPT request.
+    current=store.db.prepare(`SELECT a.local_path,a.sha256
+      FROM message_assets a JOIN messages m ON m.id=a.message_id
+      WHERE m.task_id=? AND m.role='assistant'
+        AND m.sequence=(SELECT MAX(sequence) FROM messages WHERE task_id=? AND role='assistant')
+        AND a.kind='file' AND a.mime_type='text/html'
+      ORDER BY a.rowid DESC LIMIT 1`).get(taskId,taskId);
+  }
+  let verified=false;
+  if(current){
+    try{
+      const root=fs.realpathSync.native(assetsRoot);
+      const real=fs.realpathSync.native(assertLocalArtifactPath(assetsRoot,current.local_path));
+      assertLocalArtifactPath(root,real);
+      verified=verifyLocalHtmlArtifact(real).sha256===current.sha256;
+    }catch{verified=false;}
+  }
+  // This is a user-visible fact, not a model-generated proposal.
+  orchestratorService.recordSiteDelivery({
+    taskId,runId:run.id,verified,sha256:verified?current.sha256:null
+  });
+  const resumed=orchestratorService.autonomous.resumeReconciledTechnical(localOrchestratorContext);
+  notifyOrchestratorChanged();
+  if(resumed)queueMicrotask(()=>{
+    void orchestratorService.autonomous.tick(localOrchestratorContext).catch(()=>{});
+  });
+  return verified;
+}
+
 function notifyOrchestratorChanged(){
   if(win&&!win.isDestroyed())emitRendererEvent('ordax:orchestrator:changed');
 }
+// Preserve evidence after an app restart. Reconcile ONLY finished Runs with
+// a previously attested same-thread reply; no provider request, navigation or
+// raw HTML injection occurs during startup.
+void app.whenReady().then(async()=>{
+  const completed=store.db.prepare(`SELECT r.task_id AS taskId
+    FROM runs r JOIN lab_task_bindings b ON b.task_id=r.task_id AND b.kind='work'
+    WHERE r.status='succeeded' AND
+      r.rowid=(SELECT MAX(x.rowid) FROM runs x WHERE x.task_id=r.task_id)
+      AND EXISTS(SELECT 1 FROM events e WHERE e.task_id=r.task_id
+        AND e.kind='provider.response.reconciled'
+        AND json_extract(e.payload,'$.run_id')=r.id)
+    ORDER BY r.rowid DESC LIMIT 8`).all();
+  for(const row of completed)
+    await finalizeReconciledSiteDelivery(row.taskId,{captureMissing:false})
+      .catch(()=>{});
+}).catch(()=>{});
 registerUiHandler('ordax:orchestrator:chat-status',event=>{
   requireTrustedSupervisorRenderer(event);
   return coordinatorChatStatus();
