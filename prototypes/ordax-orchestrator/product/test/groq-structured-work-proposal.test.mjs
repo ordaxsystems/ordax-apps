@@ -325,7 +325,11 @@ test('semantic technical review has dedicated bounded Groq reasoning budget and 
       assert.equal(body.response_format.json_schema.strict,true);
       const schema=body.response_format.json_schema.schema;
       assert.equal(schema.additionalProperties,false);
-      assert.deepEqual(schema.required,['runId','step','summary','reason','observedExcerpt']);
+      assert.deepEqual(schema.required,['runId','step','summary','reason','observedExcerpt','acceptance']);
+      assert.equal(schema.properties.acceptance.additionalProperties,false);
+      assert.deepEqual(schema.properties.acceptance.required,['criterion','status','observedExcerpt']);
+      assert.deepEqual(schema.properties.acceptance.properties.status.enum,
+        ['answer_indicates_progress','requires_external_verification','not_met']);
       assert.equal(schema.properties.decision,undefined);
       assert.equal(schema.properties.nextPrompt,undefined);
       const [followup,terminal]=schema.properties.step.anyOf;
@@ -348,7 +352,10 @@ test('semantic technical review has dedicated bounded Groq reasoning budget and 
         runId:'run_direct',step:{decision:'verify_external_effect',nextPrompt:null},
         summary:'A resposta tecnica esta observada; sem recibos Git nao ha conclusao comprovada.',
         reason:'Somente o texto GPT esta comprovado; faltam recibos externos de modificacao.',
-        observedExcerpt:schema.properties.observedExcerpt.enum[0]
+        observedExcerpt:schema.properties.observedExcerpt.enum[0],
+        acceptance:{criterion:'Confirmar resultado em um artefato ou prova externa',
+          status:'requires_external_verification',
+          observedExcerpt:schema.properties.observedExcerpt.enum[0]}
       }));
     }});
   const result=await groq.send({...args,prepareWork:false,completionProfile:'technical_review',
@@ -359,6 +366,8 @@ test('semantic technical review has dedicated bounded Groq reasoning budget and 
   assert.equal(normalized.decision,'verify_external_effect');
   assert.equal(normalized.nextPrompt,null);
   assert.equal(normalized.step,undefined,'the service receives only the canonical flat review');
+  assert.equal(normalized.acceptance.status,'requires_external_verification');
+  assert.equal(normalized.acceptance.observedExcerpt,normalized.observedExcerpt);
   assert.equal(requests,1);
   await assert.rejects(groq.send({...args,prepareWork:false,completionProfile:'technical_review',analysisContext:{
     phase:'gpt_response_review',reviewEvidence:{runId:'run_direct',answerStart:'sem citação'}}}),

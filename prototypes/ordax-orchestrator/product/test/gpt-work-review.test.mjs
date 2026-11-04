@@ -42,6 +42,22 @@ test('a single fenced JSON review is accepted, but surrounding commentary is not
   assert.throws(()=>interpretGPTWorkReview(fenced+'\nOutros dados',{runId:base.runId,observedAnswer:answer}));
 });
 
+test('review accepts one scoped criterion without trusting it as external evidence',()=>{
+  const acceptance={criterion:'Confirmar que o projeto foi alterado e verificado em disco',
+    status:'requires_external_verification',observedExcerpt:base.observedExcerpt};
+  const review=interpretGPTWorkReview(JSON.stringify({...base,acceptance}),
+    {runId:base.runId,observedAnswer:answer});
+  assert.equal(review.acceptance.criterion,acceptance.criterion);
+  assert.equal(review.acceptance.status,'requires_external_verification');
+  assert.equal(review.acceptance.externalEffectVerified,false);
+  for(const invalid of [
+    {...acceptance,status:'externally_verified'},
+    {...acceptance,observedExcerpt:'Texto inventado por um modelo sem citações'},
+    {...acceptance,automaticGPTSendAuthorized:true}
+  ])assert.throws(()=>interpretGPTWorkReview(JSON.stringify({...base,acceptance:invalid}),
+    {runId:base.runId,observedAnswer:answer}));
+});
+
 test('malformed model output or omitted next instruction remains unverified',()=>{
   assert.throws(()=>interpretGPTWorkReview('Feito com sucesso',{runId:base.runId,observedAnswer:answer}));
   assert.throws(()=>interpretGPTWorkReview(JSON.stringify({...base,decision:'new_work',nextPrompt:null}),{runId:base.runId,observedAnswer:answer}));

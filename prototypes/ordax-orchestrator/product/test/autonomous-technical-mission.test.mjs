@@ -63,6 +63,8 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
         reason:'O próprio GPT diz que nenhuma alteração externa foi comprovada; não tratar uma sugestão como execução.',
         observedExcerpt:groqInvalidEvidenceReviews.includes(reviews)
           ?'A saída GPT comprovou uma implantação inexistente.':quote,
+        acceptance:{criterion:'Comprovar que a tarefa produziu efeitos externos verificaveis',
+          status:'requires_external_verification',observedExcerpt:quote},
         nextPrompt:requiresNext
           ?(maxExpectedSends>2&&reviews>=2
             ?instruction+' Próxima etapa independente '+reviews+': verifique a nova evidência do projeto.'
@@ -189,6 +191,8 @@ test('semantic owner authorization leads Groq -> GPT -> Groq decision -> same GP
     'owner sees a bounded review summary without granting it external-evidence authority');
   assert.ok(confirmedNotes.every(x=>x.content.includes('Motivo informado: O próprio GPT diz')),
     'owner sees the coordinator reasoning rather than a generic technical status');
+  assert.ok(confirmedNotes.every(x=>x.content.includes('Criterio de aceite proposto:')),
+    'owner sees the model criterion only as an unverified acceptance proposal');
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='orchestrator.technical_review'")
     .get(chatTaskId).n,2);
   const finishedRow=f.service.autonomous.get(m.missionId);

@@ -1,6 +1,6 @@
 import {readBoundedJsonResponse} from '../src/bounded-json-response.mjs';
 import {parseStructuredModelObject} from '../src/structured-model-object.mjs';
-import {GPT_REVIEW_FOLLOWUP_DECISIONS,GPT_REVIEW_TERMINAL_DECISIONS} from '../src/gpt-work-review.mjs';
+import {GPT_REVIEW_FOLLOWUP_DECISIONS,GPT_REVIEW_TERMINAL_DECISIONS,GPT_ACCEPTANCE_STATUSES} from '../src/gpt-work-review.mjs';
 import {buildCoordinatorRequestContext,validateCoordinatorReply} from './coordinator-request-context.mjs';
 import {ORDAX_CAPABILITY_MANIFEST,appOwnedSiteDecision,classifyProjectStatusQuestion} from '../src/natural-site-intent.mjs';
 import {latestSiteWork} from '../src/site-work-context.mjs';
@@ -38,8 +38,12 @@ const WORK_REVIEW_SCHEMA=Object.freeze({
       reviewStep(GPT_REVIEW_FOLLOWUP_DECISIONS,'string'),
       reviewStep(GPT_REVIEW_TERMINAL_DECISIONS,'null')
     ]},
-    summary:{type:'string'},reason:{type:'string'},observedExcerpt:{type:'string'}
-  },required:['runId','step','summary','reason','observedExcerpt'],
+    summary:{type:'string'},reason:{type:'string'},observedExcerpt:{type:'string'},
+    acceptance:{type:'object',properties:{
+      criterion:{type:'string'},status:{type:'string',enum:[...GPT_ACCEPTANCE_STATUSES]},
+      observedExcerpt:{type:'string'}
+    },required:['criterion','status','observedExcerpt'],additionalProperties:false}
+  },required:['runId','step','summary','reason','observedExcerpt','acceptance'],
   additionalProperties:false
 });
 const groqJarvisFormat=model=>/^openai\/gpt-oss-(20b|120b)$/.test(model)
@@ -80,7 +84,10 @@ function groqReviewFormat(model,context){
     throw coordinatorFailure('groq_review_context_invalid','rejected');
   if(!/^openai\/gpt-oss-(20b|120b)$/.test(model))return {type:'json_object'};
   const schema={...WORK_REVIEW_SCHEMA,properties:{...WORK_REVIEW_SCHEMA.properties,
-    runId:{type:'string',enum:[runId]},observedExcerpt:{type:'string',enum:quotes}}};
+    runId:{type:'string',enum:[runId]},observedExcerpt:{type:'string',enum:quotes},
+    acceptance:{...WORK_REVIEW_SCHEMA.properties.acceptance,properties:{
+      ...WORK_REVIEW_SCHEMA.properties.acceptance.properties,
+      observedExcerpt:{type:'string',enum:quotes}}}}};
   return {type:'json_schema',json_schema:{name:'ordax_gpt_work_review',strict:true,schema}};
 }
 
@@ -99,10 +106,11 @@ function flattenStrictReview(content) {
   let value;
   try {value=parseStructuredModelObject(content);}
   catch {throw coordinatorFailure('groq_review_invalid_json','response_invalid');}
-  const rootKeys=['runId','step','summary','reason','observedExcerpt'];
+  const required=['runId','step','summary','reason','observedExcerpt'];
+  const allowed=[...required,'acceptance'];
   if(!value||typeof value!=='object'||Array.isArray(value)||
-     Object.keys(value).length!==rootKeys.length||
-     !rootKeys.every(key=>Object.hasOwn(value,key)))
+     Object.keys(value).some(key=>!allowed.includes(key))||
+     !required.every(key=>Object.hasOwn(value,key)))
     throw coordinatorFailure('groq_review_invalid_evidence','response_invalid');
   const step=value.step;
   if(!step||typeof step!=='object'||Array.isArray(step)||
@@ -113,9 +121,18 @@ function flattenStrictReview(content) {
   const terminal=GPT_REVIEW_TERMINAL_DECISIONS.includes(step.decision);
   if(!(followup&&typeof step.nextPrompt==='string'||terminal&&step.nextPrompt===null))
     throw coordinatorFailure('groq_review_invalid_next_step','response_invalid');
+  const a=value.acceptance;
+  if(a!==undefined&&(!a||typeof a!=='object'||Array.isArray(a)||
+     Object.keys(a).length!==3||
+     !['criterion','status','observedExcerpt'].every(key=>Object.hasOwn(a,key))||
+     typeof a.criterion!=='string'||!GPT_ACCEPTANCE_STATUSES.includes(a.status)||
+     typeof a.observedExcerpt!=='string'))
+    throw coordinatorFailure('groq_review_invalid_evidence','response_invalid');
   return JSON.stringify({runId:value.runId,decision:step.decision,
     summary:value.summary,reason:value.reason,
-    observedExcerpt:value.observedExcerpt,nextPrompt:step.nextPrompt});
+    observedExcerpt:value.observedExcerpt,nextPrompt:step.nextPrompt,
+    ...(a?{acceptance:{criterion:a.criterion,status:a.status,
+      observedExcerpt:a.observedExcerpt}}:{})});
 }
 
 // Only fixed enums and bounded numbers enter command receipts. Never persist
@@ -189,14 +206,18 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
       const strictReview=technicalReview&&/^openai\/gpt-oss-(20b|120b)$/.test(model);
       const outputInstructions=technicalReview
         ?strictReview
-          ?' FORMATO ESTRITO: devolva as chaves runId, step, summary, reason, observedExcerpt. '+
+          ?' FORMATO ESTRITO: devolva as chaves runId, step, summary, reason, observedExcerpt, acceptance. '+
             'step e {decision,nextPrompt}; decisoes de continuacao/correcao exigem nextPrompt '+
             'como instrucao textual concreta (no minimo 20 caracteres). Decisoes de verificacao, '+
-            'candidato a conclusao ou bloqueio exigem nextPrompt null. O schema JSON anyOf '+
+            'candidato a conclusao ou bloqueio exigem nextPrompt null. acceptance deve ser {criterion,status,observedExcerpt}: '+
+            'um criterio concreto e verificavel da missao, estado answer_indicates_progress, '+
+            'requires_external_verification ou not_met; cite literalmente a resposta GPT, '+
+            'sem afirmar efeitos externos verificados. O schema JSON anyOf '+
             'obriga essa correspondencia. Nunca coloque decision nem nextPrompt na raiz.'
-          :' FORMATO JSON: devolva exatamente runId,decision,summary,reason,observedExcerpt,nextPrompt '+
+          :' FORMATO JSON: devolva exatamente runId,decision,summary,reason,observedExcerpt,nextPrompt,acceptance '+
             'na raiz. Para continuar ou corrigir, nextPrompt deve ter pelo menos 20 caracteres; '+
-            'para verificar, concluir como candidato ou bloquear, use nextPrompt null.'
+            'para verificar, concluir como candidato ou bloquear, use nextPrompt null. '+
+            'acceptance deve ser {criterion,status,observedExcerpt} e nunca representa prova externa.'
         :delegateWork?' FORMATO JSON OBRIGATÓRIO: retorne somente action e reply. '+
           'Você é o assistente único do produto; a escolha do executor e as etapas internas são invisíveis na conversa normal. '+
           'action=delegate quando o usuário pede criar, alterar ou corrigir um artefato ou site; '+
