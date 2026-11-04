@@ -1,5 +1,7 @@
 # AGENTS.md — Instruções para agentes e assistentes no ordax-apps
 
+> **Execução DEV — Evolução Rápida (regra transversal obrigatória):** aplicar a [política canônica OrdaX](https://github.com/ordaxsystems/ordax-os/blob/main/docs/DEVELOPMENT-WORKFLOW.md#regra-operacional-transversal--evolucao-rapida-dev-2026-11-04) antes de iniciar trabalho. Entregar a alteração no owner correto primeiro e validar com testes proporcionais depois; não ampliar escopo com auditorias, documentação, CI ou workflows sem causalidade. Preservar gates obrigatórios, integridade, segurança e autorização.
+
 ## Prioridade canônica do OrdaX Orchestrator — 2026-11-01
 
 **LEIA ANTES DE QUALQUER PLANO SOBRE O ORCHESTRATOR:** [Contrato de produto autônomo/instância única](prototypes/ordax-orchestrator/docs/ORCHESTRATOR-CANONICAL-PRODUCT.md). O usuário conectará **uma instância a um projeto**, com **Administrador Geral Groq** como entrada principal e **executores por repositório**, que coordena o diagnóstico e as frentes após **Iniciar**, sem exigir prompt de missão. Mensagens ao administrador **não** são enviadas implicitamente ao GPT Web. O documento novo prevalece sobre descrições históricas multi-projeto/GPT-principal deste arquivo, handoffs e roadmap. A migração do schema atual é futura, não apagar dados. Autonomia real, acesso GitHub, Runtime, Aura e trabalho headless dependem de provas e grants; jamais declarados prontos por esta decisão.
