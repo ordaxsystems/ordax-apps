@@ -47,7 +47,7 @@ jobs:
               for path in paths
           )
           print(f"docs_only={str(docs_only).lower()}")
-          print(f"Changed paths: {paths!r}")
+          print(f"Changed paths: {paths!r}", file=__import__("sys").stderr)
           PY
           else
             echo 'docs_only=false' >> "$GITHUB_OUTPUT"
