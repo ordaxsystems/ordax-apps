@@ -783,7 +783,7 @@ async function captureConfirmedHtmlArtifact(requestedId) {
   const response=store.db.prepare(
     "SELECT id,content FROM messages WHERE task_id=? AND role='assistant' ORDER BY sequence DESC LIMIT 1"
   ).get(taskId);
-  if(!response||!response.content?.includes('index.html'))
+  if(!response||typeof response.content!=='string'||!response.content.trim())
     throw Error('provider_html_response_not_attributable');
   const previous=store.db.prepare(
     "SELECT id,local_path,sha256 FROM message_assets WHERE task_id=? AND kind='file' AND mime_type='text/html' ORDER BY created_at DESC LIMIT 1"
@@ -1075,7 +1075,7 @@ const orchestratorKernel=createOrchestratorKernel({
       // Run, model proposal, failed send or historical recovery never triggers
       // a download, and a missing official file card never becomes a result.
       if(shouldAttemptAutomaticHtmlCapture({
-        authorSource,runId:execution?.result?.runId,text:execution?.result?.text
+        authorSource,runId:execution?.result?.runId,text:execution?.result?.text,userRequest:content
       })){
         try{
           const captured=await captureConfirmedHtmlArtifact(taskId);

@@ -44,10 +44,18 @@ export function buildCoordinatorRequestContext({store,taskId,mission,projectId,o
   // not persisted as a new user message. Without an explicit current request,
   // the API would see a trailing assistant turn or only a system message.
   // Add that turn to this bounded request, not to the canonical Store.
-  if(focusedGPTReview||history.at(-1)?.role!=='user'){
-    const current=typeof currentRequest==='string'&&currentRequest.trim()
-      ?currentRequest:mission;
-    history.push({role:'user',content:redactOrchestratorAnalysisText(current,4000)});
+  const current=typeof currentRequest==='string'&&currentRequest.trim()
+    ?currentRequest:mission;
+  const sanitizedCurrent=redactOrchestratorAnalysisText(current,4000);
+  // A freshly submitted user message may not yet be in a model-visible
+  // historical slice, or the last persisted user turn may be the onboarding
+  // mission. Groq must see the ACTUAL current request, never route the old
+  // objective as if it were the new instruction. Do not duplicate identical
+  // current requests already persisted in the canonical chat.
+  if(focusedGPTReview||history.at(-1)?.role!=='user'||
+     (typeof currentRequest==='string'&&currentRequest.trim()&&
+       history.at(-1)?.content!==sanitizedCurrent)){
+    history.push({role:'user',content:sanitizedCurrent});
   }
   const rawProject=store.db.prepare('SELECT name,objective FROM lab_projects WHERE id=?').get(projectId);
   const project=rawProject?{name:redactOrchestratorAnalysisText(rawProject.name,160),

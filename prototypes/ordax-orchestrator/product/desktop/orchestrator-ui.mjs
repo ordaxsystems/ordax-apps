@@ -1486,7 +1486,16 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
             ?'Não foi possível começar essa tarefa. Verifique as conexões em Ajustes.'
             :'Resposta registrada.');
       }
-      else status('Não foi possível confirmar a resposta. Confira o histórico antes de tentar novamente.');
+      else {
+        const code=receipt?.result?.failureCode;
+        status(code==='groq_auth_rejected'
+          ?'A conexão do administrador não está autorizada. Nenhum trabalho foi iniciado.'
+          :code==='groq_invalid_response'||code==='groq_invalid_jarvis_decision'
+            ?'O administrador não conseguiu interpretar a resposta. O pedido está salvo; nenhum envio GPT foi iniciado.'
+            :receipt.status==='uncertain'
+              ?'O resultado do administrador está incerto. Verifique o histórico; não vou repetir o pedido.'
+              :'A solicitação não foi concluída. O pedido foi salvo sem executar o GPT.');
+      }
       await renderCoordinator();
     }).finally(()=>{coordinatorSubmitting=false;syncCoordinatorActions();});
   });

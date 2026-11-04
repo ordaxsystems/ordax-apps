@@ -2,6 +2,7 @@ import {readBoundedJsonResponse} from '../src/bounded-json-response.mjs';
 import {parseStructuredModelObject} from '../src/structured-model-object.mjs';
 import {GPT_REVIEW_FOLLOWUP_DECISIONS,GPT_REVIEW_TERMINAL_DECISIONS} from '../src/gpt-work-review.mjs';
 import {buildCoordinatorRequestContext,validateCoordinatorReply} from './coordinator-request-context.mjs';
+import {ORDAX_CAPABILITY_MANIFEST,appOwnedSiteDecision} from '../src/natural-site-intent.mjs';
 
 // Constrain planned work at the model boundary, then validate again with
 // the canonical work-proposal policy (field limits, scope and no extra keys).
@@ -162,6 +163,10 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
         technicalReview?3600:narrative?2600:prepareWork?1800:2400;
       const request=buildCoordinatorRequestContext({store,taskId,mission,projectId,orchestratorId,
         analysisContext,prepareWork,workspaceObservation,repositoryUrl,currentRequest});
+      // A clear user request is sufficient authorization for the EXISTING
+      // bounded creation workflow. Groq still receives the request, but a
+      // malformed classification cannot strand an ordinary site request.
+      const localSiteRoute=appOwnedSiteDecision({delegateWork,currentRequest});
       const responseFormat=prepareWork?groqProposalFormat(model):
         technicalReview?groqReviewFormat(model,analysisContext):delegateWork?groqJarvisFormat(model):null;
       const standardChat=completionProfile==='standard'&&!prepareWork;
@@ -198,7 +203,9 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
               ?{reasoning_format:'hidden'}:{}),
             ...((narrative||prepareWork||technicalReview||standardChat)&&/^openai\/gpt-oss-(20b|120b)$/.test(model)
               ?{reasoning_effort:'low'}:{}),
-            messages:[{role:'system',content:request.system+outputInstructions},...request.history]})
+            messages:[{role:'system',content:request.system+outputInstructions+
+              (delegateWork?' CAPACIDADES REAIS DO APLICATIVO: '+JSON.stringify(ORDAX_CAPABILITY_MANIFEST):'')},
+              ...request.history]})
         });
       } catch(error) {
         const timedOut=error?.name==='TimeoutError'||error?.name==='AbortError';
@@ -212,14 +219,27 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
       }
       let parsed;
       try {parsed=await readBoundedJsonResponse(response,{maxBytes:64000,errorCode:'orchestrator_reply_invalid'});}
-      catch {throw coordinatorFailure('groq_invalid_response','response_invalid');}
+      catch {
+        if(localSiteRoute)return localSiteRoute;
+        throw coordinatorFailure('groq_invalid_response','response_invalid');
+      }
       if(parsed?.choices?.[0]?.finish_reason!=='stop')
         throw incompleteGroqResponse(parsed,maxCompletionTokens);
       const content=strictReview
         ?flattenStrictReview(parsed?.choices?.[0]?.message?.content)
         :parsed?.choices?.[0]?.message?.content;
-      try {return validateCoordinatorReply(content,{prepareWork,delegateWork,errorPrefix:'groq'});}
-      catch(error) {throw coordinatorFailure(error.message,'response_invalid');}
+      try {
+        const verified=validateCoordinatorReply(content,{prepareWork,delegateWork,errorPrefix:'groq'});
+        // Tool authority belongs to OrdaX, not to model prose. A simple
+        // explicit creation request routes to the same existing Task/Run
+        // even when the Groq classifier says 'respond'. No extra permission.
+        if(localSiteRoute&&verified.delegation!=='technical')return localSiteRoute;
+        return verified;
+      } catch(error) {
+        if(localSiteRoute&&['groq_invalid_response','groq_invalid_jarvis_decision'].includes(error.message))
+          return localSiteRoute;
+        throw coordinatorFailure(error.message,'response_invalid');
+      }
     }
   });
 }
