@@ -10,7 +10,53 @@ permissions:
   contents: read
 
 jobs:
+  # Keep existing required job names/checks. Skip heavy proofs only for
+  # a verified documentation-only diff; unknown changes fail closed.
+  change-impact:
+    runs-on: ubuntu-24.04
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Classify changes against the event base
+        id: scope
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          # Missing/invalid base or diff failure runs the full existing suite.
+          if [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] &&
+             [[ ! "$BASE_SHA" =~ ^0{40}$ ]] &&
+             git fetch --no-tags --depth=1 origin "$BASE_SHA" &&
+             git diff --name-only --no-renames -z "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed-paths"; then
+            python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          from pathlib import Path
+
+          changed = Path(__import__("os").environ["RUNNER_TEMP"], "changed-paths").read_bytes()
+          paths = [part.decode("utf-8") for part in changed.split(b"\0") if part]
+          # Exact allowlist: contracts, fixtures, workflow files, app source
+          # and unknown paths must always take the complete verification path.
+          docs_only = bool(paths) and all(
+              path in {"AGENTS.md", "README.md", "HANDOFF.md"}
+              or (path.startswith("docs/") and path.endswith(".md"))
+              for path in paths
+          )
+          print(f"docs_only={str(docs_only).lower()}")
+          print(f"Changed paths: {paths!r}", file=__import__("sys").stderr)
+          PY
+          else
+            echo 'docs_only=false' >> "$GITHUB_OUTPUT"
+            echo 'Unable to prove docs-only diff; running full Foundation'
+          fi
+
   workspace-boundary:
+    needs: change-impact
+    if: needs.change-impact.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
     env:
       PYTHONDONTWRITEBYTECODE: "1"
@@ -606,6 +652,8 @@ jobs:
           python3 tools/verify_studio_distribution.py
           python3 tests/studio_distribution_contract_test.py
   mvp-app-functional-minimum:
+    needs: change-impact
+    if: needs.change-impact.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
