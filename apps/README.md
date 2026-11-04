@@ -69,6 +69,59 @@ identidade, intent/Action/provedor incoerentes. Todos os novos
 candidatos precisam passar esses mesmos gates. Não manter exceções
 manuais nem listas duplicadas para “apps novos”.
 
+## Interação humana e agentic — padrão de todos os apps com interface
+
+**Regra de produto para aplicativos oficiais:** a interface deve funcionar para
+pessoas usando **mouse/pointer e teclado**, conforme sua modalidade. A automação
+por Aura/MCP reutiliza as capabilities e os adaptadores do OrdaX; **nenhum
+app instala um driver de mouse/teclado, captura eventos globais, executa
+injeção de input sem autorização ou implementa seu próprio servidor MCP**.
+
+- **Interação humana mínima:** ações principais devem ser alcançáveis e
+  identificáveis por ponteiro e, quando representáveis por controles
+  convencionais, também por teclado. Usar foco navegável/visível, nomes
+  acessíveis e papéis corretos nos controles, ordem previsível de Tab,
+  Enter/Espaço para ativação e entrada de texto pelos campos apropriados.
+  Não sequestrar foco ou atalhos globais. Interfaces especializadas (desenho,
+  jogos, gesto/arraste) podem exigir ponteiro para uma operação específica,
+  mas devem oferecer alternativas de teclado para navegação e comandos
+  fundamentais quando viáveis.
+- **Informações para a Aura:** `app.json`, `ai/manifest.json` e
+  `actions/manifest.json` continuam o mínimo **obrigatório e validado**
+  para reconhecimento e intenções; isso não significa que o app disponha
+  automaticamente de ações executáveis.
+- **Identificação dos controles:** para automação agentic, adotar os contratos
+  **existentes** `presentation/semantic-ui.json`
+  (`ordax-apps.ui-semantic-map/1`) e
+  `testing/agentic-scenarios.json`
+  (`ordax-apps.agentic-test-scenarios/1`) juntos, vinculados ao
+  `appId/appVersion`, apenas com IDs/roles/interações estáveis e
+  critérios de sucesso. Snapshot deve omitir credenciais, cookies e valores
+  digitados. Não inventar seletores, estados ou sucesso de ação.
+- **Preferência de operação:** capability tipada do domínio → controle
+  semântico estável → árvore de acessibilidade/DOM autorizada →
+  mouse/teclado por Runtime com grant exato → screenshot/visão como
+  último recurso. A existência de um botão não concede o direito de
+  acioná-lo. `app.ui_snapshot`, `app.ui_activate`, `app.ui_set_text`
+  e demais operações são **metas de integração do Runtime**, não APIs
+  genéricas já disponíveis para todos os apps.
+- **MCP e segurança:** o Runtime é o owner do input control e dos recibos,
+  enquanto a Platform controla sessão, dispositivo e grants. O app não
+  publica `tools/list`, não concede acesso ao computador e não recebe
+  autoridade só por declarar semântica. Revogação/identidade da janela e
+  confirmação continuam obrigatórias no executor real.
+
+**Estado comprovado em 04/11/2026:** o repositório possui **19**
+aplicativos com `apps/<id>/app.json`; **somente o Studio** possui atualmente
+os dois arquivos semânticos citados. O validador existente
+`tools/validate_agentic_ui_testing.py` valida **apps que já adotaram ambos**;
+ele ainda **não exige** semantic UI de todos. Não confundir padrão de UX e
+adoção progressiva do gate S5 com cobertura universal já entregue. Antes de
+bloquear pacotes existentes, concluir a aplicação do contrato/testes no
+App SDK e estender o gate no owner correto sem placeholders ou exceções
+artificiais. A continuidade técnica está em
+[`docs/AGENTIC-APP-TESTING.md`](../docs/AGENTIC-APP-TESTING.md).
+
 ## Regras de ownership
 
 - `app-id` estável e compatível com `ordax.component-manifest/1`;
