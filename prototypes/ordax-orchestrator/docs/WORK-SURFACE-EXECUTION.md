@@ -29,8 +29,8 @@ Manter PR #445 e `message_assets` existentes. Não duplicar Store ou criar outro
 - Inicialmente renderizar HTML/CSS em **iframe opaco `sandbox` sem permissão de scripts**, com CSP `default-src 'none'`, bloqueio de rede e sem Node, preload, IPC ou submissão de formulário. Rotular **“Prévia visual segura; scripts desativados”**. Não usar `file://`, `win.loadFile`, ou `<webview>` privilegiado.
 - Abrir automaticamente quando o usuário escolher a conversa do projeto com artefato verificado, sem clicar em “Mostrar arquivo”. Se inexistente/corrompido → estado explícito de indisponibilidade, nunca “site entregue”.
 - Critério de aceite: URL de rede não carregada, nenhum Run criado, hash validado, preview visível no painel real Windows, projeto não trocado indevidamente, prevenção de XSS.
-### P0.3 — Detectar/capturar sem microcomando [PRÓXIMO PASSO PRIORITÁRIO]
-Após Run `succeeded`, inspeção canônica `inspectProviderLinkedThread` detecta anexos oficiais, chama captura idempotente **somente quando comprovada**. Não inferir existência a partir de menção textual. Recuperação ao reabrir projeto; sem envio GPT. Bloqueio de corrupção e concorrência.
+### P0.3 — Detectar/capturar sem microcomando [CÓDIGO E TESTES; E2E DE NOVA ENTREGA PENDENTE]
+Após Run `succeeded`, a captura usa o mesmo `captureConfirmedHtmlArtifact` tanto no callback pós-Run quanto no botão manual existente. O callback só tenta quando há resposta confirmada do executor OrdaX e menção a `index.html`; a inspeção canônica `inspectProviderLinkedThread` ainda exige o cartão de download real, vínculo Task/Run e bytes validados. Uma falha gera somente evento `attachment_not_verified`, sem arquivo falso e sem outro envio GPT. **Implementado e testado em política/contrato; E2E de uma nova entrega autorizada ainda pendente.**
 ### P1.1 — Preview interativo isolado [PENDENTE]
 Se o usuário precisar executar JS (menu, formulário), criar um `WebContentsView` de sessão **própria e efêmera**, sandbox/no Node/no preload, origem separada, CSP por resposta (rede negada), navegação/permissões/popups/downloads negados. Não reusar o WebContentsView autenticado do GPT, nem injetar HTML direto no renderer privilegiado. Estender testes de navegação, XSS, exfiltração e comportamento mobile.
 ### P1.2 — Groq avalia evidências reais [PENDENTE]
@@ -43,7 +43,7 @@ Work Surface de arquivos, console e testes, revisão iterativa com aprovação c
 - A interface administrativa permaneceu aberta e a lateral direita exibiu automaticamente `index.html`, cartão `Arquivo verificado · 17211 bytes`, iframe de **442 × 388 px** e HTML real vinculado ao Run original.
 - Via inspeção Chromium/Electron, confirmados `sandbox=""`, CSP como primeiro elemento de `srcdoc`, origem opaca isolada da página pai, e não-exposição de Node ao iframe. Prévia **estática**, scripts e envios de formulário não executados; **não** é preview interativo ainda. Nenhum Run adicional foi enviado.
 - Testes direcionados P0: **71/71** antes da instalação. CI obrigatório da revisão nova deve ficar verde antes de merge. Estado `reconciliation_required` do segundo Run foi mantido.
-- **Próxima ação obrigatória:** P0.3 detectar automaticamente arquivo anexo ao Run concluído e capturar/verificar sem clicar, com idempotência/observação causal; depois P1.1 preview JS isolado próprio.
+- **Próxima ação obrigatória:** validar a captura automática em um novo Run real explicitamente autorizado, sem tocar o Run antigo interrompido; depois avançar o preview JavaScript isolado próprio (P1.1).
 
 ## Portões e limites
 - **NUNCA** confundir “resposta GPT recebida”, “arquivo recuperado”, “prévia renderizada”, “testes aprovados” e “publicado”.

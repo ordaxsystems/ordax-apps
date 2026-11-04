@@ -35,6 +35,7 @@ import { verifyRuntimeManifest } from '../src/runtime-build-identity.mjs';
 import { assertTaskHandoffCoversOmissions, buildProviderContextAttachmentNotice, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
 import { removeStaleTaskHandoffFiles, removeTaskHandoffFile, resolveTaskHandoffRoot, writeTaskHandoffFile } from '../src/task-handoff-file.mjs';
 import {verifyLocalHtmlArtifact,assertLocalArtifactPath} from '../src/provider-html-artifact.mjs';
+import {shouldAttemptAutomaticHtmlCapture} from '../src/automatic-html-capture-policy.mjs';
 
 if (process.env.ORDAX_DESKTOP_DEBUG === '1') {
   app.commandLine.appendSwitch('remote-debugging-port', '9445');
@@ -745,11 +746,10 @@ registerUiHandler('ordax:tasks:reconcile-linked-reply', async (event, payload={}
   });
 });
 let htmlArtifactCaptureBusy=false;
-// An explicitly requested retrieval of the HTML file ALREADY attached to a
-// confirmed GPT reply. This only downloads first-party output to the private
-// OrdaX profile; it cannot submit a prompt, create a Run or deploy a website.
-registerUiHandler('ordax:tasks:html-artifact:save',async(event,requestedId)=>{
-  requireTrustedSupervisorRenderer(event);
+// Canonical capture operation: both automatic post-Run completion and the
+// existing manual fallback use this SAME path, Store and result attribution.
+// It only downloads first-party output, never sends a prompt or creates a Run.
+async function captureConfirmedHtmlArtifact(requestedId) {
   if(hostBrowserMode||htmlArtifactCaptureBusy||liveRun||worker?.active||
      providerScheduler?.snapshot()?.pendingTasks)
     throw Error('provider_html_capture_unavailable');
@@ -823,6 +823,10 @@ registerUiHandler('ordax:tasks:html-artifact:save',async(event,requestedId)=>{
     try{fs.unlinkSync(filePath)}catch{}
     throw error;
   }finally{htmlArtifactCaptureBusy=false;}
+}
+registerUiHandler('ordax:tasks:html-artifact:save',async(event,requestedId)=>{
+  requireTrustedSupervisorRenderer(event);
+  return captureConfirmedHtmlArtifact(requestedId);
 });
 registerUiHandler('ordax:tasks:html-artifact:reveal',(event,payload={})=>{
   requireTrustedSupervisorRenderer(event);
@@ -1020,9 +1024,33 @@ const orchestratorKernel=createOrchestratorKernel({
   }),
   provider:{busy:()=>Boolean(liveRun||worker?.active||providerScheduler?.snapshot().pendingTasks),
     ready:async()=>{assertProviderSendReadiness(await worker.health());return true;},
-    send:async({taskId,content,draftRevision,taskKind,authorSource='human'})=>
-    chatReceiptFromRunTask(await enqueueExecution(taskId,runWorker=>runTask(taskId,content,{newSession:false,draftRevision,
-      allowCoordinatorTask:taskKind==='orchestrator',authorSource},runWorker)))},
+    send:async({taskId,content,draftRevision,taskKind,authorSource='human'})=>{
+      const execution=await enqueueExecution(taskId,runWorker=>runTask(taskId,content,{
+        newSession:false,draftRevision,allowCoordinatorTask:taskKind==='orchestrator',authorSource
+      },runWorker));
+      // Completion is the ONLY automatic capture trigger. An interrupted
+      // Run, model proposal, failed send or historical recovery never triggers
+      // a download, and a missing official file card never becomes a result.
+      if(shouldAttemptAutomaticHtmlCapture({
+        authorSource,runId:execution?.result?.runId,text:execution?.result?.text
+      })){
+        try{
+          const captured=await captureConfirmedHtmlArtifact(taskId);
+          if(captured?.verified){
+            execution.task=getTaskView(taskId);
+            notifyOrchestratorChanged();
+          }
+        }catch{
+          // Missing/ambiguous provider attachment is a nonfatal result
+          // verification failure. Preserve the confirmed response and record
+          // no synthetic file. Do not retry the provider send.
+          try{store.event(taskId,'provider.artifact.auto_capture_unavailable',{
+            run_id:execution.result.runId,reason:'attachment_not_verified'
+          });}catch{}
+        }
+      }
+      return chatReceiptFromRunTask(execution);
+    }},
   coordinator:createGroqCoordinatorConversation({store,getApiKey:currentGroqKey,
     isEnabled:coordinatorChatEnabled})
 });
