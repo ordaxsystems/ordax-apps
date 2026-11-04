@@ -185,6 +185,10 @@ test('semantic owner authorization leads Groq -> GPT -> Groq decision -> same GP
     x.content.startsWith('Ciclo 1: recebi a '));
   assert.equal(confirmedNotes.length,2,'both confirmed steps appear in the administrative chat');
   assert.ok(confirmedNotes.every(x=>x.content.includes('Nenhuma alteração externa foi certificada')));
+  assert.ok(confirmedNotes.every(x=>x.content.includes('Avaliação Groq (não certificada): A resposta GPT foi observada')),
+    'owner sees a bounded review summary without granting it external-evidence authority');
+  assert.ok(confirmedNotes.every(x=>x.content.includes('Motivo informado: O próprio GPT diz')),
+    'owner sees the coordinator reasoning rather than a generic technical status');
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='orchestrator.technical_review'")
     .get(chatTaskId).n,2);
   const finishedRow=f.service.autonomous.get(m.missionId);

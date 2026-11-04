@@ -5,6 +5,7 @@ import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
 import {assertTaskHasNoUncertainTransport} from './provider-uncertain-run-policy.mjs';
 import {advanceStory,STORY_TURNS} from './autonomous-story.mjs';
 import {diagnoseAgentFailure} from './agent-failure-diagnosis.mjs';
+import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
 
 // One mission, one owner authorization, ONE canonical Store and existing GPT
 // executor. A mission's consent covers at most two GPT Web submissions.
@@ -502,9 +503,17 @@ export class AutonomousDialogue {
       :next
         ?'A revisão propôs uma próxima etapa dentro do orçamento autorizado; novas ações externas continuam sujeitas a permissão e provas.'
         :'A revisão recomenda encerrar este ciclo ou conferir evidências externas antes de declarar a tarefa concluída.';
+    // The coordinator's structured review is useful to the owner, but
+    // never treated as independent evidence of execution or publication.
+    const summary=redactOrchestratorAnalysisText(decision.summary,350)
+      .replace(/\s+/gu,' ').trim();
+    const reason=redactOrchestratorAnalysisText(decision.reason,220)
+      .replace(/\s+/gu,' ').trim();
     this.store.appendMessage(chatTaskId,'assistant',
       'Ciclo '+cycle+': recebi a '+phaseLabel+' resposta GPT e registrei a revisão Groq. '+
-      note+' Nenhuma alteração externa foi certificada por esta revisão.');
+      'Avaliação Groq (não certificada): '+summary+'. '+
+      'Motivo informado: '+reason+'. '+note+
+      ' Nenhuma alteração externa foi certificada por esta revisão.');
     this.store.event(chatTaskId,'orchestrator.technical_review',{
       mission_id:row.id,run_id:runId,task_id:taskId,phase,
       decision:decision.decision,external_effect_verified:false
