@@ -23,13 +23,13 @@ Usuário diz apenas **“Quero um site de página única para a cafeteria fictí
 
 ### P0.1 — Persistência e autoridade [CONCLUÍDO]
 Manter PR #445 e `message_assets` existentes. Não duplicar Store ou criar outro executor. `index.html` comprovado no Windows, SHA-256 e vínculo ao Run.
-### P0.2 — Preview seguro na lateral direita [EM EXECUÇÃO]
+### P0.2 — Preview seguro na lateral direita [IMPLEMENTADO E VALIDADO FISICAMENTE]
 - Reutilizar `executionOverview` na lateral direita do **modo coordenador**, com cartão “Prévia do site”, ações de atualizar e modo móvel/desktop.
 - Servir **somente conteúdo local verificado**, via IPC confiável de leitura limitado a assets `text/html`, Task do projeto e SHA-256; nenhuma leitura de caminho arbitrário.
 - Inicialmente renderizar HTML/CSS em **iframe opaco `sandbox` sem permissão de scripts**, com CSP `default-src 'none'`, bloqueio de rede e sem Node, preload, IPC ou submissão de formulário. Rotular **“Prévia visual segura; scripts desativados”**. Não usar `file://`, `win.loadFile`, ou `<webview>` privilegiado.
 - Abrir automaticamente quando o usuário escolher a conversa do projeto com artefato verificado, sem clicar em “Mostrar arquivo”. Se inexistente/corrompido → estado explícito de indisponibilidade, nunca “site entregue”.
 - Critério de aceite: URL de rede não carregada, nenhum Run criado, hash validado, preview visível no painel real Windows, projeto não trocado indevidamente, prevenção de XSS.
-### P0.3 — Detectar/capturar sem microcomando [PENDENTE]
+### P0.3 — Detectar/capturar sem microcomando [PRÓXIMO PASSO PRIORITÁRIO]
 Após Run `succeeded`, inspeção canônica `inspectProviderLinkedThread` detecta anexos oficiais, chama captura idempotente **somente quando comprovada**. Não inferir existência a partir de menção textual. Recuperação ao reabrir projeto; sem envio GPT. Bloqueio de corrupção e concorrência.
 ### P1.1 — Preview interativo isolado [PENDENTE]
 Se o usuário precisar executar JS (menu, formulário), criar um `WebContentsView` de sessão **própria e efêmera**, sandbox/no Node/no preload, origem separada, CSP por resposta (rede negada), navegação/permissões/popups/downloads negados. Não reusar o WebContentsView autenticado do GPT, nem injetar HTML direto no renderer privilegiado. Estender testes de navegação, XSS, exfiltração e comportamento mobile.
@@ -37,6 +37,13 @@ Se o usuário precisar executar JS (menu, formulário), criar um `WebContentsVie
 Groq recebe apenas resumo sanitizado de artefato, HTML/verificação e evidência do navegador; oferece avaliação clara e propostas dentro do escopo, sem enviar mensagens automaticamente nem assumir publicação.
 ### P2 — Produto tipo Lovable [PENDENTE]
 Work Surface de arquivos, console e testes, revisão iterativa com aprovação contextual, rollback de artefatos, múltiplos modelos; manter um único SSOT de ferramentas, autorizações, recibos e versões. Publicação só mediante autorização separada.
+
+## Evidência P0.2 — Windows físico (04/11/2026)
+- Commit `8c861851` instalado fisicamente na única instalação `OrdaX Orchestrator Lab` do `DESKTOP-4UFL03B` (manifesto, EXE e ASAR conferidos); arquivo Estação Café recuperado **17.211 bytes**.
+- A interface administrativa permaneceu aberta e a lateral direita exibiu automaticamente `index.html`, cartão `Arquivo verificado · 17211 bytes`, iframe de **442 × 388 px** e HTML real vinculado ao Run original.
+- Via inspeção Chromium/Electron, confirmados `sandbox=""`, CSP como primeiro elemento de `srcdoc`, origem opaca isolada da página pai, e não-exposição de Node ao iframe. Prévia **estática**, scripts e envios de formulário não executados; **não** é preview interativo ainda. Nenhum Run adicional foi enviado.
+- Testes direcionados P0: **71/71** antes da instalação. CI obrigatório da revisão nova deve ficar verde antes de merge. Estado `reconciliation_required` do segundo Run foi mantido.
+- **Próxima ação obrigatória:** P0.3 detectar automaticamente arquivo anexo ao Run concluído e capturar/verificar sem clicar, com idempotência/observação causal; depois P1.1 preview JS isolado próprio.
 
 ## Portões e limites
 - **NUNCA** confundir “resposta GPT recebida”, “arquivo recuperado”, “prévia renderizada”, “testes aprovados” e “publicado”.
