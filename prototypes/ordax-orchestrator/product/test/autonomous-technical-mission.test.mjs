@@ -162,6 +162,10 @@ test('natural site request sends its exact words once; a model-suggested publica
   assert.equal(f.metrics().sends,1);
   assert.equal(f.metrics().plans,0,'do not rewrite the first user request in a Groq planner');
   assert.equal(f.metrics().reviews,1);
+  const adminChat=f.service.orchestrator(ids.projectId,ids.orchestratorId).chat_task_id;
+  assert.equal(f.store.messages(adminChat).filter(x=>
+    x.role==='assistant'&&x.content.startsWith('Ciclo 1: recebi a ')).length,0,
+    'natural first prompt retains concise user-facing outcome, not a technical milestone');
   assert.equal(f.store.messages(m.taskAId).find(x=>x.role==='user').content,content);
   assert.equal(f.store.db.prepare('SELECT followup_policy FROM lab_autonomous_dialogues WHERE id=?')
     .get(m.missionId).followup_policy,'review_only');

@@ -489,9 +489,13 @@ export class AutonomousDialogue {
   // its mission transition. This is an observed Run/review milestone, never
   // a claim that code, files, tests or an external deployment were verified.
   recordTechnicalReview(row,phase,decision) {
-    // One-send diagnostics also deserve an attributable, idempotent review
-    // in the owner's existing conversation; they never get a second send.
-    if(row.strategy!=='semantic'||
+    // One-send TECHNICAL diagnostics deserve an attributable, idempotent
+    // review. Direct natural requests use the same review_only policy but
+    // must keep their existing concise user-facing conclusion, not receive
+    // an extra technical Groq milestone in the conversation.
+    const directNaturalPrompt=row.followup_policy==='review_only'&&
+      row.question_a===row.mission;
+    if(row.strategy!=='semantic'||directNaturalPrompt||
        !['two_send','review_only'].includes(row.followup_policy))return false;
     const taskId=phase==='a'?row.task_a_id:row.task_b_id;
     const runId=decision?.sourceRunId;
