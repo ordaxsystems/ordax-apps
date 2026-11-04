@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, net, dialog, safeStorage, Tray, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, net, dialog, safeStorage, Tray, Menu, shell } from 'electron';
 import path from 'node:path';import { SupervisorCoordinator, authorizeLocalSupervisorTask, listLocalSupervisorRecoverable } from '../supervisor/coordinator.mjs';
 import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile.mjs';
 import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
@@ -34,6 +34,8 @@ import { resolveLabUserRoot, labProfileFingerprint } from '../src/lab-profile-bi
 import { verifyRuntimeManifest } from '../src/runtime-build-identity.mjs';
 import { assertTaskHandoffCoversOmissions, buildProviderContextAttachmentNotice, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
 import { removeStaleTaskHandoffFiles, removeTaskHandoffFile, resolveTaskHandoffRoot, writeTaskHandoffFile } from '../src/task-handoff-file.mjs';
+import {verifyLocalHtmlArtifact,assertLocalArtifactPath} from '../src/provider-html-artifact.mjs';
+import {shouldAttemptAutomaticHtmlCapture} from '../src/automatic-html-capture-policy.mjs';
 
 if (process.env.ORDAX_DESKTOP_DEBUG === '1') {
   app.commandLine.appendSwitch('remote-debugging-port', '9445');
@@ -245,7 +247,8 @@ function assetUrl(id) {
 function decorateMessages(messages) {
   return messages.map(message => ({
     ...message,
-    assets: (message.assets || []).map(asset => ({ ...asset, url: assetUrl(asset.id) }))
+    assets: (message.assets || []).map(asset =>
+      asset.kind==='image'?{...asset,url:assetUrl(asset.id)}:{...asset,url:null})
   }));
 }
 
@@ -580,6 +583,17 @@ async function createWindowOnce() {
     }
   });
 
+  // HTML previews are child frames of this privileged first-party renderer.
+  // Even a scriptless sandbox may contain clickable external links. Deny
+  // cross-document child-frame navigation and popups at the Electron boundary.
+  // In-page hash links remain available for static navigation.
+  win.webContents.on('will-frame-navigate',details=>{
+    if(!details.isMainFrame&&
+       !['about:blank','about:srcdoc'].includes(details.url))
+      details.preventDefault();
+  });
+  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+
   worker = new EmbeddedChatWorker();
   providerViews.register(worker);
   providerScheduler=createProviderExecutionScheduler({lanes:[{id:'primary',worker}]});
@@ -741,6 +755,121 @@ registerUiHandler('ordax:tasks:reconcile-linked-reply', async (event, payload={}
   return reconcileProviderLinkedReply({
     store,worker,taskId:payload?.taskId,responseSha256:payload?.responseSha256
   });
+});
+let htmlArtifactCaptureBusy=false;
+// Canonical capture operation: both automatic post-Run completion and the
+// existing manual fallback use this SAME path, Store and result attribution.
+// It only downloads first-party output, never sends a prompt or creates a Run.
+async function captureConfirmedHtmlArtifact(requestedId) {
+  if(hostBrowserMode||htmlArtifactCaptureBusy||liveRun||worker?.active||
+     providerScheduler?.snapshot()?.pendingTasks)
+    throw Error('provider_html_capture_unavailable');
+  const taskId=String(requestedId||'');
+  const task=store.getTask(taskId);
+  if(!task?.chat_url||!canonicalProviderChatUrl(task.chat_url))
+    throw Error('provider_html_task_unbound');
+  const run=store.db.prepare(
+    'SELECT id,status FROM runs WHERE task_id=? ORDER BY started_at DESC LIMIT 1'
+  ).get(taskId);
+  if(run?.status!=='succeeded'||
+     !store.db.prepare('SELECT 1 FROM conversation_completed_runs WHERE run_id=? AND task_id=?')
+       .get(run.id,taskId))
+    throw Error('provider_html_run_not_confirmed');
+  const response=store.db.prepare(
+    "SELECT id,content FROM messages WHERE task_id=? AND role='assistant' ORDER BY sequence DESC LIMIT 1"
+  ).get(taskId);
+  if(!response||!response.content?.includes('index.html'))
+    throw Error('provider_html_response_not_attributable');
+  const previous=store.db.prepare(
+    "SELECT id,local_path,sha256 FROM message_assets WHERE task_id=? AND kind='file' AND mime_type='text/html' ORDER BY created_at DESC LIMIT 1"
+  ).get(taskId);
+  if(previous){
+    const proof=verifyLocalHtmlArtifact(assertLocalArtifactPath(assetsRoot,previous.local_path));
+    if(proof.sha256!==previous.sha256)throw Error('provider_html_existing_asset_changed');
+    return {verified:true,alreadyStored:true,filename:'index.html',
+      bytes:proof.bytes,sha256:proof.sha256,task:getTaskView(taskId)};
+  }
+  htmlArtifactCaptureBusy=true;
+  const dir=path.join(assetsRoot,taskId);
+  fs.mkdirSync(dir,{recursive:true});
+  // Refuse a maliciously replaced/symlinked Task directory even when its
+  // lexical path is under the private asset root.
+  assertLocalArtifactPath(fs.realpathSync.native(assetsRoot),fs.realpathSync.native(dir));
+  const assetId='asset_'+randomUUID();
+  const filePath=assertLocalArtifactPath(assetsRoot,path.join(dir,assetId+'.html'));
+  try{
+    // Navigate and attribute the existing linked GPT thread using the
+    // canonical read-only inspector. A filename in a model answer is not
+    // evidence: require one completed reply bound to this exact Task/Run.
+    const inspection=await inspectProviderLinkedThread({store,worker,taskId});
+    if(inspection?.kind!=='response_candidate'||inspection.threadRendered!==true||
+       inspection.inspectionReason!=='thread_rendered')
+      throw Error('provider_html_thread_unverified');
+    if(liveRun||worker.active||providerScheduler?.snapshot()?.pendingTasks)
+      throw Error('provider_html_capture_unavailable');
+    const downloaded=await worker.downloadLinkedHtmlArtifact({
+      chatUrl:task.chat_url,expectedAnswer:response.content,
+      destinationPath:filePath,filename:'index.html'
+    });
+    if(downloaded?.filename!=='index.html')throw Error('provider_html_download_receipt_invalid');
+    const proof=verifyLocalHtmlArtifact(filePath);
+    if(proof.bytes!==downloaded.downloadedBytes)
+      throw Error('provider_html_download_size_mismatch');
+    store.db.exec('BEGIN IMMEDIATE');
+    try{
+      store.addAsset(taskId,response.id,{id:assetId,kind:'file',
+        mimeType:'text/html',localPath:filePath,alt:'index.html',sha256:proof.sha256});
+      store.event(taskId,'provider.artifact.html_verified',{
+        run_id:run.id,asset_id:assetId,bytes:proof.bytes,sha256:proof.sha256,
+        scope:'private_local_file',browser_tested:false,published:false
+      });
+      store.db.exec('COMMIT');
+    }catch(error){
+      if(store.db.isTransaction)store.db.exec('ROLLBACK');
+      throw error;
+    }
+    return {verified:true,alreadyStored:false,filename:'index.html',
+      bytes:proof.bytes,sha256:proof.sha256,task:getTaskView(taskId)};
+  }catch(error){
+    try{fs.unlinkSync(filePath)}catch{}
+    throw error;
+  }finally{htmlArtifactCaptureBusy=false;}
+}
+registerUiHandler('ordax:tasks:html-artifact:save',async(event,requestedId)=>{
+  requireTrustedSupervisorRenderer(event);
+  return captureConfirmedHtmlArtifact(requestedId);
+});
+registerUiHandler('ordax:tasks:html-artifact:reveal',(event,payload={})=>{
+  requireTrustedSupervisorRenderer(event);
+  const taskId=String(payload?.taskId||''),assetId=String(payload?.assetId||'');
+  const asset=store.getAsset(assetId);
+  if(!asset||asset.task_id!==taskId||asset.kind!=='file'||asset.mime_type!=='text/html')
+    throw Error('provider_html_asset_not_found');
+  const real=fs.realpathSync.native(assertLocalArtifactPath(assetsRoot,asset.local_path));
+  assertLocalArtifactPath(fs.realpathSync.native(assetsRoot),real);
+  const proof=verifyLocalHtmlArtifact(real);
+  if(proof.sha256!==asset.sha256)throw Error('provider_html_asset_integrity_failed');
+  shell.showItemInFolder(real);
+  return {verified:true,filename:'index.html',sha256:proof.sha256};
+});
+// Read-only, strictly scoped HTML bytes for a static opaque-origin preview.
+// Nothing is executed or served as a privileged app asset.
+registerUiHandler('ordax:tasks:html-artifact:preview',(event,payload={})=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('html_preview_unavailable_in_host');
+  const taskId=String(payload?.taskId||''),assetId=String(payload?.assetId||'');
+  const asset=store.getAsset(assetId);
+  if(!asset||asset.task_id!==taskId||asset.kind!=='file'||
+     asset.mime_type!=='text/html'||!store.getTask(taskId))
+    throw Error('html_preview_asset_unverified');
+  const root=fs.realpathSync.native(assetsRoot);
+  const real=fs.realpathSync.native(assertLocalArtifactPath(assetsRoot,asset.local_path));
+  assertLocalArtifactPath(root,real);
+  const proof=verifyLocalHtmlArtifact(real);
+  if(proof.sha256!==asset.sha256)throw Error('html_preview_integrity_mismatch');
+  return Object.freeze({verified:true,taskId,assetId,filename:'index.html',
+    sha256:proof.sha256,bytes:proof.bytes,
+    html:fs.readFileSync(real,'utf8')});
 });
 // Exact-profile attestation for Lab E2E: expose only an allowlisted hash, not
 // filesystem paths, credentials or application data. This is read-only.
@@ -906,9 +1035,33 @@ const orchestratorKernel=createOrchestratorKernel({
   }),
   provider:{busy:()=>Boolean(liveRun||worker?.active||providerScheduler?.snapshot().pendingTasks),
     ready:async()=>{assertProviderSendReadiness(await worker.health());return true;},
-    send:async({taskId,content,draftRevision,taskKind,authorSource='human'})=>
-    chatReceiptFromRunTask(await enqueueExecution(taskId,runWorker=>runTask(taskId,content,{newSession:false,draftRevision,
-      allowCoordinatorTask:taskKind==='orchestrator',authorSource},runWorker)))},
+    send:async({taskId,content,draftRevision,taskKind,authorSource='human'})=>{
+      const execution=await enqueueExecution(taskId,runWorker=>runTask(taskId,content,{
+        newSession:false,draftRevision,allowCoordinatorTask:taskKind==='orchestrator',authorSource
+      },runWorker));
+      // Completion is the ONLY automatic capture trigger. An interrupted
+      // Run, model proposal, failed send or historical recovery never triggers
+      // a download, and a missing official file card never becomes a result.
+      if(shouldAttemptAutomaticHtmlCapture({
+        authorSource,runId:execution?.result?.runId,text:execution?.result?.text
+      })){
+        try{
+          const captured=await captureConfirmedHtmlArtifact(taskId);
+          if(captured?.verified){
+            execution.task=getTaskView(taskId);
+            notifyOrchestratorChanged();
+          }
+        }catch{
+          // Missing/ambiguous provider attachment is a nonfatal result
+          // verification failure. Preserve the confirmed response and record
+          // no synthetic file. Do not retry the provider send.
+          try{store.event(taskId,'provider.artifact.auto_capture_unavailable',{
+            run_id:execution.result.runId,reason:'attachment_not_verified'
+          });}catch{}
+        }
+      }
+      return chatReceiptFromRunTask(execution);
+    }},
   coordinator:createGroqCoordinatorConversation({store,getApiKey:currentGroqKey,
     isEnabled:coordinatorChatEnabled})
 });
@@ -1064,7 +1217,11 @@ app.whenReady().then(async () => {
       const url = new URL(request.url);
       const id = decodeURIComponent(url.pathname.replace(/^\//, ''));
       const asset = store.getAsset(id);
-      if (!asset) return new Response('Not found', { status: 404 });
+      // Untrusted HTML or other generated files must NEVER be served through
+      // the in-app asset origin. Only the dedicated reveal action may expose
+      // their location; no HTML execution is implicit.
+      if (!asset || asset.kind!=='image'||!MIME_EXT.has(asset.mime_type))
+        return new Response('Not found', { status: 404 });
 
       const resolved = path.resolve(asset.local_path);
       const safeRoot = path.resolve(assetsRoot) + path.sep;

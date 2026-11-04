@@ -23,6 +23,7 @@ import { providerVerificationNoticeProbeBootstrap } from '../src/provider-verifi
 import path from 'node:path';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
+import {HTML_ARTIFACT_LIMIT_BYTES,validateHtmlArtifactName} from '../src/provider-html-artifact.mjs';
 import { fileURLToPath } from 'node:url';
 import { classifyProviderContextAttachmentObservation, selectProviderContextFileInput, PROVIDER_CONTEXT_FILE_INPUT_SELECTOR, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
 
@@ -706,6 +707,100 @@ export class EmbeddedChatWorker {
       // retry, submission, authentication or speculative status inference.
       const postHealth=await this.health().catch(()=>null);
       return classifyHistoricalThreadPostNavigation({observation,health:postHealth});
+    });
+  }
+
+  // Download a file that is ALREADY attached to a confirmed GPT reply.
+  // No prompt is composed, no Run is created and no file is opened/executed.
+  // The caller owns the canonical Task/Run, destination and final verification.
+  async downloadLinkedHtmlArtifact({chatUrl,expectedAnswer,destinationPath,filename='index.html'}) {
+    const expected=canonicalProviderChatUrl(chatUrl);
+    validateHtmlArtifactName(filename);
+    const answer=String(expectedAnswer||'').replace(/\s+/g,' ').trim();
+    if(!expected||answer.length<30||!path.isAbsolute(destinationPath)||
+       path.extname(destinationPath).toLowerCase()!=='.html')
+      throw Error('provider_html_artifact_request_invalid');
+    if(this.active)throw Error('provider_html_artifact_executor_busy');
+    return this.enqueue(async()=>{
+      const wc=this.view.webContents;
+      if(canonicalProviderChatUrl(wc.getURL())!==expected)
+        throw Error('provider_html_artifact_thread_not_selected');
+      const prefix=answer.slice(0,70);
+      const domSelect=`(()=>{
+        const expectedPrefix=${JSON.stringify(prefix)};
+        const filename=${JSON.stringify(filename)};
+        const clean=s=>String(s||'').replace(/\\s+/g,' ').trim();
+        const candidates=[...document.querySelectorAll('button[aria-label="Baixar arquivo"],button[aria-label="Download file"]')];
+        const matches=candidates.filter(button=>{
+          const owner=button.closest('[data-chatgpt-selection-message-id]');
+          if(!owner||!clean(owner.innerText).includes(expectedPrefix))return false;
+          let card=button;
+          for(let i=0;card&&i<8;i++,card=card.parentElement){
+            const label=clean(card.textContent);
+            if(label.includes(filename)&&label.length<=200)return true;
+          }
+          return false;
+        });
+        if(matches.length!==1)return {count:matches.length,clicked:false};
+        // An ordinary file-download button, never the model composer.
+        matches[0].click();
+        return {count:1,clicked:true};
+      })()`;
+      let downloadItem=null;
+      let handler=null;
+      let deadline=null;
+      let settled=false;
+      let resolveDownload,rejectDownload;
+      const promise=new Promise((resolve,reject)=>{
+        resolveDownload=resolve;rejectDownload=reject;
+      });
+      const finish=(error,result)=>{
+        if(settled)return;
+        settled=true;
+        if(deadline)clearTimeout(deadline);
+        if(error)rejectDownload(error);else resolveDownload(result);
+      };
+      handler=(event,item,source)=>{
+        if(source?.id&&source.id!==wc.id)return;
+        if(downloadItem){event.preventDefault();return;}
+        const observedName=String(item.getFilename()||'');
+        if(observedName!==filename||
+           Number(item.getTotalBytes()||0)>HTML_ARTIFACT_LIMIT_BYTES){
+          event.preventDefault();
+          finish(Error('provider_html_download_identity_rejected'));
+          return;
+        }
+        downloadItem=item;
+        item.setSavePath(destinationPath);
+        item.on('updated',()=>{
+          if(item.getReceivedBytes()>HTML_ARTIFACT_LIMIT_BYTES)item.cancel();
+        });
+        item.once('done',(_event,state)=>{
+          if(state!=='completed')finish(Error('provider_html_download_not_completed'));
+          else finish(null,{filename,downloadedBytes:item.getReceivedBytes(),
+            providerUrlObserved:true});
+        });
+      };
+      this.session.on('will-download',handler);
+      deadline=setTimeout(()=>{
+        try{downloadItem?.cancel()}catch{}
+        finish(Error('provider_html_download_timeout'));
+      },25000);
+      try{
+        const result=await wc.executeJavaScript(domSelect);
+        if(!result?.clicked||result.count!==1)
+          throw Error('provider_html_file_card_not_attributable');
+        return await promise;
+      }catch(error){
+        finish(error);
+        // The explicitly created promise may already be rejected. Consume
+        // it here so a no-download branch never becomes unhandled rejection.
+        await promise.catch(()=>{});
+        throw error;
+      }finally{
+        this.session.removeListener('will-download',handler);
+        if(deadline)clearTimeout(deadline);
+      }
     });
   }
 

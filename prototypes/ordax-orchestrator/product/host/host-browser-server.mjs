@@ -14,6 +14,7 @@ const STATIC_FILES = new Map([
   ['/ui-stage.mjs',['desktop/ui-stage.mjs','text/javascript; charset=utf-8']],
   ['/orchestrator-ui.mjs',['desktop/orchestrator-ui.mjs','text/javascript; charset=utf-8']],
   ['/host-browser-bridge.js',['desktop/host-browser-bridge.js','text/javascript; charset=utf-8']],
+  ['/src/static-html-preview.mjs',['src/static-html-preview.mjs','text/javascript; charset=utf-8']],
   ['/src/provider-compose-availability.mjs',['src/provider-compose-availability.mjs','text/javascript; charset=utf-8']],
   ['/src/provider-login-action.mjs',['src/provider-login-action.mjs','text/javascript; charset=utf-8']],
   ['/src/task-navigation-status.mjs',['src/task-navigation-status.mjs','text/javascript; charset=utf-8']],
@@ -219,7 +220,9 @@ export function createHostBrowserServer({productRoot,assetsRoot,invoke,readAsset
       try {
         const id=decodeURIComponent(url.pathname.slice('/assets/'.length));
         const asset=typeof readAsset==='function'?await readAsset(id,{session}):null;
-        if(!asset?.local_path)return json(res,404,{error:'not_found'});
+        if(!asset?.local_path||asset.kind!=='image'||
+           !['image/png','image/jpeg','image/webp','image/gif','image/avif'].includes(asset.mime_type))
+          return json(res,404,{error:'not_found'});
         const safeRoot=await fs.realpath(path.resolve(assetsRoot));
         const resolved=await fs.realpath(path.resolve(asset.local_path));
         if(!resolved.startsWith(safeRoot+path.sep))return json(res,404,{error:'not_found'});
