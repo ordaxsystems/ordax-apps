@@ -1159,15 +1159,19 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     // cycles. Show only reviews backed by canonical confirmed Runs and Groq
     // receipts; never describe unverified external effects as complete.
     const chain=currentJob?.mode==='technical'?currentJob.chainProgress:null;
-    const progress=chain?.cycles>1
-      ?`Ciclo ${chain.cycles}${chain.truncated?'+':''} · ${chain.completedReviews} revisões GPT confirmadas · `
+    const progress=chain?.cycles
+      ?`Ciclo ${chain.cycles}${chain.truncated?'+':''} · ${chain.completedReviews} revisões GPT confirmadas · teto de ${chain.authorizedGPTSends} envio(s) autorizados · `
       :'';
     const specialist=currentJob?.mode==='technical'&&currentJob.technicalSpecialist
-      ?'Especialista: '+currentJob.technicalSpecialist+
-        ' · limite '+currentJob.maxGPTSends+' envio(s) GPT · '
+      ?'Especialista: '+currentJob.technicalSpecialist+' · '
       :'';
+    const lastAcceptance=chain?.stages?.at(-1)?.acceptance?.status;
+    const acceptanceLabel={answer_indicates_progress:'progresso sugerido, não certificado',
+      requires_external_verification:'verificação externa pendente',
+      not_met:'critério de aceite não atendido'}[lastAcceptance];
+    const acceptanceState=acceptanceLabel?'Aceite: '+acceptanceLabel+' · ':'';
     $('autonomousDialogueState').textContent=currentJob
-      ?progress+specialist+(outcome?.message||technicalLabel||storyLabel||labels[job.state]||'Estado registrado')
+      ?progress+specialist+acceptanceState+(outcome?.message||technicalLabel||storyLabel||labels[job.state]||'Estado registrado')
       :'Nenhuma execução ativa. Descreva o que deseja realizar.';
     // A failed or uncertain mission remains read-only. Reuse the canonical
     // Task navigator to inspect confirmed records, never schedule a retry.
