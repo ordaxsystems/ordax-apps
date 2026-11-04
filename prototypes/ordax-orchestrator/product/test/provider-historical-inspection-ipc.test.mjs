@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
 const inspectStart=main.indexOf("registerUiHandler('ordax:tasks:inspect-linked-thread'");
 const reconcileStart=main.indexOf("registerUiHandler('ordax:tasks:reconcile-linked-reply'",inspectStart);
-const nextHandler=main.indexOf("registerUiHandler('ordax:lab:build-proof'",reconcileStart);
+const nextHandler=main.indexOf('let htmlArtifactCaptureBusy=false;',reconcileStart);
 assert.ok(inspectStart>=0&&reconcileStart>inspectStart&&nextHandler>reconcileStart,'linked_thread_ipc_handlers_missing');
 const inspectHandler=main.slice(inspectStart,reconcileStart);
 const reconcileHandler=main.slice(reconcileStart,nextHandler);

@@ -61,7 +61,10 @@ test('read-only provider inspectors have deadlines and remain no-send',()=>{
 
 test('historical read-only thread can render without a composer; sending still requires one',()=>{
   const show=section('  async showConversation(', '  async inspectDiagnosticReadOnly()');
-  const read=section('  async inspectConversationReadOnly(', '  async #composerState()');
+  // Scope only the historical observer. Downloading an existing verified
+  // attachment is a different capability with separate input guards.
+  const read=section('  async inspectConversationReadOnly(',
+    '  // Download a file that is ALREADY attached to a confirmed GPT reply.');
   const load=section('  async #safeLoad(', '  async #assistantSnapshot()');
   assert.match(show,/requireComposer = true/);
   assert.match(show,/this\.#safeLoad\(url, \{ requireComposer, protectDraft: !force, readOnlyThread \}\)/);
@@ -81,7 +84,10 @@ test('historical read-only thread can render without a composer; sending still r
 test('historical thread uses one bounded CDP Runtime.evaluate without input or navigation',()=>{
   const inspector=section('  async #readHistoricalThreadDOM() {',
     '  // Explicit, read-only inspection of an existing, canonical conversation.');
-  const read=section('  async inspectConversationReadOnly(', '  async #composerState()');
+  // Scope only the historical observer. Downloading an existing verified
+  // attachment is a different capability with separate input guards.
+  const read=section('  async inspectConversationReadOnly(',
+    '  // Download a file that is ALREADY attached to a confirmed GPT reply.');
   assert.ok(inspector.includes('evaluateProviderReadOnlyDom({'));
   const evaluator=fs.readFileSync(path.resolve(here,'../src/provider-readonly-cdp-evaluator.mjs'),'utf8');
   assert.ok(evaluator.includes("devtools.sendCommand('Runtime.evaluate'"));
