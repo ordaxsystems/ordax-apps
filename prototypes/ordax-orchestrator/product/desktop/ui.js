@@ -152,10 +152,9 @@ async function refreshVerifiedWorkSurface(taskId){
       try{
         mode.disabled=true;
         const receipt=await window.ordax.openInteractivePreview(taskId,asset.id);
-        if(epoch!==workSurfacePreviewEpoch){
-          await window.ordax.closeInteractivePreview(taskId).catch(()=>{});
-          return;
-        }
+        // A stale refresh shares the native view with the newer refresh.
+        // Only an explicit project/scope clear may close that view.
+        if(epoch!==workSurfacePreviewEpoch)return;
         if(receipt?.active!==true||receipt?.sha256!==proof.sha256||
            receipt?.taskId!==taskId||receipt?.assetId!==asset.id)
           throw Error('interactive_preview_receipt_unverified');

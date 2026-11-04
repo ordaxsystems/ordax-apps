@@ -53,6 +53,9 @@ test('native Work Surface has separate transient WebContentsView with no IPC or 
   assert.match(preload,/openInteractivePreview/);
   assert.match(preload,/setInteractivePreviewBounds/);
   assert.match(ui,/workSurfaceInteractiveRequested=true/);
+  assert.doesNotMatch(ui,/if\(epoch!==workSurfacePreviewEpoch\)\{\s*await window\.ordax\.closeInteractivePreview/,
+    'a stale refresh must not close the active native preview');
+  assert.match(source,/devTools:false/);
   assert.match(ui,/onArtifactPreviewTask:refreshVerifiedWorkSurface/);
   assert.match(markup,/id="workSurfaceModeToggle"/);
   const handler=main.slice(main.indexOf("registerUiHandler('ordax:preview:interactive:open'"),
