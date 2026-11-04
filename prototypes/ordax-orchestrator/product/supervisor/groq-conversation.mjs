@@ -142,7 +142,7 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
     throw Error('orchestrator_coordinator_ports_required');
   return Object.freeze({
     available:(projectId,orchestratorId)=>isEnabled(projectId,orchestratorId)===true&&Boolean(getApiKey()),
-    async send({taskId,mission,projectId,orchestratorId,analysisContext=null,prepareWork=false,
+    async send({taskId,mission,content:currentRequest=null,projectId,orchestratorId,analysisContext=null,prepareWork=false,
       workspaceObservation=null,repositoryUrl=null,delegateWork=false,completionProfile='standard'}) {
       if(isEnabled(projectId,orchestratorId)!==true)throw Error('supervisor_disabled');
       const apiKey=getApiKey();
@@ -161,7 +161,7 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
       const maxCompletionTokens=completionProfile==='narrative_recovery'?3200:
         technicalReview?3600:narrative?2600:prepareWork?1800:2400;
       const request=buildCoordinatorRequestContext({store,taskId,mission,projectId,orchestratorId,
-        analysisContext,prepareWork,workspaceObservation,repositoryUrl});
+        analysisContext,prepareWork,workspaceObservation,repositoryUrl,currentRequest});
       const responseFormat=prepareWork?groqProposalFormat(model):
         technicalReview?groqReviewFormat(model,analysisContext):delegateWork?groqJarvisFormat(model):null;
       const standardChat=completionProfile==='standard'&&!prepareWork;
