@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('ordax', {
   openInteractivePreview: (taskId,assetId) => ipcRenderer.invoke('ordax:preview:interactive:open',{taskId,assetId}),
   setInteractivePreviewBounds: rect => ipcRenderer.invoke('ordax:preview:interactive:bounds',rect),
   closeInteractivePreview: taskId => ipcRenderer.invoke('ordax:preview:interactive:close',taskId),
+  debugInteractivePreview: port => ipcRenderer.invoke('ordax:lab:interactive-preview:probe',{port}),
   reconcileLinkedReply: (taskId,responseSha256) => ipcRenderer.invoke('ordax:tasks:reconcile-linked-reply',{taskId,responseSha256}),
   loadMessagePage: (taskId, before) => ipcRenderer.invoke('ordax:tasks:messages:page', { taskId, before }),
   renameTask: (taskId, title) => ipcRenderer.invoke('ordax:tasks:rename', { taskId, title }),

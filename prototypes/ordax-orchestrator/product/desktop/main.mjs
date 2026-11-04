@@ -896,6 +896,13 @@ registerUiHandler('ordax:preview:interactive:close',(event,taskId)=>{
     interactiveHtmlPreview.close();
   return {closed:true};
 });
+registerUiHandler('ordax:lab:interactive-preview:probe',async(event,payload={})=>{
+  requireTrustedSupervisorRenderer(event);
+  if(process.env.ORDAX_DESKTOP_DEBUG!=='1')
+    throw Error('interactive_preview_probe_debug_only');
+  if(!interactiveHtmlPreview)throw Error('interactive_preview_unavailable');
+  return interactiveHtmlPreview.debugProbe(payload);
+});
 // Exact-profile attestation for Lab E2E: expose only an allowlisted hash, not
 // filesystem paths, credentials or application data. This is read-only.
 registerUiHandler('ordax:lab:build-proof', event => {

@@ -88,6 +88,35 @@ export class IsolatedInteractiveHtmlPreview {
     this.view.setBounds(clipped||{x:0,y:0,width:1,height:1});
     this.view.setVisible(Boolean(this.loaded&&clipped));
   }
+  async debugProbe({port}={}){
+    if(process.env.ORDAX_DESKTOP_DEBUG!=='1'||!Number.isInteger(port)||
+       port<1||port>65535||!this.loaded||!this.view||
+       this.view.webContents.isDestroyed())
+      throw Error('isolated_preview_debug_unavailable');
+    const wc=this.view.webContents;
+    const state=await wc.executeJavaScript(
+      "(()=>{const t=document.getElementById('menuToggle'),n=document.getElementById('navLinks');"+
+      "const before=Boolean(n?.classList.contains('open'));if(t&&n)t.click();"+
+      "const after=Boolean(n?.classList.contains('open'));if(t&&n)t.click();"+
+      "return {origin:location.origin,title:document.title,year:document.getElementById('year')?.textContent||null,"+
+      "formInvalid:document.getElementById('contactForm')?.checkValidity()===false,"+
+      "menuWorks:!before&&after&&!n?.classList.contains('open'),"+
+      "noNode:typeof require==='undefined'&&typeof process==='undefined',"+
+      "noOrdaX:typeof window.ordax==='undefined',"+
+      "storageDenied:(()=>{try{localStorage.setItem('p','p');return false}catch{return true}})(),"+
+      "popupDenied:window.open('https://example.invalid','_blank')===null};})()"
+    );
+    const url='http://127.0.0.1:'+port+'/e2e-blocked';
+    const networkDenied=await wc.executeJavaScript(
+      "(async()=>{try{await fetch("+JSON.stringify(url)+",{mode:'no-cors'});return false;}catch{return true;}})()"
+    );
+    const image=await wc.capturePage();
+    const png=image.toPNG();
+    return {active:true,taskId:this.owner.taskId,
+      sha256:this.owner.sha256,rendererPid:wc.getOSProcessId(),
+      ...state,networkDenied,screenshotBytes:png.length,
+      screenshotSize:image.getSize()};
+  }
   close(){
     const view=this.view;
     this.view=null;this.session=null;this.owner=null;
