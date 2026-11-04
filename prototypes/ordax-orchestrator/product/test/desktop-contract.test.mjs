@@ -19,6 +19,37 @@ const uiHtml = fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
 const e2eLock = fs.readFileSync(path.join(root,'scripts','e2e-lock.cjs'),'utf8');
 const liveText = fs.readFileSync(path.join(root,'scripts','live-ui-text-smoke.cjs'),'utf8');
 
+test('confirmed HTML artifact download stays scoped to a succeeded Run and never sends prompts',()=>{
+  const main=fs.readFileSync(path.join(root,'desktop','main.mjs'),'utf8');
+  const worker=fs.readFileSync(path.join(root,'desktop','embedded-worker.mjs'),'utf8');
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const ui=fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
+  const preload=fs.readFileSync(path.join(root,'desktop','preload.cjs'),'utf8');
+  const host=fs.readFileSync(path.join(root,'host','host-browser-server.mjs'),'utf8');
+  assert.match(main,/ordax:tasks:html-artifact:save/);
+  assert.match(main,/ordax:tasks:html-artifact:reveal/);
+  assert.match(main,/conversation_completed_runs WHERE run_id=\? AND task_id=\?/);
+  assert.match(main,/run\?\.status!=='succeeded'/);
+  assert.match(main,/verifyLocalHtmlArtifact\(filePath\)/);
+  assert.match(main,/if \(!asset \|\| asset.kind!=='image'/,
+    'app asset protocol must not render untrusted HTML');
+  assert.match(host,/asset.kind!=='image'/,
+    'loopback host must not render untrusted HTML');
+  assert.match(worker,/async downloadLinkedHtmlArtifact/);
+  assert.match(worker,/button\[aria-label="Baixar arquivo"\]/);
+  assert.match(worker,/this\.session\.on\('will-download',handler\)/);
+  const capture=worker.slice(worker.indexOf('async downloadLinkedHtmlArtifact'),
+    worker.indexOf('async #composerState'));
+  assert.doesNotMatch(capture,/sendPrompt\(|requestSubmit\(|Input\.insertText|setComposerAndSend/,
+    'capturing an existing attachment never sends or types any prompt');
+  assert.match(preload,/saveHtmlArtifact/);
+  assert.match(preload,/revealHtmlArtifact/);
+  assert.equal((html.match(/id="saveConfirmedHtml"/g)||[]).length,1);
+  assert.match(ui,/\.saveHtmlArtifact\(taskId\)/);
+  assert.match(ui,/\.revealHtmlArtifact\(taskId,assetId\)/);
+  assert.match(ui,/Arquivo salvo e verificado/);
+});
+
 test('GPT Work visibly attributes autonomous messages to OrdaX, never the human author',()=>{
   const source=fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
   const service=fs.readFileSync(path.join(root,'src','orchestrator-service.mjs'),'utf8');

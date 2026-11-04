@@ -188,6 +188,9 @@ button{color:inherit}
 @keyframes blink{50%{opacity:0}}
 @media(prefers-reduced-motion:reduce){.message.live.streaming .message-content::after{animation:none}.workspace-mode,.primary,.icon-button,.ghost-button,.send-button{transition:none}}
 .asset{margin:12px 0 0;max-width:520px}
+.asset-file{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;border:1px solid var(--border);border-radius:8px}
+.asset-file span{font-size:var(--type-caption);color:var(--muted)}
+.asset-file button{cursor:pointer}
 .asset img{display:block;max-width:100%;max-height:420px;border-radius:12px;border:1px solid #27313d;background:var(--bg);object-fit:contain}
 .asset figcaption{font-size:9px;color:#687688;margin-top:5px}
 

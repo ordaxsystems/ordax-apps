@@ -253,11 +253,13 @@
           </div>
           <div class="task-head-actions">
             <button id="inspectLinkedThread" class="ghost-button" type="button" disabled>Verificar conversa</button>
+            <button id="saveConfirmedHtml" class="ghost-button" type="button" hidden disabled>Guardar HTML entregue</button>
             <button id="toggleContext" class="ghost-button context-toggle" type="button" aria-controls="contextRail" aria-expanded="false">Contexto</button>
             <span id="conversationBadge" class="badge">Projeto contínuo</span>
           </div>
         </header>
         <p id="linkedThreadStatus" class="composer-hint" role="status" aria-live="polite"></p>
+        <p id="htmlArtifactStatus" class="composer-hint" role="status" aria-live="polite"></p>
         <div id="runReviewActions" class="task-head-actions run-review-actions hidden">
           <button id="reviewLatestRun" class="ghost-button" type="button" disabled>Revisar último Run com Groq</button>
           <span id="runReviewState" class="composer-hint" role="status" aria-live="polite"></span>

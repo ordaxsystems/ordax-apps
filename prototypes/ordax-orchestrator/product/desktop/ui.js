@@ -294,6 +294,8 @@ function plural(value, singular, pluralText) {
 }
 
 function assetHtml(asset) {
+  if(asset.kind==='file'&&asset.mime_type==='text/html'&&typeof asset.id==='string')
+    return `<figure class="asset asset-file"><strong>${esc(asset.alt||'Arquivo HTML')}</strong><span>Arquivo salvo e verificado no perfil privado do OrdaX. Não publicado.</span><button type="button" class="mini-secondary asset-reveal" data-asset-id="${esc(asset.id)}">Mostrar arquivo</button></figure>`;
   if (asset.kind !== 'image' || !asset.url) return '';
   return `<figure class="asset"><img src="${esc(asset.url)}" alt="${esc(asset.alt || 'Imagem')}" /><figcaption>${esc(asset.alt || '')}</figcaption></figure>`;
 }
@@ -798,6 +800,14 @@ async function openTask(id) {
   $('#taskCheckpoint').title = task.checkpoint || '';
   $('#taskId').textContent = task.id;
   $('#inspectLinkedThread').disabled = !task.chat_url;
+  const hasLocalHtml=(task.messages||[]).some(m=>(m.assets||[]).some(a=>a.kind==='file'&&a.mime_type==='text/html'));
+  const htmlExpected=Boolean(typeof window.ordax.saveHtmlArtifact==='function'&&task.chat_url&&task.latest_run?.status==='succeeded'&&
+    (task.messages||[]).some(m=>m.role==='assistant'&&m.content?.includes('index.html')));
+  $('#saveConfirmedHtml').hidden=!htmlExpected||hasLocalHtml;
+  $('#saveConfirmedHtml').disabled=!htmlExpected||hasLocalHtml;
+  $('#htmlArtifactStatus').textContent=hasLocalHtml
+    ?'Arquivo HTML verificado no armazenamento privado do OrdaX; não publicado e não testado no navegador.'
+    :htmlExpected?'O executor menciona index.html. Verifique e guarde o arquivo antes de considerá-lo entregue.':'';
   renderTaskNavigationStatus(task);
   $('#workspaceId').textContent = workspace ? `sessão ${workspace.id.slice(-8)}` : '';
   renderHistory(task, { reset:true, scrollToLatest:true });
@@ -1122,6 +1132,35 @@ $('#observerMode').addEventListener('change', async event => {
   try { observerMode = await window.ordax.setObserverMode(select.value); await refreshProvider(); }
   catch (error) { $('#providerDetail').textContent = friendlyError(error); select.value = observerMode; }
   finally { select.disabled = false; }
+});
+
+$('#saveConfirmedHtml').addEventListener('click',async()=>{
+  const taskId=currentTaskId,button=$('#saveConfirmedHtml');
+  if(!taskId||button.disabled)return;
+  button.disabled=true;
+  $('#htmlArtifactStatus').textContent='Verificando e recuperando o arquivo existente, sem enviar nova mensagem…';
+  try{
+    const result=await window.ordax.saveHtmlArtifact(taskId);
+    if(!result?.verified||!result.sha256)throw Error('html_artifact_verification_failed');
+    if(currentTaskId!==taskId)return;
+    await openTask(taskId);
+    $('#htmlArtifactStatus').textContent='index.html salvo com SHA-256 no perfil privado do OrdaX. Ainda não foi testado ou publicado.';
+  }catch{
+    if(currentTaskId===taskId)
+      $('#htmlArtifactStatus').textContent='Não foi possível comprovar ou guardar o HTML. Nenhum novo pedido foi enviado ao GPT.';
+  }finally{button.disabled=false;}
+});
+$('#messageList').addEventListener('click',async event=>{
+  const button=event.target.closest('.asset-reveal');
+  if(!button||button.disabled||!currentTaskId)return;
+  const taskId=currentTaskId,assetId=button.dataset.assetId;
+  button.disabled=true;
+  try {
+    const receipt=await window.ordax.revealHtmlArtifact(taskId,assetId);
+    if(!receipt?.verified)throw Error('html_artifact_reveal_unconfirmed');
+  }catch{
+    $('#htmlArtifactStatus').textContent='Não foi possível localizar o arquivo verificado. Nenhum HTML foi executado.';
+  }finally{button.disabled=false;}
 });
 
 // This inspects the already-linked provider thread from the OrdaX App.
