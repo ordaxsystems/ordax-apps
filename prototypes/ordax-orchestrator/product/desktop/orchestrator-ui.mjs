@@ -1180,7 +1180,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     ]);
     if(p!==projectId||t!==chatTaskId)return;
     const box=$('coordinatorMessages'),recoveryNotice=$('coordinatorRecoveryNotice');
-    box.replaceChildren(recoveryNotice);
+    // Preserve the one result node while rebuilding chat history. Removing it
+    // before refreshAutonomousDialogue would make the ID unresolvable.
+    box.replaceChildren(recoveryNotice,$('coordinatorOutcome'));
     const uncertainCommands=Number.isSafeInteger(engineStatus?.uncertainCommands)
       ?engineStatus.uncertainCommands:0;
     recoveryNotice.classList.toggle('hidden',uncertainCommands===0);

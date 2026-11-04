@@ -44,6 +44,8 @@ test('human conversation presents a read-only result instead of leaking technica
   for(const id of ['coordinatorOutcome','coordinatorOutcomeText','coordinatorOutcomeOpen'])
     assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1);
   assert.match(uiSource,/describeConversationOutcome\(job\)/);
+  assert.match(uiSource,/box\.replaceChildren\(recoveryNotice,\$\('coordinatorOutcome'\)\)/,
+    'chat redraw must not remove the sole result node from the DOM');
   assert.match(uiSource,/await onOpenWork\(taskId\)/);
   assert.doesNotMatch(uiSource.slice(uiSource.indexOf("  $('coordinatorOutcomeOpen').addEventListener"),uiSource.indexOf("  $('executionOpenWorks').addEventListener")),/command\(|provider\.send|window\.ordax\.send/);
   assert.match(css,/\.coordinator-outcome\[hidden\]/);
