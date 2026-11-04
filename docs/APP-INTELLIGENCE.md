@@ -10,6 +10,27 @@ O contrato público autoritativo nasce na plataforma como `ordax.app-intelligenc
 
 Quando a pessoa conversa pelo OrdaX Web ou pelo Studio, os aplicativos first-party continuam oferecendo **uma só semântica canônica** via manifestos e capacidades verificadas. Não criar uma lista manual de ações do Studio para o chat, uma implementação por provedor GPT, ou um catálogo separado para o Lovable. O plugin externo `ordax-chatgpt` (owner Platform) também deve consultar apenas capacidades publicadas/autorizadas, nunca descobrir apps por screenshot como caminho padrão. O OS é owner de `ordax.intelligence/1`; o modelo resolve intenção consultiva e o broker/approval/grants/executor governa efeitos. [Handoff para continuidade](https://github.com/ordaxsystems/ordax-os/blob/main/INTELLIGENCE-HANDOFF.md).
 
+## Padrão mínimo único para os novos apps oficiais — 2026-11-04
+
+A regra obrigatória **já usa os contratos e os validadores existentes**:
+`app.json` (identidade/lifecycle), `ai/manifest.json`
+(semântica declarativa), `actions/manifest.json`
+(capacidades declaradas), provider manifest, compatibilidade/SDK pinado
+e runtime/health verificado. Todos os first-party têm a **mesma forma**
+e podem anunciar **conjuntos diferentes de funções**; zero intents ou
+zero actions válidas não deve virar placeholder de execução.
+
+Uma intenção ou ação nova, como `exemplo.az`, usa o namespace
+e os tipos do contrato atual; é descoberta pelo OS/Fabric depois da
+instalação verificada sem alterar o código central para cada novo ID.
+Novas primitivas de execução ou tipos incompatíveis precisam de contrato
+versionado e provider/Runtime compatível. MCP exige atestação, grants
+e tool real no Runtime/Platform, nunca ativação por manifesto.
+
+Ver [mínimo de cada app](../apps/README.md#conexao-minima-uniforme--obrigatoria-para-todos-os-apps-first-party)
+e o [Capability Fabric no OS](https://github.com/ordaxsystems/ordax-os/blob/main/docs/CAPABILITY-FABRIC.md).
+Não criar inventário, API ou executor concorrentes.
+
 ## Princípio
 
 Conhecimento treinado no modelo é contexto geral, não contrato operacional.
