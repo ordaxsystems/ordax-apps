@@ -2,6 +2,38 @@
 
 > **Execução DEV — Evolução Rápida (regra transversal obrigatória):** aplicar a [política canônica OrdaX](https://github.com/ordaxsystems/ordax-os/blob/main/docs/DEVELOPMENT-WORKFLOW.md#regra-operacional-transversal--evolucao-rapida-dev-2026-11-04) antes de iniciar trabalho. Entregar a alteração no owner correto primeiro e validar com testes proporcionais depois; não ampliar escopo com auditorias, documentação, CI ou workflows sem causalidade. Preservar gates obrigatórios, integridade, segurança e autorização.
 
+## Retomada de apps, Aura e MCP — não reiniciar missão histórica (04/11/2026)
+
+**Somente quando a tarefa afetar a integração de apps com Aura/Fabric/MCP:**
+ler o checkpoint atual em
+[`ordax-os/INTELLIGENCE-HANDOFF.md`](https://github.com/ordaxsystems/ordax-os/blob/main/INTELLIGENCE-HANDOFF.md)
+e o contrato de
+[`Capability Fabric`](https://github.com/ordaxsystems/ordax-os/blob/main/docs/CAPABILITY-FABRIC.md).
+Esses documentos são **roteadores de continuidade**, não substituem
+`apps/README.md`, `docs/APP-INTELLIGENCE.md`, manifests e o App SDK.
+O `ordax-apps` **é dono de cada app/provider**, não do Product
+Runtime, Store `CURRENT`, autorização OAuth ou inferência da Aura.
+
+**Já concluído:** contratos de identidade, compatibilidade, Actions
+declarativas e regras de UI/mouse/teclado/semântica nos guias das
+PRs #450, #451 e #452. Não recomeçar documentação, criar `fabric.json`,
+copiar ferramentas MCP para cada app ou presumir execução só porque
+`actions/manifest.json` declara uma intenção. O MCP Windows
+físico e a limpeza de devices DEV foram concluídos na
+[`ordax-platform#291`](https://github.com/ordaxsystems/ordax-platform/issues/291);
+**não repetir essa missão**.
+
+**Pendente fora deste repo:** ponte Native Product
+[`ordax-os#2400`](https://github.com/ordaxsystems/ordax-os/pull/2400)
+e observação autenticada da Store `CURRENT` pelo Runtime;
+a Aura ainda não executa automaticamente as tools Product.
+Quando uma ação específica de app for escolhida para provar o
+fluxo ponta a ponta, implementar **um único provider real no
+app** e validar contrato, consentimento, efeito/recibo/revogação
+no owner correspondente. Não assumir que a PR #2400 está integrada
+sem conferir a `main` atual. Este handoff **não substitui** a
+prioridade/contrato separado do Orchestrator abaixo.
+
 ## Prioridade canônica do OrdaX Orchestrator — 2026-11-01
 
 **LEIA ANTES DE QUALQUER PLANO SOBRE O ORCHESTRATOR:** [Contrato de produto autônomo/instância única](prototypes/ordax-orchestrator/docs/ORCHESTRATOR-CANONICAL-PRODUCT.md). O usuário conectará **uma instância a um projeto**, com **Administrador Geral Groq** como entrada principal e **executores por repositório**, que coordena o diagnóstico e as frentes após **Iniciar**, sem exigir prompt de missão. Mensagens ao administrador **não** são enviadas implicitamente ao GPT Web. O documento novo prevalece sobre descrições históricas multi-projeto/GPT-principal deste arquivo, handoffs e roadmap. A migração do schema atual é futura, não apagar dados. Autonomia real, acesso GitHub, Runtime, Aura e trabalho headless dependem de provas e grants; jamais declarados prontos por esta decisão.
