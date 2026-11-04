@@ -124,9 +124,10 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
     const orchestratorId=(await call('orchestrator_create',{projectId,name:'Groq Admin',mission:'Acompanhar evidências reais'})).result.orchestratorId;
     return {projectId,orchestratorId};
   };
-  const start=async(ids,requestId='technical_test')=>service.invoke(context,'autonomous_dialogue_start',{
-    ...ids,requestId,mode:'technical',mission:'Audite e corrija o aplicativo conforme as evidências do GPT; não presuma commit, teste ou deploy.'
-  });
+  const start=async(ids,requestId='technical_test',mission='Audite e corrija o aplicativo conforme as evidências do GPT; não presuma commit, teste ou deploy.')=>
+    service.invoke(context,'autonomous_dialogue_start',{
+      ...ids,requestId,mode:'technical',mission
+    });
   const waitFor=async(ids,states)=>{
     for(let i=0;i<240;i++){
       const m=service.autonomous.status(context,ids).mission;
@@ -164,6 +165,25 @@ test('natural site request sends its exact words once; a model-suggested publica
   assert.equal(f.store.messages(m.taskAId).find(x=>x.role==='user').content,content);
   assert.equal(f.store.db.prepare('SELECT followup_policy FROM lab_autonomous_dialogues WHERE id=?')
     .get(m.missionId).followup_policy,'review_only');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('diagnostic-only technical mission uses one GPT send and scoped specialist',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',maxExpectedSends:1}),ids=await f.setup();
+  const mission='Diagnostique por que o runtime MCP desconectou e explique as evidências sem ações externas.';
+  const started=await f.start(ids,'diagnostic_only',mission);
+  assert.equal(started.status,'succeeded');
+  const m=await f.wait(ids);
+  assert.equal(m.mode,'technical');
+  assert.equal(m.state,'verification_required');
+  assert.equal(m.maxGPTSends,1);
+  assert.equal(m.technicalSpecialist,'sistemas e integrações');
+  assert.equal(m.taskBId,null,'a specialist cannot invent another GPT send');
+  assert.equal(m.decision.externalEffectVerified,false);
+  assert.equal(f.store.db.prepare('SELECT followup_policy FROM lab_autonomous_dialogues WHERE id=?')
+    .get(m.missionId).followup_policy,'review_only');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:1});
+  assert.equal((await f.service.autonomous.tick(f.context)).state,'idle');
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
