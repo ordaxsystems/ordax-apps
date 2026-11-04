@@ -29,7 +29,42 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Classify exact Studio documentation-only diff
+        id: docs-impact
+        shell: bash
+        env:
+          ORDAX_EVENT: ${{ github.event_name }}
+          ORDAX_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          docs_only=false
+          # An unknown Git base, failed fetch or mixed diff must run all
+          # existing Windows installer and Electron UI checks.
+          if [[ "$ORDAX_EVENT" == "pull_request" ]] &&
+             [[ "$ORDAX_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] &&
+             git fetch --no-tags --depth=1 origin "$ORDAX_BASE_SHA" &&
+             git diff --name-status --no-renames "$ORDAX_BASE_SHA" HEAD > "$RUNNER_TEMP/studio-changes"; then
+            mapfile -t paths < "$RUNNER_TEMP/studio-changes"
+            if (( ${#paths[@]} == 1 )) &&
+               [[ "${paths[0]}" == $'M\tdocs/STUDIO-WEB-INTEGRATION.md' ]]; then
+              docs_only=true
+            fi
+          fi
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+          echo "STUDIO_WINDOWS_DOCS_ONLY=$docs_only"
+
+      - name: Validate documentation-only patch
+        if: steps.docs-impact.outputs.docs_only == 'true'
+        shell: bash
+        env:
+          ORDAX_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git diff --check "$ORDAX_BASE_SHA" HEAD
+          echo 'STUDIO_DOCUMENTATION_ONLY=PASS'
+
       - name: Pin Node.js on Windows
+        if: steps.docs-impact.outputs.docs_only != 'true'
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24'
@@ -37,10 +72,12 @@ jobs:
           cache-dependency-path: tools/assistant-host/package-lock.json
 
       - name: Install exact Electron dependency lock (no global tooling)
+        if: steps.docs-impact.outputs.docs_only != 'true'
         shell: pwsh
         run: npm.cmd --prefix tools/assistant-host ci --no-audit --no-fund
 
       - name: Materialize the pinned Electron Windows runtime
+        if: steps.docs-impact.outputs.docs_only != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -50,6 +87,7 @@ jobs:
           }
 
       - name: Confirm canonical manifests and Windows-specific source syntax
+        if: steps.docs-impact.outputs.docs_only != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -58,14 +96,17 @@ jobs:
           node --check tools/assistant-host/verify-windows-candidate.mjs
 
       - name: Build candidate using official existing Windows builder
+        if: steps.docs-impact.outputs.docs_only != 'true'
         shell: pwsh
         run: npm.cmd --prefix tools/assistant-host run build:windows
 
       - name: Independently rehash every emitted candidate file
+        if: steps.docs-impact.outputs.docs_only != 'true'
         shell: pwsh
         run: node tools/assistant-host/verify-windows-candidate.mjs
 
       - name: Prove real Electron UI and host isolation on Windows (fixture session)
+        if: steps.docs-impact.outputs.docs_only != 'true'
         shell: pwsh
         timeout-minutes: 12
         env:
@@ -82,6 +123,7 @@ jobs:
           Write-Output 'STUDIO_WINDOWS_ELECTRON_UI_FIXTURES=PASS'
 
       - name: Require this proof to remain unsigned and unpromoted
+        if: steps.docs-impact.outputs.docs_only != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
