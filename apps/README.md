@@ -21,6 +21,54 @@ A ordem atual é **fechar o mínimo em todos os apps** e somente depois polir fu
 
 O catálogo deriva os apps elegíveis de `tools/app-package/catalog_inventory.py`; **não** manter lista duplicada e **não** preencher apps platform-owned com placeholders falsos. A matriz de todos os 20 alvos é gerada por `tools/verify_mvp_app_minimum.py`, e o escopo/bloqueios por [docs/MVP-MINIMO-TODOS-APPS.md](../docs/MVP-MINIMO-TODOS-APPS.md). Um candidato de catálogo não assinado **não é instalável**; Store, trust e ativação pertencem à plataforma.
 
+## Conexão mínima uniforme — obrigatória para todos os apps first-party
+
+Todos os apps oficiais distribuíveis usam **o mesmo envelope público**
+e as **mesmas ferramentas existentes**; não há um arquivo
+`fabric.json` nem uma API proprietária por aplicativo:
+
+1. `app.json` define o ID, versão, owner, release mode, dependências e
+   lifecycle de um `ordax.component-manifest/1` válido.
+2. `ai/manifest.json` define a mesma identidade/versão, ao menos uma
+   instrução, `intents[]` namespaced, parâmetros, efeito e confirmação;
+   sempre `authority=none` e `execution=declarative-only`. O array
+   pode ser vazio se o app ainda não possuir intents reais.
+3. `actions/manifest.json` define a mesma identidade/versão,
+   `capabilities[]` de intents correspondentes, riscos, confirmação,
+   provider e binding; sempre `execution=proposal-only`,
+   `executionAuthorized=false` e
+   `modelDirectExecutionAuthorized=false`. O array pode ser vazio:
+   um app reconhecível **não precisa fingir ter ações**. O manifesto
+   `actions/providers/manifest.json` e seus artefatos continuam
+   obrigatórios nos candidatos compatíveis com o pipeline atual.
+4. `compatibility.json` ou descriptor de migration, o SDK **pinado**
+   por `platform-sdk.lock.json`, entrypoint `componentRuntime`, saúde,
+   montagem/desmontagem e pacote determinístico são os canais de
+   compatibilidade/entrega existentes. A Store/OS verifica `CURRENT`
+   e trust; arquivos de desenvolvimento não comprovam instalação.
+
+Uma novidade como `meuapp.az` entra como **novo intent** e, somente
+quando houver capacidade válida, nova Action namespaced. O catálogo
+e os validadores derivam novos IDs **automaticamente do pacote**, sem
+tabela manual por app nem edição do Fabric/OS para cada função nova.
+Identidade diferente, campo/tipo desconhecido, contrato obrigatório não
+suportado ou tentativa de autoridade falham fechados; mudanças de
+schema requerem evolução versionada do **App SDK do OS**.
+
+**MCP não é uma exceção:** os metadados ajudam a OrdaX/Aura a
+compreender a capacidade; execução remota exige uma ferramenta
+realmente suportada pelo `ordax-runtime` e grants atestados pela
+`ordax-platform`. Nenhum manifesto ou app pode criar tools MCP,
+permissões ou executor automaticamente. Fontes e limites canônicos:
+[`docs/CAPABILITY-FABRIC.md` no OS](https://github.com/ordaxsystems/ordax-os/blob/main/docs/CAPABILITY-FABRIC.md).
+
+**Gate já existente, sem novo workflow:** `tools/verify_app_intelligence.py`
+e `tools/verify_app_actions.py` percorrem todos os
+`apps/<id>/app.json`; `tools/app-package/build.py` rejeita schema,
+identidade, intent/Action/provedor incoerentes. Todos os novos
+candidatos precisam passar esses mesmos gates. Não manter exceções
+manuais nem listas duplicadas para “apps novos”.
+
 ## Regras de ownership
 
 - `app-id` estável e compatível com `ordax.component-manifest/1`;
