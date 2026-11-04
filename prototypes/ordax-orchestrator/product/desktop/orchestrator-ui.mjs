@@ -33,6 +33,36 @@ export function resolveProjectOnboardingMission(name,objective) {
 }
 // Pure presentation of the SAME read-only project_preflight projection.
  // It cannot confer GitHub/Runtime authority or issue a provider request.
+export function describeConversationOutcome(mission) {
+  if(!mission||typeof mission.missionId!=='string')return null;
+  const verifiedReply=typeof mission.decision?.sourceRunId==='string'&&
+    typeof mission.taskAId==='string'&&mission.taskAId.length>0;
+  // A review is evidence of a confirmed GPT Run, not proof of filesystem,
+  // browser tests or deployment. Opening a task is always read-only.
+  const taskId=verifiedReply
+    ?typeof mission.taskBId==='string'&&mission.reviewTasks?.some(x=>x.taskId===mission.taskBId)&&
+      mission.maxGPTSends!==1?mission.taskBId:mission.taskAId
+    :null;
+  switch(mission.state) {
+    case 'queued':case 'planning_a':case 'ready_a':
+      return {message:'Preparando seu pedido…',taskId:null};
+    case 'sending_a':
+      return {message:'Trabalhando no seu pedido…',taskId:null};
+    case 'ready_b':case 'reviewing_a':case 'ready_review_final':case 'reviewing_final':
+      return {message:'Analisando o resultado recebido…',taskId};
+    case 'sending_b':case 'planning_b':case 'ready_final':
+      return {message:'Continuando o trabalho autorizado…',taskId};
+    case 'verification_required':case 'succeeded':case 'budget_exhausted':
+      return {message:'Resposta recebida. Confira o resultado; arquivos locais, testes e publicação ainda não foram verificados.',taskId};
+    case 'reconciliation_required':
+      return {message:'Uma etapa foi interrompida e precisa de verificação. Nada será reenviado automaticamente.',taskId};
+    case 'blocked':
+      return {message:'Não foi possível concluir esta tarefa. Nenhum envio será repetido automaticamente.',taskId};
+    default:
+      return {message:'Verificando o andamento da tarefa…',taskId:null};
+  }
+}
+
 export function describeProjectPreflight(snapshot) {
   if(snapshot?.schema!=='ordax.orchestrator.project-preflight/2'||
     snapshot.provenance?.source!=='app_sqlite'||snapshot.provenance.externalObservation!==false||
@@ -855,6 +885,19 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       if(document.body.classList.contains('orchestrator-rail-open'))$('workSearch').focus();
     });
   };
+  $('coordinatorOutcomeOpen').addEventListener('click',async event=>{
+    const button=event.currentTarget,p=projectId,o=orchestratorId;
+    const taskId=button.dataset.taskId;
+    if(button.disabled||!taskId||!p||!o)return;
+    button.disabled=true;
+    try{
+      if(p!==projectId||o!==orchestratorId)return;
+      coordinatorOpen=false;$('orchestrationPanel').hidden=true;
+      await onOpenWork(taskId);
+    }catch{
+      status('Não foi possível abrir o resultado. Nenhuma mensagem foi reenviada.');
+    }finally{button.disabled=false;}
+  });
   $('executionOpenWorks').addEventListener('click',()=>openFilteredWorks('all',$('executionOpenWorks')));
   $('refreshExecutionOverview').addEventListener('click',async()=>{
     const button=$('refreshExecutionOverview'),p=projectId,o=orchestratorId;
@@ -1061,6 +1104,17 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(p!==projectId||o!==orchestratorId)return;
     const job=result?.mission;
     executionMission=job||null;executionMissionScope=executionScope();renderExecutionMonitor();
+    const outcome=describeConversationOutcome(job),outcomePanel=$('coordinatorOutcome');
+    outcomePanel.hidden=!outcome;
+    if(outcome){
+      $('coordinatorOutcomeText').textContent=outcome.message;
+      $('coordinatorOutcomeOpen').hidden=!outcome.taskId;
+      $('coordinatorOutcomeOpen').dataset.taskId=outcome.taskId||'';
+      // Reuse the same read-only mission projection inside the human chat.
+      // renderCoordinator may rebuild messages, so re-attach this ONE node.
+      const messages=$('coordinatorMessages');
+      if(messages.lastElementChild!==outcomePanel)messages.append(outcomePanel);
+    }
     const labels={queued:'Missão aceita; planejamento automático pendente',planning_a:'Groq preparando GPT A',ready_a:'Preparado para enviar GPT A',sending_a:'GPT A em execução',ready_b:'GPT A confirmado; preparando GPT B',planning_b:'Groq analisando resposta A',ready_final:'Pergunta B pronta',sending_b:'GPT B em execução',planning_final:'Groq interpretando resposta B',succeeded:'Concluído: duas respostas GPT e proposta final confirmadas',blocked:'Falha comprovada; sem reenvio automático',reconciliation_required:'Resultado incerto: exige reconciliação, sem reenvio'};
     const technicalLabel=job?.mode==='technical'?(
       job.state==='verification_required'

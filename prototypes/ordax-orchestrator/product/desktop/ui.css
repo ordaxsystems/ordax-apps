@@ -525,6 +525,11 @@ body.orchestrator-focus .left-footer .provider-card{display:none}
 .coordinator-message{width:min(100%,790px);margin:0 auto;padding:14px 16px;border:1px solid var(--border-soft);border-radius:12px;background:var(--panel-2)}
 .coordinator-message strong{display:block;margin-bottom:6px;color:#8190a3;font-size:var(--type-caption)}
 .coordinator-message p{margin:0;color:#e0e6ed;font-size:var(--type-body);line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.coordinator-outcome{box-sizing:border-box;width:min(100%,790px);margin:0 auto;padding:13px 16px;display:flex;flex-direction:column;align-items:flex-start;gap:7px;border:1px solid var(--border-strong);border-radius:12px;background:var(--panel)}
+.coordinator-outcome[hidden],.coordinator-outcome button[hidden]{display:none}
+.coordinator-outcome strong{font-size:var(--type-caption);color:var(--text)}
+.coordinator-outcome p{margin:0;color:var(--muted);font-size:var(--type-label);line-height:1.5;overflow-wrap:anywhere}
+.coordinator-outcome button{min-height:34px}
 .coordinator-recovery{box-sizing:border-box;width:min(100%,790px);margin:0 auto 8px;padding:11px 14px;border:1px solid #78602d;border-radius:10px;background:#211b10;color:#e6cf8f;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
 #coordinatorComposer{display:grid;grid-template-columns:minmax(0,1fr) minmax(112px,auto);align-items:end;gap:9px;margin:0 auto 10px;padding:10px 11px 10px 15px;width:min(calc(100% - 44px),790px);border:1px solid var(--border);border-radius:15px;background:var(--panel-2);box-shadow:0 12px 40px rgba(0,0,0,.16)}
 #coordinatorComposer:focus-within{border-color:var(--focus)}
