@@ -106,6 +106,12 @@ test('human conversation presents a read-only result instead of leaking technica
   assert.equal(describeConversationOutcome({...base,reviewedTaskId:null,
     state:'verification_required',decision:{sourceRunId:'run_verified'}}).taskId,null,
     'a missing owner match is never a confirmed result');
+  const verifiedWithoutReview=describeConversationOutcome({...base,state:'reconciliation_required',
+    decision:null,reviewedTaskId:null},{artifactVerified:true});
+  assert.equal(verifiedWithoutReview.taskId,null,'a verified preview is not permission to open an unattributed work');
+  assert.match(verifiedWithoutReview.message,/versão atual do site está verificada/);
+  assert.match(verifiedWithoutReview.message,/Nada será reenviado automaticamente/);
+  assert.doesNotMatch(verifiedWithoutReview.message,/interrompida/);
   assert.equal(describeConversationOutcome(null),null);
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const uiSource=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
@@ -544,7 +550,8 @@ test('command centre uses one real project projection without fictional agents o
   assert.match(ui,/executionWorkScope===scope\?visibleWorkItems:\[\]/);
   assert.match(ui,/executionMissionScope===scope\?executionMission:null/);
   assert.match(ui,/workClassForPlan\(work\)/);
-  assert.match(ui,/Resposta GPT registrada · efeito não verificado/);
+  assert.match(ui,/Run GPT concluído · confira os arquivos na prévia/);
+  assert.doesNotMatch(ui,/Resposta GPT registrada · efeito não verificado/);
   assert.match(ui,/Resultado externo/iu);
   assert.match(ui,/openMissionNavigation\('attention',\$\('openEvidence'\)\)/);
   assert.match(ui,/openMissionNavigation\('all',\$\('openHistory'\)\)/);

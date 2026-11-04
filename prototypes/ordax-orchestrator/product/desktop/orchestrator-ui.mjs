@@ -54,9 +54,9 @@ export function describeConversationOutcome(mission,{artifactVerified=false}={})
         ?'O arquivo do site está disponível na prévia à direita. Ainda não foi publicado.'
         :'Resposta recebida, mas nenhum arquivo novo foi verificado. A última prévia disponível foi preservada; não foi publicado.',taskId};
     case 'reconciliation_required':
-      return {message:artifactVerified&&taskId
-        ?'A versão do site foi recuperada e está verificada. A análise de acompanhamento ainda precisa de confirmação; nada será reenviado automaticamente.'
-        :'Uma etapa foi interrompida e precisa de verificação. Nada será reenviado automaticamente.',taskId};
+      return {message:artifactVerified
+        ?'A versão atual do site está verificada na prévia. A revisão de acompanhamento ainda precisa de confirmação. Nada será reenviado automaticamente.'
+        :'A revisão de acompanhamento precisa de reconciliação. Nada será reenviado automaticamente.',taskId};
     case 'blocked':
       return {message:'Não foi possível concluir esta tarefa. Nenhum envio será repetido automaticamente.',taskId};
     default:
@@ -356,9 +356,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const title=active?.mission?.trim()||'Nenhuma missão técnica registrada';
     $('executionMissionTitle').textContent=title.length>140?title.slice(0,137)+'…':title;
     $('executionMissionDetail').textContent=active?.state==='reconciliation_required'
-      ?'Uma etapa foi interrompida. Confira a tarefa existente; nenhum envio será repetido automaticamente.'
+      ?'A revisão de acompanhamento precisa de reconciliação. Confira os recibos existentes; nenhum envio será repetido automaticamente.'
       :active?.state==='verification_required'
-        ?'Resposta recebida. Arquivos, testes e publicação ainda precisam de verificação independente.'
+        ?'Resposta recebida. Confira os arquivos disponíveis na prévia; testes e publicação exigem validação separada.'
         :active?'Missão vinculada ao projeto. Nenhuma ação adicional é autorizada por sugestões internas.'
           :'Acompanhe aqui tarefas e resultados confirmados.';
     const workList=$('executionWorkList');workList.replaceChildren();
@@ -380,7 +380,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const copy=document.createElement('span');copy.className='execution-work-copy';
       const title=document.createElement('strong');title.textContent=work.title;
       const info=document.createElement('small');
-      info.textContent=work.latest_run_status==='succeeded'?'Resposta GPT registrada · efeito não verificado':
+      info.textContent=work.latest_run_status==='succeeded'?'Run GPT concluído · confira os arquivos na prévia':
         work.running_runs>0?'Run GPT em andamento':
         work.execution?.observed==='reconciliation_required'?'Envio incerto · reconciliar':
         work.provider_segments>0?'Conversa registrada no projeto':'Ainda sem resposta GPT';
@@ -403,7 +403,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       'As sugestões internas não autorizam novas tarefas. Consulte a execução existente.']);
     for(const work of ordered.filter(w=>w.latest_run_status||w.running_runs>0).slice(0,3)){
       entries.push([work.title,work.running_runs>0?'Run GPT em andamento':
-        work.latest_run_status==='succeeded'?'Resposta observada; verificação externa pendente':
+        work.latest_run_status==='succeeded'?'Run concluído; confirme entregas e revisões separadamente':
         'Último Run: '+work.latest_run_status]);
     }
     if(!entries.length)entries.push(['Sem execução comprovada',
