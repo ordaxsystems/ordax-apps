@@ -583,6 +583,17 @@ async function createWindowOnce() {
     }
   });
 
+  // HTML previews are child frames of this privileged first-party renderer.
+  // Even a scriptless sandbox may contain clickable external links. Deny
+  // cross-document child-frame navigation and popups at the Electron boundary.
+  // In-page hash links remain available for static navigation.
+  win.webContents.on('will-frame-navigate',details=>{
+    if(!details.isMainFrame&&
+       !['about:blank','about:srcdoc'].includes(details.url))
+      details.preventDefault();
+  });
+  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+
   worker = new EmbeddedChatWorker();
   providerViews.register(worker);
   providerScheduler=createProviderExecutionScheduler({lanes:[{id:'primary',worker}]});

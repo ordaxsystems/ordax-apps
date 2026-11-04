@@ -12,6 +12,7 @@ export const STATIC_PREVIEW_CSP=[
   "frame-src 'none'",
   "object-src 'none'",
   "form-action 'none'",
+  "navigate-to 'none'",
   "base-uri 'none'"
 ].join('; ');
 

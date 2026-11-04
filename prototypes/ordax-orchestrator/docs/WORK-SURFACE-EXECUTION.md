@@ -41,7 +41,7 @@ Work Surface de arquivos, console e testes, revisão iterativa com aprovação c
 ## Evidência P0.2 — Windows físico (04/11/2026)
 - Commit `8c861851` instalado fisicamente na única instalação `OrdaX Orchestrator Lab` do `DESKTOP-4UFL03B` (manifesto, EXE e ASAR conferidos); arquivo Estação Café recuperado **17.211 bytes**.
 - A interface administrativa permaneceu aberta e a lateral direita exibiu automaticamente `index.html`, cartão `Arquivo verificado · 17211 bytes`, iframe de **442 × 388 px** e HTML real vinculado ao Run original.
-- Via inspeção Chromium/Electron, confirmados `sandbox=""`, CSP como primeiro elemento de `srcdoc`, origem opaca isolada da página pai, e não-exposição de Node ao iframe. Prévia **estática**, scripts e envios de formulário não executados; **não** é preview interativo ainda. Nenhum Run adicional foi enviado.
+- Via inspeção Chromium/Electron, confirmados `sandbox=""`, CSP como primeiro elemento de `srcdoc`, origem opaca isolada da página pai, e não-exposição de Node ao iframe. Complemento de segurança: navegações de subframes para URLs externas e abertura de popups são negadas no processo principal Electron; navegação interna por âncoras não exige rede. Prévia **estática**, scripts e envios de formulário não executados; **não** é preview interativo ainda. Nenhum Run adicional foi enviado.
 - Testes direcionados P0: **71/71** antes da instalação. CI obrigatório da revisão nova deve ficar verde antes de merge. Estado `reconciliation_required` do segundo Run foi mantido.
 - **Próxima ação obrigatória:** validar a captura automática em um novo Run real explicitamente autorizado, sem tocar o Run antigo interrompido; depois avançar o preview JavaScript isolado próprio (P1.1).
 

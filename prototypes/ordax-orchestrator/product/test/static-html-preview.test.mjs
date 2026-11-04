@@ -43,6 +43,9 @@ test('work surface is visibly inside the existing right rail and only receives h
   assert.match(main,/requireTrustedSupervisorRenderer\(event\)/);
   assert.match(main,/verifyLocalHtmlArtifact\(real\)/);
   assert.match(main,/proof\.sha256!==asset\.sha256/);
+  assert.match(main,/will-frame-navigate/);
+  assert.match(main,/details\.preventDefault\(\)/);
+  assert.match(main,/setWindowOpenHandler\(\(\)=>\(\{action:'deny'\}\)\)/);
   assert.match(preload,/readHtmlPreview/);
   assert.match(css,/work-surface-active/);
   const source=main.slice(main.indexOf("registerUiHandler('ordax:tasks:html-artifact:preview'"),
