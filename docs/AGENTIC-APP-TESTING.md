@@ -17,6 +17,46 @@ A ordem obrigatória de resolução é:
 
 Nunca inverter essa ordem só porque automação visual parece mais fácil.
 
+## Estado verificado e decisão de padronização (2026-11-04)
+
+O **mínimo obrigatório já exigido** pelo pacote de apps oficiais é identidade
+(`app.json`), semântica declarativa (`ai/manifest.json`), descrição
+de Actions (`actions/manifest.json`), provider/compatibilidade e lifecycle
+verificados; ver [`apps/README.md`](../apps/README.md). Toda interface
+oficial deve oferecer uso humano por mouse/pointer e teclado, navegação com
+foco e controles acessíveis quando aplicável. **Isso não implica que cada
+app possa mover o mouse ou digitar em outras janelas**: input automatizado
+é uma capacidade exclusiva do Runtime autorizado.
+
+**Cobertura real:** árvore de `ordax-apps/main` conferida em 04/11:
+19 apps oficiais com `app.json`, e **apenas `studio`** com os pares
+`presentation/semantic-ui.json` e
+`testing/agentic-scenarios.json`. O verificador
+`tools/validate_agentic_ui_testing.py` verifica apenas os apps que
+optaram pelos dois arquivos; não há gate universal de semantic UI nem
+prova física de mouse/teclado para cada app. **S0 do Studio é piloto,
+S1–S5 são fases futuras**, não funcionalidades disponíveis por
+simples manifesto.
+
+**Contrato mínimo de interface que todos devem perseguir:** IDs
+semânticos estáveis para controles importantes, nomes e roles acessíveis,
+visibilidade/estado habilitado/foco, entrada de texto por campo próprio,
+navegação previsível e resultado verificável. O app declara alvos sem
+coordenadas, valores digitados, tokens ou authority; só o host confiável
+observa a janela atual e somente o executor autorizado envia
+`activate/set_text/key` ou input de mouse/teclado. Para controles
+fundamentalmente gestuais, documentar a operação de pointer e manter
+acessibilidade/navegação por teclado quando praticável. Aplicativos
+distintos não precisam das mesmas ações, atalhos nem número de controles.
+
+**Evolução:** novos apps usam os contratos semânticos presentes em
+`ordax-apps`. Uma ação nova `meuapp.az` com parâmetros conhecidos
+pode ser descoberta pelo Fabric sem modificar o OS; seu controle de
+interface e execução exigem prova do runtime/target, provider compatível
+e grants. Extender este piloto pelo **gate S5 já descrito abaixo**,
+reutilizando o validador e App SDK existentes; não criar segundo
+catálogo de UI, transporte, serviço MCP ou framework de testes.
+
 ## Benchmark: Codex atual
 
 Referências estudadas em 2026-10-15:
