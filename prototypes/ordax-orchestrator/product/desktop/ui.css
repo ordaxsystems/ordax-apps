@@ -971,6 +971,8 @@ body.orchestrator-focus .workspace-mode-symbol{color:#dfab94}
 .work-surface-preview[hidden]{display:none!important}
 .work-surface-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .work-surface-heading strong{display:block;font-size:13px;overflow-wrap:anywhere}
+#workSurfaceModeToggle{font-size:10px;color:#eed6c7;border:1px solid #70544a;border-radius:7px;background:#332724;padding:6px 8px;white-space:nowrap;cursor:pointer}
+#workSurfaceModeToggle:disabled{opacity:.5;cursor:wait}
 .work-surface-heading .eyebrow{color:#ca9a87}
 #workSurfaceProof{font-size:10px;color:#b7d8c2;white-space:nowrap}
 .work-surface-viewport{background:white;overflow:hidden;border-radius:8px;border:1px solid #615651;height:390px;min-height:260px}

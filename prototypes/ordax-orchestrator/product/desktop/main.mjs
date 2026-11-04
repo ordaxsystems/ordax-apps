@@ -25,6 +25,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { Store, MESSAGE_PAGE_SIZE } from '../src/store.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
+import {IsolatedInteractiveHtmlPreview} from './isolated-interactive-preview.mjs';
 import { createProviderViewRegistry } from '../src/provider-view-registry.mjs';
 import { backgroundResidencyAllowed,backgroundStartupAllowed,backgroundModeRequested } from '../src/background-residency-policy.mjs';
 import { createProviderExecutionScheduler } from '../src/provider-execution-scheduler.mjs';
@@ -199,6 +200,7 @@ const MIME_EXT = new Map([
 
 let win;
 let worker;
+let interactiveHtmlPreview=null;
 const providerViews=createProviderViewRegistry();
 let windowCreationPromise=null;
 let hostBrowserServer=null;
@@ -550,6 +552,7 @@ function layoutViews() {
   }):null;
   worker.view.setBounds(bounds||{x:0,y:0,width:1,height:1});
   worker.view.setVisible(Boolean(chatVisible&&bounds));
+  interactiveHtmlPreview?.relayout();
 }
 
 async function createWindow() {
@@ -594,6 +597,7 @@ async function createWindowOnce() {
   });
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
 
+  interactiveHtmlPreview=new IsolatedInteractiveHtmlPreview(()=>win);
   worker = new EmbeddedChatWorker();
   providerViews.register(worker);
   providerScheduler=createProviderExecutionScheduler({lanes:[{id:'primary',worker}]});
@@ -624,6 +628,7 @@ async function createWindowOnce() {
   hostStartupLog('provider_view_attached');
   layoutViews();
   win.on('resize', layoutViews);
+  win.on('closed',()=>{interactiveHtmlPreview?.close();interactiveHtmlPreview=null;});
   win.on('maximize', layoutViews);
   win.on('unmaximize', layoutViews);
   // The user can close Electron while a provider request was accepted but
@@ -852,10 +857,9 @@ registerUiHandler('ordax:tasks:html-artifact:reveal',(event,payload={})=>{
   shell.showItemInFolder(real);
   return {verified:true,filename:'index.html',sha256:proof.sha256};
 });
-// Read-only, strictly scoped HTML bytes for a static opaque-origin preview.
-// Nothing is executed or served as a privileged app asset.
-registerUiHandler('ordax:tasks:html-artifact:preview',(event,payload={})=>{
-  requireTrustedSupervisorRenderer(event);
+// Same verified Task/message/file authority for static and interactive previews.
+// The native WebContentsView only receives bytes from this validation path.
+function readVerifiedHtmlPreview(payload={}) {
   if(hostBrowserMode)throw Error('html_preview_unavailable_in_host');
   const taskId=String(payload?.taskId||''),assetId=String(payload?.assetId||'');
   const asset=store.getAsset(assetId);
@@ -870,6 +874,27 @@ registerUiHandler('ordax:tasks:html-artifact:preview',(event,payload={})=>{
   return Object.freeze({verified:true,taskId,assetId,filename:'index.html',
     sha256:proof.sha256,bytes:proof.bytes,
     html:fs.readFileSync(real,'utf8')});
+}
+registerUiHandler('ordax:tasks:html-artifact:preview',(event,payload={})=>{
+  requireTrustedSupervisorRenderer(event);
+  return readVerifiedHtmlPreview(payload);
+});
+registerUiHandler('ordax:preview:interactive:open',async(event,payload={})=>{
+  requireTrustedSupervisorRenderer(event);
+  if(!interactiveHtmlPreview)throw Error('interactive_preview_unavailable');
+  const proof=readVerifiedHtmlPreview(payload);
+  return interactiveHtmlPreview.open(proof);
+});
+registerUiHandler('ordax:preview:interactive:bounds',(event,rect)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(!interactiveHtmlPreview)return {visible:false};
+  return interactiveHtmlPreview.bounds(rect);
+});
+registerUiHandler('ordax:preview:interactive:close',(event,taskId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(interactiveHtmlPreview&&(!taskId||interactiveHtmlPreview.owner?.taskId===taskId))
+    interactiveHtmlPreview.close();
+  return {closed:true};
 });
 // Exact-profile attestation for Lab E2E: expose only an allowlisted hash, not
 // filesystem paths, credentials or application data. This is read-only.
