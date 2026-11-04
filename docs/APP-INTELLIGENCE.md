@@ -31,6 +31,27 @@ Ver [mínimo de cada app](../apps/README.md#conexao-minima-uniforme--obrigatoria
 e o [Capability Fabric no OS](https://github.com/ordaxsystems/ordax-os/blob/main/docs/CAPABILITY-FABRIC.md).
 Não criar inventário, API ou executor concorrentes.
 
+### Capacidade de app não é ferramenta MCP
+
+A lista comum que um usuário pode ver em cada aplicativo deve ser
+**derivada** de `component-compatibility/1` (ports do SDK
+obrigatórios/opcionais), dos manifests verificados `ai/actions`, do
+estado `CURRENT` do OS e das permissões atuais da Platform/Runtime.
+Não existe obrigação de todos os apps fornecerem câmera, microfone,
+áudio, galeria, mouse automatizado, browser ou terminal. É obrigatório
+usar os **mesmos formatos de reconhecimento**, reportar indisponibilidade
+honesta e não declarar ações inexistentes.
+
+O Fabric v1 só comunica metadados de descoberta
+(`authority=none`, `toolExecution=false`); o catálogo Product real
+`ordax-runtime/ordax_dev_agent/product_gateway.py` é outro contrato.
+Uma tool listada nesse gateway não está necessariamente instalada,
+permitida ou atestada em todo dispositivo. Ações novas `app.az` com
+schema suportado não exigem edição do OS para serem compreendidas.
+Novo tipo de permissão/protocolo exige evolução do App SDK canônico,
+e execução via MCP exige suporte real e grants específicos.
+Ver [fonte canônica do Fabric](https://github.com/ordaxsystems/ordax-os/blob/main/docs/CAPABILITY-FABRIC.md).
+
 ## Princípio
 
 Conhecimento treinado no modelo é contexto geral, não contrato operacional.

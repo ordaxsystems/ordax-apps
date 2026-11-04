@@ -69,6 +69,49 @@ identidade, intent/Action/provedor incoerentes. Todos os novos
 candidatos precisam passar esses mesmos gates. Não manter exceções
 manuais nem listas duplicadas para “apps novos”.
 
+## Catálogo universal de opções e permissões: o mesmo painel, suporte diferente por app
+
+**Contrato mínimo é comum; suporte não é universal.** Tal como nas categorias
+de permissões de um sistema móvel, a Loja/Ajustes/IA pode mostrar as mesmas
+famílias para qualquer app (arquivos/galeria, mídia/áudio, câmera/microfone,
+rede, notificações, janela, mouse/teclado, browser, processos e Actions),
+mas os estados vêm **dos SSOTs existentes**, não de uma tabela hardcoded
+e não de um `fabric.json` com flags copiadas.
+
+| O que se quer saber | Declaração/verificação real |
+| --- | --- |
+| Requisitos e ports do OS | `compatibility.json` ou `migrations/<id>.compatibility.json`: `requires[]` (`optional=true/false`), `provides[]`, versão do App SDK |
+| Intents que a Aura compreende | `ai/manifest.json`, parâmetros, efeitos e políticas |
+| Actions que o app realmente anuncia | `actions/manifest.json`, provider/manifests verificados; nenhuma ação inexistente |
+| Controles e acessibilidade | UI com foco/roles reais; `presentation/semantic-ui.json` quando adotado |
+| Instalação/saúde/availability | Slot `CURRENT`, versão, provenance e runtime no OS |
+| Ferramentas MCP executáveis | `PRODUCT_ACTIONS` do `ordax-runtime` + capability snapshot do Device + grants atuais da `ordax-platform` |
+
+**Estados derivados, nunca declarados como autoridade pelo app:** (a) não
+declarado/não aplicável; (b) declarado, indisponível no host; (c)
+disponível mas ainda não autorizado; (d) autorizado **somente no escopo
+corrente do executor**, com revogação. O Fabric v1 fornece **descoberta
+semântica de leitura**, não o último estado e nunca `toolExecution=true`.
+Uma UI de opções universal deve combinar os portos/capacidades reais do
+OS e as decisões da Platform/Runtime; não mentir com `enabled: true`
+no manifesto.
+
+**Obrigação já verificável:** apps novos declaram somente os ports do SDK
+que realmente consomem, marcados como obrigatórios ou opcionais. Ausência
+de um port opcional não bloqueia o app; ausência do obrigatório falha
+fechada. Não acrescentar 20 dependências desnecessárias nem permissões
+solicitadas por padrão. Novos IDs semânticos `meuapp.az` dentro de
+tipos já suportados são descobertos após verificação do pacote; novos
+*tipos* de contrato/efeito/hardware exigem SDK/adapter versionado do
+owner OS. MCP exige ferramenta real Product e autorização separada.
+
+**Estado de implementação:** o manifesto/compatibilidade e o Fabric já
+existem. Ainda **não** há painel universal de permissões/recursos
+concluído para todos os aplicativos nem controle agentic de todos via MCP.
+Não criar executor ou catálogo paralelo para preencher essa lacuna.
+Referência e hierarquia dos SSOTs:
+[`docs/CAPABILITY-FABRIC.md`](https://github.com/ordaxsystems/ordax-os/blob/main/docs/CAPABILITY-FABRIC.md).
+
 ## Interação humana e agentic — padrão de todos os apps com interface
 
 **Regra de produto para aplicativos oficiais:** a interface deve funcionar para
