@@ -120,7 +120,7 @@ export function describeProjectPreflight(snapshot) {
   };
 }
 
-export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onSelectRightPane,onOpenAppSettings,onNavigationChange}) {
+export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onSelectRightPane,onOpenAppSettings,onNavigationChange,onArtifactPreviewTask}) {
   const $=id=>document.getElementById(id);
   let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
   let projectRefreshGeneration=0,orchestratorRefreshGeneration=0;
@@ -1100,6 +1100,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const result=await call('autonomous_dialogue_status',{projectId:p,orchestratorId:o}).catch(()=>null);
     if(p!==projectId||o!==orchestratorId)return;
     const job=result?.mission;
+    // Presentation only. Resolves the reviewed Task's independently
+    // verified HTML; no proposal, Run or GPT message is created here.
+    void onArtifactPreviewTask?.(job?.reviewedTaskId||null);
     executionMission=job||null;executionMissionScope=executionScope();renderExecutionMonitor();
     const outcome=describeConversationOutcome(job),outcomePanel=$('coordinatorOutcome');
     outcomePanel.hidden=!outcome;

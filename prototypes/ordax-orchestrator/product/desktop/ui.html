@@ -336,6 +336,13 @@
         <div class="preview-state-card"><span class="eyebrow">Preview do projeto</span><h3>Runtime ainda não forneceu uma visualização</h3><p>Quando houver um preview autorizado do workspace pelo Runtime, ele aparecerá aqui. Esta tela não cria servidor nem simula arquivos.</p><span id="previewRuntimeState" class="preview-runtime-state">Aguardando conexão do Runtime</span></div>
       </section>
       <section id="executionOverview" class="execution-overview" aria-label="Estado real dos Runs e evidências do projeto" hidden>
+        <section id="workSurfacePreview" class="work-surface-preview" aria-label="Prévia visual do resultado" hidden>
+          <header class="work-surface-heading"><div><span class="eyebrow">RESULTADO DO PROJETO</span><strong id="workSurfaceFilename">index.html</strong></div><span id="workSurfaceProof">HTML verificado</span></header>
+          <div class="work-surface-viewport">
+            <iframe id="workSurfaceFrame" title="Prévia isolada do site" sandbox="" referrerpolicy="no-referrer" loading="lazy"></iframe>
+          </div>
+          <p id="workSurfaceStatus" role="status" aria-live="polite">Prévia visual segura. JavaScript, rede e envio de formulários desativados; não publicado.</p>
+        </section>
         <header class="execution-overview-head">
           <div><span class="command-eyebrow">CENTRAL DE OPERAÇÕES</span><h2 id="executionOverviewTitle">Acompanhamento do projeto</h2><p id="executionOverviewDescription">Lendo os Runs e evidências registrados neste projeto.</p></div>
           <button id="refreshExecutionOverview" type="button" aria-label="Atualizar execução" title="Atualizar dados locais">↻</button>

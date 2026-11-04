@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('ordax', {
   inspectLinkedThread: taskId => ipcRenderer.invoke('ordax:tasks:inspect-linked-thread', taskId),
   saveHtmlArtifact: taskId => ipcRenderer.invoke('ordax:tasks:html-artifact:save',taskId),
   revealHtmlArtifact: (taskId,assetId) => ipcRenderer.invoke('ordax:tasks:html-artifact:reveal',{taskId,assetId}),
+  readHtmlPreview: (taskId,assetId) => ipcRenderer.invoke('ordax:tasks:html-artifact:preview',{taskId,assetId}),
   reconcileLinkedReply: (taskId,responseSha256) => ipcRenderer.invoke('ordax:tasks:reconcile-linked-reply',{taskId,responseSha256}),
   loadMessagePage: (taskId, before) => ipcRenderer.invoke('ordax:tasks:messages:page', { taskId, before }),
   renameTask: (taskId, title) => ipcRenderer.invoke('ordax:tasks:rename', { taskId, title }),

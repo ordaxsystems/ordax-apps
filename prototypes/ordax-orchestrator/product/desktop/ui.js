@@ -5,6 +5,7 @@ import { taskListStatusLabel, taskNavigationStatus } from '../src/task-navigatio
 import { reviewCandidateRun, confirmedRunReview, runReviewButtonState, runReviewLookupCurrent } from '../src/run-review-eligibility.mjs';
 import { SUPERVISOR_ROLES, supervisorRole } from '../src/supervisor-role-presets.mjs';
 import { mountOrchestratorUi } from './orchestrator-ui.mjs';
+import {buildStaticPreviewSource} from '../src/static-html-preview.mjs';
 const $ = selector => document.querySelector(selector);
 let currentTaskId = null;
 let currentTask = null;
@@ -67,6 +68,61 @@ document.getElementById('settingsOpenProject')?.addEventListener('click',async()
   if(integrations)integrations.open=true;
   requestAnimationFrame(()=>document.getElementById('projectRepositoryInput')?.focus());
 });
+let workSurfacePreviewEpoch=0,workSurfacePreviewKey=null;
+function clearWorkSurfacePreview(){
+  ++workSurfacePreviewEpoch;
+  workSurfacePreviewKey=null;
+  document.body.classList.remove('work-surface-active');
+  const panel=$('#workSurfacePreview');
+  panel.hidden=true;
+  const frame=$('#workSurfaceFrame');
+  frame.removeAttribute('srcdoc');
+  $('#workSurfaceStatus').textContent='Nenhum HTML verificado disponível neste projeto.';
+}
+async function refreshVerifiedWorkSurface(taskId){
+  const epoch=++workSurfacePreviewEpoch;
+  if(!taskId||window.ordaxHost?.hostMode===true||
+     typeof window.ordax.readHtmlPreview!=='function'){
+    clearWorkSurfacePreview();return;
+  }
+  try{
+    // Inspect only the canonical Task projection for this project. Never
+    // interpret model prose or a proposal as an existing artifact.
+    const task=await window.ordax.getTask(taskId);
+    if(epoch!==workSurfacePreviewEpoch)return;
+    const assets=(task?.messages||[]).flatMap(m=>m.assets||[]);
+    const asset=assets.find(a=>a?.kind==='file'&&
+      a.mime_type==='text/html'&&typeof a.id==='string');
+    if(!asset){clearWorkSurfacePreview();return;}
+    const proof=await window.ordax.readHtmlPreview(taskId,asset.id);
+    if(epoch!==workSurfacePreviewEpoch)return;
+    if(proof?.verified!==true||proof.taskId!==taskId||
+       proof.assetId!==asset.id||!/^([a-f0-9]{64})$/.test(proof.sha256)||
+       typeof proof.html!=='string')
+      throw Error('work_surface_unverified');
+    const key=taskId+':'+asset.id+':'+proof.sha256;
+    if(workSurfacePreviewKey!==key){
+      const frame=$('#workSurfaceFrame');
+      // Opaque origin. No scripts, same-origin, forms, top navigation,
+      // downloads, popups or privileged app APIs are granted.
+      frame.setAttribute('sandbox','');
+      frame.srcdoc=buildStaticPreviewSource(proof.html);
+      workSurfacePreviewKey=key;
+    }
+    $('#workSurfaceFilename').textContent=proof.filename||'index.html';
+    $('#workSurfaceProof').textContent='Arquivo verificado · '+proof.bytes+' bytes';
+    $('#workSurfaceStatus').textContent=
+      'Prévia visual segura; JavaScript, rede e formulários desativados. Arquivo local verificado, não publicado.';
+    $('#workSurfacePreview').hidden=false;
+    document.body.classList.add('work-surface-active');
+  }catch{
+    if(epoch!==workSurfacePreviewEpoch)return;
+    // A missing/tampered file is NOT a preview and must not display stale
+    // content from another mission or the previously verified hash.
+    clearWorkSurfacePreview();
+    $('#workSurfaceStatus').textContent='Não foi possível verificar a prévia. Nenhuma mensagem foi enviada ao GPT.';
+  }
+}
 const rightPaneDefinitions=[['provider','providerPaneTab','providerPanel'],['preview','previewPaneTab','previewPanel'],['context','contextPaneTab','contextPanel']];
 function setWorkspaceRoute(route) {
   document.body.dataset.workspaceRoute=route;
@@ -1440,6 +1496,7 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
     catch {$('#orchestrationNotice').textContent='A navegação atual não foi salva para o próximo início.';return false;}
   },
   onScopeChange:async ids=>{
+    clearWorkSurfacePreview();
     scopedTaskIds=ids;
     if(currentTaskId && (ids?!ids.has(currentTaskId):allTasks.find(t=>t.id===currentTaskId)?.lab_binding)) {
       flushDraft();currentTaskId=null;currentTask=null;navigationEpoch++;
@@ -1452,6 +1509,7 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
       $('#orchestrationNotice').textContent='A lista de conversas não pôde ser atualizada. Confira a conexão antes de continuar.';
     }
   },
+  onArtifactPreviewTask:refreshVerifiedWorkSurface,
   onOpenWork:async id=>{await loadTasks();await openTask(id);},
   onShowCoordinator:async()=>{
     document.body.classList.add('orchestrator-focus');

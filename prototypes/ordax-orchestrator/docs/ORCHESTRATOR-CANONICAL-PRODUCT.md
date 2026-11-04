@@ -4,6 +4,8 @@
 
 > **SSOT de direção do Orchestrator:** este documento prevalece sobre descrições anteriores de "vários projetos por aplicativo", "Groq opcional", "conversa principal enviada ao GPT Web", "autonomia já disponível" ou "24 h certificado". A documentação histórica continua válida **somente como evidência de implementação e de gates na data observada**. O código/contratos, permissões, CI e evidências físicas prevalecem para dizer o que funciona hoje; este texto não transforma intenção em capacidade entregue.
 
+> **Missão executiva em andamento — Work Surface:** [WORK-SURFACE-EXECUTION.md](./WORK-SURFACE-EXECUTION.md) contém objetivo, estado real, prioridades P0/P1/P2, critérios de aceite e instruções para qualquer novo chat prosseguir sem reiniciar pesquisa. A implementação permanece na PR #445 de `ordax-apps` até integração comprovada.
+
 ## 1. Identidade e experiência do produto
 
 **Uma instância operacional = um projeto ativo**, com muitos repositórios, frentes e agentes especialistas. O usuário conecta/identifica o projeto uma vez, configura os acessos e habilita a operação em uma ação explícita **Iniciar**. Depois disso o Administrador Geral descobre o estado autorizado, propõe prioridades e coordena tarefas sem exigir um prompt inicial. O usuário pode intervir em linguagem natural (ex.: "corrija o layout"), redirecionar, pausar e aprovar operações de maior risco.

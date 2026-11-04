@@ -837,6 +837,25 @@ registerUiHandler('ordax:tasks:html-artifact:reveal',(event,payload={})=>{
   shell.showItemInFolder(real);
   return {verified:true,filename:'index.html',sha256:proof.sha256};
 });
+// Read-only, strictly scoped HTML bytes for a static opaque-origin preview.
+// Nothing is executed or served as a privileged app asset.
+registerUiHandler('ordax:tasks:html-artifact:preview',(event,payload={})=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('html_preview_unavailable_in_host');
+  const taskId=String(payload?.taskId||''),assetId=String(payload?.assetId||'');
+  const asset=store.getAsset(assetId);
+  if(!asset||asset.task_id!==taskId||asset.kind!=='file'||
+     asset.mime_type!=='text/html'||!store.getTask(taskId))
+    throw Error('html_preview_asset_unverified');
+  const root=fs.realpathSync.native(assetsRoot);
+  const real=fs.realpathSync.native(assertLocalArtifactPath(assetsRoot,asset.local_path));
+  assertLocalArtifactPath(root,real);
+  const proof=verifyLocalHtmlArtifact(real);
+  if(proof.sha256!==asset.sha256)throw Error('html_preview_integrity_mismatch');
+  return Object.freeze({verified:true,taskId,assetId,filename:'index.html',
+    sha256:proof.sha256,bytes:proof.bytes,
+    html:fs.readFileSync(real,'utf8')});
+});
 // Exact-profile attestation for Lab E2E: expose only an allowlisted hash, not
 // filesystem paths, credentials or application data. This is read-only.
 registerUiHandler('ordax:lab:build-proof', event => {
