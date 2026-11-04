@@ -465,6 +465,52 @@ export class AutonomousDialogue {
       throw Error('autonomous_review_source_superseded');
     return decision;
   }
+  // Record a review in the ONE administrative conversation, atomically with
+  // its mission transition. This is an observed Run/review milestone, never
+  // a claim that code, files, tests or an external deployment were verified.
+  recordTechnicalReview(row,phase,decision) {
+    if(row.strategy!=='semantic'||row.followup_policy!=='two_send')return false;
+    const taskId=phase==='a'?row.task_a_id:row.task_b_id;
+    const runId=decision?.sourceRunId;
+    if(typeof runId!=='string')throw Error('autonomous_review_transcript_source_invalid');
+    const chatTaskId=this.service.orchestrator(
+      row.project_id,row.orchestrator_id).chat_task_id;
+    // Check the immutable event before checking if this Run is still latest:
+    // a later confirmed turn must not make old milestones non-idempotent.
+    if(this.db.prepare(`SELECT 1 FROM events
+      WHERE task_id=? AND kind='orchestrator.technical_review'
+      AND json_extract(payload,'$.mission_id')=?
+      AND json_extract(payload,'$.run_id')=? LIMIT 1`).get(
+        chatTaskId,row.id,runId))return false;
+    if(!this.service.reviewableGPTResult(
+      row.project_id,row.orchestrator_id,runId)||
+      this.db.prepare("SELECT task_id FROM runs WHERE id=? AND status='succeeded'")
+        .get(runId)?.task_id!==taskId)
+      throw Error('autonomous_review_transcript_source_invalid');
+    const receiptId='technical_'+row.id+'_'+phase;
+    if(!this.db.prepare(`SELECT 1 FROM lab_command_receipts
+      WHERE workspace_session_id=? AND project_id=? AND status='succeeded'
+        AND request_id IN (?,?) LIMIT 1`).get(
+          row.workspace_session_id,row.project_id,receiptId,receiptId+'_recovery'))
+      throw Error('autonomous_review_transcript_receipt_missing');
+    const cycle=this.technicalHistory(row)?.cycles||1;
+    const phaseLabel=phase==='a'?'primeira':'segunda';
+    const next=['continue_same_conversation','request_correction',
+      'new_conversation','new_work'].includes(decision.decision);
+    const note=decision.decision==='blocked'
+      ?'A revisão identificou um impedimento; nenhuma ação será repetida automaticamente.'
+      :next
+        ?'A revisão propôs uma próxima etapa dentro do orçamento autorizado; novas ações externas continuam sujeitas a permissão e provas.'
+        :'A revisão recomenda encerrar este ciclo ou conferir evidências externas antes de declarar a tarefa concluída.';
+    this.store.appendMessage(chatTaskId,'assistant',
+      'Ciclo '+cycle+': recebi a '+phaseLabel+' resposta GPT e registrei a revisão Groq. '+
+      note+' Nenhuma alteração externa foi certificada por esta revisão.');
+    this.store.event(chatTaskId,'orchestrator.technical_review',{
+      mission_id:row.id,run_id:runId,task_id:taskId,phase,
+      decision:decision.decision,external_effect_verified:false
+    });
+    return true;
+  }
   async send(row,phase,context) {
     const taskId=phase==='a'?row.task_a_id:row.task_b_id;
     const content=phase==='a'?row.question_a:row.question_b;
@@ -575,6 +621,8 @@ export class AutonomousDialogue {
         const decision=await this.reviewTechnical(row,'a',context);
         this.assertMissionSession(context,row);
         const review_a_json=JSON.stringify(decision);
+        this.db.exec('SAVEPOINT technical_review_atomic');
+        try {
         // A natural conversation authorizes one exact initial GPT request.
         // Any model-suggested next task (including publishing, deploying or
         // unrelated work) is advisory until the owner submits a NEW request.
@@ -605,6 +653,13 @@ export class AutonomousDialogue {
             this.db.exec('RELEASE SAVEPOINT semantic_work_binding');
             throw error;
           }
+        }
+        this.recordTechnicalReview(row,'a',decision);
+        this.db.exec('RELEASE SAVEPOINT technical_review_atomic');
+        }catch(error){
+          this.db.exec('ROLLBACK TO SAVEPOINT technical_review_atomic');
+          this.db.exec('RELEASE SAVEPOINT technical_review_atomic');
+          throw error;
         }
       } else if(row.state==='ready_b') {
         working='planning_b';this.move(row.id,'ready_b',working);
@@ -638,12 +693,21 @@ export class AutonomousDialogue {
         working='reviewing_final';this.move(row.id,'ready_review_final',working);
         const decision=await this.reviewTechnical(row,'final',context);
         this.assertMissionSession(context,row);
-        this.move(row.id,working,
-          decision.decision==='blocked'?'blocked':
-            ['verify_external_effect','candidate_complete'].includes(decision.decision)
-              ?'verification_required':'budget_exhausted',{
-          review_b_json:JSON.stringify(decision),question_final:decision.nextPrompt||null
-        });
+        this.db.exec('SAVEPOINT technical_review_atomic');
+        try {
+          this.move(row.id,working,
+            decision.decision==='blocked'?'blocked':
+              ['verify_external_effect','candidate_complete'].includes(decision.decision)
+                ?'verification_required':'budget_exhausted',{
+            review_b_json:JSON.stringify(decision),question_final:decision.nextPrompt||null
+          });
+          this.recordTechnicalReview(row,'final',decision);
+          this.db.exec('RELEASE SAVEPOINT technical_review_atomic');
+        }catch(error){
+          this.db.exec('ROLLBACK TO SAVEPOINT technical_review_atomic');
+          this.db.exec('RELEASE SAVEPOINT technical_review_atomic');
+          throw error;
+        }
       }
       return {state:'advanced',missionId:row.id};
     } catch(error) {
