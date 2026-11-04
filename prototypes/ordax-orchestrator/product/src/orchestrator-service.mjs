@@ -634,7 +634,9 @@ export class OrchestratorService {
         (SELECT COUNT(*) FROM runs r WHERE r.task_id=t.id AND r.status='running') running_runs
         FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
         WHERE b.project_id=? AND b.kind='work' AND t.workspace_session_id=?
-        ORDER BY t.created_at,t.id LIMIT 257`)
+        -- Stable creation-order tie-breaker: random Task IDs must never
+        -- change DAG readiness order when timestamps share a clock tick.
+        ORDER BY t.created_at,t.rowid LIMIT 257`)
         .all(projectId,this.store.getWorkspaceSession().id);
       if(works.length>256)throw Error('orchestrator_work_plan_too_large');
       const edges=this.db.prepare(`SELECT project_id,task_id,prerequisite_id

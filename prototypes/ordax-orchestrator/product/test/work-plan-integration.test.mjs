@@ -81,6 +81,10 @@ test('real SQLite: unverified GPT completion survives restart without upgrading 
 test('real SQLite: failed prerequisite transitively blocks descendants, not unrelated workers',async t=>{
   const f=fixture(t),{projectId,work}=await f.makeProject();
   const a=await work('Build'),b=await work('Integration'),c=await work('Release'),d=await work('Docs');
+  // Simulate the normal case in which multiple Tasks share a timestamp.
+  // Read-model order must follow insertion, never randomly ordered UUIDs.
+  f.getStore().db.prepare('UPDATE tasks SET created_at=? WHERE id IN (?,?,?,?)')
+    .run('2026-11-04T00:00:00.000Z',a,b,c,d);
   await f.call('work_dependency_set',{projectId,taskId:b,dependsOn:[a]});
   await f.call('work_dependency_set',{projectId,taskId:c,dependsOn:[b]});
   const run=f.getStore().startRun(a);
