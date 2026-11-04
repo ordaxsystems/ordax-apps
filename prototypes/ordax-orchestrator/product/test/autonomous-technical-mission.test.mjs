@@ -258,6 +258,9 @@ test('explicit second consent continues the same project through four GPT Runs',
   const first=await f.wait(ids);
   assert.equal(first.state,'budget_exhausted');
   assert.equal(first.canContinue,true);
+  assert.equal(first.chainProgress.cycles,1);
+  assert.equal(first.chainProgress.completedReviews,2);
+  assert.equal(first.chainProgress.stages.length,2);
   assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
   const next=await f.service.invoke(f.context,'autonomous_dialogue_continue',{
     ...ids,sourceMissionId:first.missionId,requestId:'consent_2'});
@@ -267,6 +270,12 @@ test('explicit second consent continues the same project through four GPT Runs',
   const finished=await f.wait(ids);
   assert.equal(finished.state,'budget_exhausted');
   assert.equal(finished.taskAId,first.taskBId);
+  assert.equal(finished.chainProgress.cycles,2);
+  assert.equal(finished.chainProgress.completedReviews,4,
+    'two explicitly approved cycles retain all four independently reviewed Runs');
+  assert.equal(new Set(finished.chainProgress.stages.map(x=>x.runId)).size,4);
+  assert.equal(finished.reviewTasks.length,1,
+    'one reused Task has one navigation button even across four GPT Runs');
   assert.deepEqual(f.metrics(),{plans:1,reviews:4,sends:4});
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_projects').get().n,1);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_autonomous_dialogues').get().n,2);
@@ -309,6 +318,11 @@ test('Groq new-work decision continues under existing project without duplicate 
   const finished=await f.wait(ids);
   assert.equal(finished.state,'budget_exhausted');
   assert.equal(finished.taskAId,consent.result.taskAId);
+  assert.equal(finished.chainProgress.cycles,2);
+  assert.equal(finished.chainProgress.completedReviews,4);
+  assert.equal(finished.reviewTasks.length,3,
+    'two new-work decisions preserve all three distinct Work Tasks in the same project');
+  assert.equal(new Set(finished.reviewTasks.map(x=>x.taskId)).size,3);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_projects').get().n,1);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_autonomous_dialogues').get().n,2);
   assert.deepEqual(f.metrics(),{plans:1,reviews:4,sends:4});
@@ -394,6 +408,9 @@ test('third GPT reply recovered after restart never repeats its submission',asyn
     ...ids,sourceMissionId:source.missionId,requestId:'consent_late_third'});
   const pending=await f.waitFor(ids,['reconciliation_required']);
   assert.equal(pending.lastError,'response_not_observed');
+  assert.equal(pending.chainProgress.cycles,2);
+  assert.equal(pending.chainProgress.completedReviews,2,
+    'unknown third GPT result must not inflate confirmed multi-cycle progress');
   assert.equal(pending.taskAId,source.taskBId);
   assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:3});
   await reconcileLateTechnicalAnswer(f,pending.taskAId);
@@ -402,6 +419,8 @@ test('third GPT reply recovered after restart never repeats its submission',asyn
   await restored.autonomous.tick(f.context);
   const result=restored.autonomous.status(f.context,ids).mission;
   assert.equal(result.state,'budget_exhausted');
+  assert.equal(result.chainProgress.completedReviews,4,
+    'confirmed recovery shows both historical and restored reviews');
   assert.deepEqual(f.metrics(),{plans:1,reviews:4,sends:4});
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,4);
 });

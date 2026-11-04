@@ -1155,8 +1155,15 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       :job.state==='succeeded'
       ?'História final montada pelo Groq, após duas rodadas GPT A/B'
       :job.state.startsWith('story_')?'História colaborativa: '+job.state.replaceAll('_',' '):null):null;
+    // A technical consent may span several bounded, explicitly authorized
+    // cycles. Show only reviews backed by canonical confirmed Runs and Groq
+    // receipts; never describe unverified external effects as complete.
+    const chain=currentJob?.mode==='technical'?currentJob.chainProgress:null;
+    const progress=chain?.cycles>1
+      ?`Ciclo ${chain.cycles}${chain.truncated?'+':''} · ${chain.completedReviews} revisões GPT confirmadas · `
+      :'';
     $('autonomousDialogueState').textContent=currentJob
-      ?outcome?.message||technicalLabel||storyLabel||labels[job.state]||'Estado registrado'
+      ?progress+(outcome?.message||technicalLabel||storyLabel||labels[job.state]||'Estado registrado')
       :'Nenhuma execução ativa. Descreva o que deseja realizar.';
     // A failed or uncertain mission remains read-only. Reuse the canonical
     // Task navigator to inspect confirmed records, never schedule a retry.
