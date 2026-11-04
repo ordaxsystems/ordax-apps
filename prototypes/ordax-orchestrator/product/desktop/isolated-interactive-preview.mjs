@@ -45,7 +45,7 @@ export class IsolatedInteractiveHtmlPreview {
     const view=new WebContentsView({webPreferences:{
       partition,sandbox:true,nodeIntegration:false,contextIsolation:true,
       webviewTag:false,webSecurity:true,allowRunningInsecureContent:false,
-      javascript:true,devTools:false
+      javascript:true,devTools:process.env.ORDAX_DESKTOP_DEBUG==='1'
       // Intentionally NO preload.
     }});
     view.webContents.setWindowOpenHandler(()=>({action:'deny'}));
