@@ -180,6 +180,25 @@ test('semantic owner authorization leads Groq -> GPT -> Groq decision -> same GP
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM runs").get().n,2);
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_autonomous_dialogues").get().n,1);
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM task_conversations WHERE task_id=?").get(m.taskAId).n,1);
+  const chatTaskId=f.service.orchestrator(ids.projectId,ids.orchestratorId).chat_task_id;
+  const confirmedNotes=f.store.messages(chatTaskId).filter(x=>x.role==='assistant'&&
+    x.content.startsWith('Ciclo 1: recebi a '));
+  assert.equal(confirmedNotes.length,2,'both confirmed steps appear in the administrative chat');
+  assert.ok(confirmedNotes.every(x=>x.content.includes('Nenhuma alteração externa foi certificada')));
+  assert.ok(confirmedNotes.every(x=>x.content.includes('Avaliação Groq (não certificada): A resposta GPT foi observada')),
+    'owner sees a bounded review summary without granting it external-evidence authority');
+  assert.ok(confirmedNotes.every(x=>x.content.includes('Motivo informado: O próprio GPT diz')),
+    'owner sees the coordinator reasoning rather than a generic technical status');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='orchestrator.technical_review'")
+    .get(chatTaskId).n,2);
+  const finishedRow=f.service.autonomous.get(m.missionId);
+  assert.equal(f.service.autonomous.recordTechnicalReview(
+    finishedRow,'a',JSON.parse(finishedRow.review_a_json)),false,
+    'an earlier confirmed review stays idempotent after a newer GPT Run');
+  assert.equal(f.service.autonomous.recordTechnicalReview(
+    finishedRow,'final',m.decision),false,
+    'a repeated confirmed review may not duplicate chat history');
+  assert.equal(f.store.messages(chatTaskId).filter(x=>x.content.startsWith('Ciclo 1: recebi a ')).length,2);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
   assert.equal((await f.service.autonomous.tick(f.context)).state,'idle');
 });
@@ -273,6 +292,11 @@ test('explicit second consent continues the same project through four GPT Runs',
   assert.equal(finished.chainProgress.cycles,2);
   assert.equal(finished.chainProgress.completedReviews,4,
     'two explicitly approved cycles retain all four independently reviewed Runs');
+  const chatTaskId=f.service.orchestrator(ids.projectId,ids.orchestratorId).chat_task_id;
+  const ledger=f.store.messages(chatTaskId).filter(x=>x.role==='assistant'&&
+    /^Ciclo [12]: recebi a /.test(x.content));
+  assert.equal(ledger.length,4,'owner conversation includes all reviewed cycle milestones');
+  assert.equal(ledger.filter(x=>x.content.startsWith('Ciclo 2:')).length,2);
   assert.equal(new Set(finished.chainProgress.stages.map(x=>x.runId)).size,4);
   assert.equal(finished.reviewTasks.length,1,
     'one reused Task has one navigation button even across four GPT Runs');
