@@ -1162,8 +1162,12 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const progress=chain?.cycles>1
       ?`Ciclo ${chain.cycles}${chain.truncated?'+':''} · ${chain.completedReviews} revisões GPT confirmadas · `
       :'';
+    const specialist=currentJob?.mode==='technical'&&currentJob.technicalSpecialist
+      ?'Especialista: '+currentJob.technicalSpecialist+
+        ' · limite '+currentJob.maxGPTSends+' envio(s) GPT · '
+      :'';
     $('autonomousDialogueState').textContent=currentJob
-      ?progress+(outcome?.message||technicalLabel||storyLabel||labels[job.state]||'Estado registrado')
+      ?progress+specialist+(outcome?.message||technicalLabel||storyLabel||labels[job.state]||'Estado registrado')
       :'Nenhuma execução ativa. Descreva o que deseja realizar.';
     // A failed or uncertain mission remains read-only. Reuse the canonical
     // Task navigator to inspect confirmed records, never schedule a retry.

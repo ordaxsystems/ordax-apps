@@ -1276,6 +1276,8 @@ export class OrchestratorService {
         ?'INTERPRETAÇÃO DE UMA RESPOSTA GPT REAL, Run '+reviewSource.runId+
           '. Leia exclusivamente a resposta GPT observada em reviewEvidence e works, inclusive o trecho final. '+
           'Não afirme que código foi alterado, testado ou implantado sem evidência externa; um Run succeeded comprova só a resposta. '+
+          'Como especialista em validação independente, confira o critério de aceite contra a resposta observada. '+
+          'Não transforme uma alegação GPT em prova de arquivo, execução, teste ou publicação. '+
           'Decida o próximo passo específico para a missão e as pendências. '+
           'Responda SOMENTE JSON conforme o formato do provedor, incluindo o Run, a decisao, resumo, '+
           'justificativa, trecho literal observado, aceite e proxima instrucao conforme a decisao. '+

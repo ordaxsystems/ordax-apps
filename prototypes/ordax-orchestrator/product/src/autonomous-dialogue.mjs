@@ -6,6 +6,7 @@ import {assertTaskHasNoUncertainTransport} from './provider-uncertain-run-policy
 import {advanceStory,STORY_TURNS} from './autonomous-story.mjs';
 import {diagnoseAgentFailure} from './agent-failure-diagnosis.mjs';
 import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
+import {technicalMissionPolicy} from './technical-mission-policy.mjs';
 
 // One mission, one owner authorization, ONE canonical Store and existing GPT
 // executor. A mission's consent covers at most two GPT Web submissions.
@@ -212,6 +213,7 @@ export class AutonomousDialogue {
       createdAt:row.created_at,
       mission:row.mission,
       mode:story?'story':semantic?'technical':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,quality,reviewTasks,chainProgress,
+      technicalSpecialist:semantic?technicalMissionPolicy(row.mission).label:null,
       state:row.state,maxGPTSends:story?STORY_TURNS:row.followup_policy==='review_only'?1:row.max_gpt_sends,
       taskAId:row.task_a_id,taskBId:row.task_b_id,reviewedTaskId,
       originMissionId:semantic?row.origin_mission_id||null:null,
@@ -270,6 +272,7 @@ export class AutonomousDialogue {
       LIMIT 1`).get(context.workspaceSessionId))
       throw Error('autonomous_mission_already_running');
     const id='autonomous_'+randomUUID(),now=this.store.now();
+    const missionPolicy=mode==='technical'?technicalMissionPolicy(mission):null;
     // The first execution of a conversational request must send the user's
     // exact message. Do not let the planner add requirements that were never
     // asked for. Reuse the existing Work/Task, Run and two-send mission ledger.
@@ -286,7 +289,7 @@ export class AutonomousDialogue {
           requestId,mission,directUserPrompt?'ready_a':mode==='story'?'story_queued_1':'queued',
           LIMIT,initialTask,directUserPrompt?mission:null,now,now,
           mode==='story'?'story':'dialogue',mode==='technical'?'semantic':'legacy',
-          directUserPrompt?'review_only':'two_send');
+          directUserPrompt||missionPolicy?.maxGPTSends===1?'review_only':'two_send');
       this.db.exec('RELEASE SAVEPOINT autonomous_start_atomic');
     } catch(error) {
       this.db.exec('ROLLBACK TO SAVEPOINT autonomous_start_atomic');
@@ -412,14 +415,17 @@ export class AutonomousDialogue {
     const analysisContext=this.service.analysisContext(row.project_id,row.orchestrator_id);
     const directive=phase==='a'
       ?row.strategy==='semantic'
-        ?'Prepare UMA missão inicial concreta para o GPT: investigar ou realizar a tarefa técnica pedida, explicar os efeitos reais e as provas. Não invente alterações nem presuma acesso externo; o modelo GPT será o executor intelectual.'
+        ?'Prepare UMA missão inicial concreta para o GPT: investigar ou realizar a tarefa técnica pedida, explicar os efeitos reais e as provas. '+
+          technicalMissionPolicy(row.mission).directive+
+          ' Não invente alterações nem presuma acesso externo; o modelo GPT será o executor intelectual.'
         :'Crie apenas UMA pergunta curta e verificável ao GPT A. Não calcule a resposta.'
       :phase==='b'
         ?'Leia a resposta confirmada do GPT A no contexto. Crie UMA pergunta NOVA ao GPT B que DEPENDA dela e cite o resultado comprovado. Não responda à pergunta.'
         :'Leia as respostas confirmadas GPT A e GPT B. Prepare UMA próxima pergunta que DEPENDA da resposta GPT B. Não a envie nem a execute.';
+    const authorizedSends=row.strategy==='semantic'&&row.followup_policy==='review_only'?1:LIMIT;
     const response=await this.service.withCoordinatorTurn(owner.chat_task_id,()=>this.service.coordinator.send({
       taskId:owner.chat_task_id,projectId:row.project_id,orchestratorId:row.orchestrator_id,
-      mission:'MISSÃO AUTÔNOMA com autorização inicial para, no máximo, duas perguntas GPT: '+
+      mission:'MISSÃO AUTÔNOMA com autorização inicial para, no máximo, '+authorizedSends+' pergunta(s) GPT: '+
         row.mission+'\nETAPA ATUAL: '+directive+(prior?'\nResposta anterior confirmada: '+prior.slice(0,1400):''),
       analysisContext,prepareWork:true,repositoryUrl:null
     }));
