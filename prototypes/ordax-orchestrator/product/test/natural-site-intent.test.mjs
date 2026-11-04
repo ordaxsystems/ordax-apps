@@ -50,7 +50,7 @@ test('uma resposta malformada do Groq não bloqueia pedido claro de criação; s
       const post=JSON.parse(request.body);
       assert.equal(post.response_format.type,'json_schema');
       assert.equal(post.messages.at(-1).content,siteRequest);
-      assert.match(post.messages[0].content,/preview visual e interativo isolado/i);
+      assert.match(post.messages[0].content,/preview interativo isolado/i);
       assert.equal(post.messages.some(m=>m.role==='user'&&m.content.includes('index.html')),false);
       return api('texto inválido, não é JSON');
     }});
