@@ -38,7 +38,7 @@ test('work surface is visibly inside the existing right rail and only receives h
   assert.doesNotMatch(rail,/sandbox="[^"]*allow-same-origin/);
   assert.match(ui,/frame\.srcdoc=buildStaticPreviewSource\(proof\.html\)/);
   assert.match(ui,/onArtifactPreviewTask:refreshVerifiedWorkSurface/);
-  assert.match(orchestration,/onArtifactPreviewTask\?\.\(job\?\.reviewedTaskId\|\|null\)/);
+  assert.match(orchestration,/onArtifactPreviewTask\?\.\(job\?\.reviewedTaskId\|\|job\?\.taskAId\|\|null\)/);
   assert.match(main,/registerUiHandler\('ordax:tasks:html-artifact:preview'/);
   assert.match(main,/requireTrustedSupervisorRenderer\(event\)/);
   assert.match(main,/verifyLocalHtmlArtifact\(real\)/);

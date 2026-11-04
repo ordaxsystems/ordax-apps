@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {latestSiteWork} from './site-work-context.mjs';
 import {validateWorkProposal} from './orchestrator-proposal.mjs';
 import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
 import {assertTaskHasNoUncertainTransport} from './provider-uncertain-run-policy.mjs';
@@ -149,6 +150,7 @@ export class AutonomousDialogue {
         reviewedTaskId=reviewed.task_id;
     }
     return {missionId:row.id,projectId:row.project_id,orchestratorId:row.orchestrator_id,
+      createdAt:row.created_at,
       mission:row.mission,
       mode:story?'story':semantic?'technical':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,quality,reviewTasks,
       state:row.state,maxGPTSends:story?STORY_TURNS:row.followup_policy==='review_only'?1:row.max_gpt_sends,
@@ -170,15 +172,21 @@ export class AutonomousDialogue {
       workspace_session_id=? AND actor_id=? AND client_id=? AND project_id=?
       AND orchestrator_id=? ORDER BY rowid DESC LIMIT 1`)
       .get(context.workspaceSessionId,context.actorId,context.clientId,projectId,orchestratorId);
-    return {mission:this.summary(row)};
+    const chatTaskId=this.service.orchestrator(projectId,orchestratorId).chat_task_id;
+    const lastUserTurn=this.db.prepare("SELECT created_at FROM messages WHERE task_id=? AND role='user' ORDER BY sequence DESC LIMIT 1")
+      .get(chatTaskId);
+    return {mission:this.summary(row),lastUserTurnAt:lastUserTurn?.created_at||null};
   }
-  start(context,{projectId,orchestratorId,mission,requestId,mode='dialogue',directUserPrompt=false}) {
+  start(context,{projectId,orchestratorId,mission,requestId,mode='dialogue',directUserPrompt=false,resumeSiteTaskId=null}) {
     this.service.requireAccess(context,'autonomous_dialogue_start',projectId);
     const owner=this.service.orchestrator(projectId,orchestratorId);
     if(owner.status!=='ready')throw Error('orchestrator_paused');
     if(!noExtra(mission)||mission.length>4000||!['dialogue','story','technical'].includes(mode)||
-       typeof directUserPrompt!=='boolean'||(directUserPrompt&&mode!=='technical'))
+       typeof directUserPrompt!=='boolean'||(directUserPrompt&&mode!=='technical')||
+       (resumeSiteTaskId!==null&&(!directUserPrompt||typeof resumeSiteTaskId!=='string')))
       throw Error('autonomous_mission_invalid');
+    if(resumeSiteTaskId&&latestSiteWork(this.store,projectId,orchestratorId)?.taskId!==resumeSiteTaskId)
+      throw Error('autonomous_site_continuation_unverified');
     if(typeof this.service.coordinator?.send!=='function'||
        this.service.coordinator.available?.(projectId,orchestratorId)!==true||
        typeof this.service.provider?.send!=='function')throw Error('autonomous_provider_unavailable');
@@ -188,7 +196,8 @@ export class AutonomousDialogue {
     if(existing) {
       if(existing.project_id!==projectId||existing.orchestrator_id!==orchestratorId||existing.mission!==mission||
         (existing.mode==='story'?'story':existing.strategy==='semantic'?'technical':'dialogue')!==mode||
-        (directUserPrompt&&(existing.question_a!==mission||existing.followup_policy!=='review_only')))
+        (directUserPrompt&&(existing.question_a!==mission||existing.followup_policy!=='review_only'||
+          (resumeSiteTaskId&&existing.task_a_id!==resumeSiteTaskId))))
         throw Error('autonomous_request_conflict');
       return this.summary(existing);
     }
@@ -207,9 +216,9 @@ export class AutonomousDialogue {
     // asked for. Reuse the existing Work/Task, Run and two-send mission ledger.
     this.db.exec('SAVEPOINT autonomous_start_atomic');
     try {
-      const initialTask=directUserPrompt?this.service.mutate('work_create',{
+      const initialTask=directUserPrompt?(resumeSiteTaskId||this.service.mutate('work_create',{
         projectId,orchestratorId,title:Array.from(mission.trim().split(/\\r?\\n/u,1)[0]).slice(0,130).join('')
-      }).taskId:null;
+      }).taskId):null;
       this.db.prepare(`INSERT INTO lab_autonomous_dialogues
         (id,workspace_session_id,actor_id,client_id,project_id,orchestrator_id,request_id,mission,
           state,max_gpt_sends,task_a_id,question_a,created_at,updated_at,mode,strategy,followup_policy)
@@ -605,7 +614,8 @@ export class AutonomousDialogue {
       'workspace_session_id=? AND actor_id=? AND client_id=? ORDER BY rowid DESC LIMIT 1')
       .get(session.id,context.actorId,context.clientId);
     if(!row||row.state!=='reconciliation_required'||row.strategy!=='semantic'||
-       row.mode!=='dialogue'||!['response_not_observed','autonomous_semantic_review_unconfirmed'].includes(row.last_error)||
+       row.mode!=='dialogue'||!['response_not_observed','response_completion_unconfirmed',
+         'autonomous_semantic_review_unconfirmed'].includes(row.last_error)||
        !row.task_a_id||!row.question_a||row.question_final||row.review_b_json)return false;
     // Recovery is possible after either confirmed GPT turn, never between
     // turns or when the prior Groq decision has been replaced.
@@ -644,7 +654,19 @@ export class AutonomousDialogue {
     const initialCount=previous&&taskId===previous.task_b_id
       ?this.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=? AND rowid BETWEEN 1 AND (SELECT rowid FROM runs WHERE id=?)').get(taskId,row.origin_run_id).n
       :0;
-    const expectedRuns=initialCount+(finalPhase&&taskId===row.task_a_id?2:1);
+    // Natural edit missions reuse a verified site Task that already owns a
+    // succeeded Run. Count its pre-mission history ONLY if every earlier
+    // provider turn was conclusively completed in the canonical conversation.
+    // Never let an uncertain earlier submission be hidden by this offset.
+    const priorRuns=this.db.prepare(`SELECT r.id,r.status,
+      EXISTS(SELECT 1 FROM conversation_completed_runs c WHERE c.run_id=r.id AND c.task_id=r.task_id) AS confirmed
+      FROM runs r WHERE r.task_id=? AND r.started_at<? ORDER BY r.rowid`)
+      .all(taskId,row.created_at);
+    const priorSiteTurns=!finalPhase&&row.followup_policy==='review_only'&&
+      priorRuns.length>0&&priorRuns.every(r=>r.status==='succeeded'&&r.confirmed===1)
+      ?priorRuns.length:0;
+    const expectedRuns=initialCount+priorSiteTurns+
+      (finalPhase&&taskId===row.task_a_id?2:1);
     const task=this.db.prepare('SELECT status FROM tasks WHERE id=?').get(taskId);
     const count=this.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=?').get(taskId)?.n;
     const run=this.db.prepare('SELECT id,status FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1').get(taskId);
@@ -655,7 +677,8 @@ export class AutonomousDialogue {
     const event=kind=>this.db.prepare("SELECT 1 FROM events WHERE task_id=? AND kind=? "+
       "AND json_extract(payload,'$.run_id')=? LIMIT 1").get(taskId,kind,run.id);
     if(!event('provider.submission.provenance')||
-       (row.last_error==='response_not_observed'&&!event('provider.response.reconciled'))||
+       (['response_not_observed','response_completion_unconfirmed'].includes(row.last_error)&&
+         !event('provider.response.reconciled'))||
        !this.service.reviewableGPTResult(row.project_id,row.orchestrator_id,run.id))
       return false;
     if(row.last_error==='autonomous_semantic_review_unconfirmed'){

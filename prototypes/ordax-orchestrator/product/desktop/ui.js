@@ -69,14 +69,43 @@ document.getElementById('settingsOpenProject')?.addEventListener('click',async()
   requestAnimationFrame(()=>document.getElementById('projectRepositoryInput')?.focus());
 });
 let workSurfacePreviewEpoch=0,workSurfacePreviewKey=null;
+let workSurfacePreviewTaskId=null,workSurfaceInteractiveActive=false;
+let workSurfaceInteractiveRequested=true,workSurfaceBoundsRaf=0;
+function queueWorkSurfaceBounds(){
+  if(workSurfaceBoundsRaf)cancelAnimationFrame(workSurfaceBoundsRaf);
+  workSurfaceBoundsRaf=requestAnimationFrame(()=>{
+    workSurfaceBoundsRaf=0;
+    if(typeof window.ordax.setInteractivePreviewBounds!=='function')return;
+    const frame=$('#workSurfaceFrame');
+    const rail=$('#executionOverview');
+    const active=workSurfaceInteractiveActive&&
+      !$('#workSurfacePreview').hidden&&
+      document.body.classList.contains('orchestrator-focus')&&
+      !document.body.classList.contains('orchestrator-rail-open');
+    const a=frame.getBoundingClientRect(),b=rail.getBoundingClientRect();
+    const left=Math.max(a.left,b.left),top=Math.max(a.top,b.top);
+    const right=Math.min(a.right,b.right),bottom=Math.min(a.bottom,b.bottom);
+    const rect=active&&right-left>=200&&bottom-top>=160
+      ?{x:left,y:top,width:right-left,height:bottom-top,visible:true}
+      :{visible:false};
+    window.ordax.setInteractivePreviewBounds(rect).catch(()=>{});
+  });
+}
 function clearWorkSurfacePreview(){
   ++workSurfacePreviewEpoch;
+  if(workSurfacePreviewTaskId)
+    window.ordax.closeInteractivePreview?.(workSurfacePreviewTaskId).catch(()=>{});
+  workSurfacePreviewTaskId=null;
+  workSurfaceInteractiveActive=false;
   workSurfacePreviewKey=null;
   document.body.classList.remove('work-surface-active');
   const panel=$('#workSurfacePreview');
   panel.hidden=true;
   const frame=$('#workSurfaceFrame');
   frame.removeAttribute('srcdoc');
+  frame.style.visibility='visible';
+  $('#workSurfaceModeToggle').textContent='Interativo';
+  queueWorkSurfaceBounds();
   $('#workSurfaceStatus').textContent='Nenhum HTML verificado disponível neste projeto.';
 }
 async function refreshVerifiedWorkSurface(taskId){
@@ -90,8 +119,11 @@ async function refreshVerifiedWorkSurface(taskId){
     // interpret model prose or a proposal as an existing artifact.
     const task=await window.ordax.getTask(taskId);
     if(epoch!==workSurfacePreviewEpoch)return;
-    const assets=(task?.messages||[]).flatMap(m=>m.assets||[]);
-    const asset=assets.find(a=>a?.kind==='file'&&
+    const ordered=[...(task?.messages||[])].reverse();
+    const lastAnswer=ordered.find(m=>m.role==='assistant');
+    const currentAsset=(lastAnswer?.assets||[]).find(a=>a?.kind==='file'&&
+      a.mime_type==='text/html'&&typeof a.id==='string');
+    const asset=currentAsset||ordered.flatMap(m=>m.assets||[]).find(a=>a?.kind==='file'&&
       a.mime_type==='text/html'&&typeof a.id==='string');
     if(!asset){clearWorkSurfacePreview();return;}
     const proof=await window.ordax.readHtmlPreview(taskId,asset.id);
@@ -111,10 +143,47 @@ async function refreshVerifiedWorkSurface(taskId){
     }
     $('#workSurfaceFilename').textContent=proof.filename||'index.html';
     $('#workSurfaceProof').textContent='Arquivo verificado · '+proof.bytes+' bytes';
-    $('#workSurfaceStatus').textContent=
-      'Prévia visual segura; JavaScript, rede e formulários desativados. Arquivo local verificado, não publicado.';
+    $('#workSurfaceStatus').textContent=currentAsset
+      ?'Versão atual verificada. Prévia visual segura; JavaScript e rede desativados. Não publicado.'
+      :'Última versão verificada. A alteração mais recente ainda não possui novo arquivo comprovado.';
     $('#workSurfacePreview').hidden=false;
     document.body.classList.add('work-surface-active');
+    workSurfacePreviewTaskId=taskId;
+    const frame=$('#workSurfaceFrame');
+    const mode=$('#workSurfaceModeToggle');
+    if(workSurfaceInteractiveRequested&&
+       typeof window.ordax.openInteractivePreview==='function'){
+      try{
+        mode.disabled=true;
+        const receipt=await window.ordax.openInteractivePreview(taskId,asset.id);
+        // A stale refresh shares the native view with the newer refresh.
+        // Only an explicit project/scope clear may close that view.
+        if(epoch!==workSurfacePreviewEpoch)return;
+        if(receipt?.active!==true||receipt?.sha256!==proof.sha256||
+           receipt?.taskId!==taskId||receipt?.assetId!==asset.id)
+          throw Error('interactive_preview_receipt_unverified');
+        workSurfaceInteractiveActive=true;
+        frame.style.visibility='hidden';
+        mode.textContent='Somente visual';
+        $('#workSurfaceStatus').textContent=currentAsset
+          ?'Versão atual verificada. Prévia interativa isolada; rede e permissões bloqueadas. Não publicado.'
+          :'Prévia da versão anterior; a alteração atual ainda não tem um novo arquivo verificado.';
+      }catch{
+        if(epoch!==workSurfacePreviewEpoch)return;
+        workSurfaceInteractiveActive=false;
+        frame.style.visibility='visible';
+        mode.textContent='Interativo';
+        $('#workSurfaceStatus').textContent=
+          'Prévia visual segura. Modo interativo indisponível; scripts e rede desativados.';
+      }finally{mode.disabled=false;}
+    }else{
+      frame.style.visibility='visible';
+      mode.textContent='Interativo';
+    }
+    queueWorkSurfaceBounds();
+    // Only the native main process can attest this file; a GPT sentence
+    // mentioning a site never produces a verified delivery message.
+    return {verified:true,currentDelivery:Boolean(currentAsset),taskId,assetId:asset.id,sha256:proof.sha256};
   }catch{
     if(epoch!==workSurfacePreviewEpoch)return;
     // A missing/tampered file is NOT a preview and must not display stale
@@ -123,9 +192,26 @@ async function refreshVerifiedWorkSurface(taskId){
     $('#workSurfaceStatus').textContent='Não foi possível verificar a prévia. Nenhuma mensagem foi enviada ao GPT.';
   }
 }
+$('#workSurfaceModeToggle').addEventListener('click',async()=>{
+  const taskId=workSurfacePreviewTaskId;
+  if(!taskId)return;
+  workSurfaceInteractiveRequested=!workSurfaceInteractiveRequested;
+  if(!workSurfaceInteractiveRequested){
+    workSurfaceInteractiveActive=false;
+    $('#workSurfaceFrame').style.visibility='visible';
+    $('#workSurfaceModeToggle').textContent='Interativo';
+    $('#workSurfaceStatus').textContent=
+      'Prévia visual estática; JavaScript, rede e formulários desativados. Não publicado.';
+    queueWorkSurfaceBounds();
+    await window.ordax.closeInteractivePreview?.(taskId).catch(()=>{});
+  }else{
+    await refreshVerifiedWorkSurface(taskId);
+  }
+});
 const rightPaneDefinitions=[['provider','providerPaneTab','providerPanel'],['preview','previewPaneTab','previewPanel'],['context','contextPaneTab','contextPanel']];
 function setWorkspaceRoute(route) {
   document.body.dataset.workspaceRoute=route;
+  queueWorkSurfaceBounds();
   for(const [id,value] of [['openOrchestrator','coordinator'],['openWorks','gpt']]){
     const button=document.getElementById(id);
     button?.setAttribute('aria-pressed',String(route===value));
@@ -222,6 +308,12 @@ async function showProviderPane(visible) {
 }
 const providerViewportObserver=typeof ResizeObserver==='function'?new ResizeObserver(queueProviderBounds):null;
 providerViewportObserver?.observe($('#providerViewport'));
+const workSurfaceResizeObserver=typeof ResizeObserver==='function'?new ResizeObserver(queueWorkSurfaceBounds):null;
+workSurfaceResizeObserver?.observe($('#workSurfaceFrame'));
+workSurfaceResizeObserver?.observe($('#executionOverview'));
+window.addEventListener('scroll',queueWorkSurfaceBounds,{passive:true,capture:true});
+window.addEventListener('resize',queueWorkSurfaceBounds,{passive:true});
+new MutationObserver(queueWorkSurfaceBounds).observe(document.body,{attributes:true,attributeFilter:['class']});
 window.addEventListener('resize',queueProviderBounds,{passive:true});
 function applyHostProviderLimit() {
   if (window.ordaxHost?.hostMode !== true) return false;

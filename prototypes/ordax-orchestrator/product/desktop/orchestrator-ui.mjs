@@ -33,7 +33,7 @@ export function resolveProjectOnboardingMission(name,objective) {
 }
 // Pure presentation of the SAME read-only project_preflight projection.
  // It cannot confer GitHub/Runtime authority or issue a provider request.
-export function describeConversationOutcome(mission) {
+export function describeConversationOutcome(mission,{artifactVerified=false}={}) {
   if(!mission||typeof mission.missionId!=='string')return null;
   // The canonical Store has independently matched the reviewed Run ID,
   // confirmed its status and returned only its owning Task.
@@ -50,9 +50,13 @@ export function describeConversationOutcome(mission) {
     case 'sending_b':case 'planning_b':case 'ready_final':
       return {message:'Continuando o trabalho autorizado…',taskId};
     case 'verification_required':case 'succeeded':case 'budget_exhausted':
-      return {message:'Resposta recebida. Confira o resultado; arquivos locais, testes e publicação ainda não foram verificados.',taskId};
+      return {message:artifactVerified&&taskId
+        ?'O arquivo do site está disponível na prévia à direita. Ainda não foi publicado.'
+        :'Resposta recebida, mas nenhum arquivo novo foi verificado. A última prévia disponível foi preservada; não foi publicado.',taskId};
     case 'reconciliation_required':
-      return {message:'Uma etapa foi interrompida e precisa de verificação. Nada será reenviado automaticamente.',taskId};
+      return {message:artifactVerified
+        ?'A versão atual do site está verificada na prévia. A revisão de acompanhamento ainda precisa de confirmação. Nada será reenviado automaticamente.'
+        :'A revisão de acompanhamento precisa de reconciliação. Nada será reenviado automaticamente.',taskId};
     case 'blocked':
       return {message:'Não foi possível concluir esta tarefa. Nenhum envio será repetido automaticamente.',taskId};
     default:
@@ -123,7 +127,8 @@ export function describeProjectPreflight(snapshot) {
 export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onSelectRightPane,onOpenAppSettings,onNavigationChange,onArtifactPreviewTask}) {
   const $=id=>document.getElementById(id);
   let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
-  let projectRefreshGeneration=0,orchestratorRefreshGeneration=0;
+  let projectRefreshGeneration=0,orchestratorRefreshGeneration=0,autonomousRefreshGeneration=0;
+  let lastPresentedMissionStatusKey=null;
   let coordinatorOpen=false,coordinatorAvailable=false,orchestratorChatAvailable=false,coordinatorDraftCommitAvailable=false;
   let gptWebTransportAvailable=false;
   let chatgptPlanStatus={connected:false,planUsageAuthorized:false,secureStorageAvailable:false};
@@ -351,9 +356,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const title=active?.mission?.trim()||'Nenhuma missão técnica registrada';
     $('executionMissionTitle').textContent=title.length>140?title.slice(0,137)+'…':title;
     $('executionMissionDetail').textContent=active?.state==='reconciliation_required'
-      ?'Uma etapa foi interrompida. Confira a tarefa existente; nenhum envio será repetido automaticamente.'
+      ?'A revisão de acompanhamento precisa de reconciliação. Confira os recibos existentes; nenhum envio será repetido automaticamente.'
       :active?.state==='verification_required'
-        ?'Resposta recebida. Arquivos, testes e publicação ainda precisam de verificação independente.'
+        ?'Resposta recebida. Confira os arquivos disponíveis na prévia; testes e publicação exigem validação separada.'
         :active?'Missão vinculada ao projeto. Nenhuma ação adicional é autorizada por sugestões internas.'
           :'Acompanhe aqui tarefas e resultados confirmados.';
     const workList=$('executionWorkList');workList.replaceChildren();
@@ -375,7 +380,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const copy=document.createElement('span');copy.className='execution-work-copy';
       const title=document.createElement('strong');title.textContent=work.title;
       const info=document.createElement('small');
-      info.textContent=work.latest_run_status==='succeeded'?'Resposta GPT registrada · efeito não verificado':
+      info.textContent=work.latest_run_status==='succeeded'?'Run GPT concluído · confira os arquivos na prévia':
         work.running_runs>0?'Run GPT em andamento':
         work.execution?.observed==='reconciliation_required'?'Envio incerto · reconciliar':
         work.provider_segments>0?'Conversa registrada no projeto':'Ainda sem resposta GPT';
@@ -398,7 +403,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       'As sugestões internas não autorizam novas tarefas. Consulte a execução existente.']);
     for(const work of ordered.filter(w=>w.latest_run_status||w.running_runs>0).slice(0,3)){
       entries.push([work.title,work.running_runs>0?'Run GPT em andamento':
-        work.latest_run_status==='succeeded'?'Resposta observada; verificação externa pendente':
+        work.latest_run_status==='succeeded'?'Run concluído; confirme entregas e revisões separadamente':
         'Último Run: '+work.latest_run_status]);
     }
     if(!entries.length)entries.push(['Sem execução comprovada',
@@ -1095,17 +1100,32 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     return isCurrent()?orchestrators:[];
   }
   async function refreshAutonomousDialogue(){
+    const generation=++autonomousRefreshGeneration;
     if(!projectId||!orchestratorId)return;
     const p=projectId,o=orchestratorId;
     const result=await call('autonomous_dialogue_status',{projectId:p,orchestratorId:o}).catch(()=>null);
-    if(p!==projectId||o!==orchestratorId)return;
+    if(generation!==autonomousRefreshGeneration||p!==projectId||o!==orchestratorId)return;
     const job=result?.mission;
-    // Presentation only. Resolves the reviewed Task's independently
-    // verified HTML; no proposal, Run or GPT message is created here.
-    void onArtifactPreviewTask?.(job?.reviewedTaskId||null);
-    executionMission=job||null;executionMissionScope=executionScope();renderExecutionMonitor();
-    const outcome=describeConversationOutcome(job),outcomePanel=$('coordinatorOutcome');
-    outcomePanel.hidden=!outcome;
+    // Keep the previous verified preview while revising. A mission that
+    // predates the latest user turn must not remain a highlighted status.
+    const superseded=Boolean(job?.createdAt&&result?.lastUserTurnAt&&
+      Date.parse(result.lastUserTurnAt)>Date.parse(job.createdAt));
+    const currentJob=superseded?null:job;
+    const proof=await onArtifactPreviewTask?.(job?.reviewedTaskId||job?.taskAId||null);
+    if(generation!==autonomousRefreshGeneration||p!==projectId||o!==orchestratorId)return;
+    executionMission=currentJob;executionMissionScope=executionScope();renderExecutionMonitor();
+    const outcome=describeConversationOutcome(currentJob,{
+      artifactVerified:proof?.verified===true&&proof?.currentDelivery===true}),
+      outcomePanel=$('coordinatorOutcome');
+    const statusKey=currentJob?currentJob.missionId+':'+currentJob.state+':'+Boolean(proof?.currentDelivery):null;
+    if(statusKey&&statusKey!==lastPresentedMissionStatusKey&&outcome){
+      lastPresentedMissionStatusKey=statusKey;
+      status(outcome.message);
+    }
+    // Once the verified delivery is in the project conversation as a real
+    // assistant message, do not keep a redundant terminal status card pinned.
+    outcomePanel.hidden=!outcome||Boolean(proof?.currentDelivery&&currentJob&&
+      ['verification_required','succeeded','budget_exhausted','reconciliation_required','blocked'].includes(currentJob.state));
     if(outcome){
       $('coordinatorOutcomeText').textContent=outcome.message;
       $('coordinatorOutcomeOpen').hidden=!outcome.taskId;
@@ -1135,15 +1155,15 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       :job.state==='succeeded'
       ?'História final montada pelo Groq, após duas rodadas GPT A/B'
       :job.state.startsWith('story_')?'História colaborativa: '+job.state.replaceAll('_',' '):null):null;
-    $('autonomousDialogueState').textContent=job
-      ?describeConversationOutcome(job)?.message||technicalLabel||storyLabel||labels[job.state]||'Estado registrado'
+    $('autonomousDialogueState').textContent=currentJob
+      ?outcome?.message||technicalLabel||storyLabel||labels[job.state]||'Estado registrado'
       :'Nenhuma execução ativa. Descreva o que deseja realizar.';
     // A failed or uncertain mission remains read-only. Reuse the canonical
     // Task navigator to inspect confirmed records, never schedule a retry.
     const reviews=$('autonomousReviewActions');
     reviews.replaceChildren();
-    if(job&&['succeeded','blocked','reconciliation_required','verification_required','budget_exhausted'].includes(job.state)) {
-      for(const item of job.reviewTasks||[]) {
+    if(currentJob&&['succeeded','blocked','reconciliation_required','verification_required','budget_exhausted'].includes(currentJob.state)) {
+      for(const item of currentJob.reviewTasks||[]) {
         if(typeof item?.taskId!=='string'||!item.taskId)continue;
         const button=document.createElement('button');
         button.type='button';button.className='mini-secondary';
@@ -1167,7 +1187,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('startAutonomousStory').disabled=$('startAutonomousDialogue').disabled;
     $('startAutonomousTechnical').disabled=$('startAutonomousDialogue').disabled;
     const continueButton=$('continueAutonomousTechnical');
-    continueButton.hidden=job?.canContinue!==true;
+    continueButton.hidden=currentJob?.canContinue!==true;
     continueButton.disabled=continueButton.hidden||!coordinatorAvailable||
       !gptWebTransportAvailable||analysisBusy||coordinatorSubmitting||preflightBusy;
   }
@@ -1486,7 +1506,16 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
             ?'Não foi possível começar essa tarefa. Verifique as conexões em Ajustes.'
             :'Resposta registrada.');
       }
-      else status('Não foi possível confirmar a resposta. Confira o histórico antes de tentar novamente.');
+      else {
+        const code=receipt?.result?.failureCode;
+        status(code==='groq_auth_rejected'
+          ?'A conexão do administrador não está autorizada. Nenhum trabalho foi iniciado.'
+          :code==='groq_invalid_response'||code==='groq_invalid_jarvis_decision'
+            ?'O administrador não conseguiu interpretar a resposta. O pedido está salvo; nenhum envio GPT foi iniciado.'
+            :receipt.status==='uncertain'
+              ?'O resultado do administrador está incerto. Verifique o histórico; não vou repetir o pedido.'
+              :'A solicitação não foi concluída. O pedido foi salvo sem executar o GPT.');
+      }
       await renderCoordinator();
     }).finally(()=>{coordinatorSubmitting=false;syncCoordinatorActions();});
   });

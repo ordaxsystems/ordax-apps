@@ -25,6 +25,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { Store, MESSAGE_PAGE_SIZE } from '../src/store.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
+import {IsolatedInteractiveHtmlPreview} from './isolated-interactive-preview.mjs';
 import { createProviderViewRegistry } from '../src/provider-view-registry.mjs';
 import { backgroundResidencyAllowed,backgroundStartupAllowed,backgroundModeRequested } from '../src/background-residency-policy.mjs';
 import { createProviderExecutionScheduler } from '../src/provider-execution-scheduler.mjs';
@@ -199,6 +200,7 @@ const MIME_EXT = new Map([
 
 let win;
 let worker;
+let interactiveHtmlPreview=null;
 const providerViews=createProviderViewRegistry();
 let windowCreationPromise=null;
 let hostBrowserServer=null;
@@ -550,6 +552,7 @@ function layoutViews() {
   }):null;
   worker.view.setBounds(bounds||{x:0,y:0,width:1,height:1});
   worker.view.setVisible(Boolean(chatVisible&&bounds));
+  interactiveHtmlPreview?.relayout();
 }
 
 async function createWindow() {
@@ -594,6 +597,7 @@ async function createWindowOnce() {
   });
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
 
+  interactiveHtmlPreview=new IsolatedInteractiveHtmlPreview(()=>win);
   worker = new EmbeddedChatWorker();
   providerViews.register(worker);
   providerScheduler=createProviderExecutionScheduler({lanes:[{id:'primary',worker}]});
@@ -624,6 +628,7 @@ async function createWindowOnce() {
   hostStartupLog('provider_view_attached');
   layoutViews();
   win.on('resize', layoutViews);
+  win.on('closed',()=>{interactiveHtmlPreview?.close();interactiveHtmlPreview=null;});
   win.on('maximize', layoutViews);
   win.on('unmaximize', layoutViews);
   // The user can close Electron while a provider request was accepted but
@@ -752,9 +757,13 @@ registerUiHandler('ordax:tasks:inspect-linked-thread', async (event, requestedId
 registerUiHandler('ordax:tasks:reconcile-linked-reply', async (event, payload={}) => {
   requireTrustedSupervisorRenderer(event);
   if(liveRun)throw new Error('provider_reply_recovery_run_active');
-  return reconcileProviderLinkedReply({
+  const result=await reconcileProviderLinkedReply({
     store,worker,taskId:payload?.taskId,responseSha256:payload?.responseSha256
   });
+  if(result?.reconciled===true)
+    await finalizeReconciledSiteDelivery(String(payload?.taskId||''),{captureMissing:true})
+      .catch(()=>{});
+  return result;
 });
 let htmlArtifactCaptureBusy=false;
 // Canonical capture operation: both automatic post-Run completion and the
@@ -778,11 +787,11 @@ async function captureConfirmedHtmlArtifact(requestedId) {
   const response=store.db.prepare(
     "SELECT id,content FROM messages WHERE task_id=? AND role='assistant' ORDER BY sequence DESC LIMIT 1"
   ).get(taskId);
-  if(!response||!response.content?.includes('index.html'))
+  if(!response||typeof response.content!=='string'||!response.content.trim())
     throw Error('provider_html_response_not_attributable');
   const previous=store.db.prepare(
-    "SELECT id,local_path,sha256 FROM message_assets WHERE task_id=? AND kind='file' AND mime_type='text/html' ORDER BY created_at DESC LIMIT 1"
-  ).get(taskId);
+    "SELECT id,local_path,sha256 FROM message_assets WHERE task_id=? AND message_id=? AND kind='file' AND mime_type='text/html' ORDER BY created_at DESC LIMIT 1"
+  ).get(taskId,response.id);
   if(previous){
     const proof=verifyLocalHtmlArtifact(assertLocalArtifactPath(assetsRoot,previous.local_path));
     if(proof.sha256!==previous.sha256)throw Error('provider_html_existing_asset_changed');
@@ -852,10 +861,9 @@ registerUiHandler('ordax:tasks:html-artifact:reveal',(event,payload={})=>{
   shell.showItemInFolder(real);
   return {verified:true,filename:'index.html',sha256:proof.sha256};
 });
-// Read-only, strictly scoped HTML bytes for a static opaque-origin preview.
-// Nothing is executed or served as a privileged app asset.
-registerUiHandler('ordax:tasks:html-artifact:preview',(event,payload={})=>{
-  requireTrustedSupervisorRenderer(event);
+// Same verified Task/message/file authority for static and interactive previews.
+// The native WebContentsView only receives bytes from this validation path.
+function readVerifiedHtmlPreview(payload={}) {
   if(hostBrowserMode)throw Error('html_preview_unavailable_in_host');
   const taskId=String(payload?.taskId||''),assetId=String(payload?.assetId||'');
   const asset=store.getAsset(assetId);
@@ -870,6 +878,34 @@ registerUiHandler('ordax:tasks:html-artifact:preview',(event,payload={})=>{
   return Object.freeze({verified:true,taskId,assetId,filename:'index.html',
     sha256:proof.sha256,bytes:proof.bytes,
     html:fs.readFileSync(real,'utf8')});
+}
+registerUiHandler('ordax:tasks:html-artifact:preview',(event,payload={})=>{
+  requireTrustedSupervisorRenderer(event);
+  return readVerifiedHtmlPreview(payload);
+});
+registerUiHandler('ordax:preview:interactive:open',async(event,payload={})=>{
+  requireTrustedSupervisorRenderer(event);
+  if(!interactiveHtmlPreview)throw Error('interactive_preview_unavailable');
+  const proof=readVerifiedHtmlPreview(payload);
+  return interactiveHtmlPreview.open(proof);
+});
+registerUiHandler('ordax:preview:interactive:bounds',(event,rect)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(!interactiveHtmlPreview)return {visible:false};
+  return interactiveHtmlPreview.bounds(rect);
+});
+registerUiHandler('ordax:preview:interactive:close',(event,taskId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(interactiveHtmlPreview&&(!taskId||interactiveHtmlPreview.owner?.taskId===taskId))
+    interactiveHtmlPreview.close();
+  return {closed:true};
+});
+registerUiHandler('ordax:lab:interactive-preview:probe',async(event,payload={})=>{
+  requireTrustedSupervisorRenderer(event);
+  if(process.env.ORDAX_DESKTOP_DEBUG!=='1')
+    throw Error('interactive_preview_probe_debug_only');
+  if(!interactiveHtmlPreview)throw Error('interactive_preview_unavailable');
+  return interactiveHtmlPreview.debugProbe(payload);
 });
 // Exact-profile attestation for Lab E2E: expose only an allowlisted hash, not
 // filesystem paths, credentials or application data. This is read-only.
@@ -1043,21 +1079,31 @@ const orchestratorKernel=createOrchestratorKernel({
       // Run, model proposal, failed send or historical recovery never triggers
       // a download, and a missing official file card never becomes a result.
       if(shouldAttemptAutomaticHtmlCapture({
-        authorSource,runId:execution?.result?.runId,text:execution?.result?.text
+        authorSource,runId:execution?.result?.runId,text:execution?.result?.text,userRequest:content
       })){
+        let verifiedSha=null;
         try{
           const captured=await captureConfirmedHtmlArtifact(taskId);
           if(captured?.verified){
+            verifiedSha=captured.sha256;
             execution.task=getTaskView(taskId);
-            notifyOrchestratorChanged();
           }
         }catch{
-          // Missing/ambiguous provider attachment is a nonfatal result
-          // verification failure. Preserve the confirmed response and record
-          // no synthetic file. Do not retry the provider send.
+          // No file card or an invalid download cannot be called a site
+          // delivery. A GPT answer is preserved; no repeat send is allowed.
           try{store.event(taskId,'provider.artifact.auto_capture_unavailable',{
             run_id:execution.result.runId,reason:'attachment_not_verified'
           });}catch{}
+        }
+        try{
+          orchestratorService.recordSiteDelivery({
+            taskId,runId:execution.result.runId,
+            verified:Boolean(verifiedSha),sha256:verifiedSha
+          });
+          notifyOrchestratorChanged();
+        }catch{
+          // A delivery notification never changes the already confirmed
+          // provider Run or launches a second provider request.
         }
       }
       return chatReceiptFromRunTask(execution);
@@ -1098,9 +1144,72 @@ registerUiHandler('ordax:orchestrator:mcp',async(event,message)=>{
   return result;
 });
 
+// A confirmed delayed GPT reply is not another send. The canonical
+// reconciler has already attested the original Run; only a hash-verified
+// file on that SAME reply can produce a natural completion message.
+async function finalizeReconciledSiteDelivery(taskId,{captureMissing=false}={}){
+  const run=store.db.prepare('SELECT id,status FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1')
+    .get(taskId);
+  if(run?.status!=='succeeded'||!store.db.prepare(`SELECT 1 FROM events
+      WHERE task_id=? AND kind='provider.response.reconciled'
+        AND json_extract(payload,'$.run_id')=? LIMIT 1`).get(taskId,run.id))
+    return false;
+  let current=store.db.prepare(`SELECT a.local_path,a.sha256
+      FROM message_assets a JOIN messages m ON m.id=a.message_id
+      WHERE m.task_id=? AND m.role='assistant'
+        AND m.sequence=(SELECT MAX(sequence) FROM messages WHERE task_id=? AND role='assistant')
+        AND a.kind='file' AND a.mime_type='text/html'
+      ORDER BY a.rowid DESC LIMIT 1`).get(taskId,taskId);
+  if(!current&&captureMissing){
+    try{await captureConfirmedHtmlArtifact(taskId);}
+    catch{} // No official card, no invented site and no second GPT request.
+    current=store.db.prepare(`SELECT a.local_path,a.sha256
+      FROM message_assets a JOIN messages m ON m.id=a.message_id
+      WHERE m.task_id=? AND m.role='assistant'
+        AND m.sequence=(SELECT MAX(sequence) FROM messages WHERE task_id=? AND role='assistant')
+        AND a.kind='file' AND a.mime_type='text/html'
+      ORDER BY a.rowid DESC LIMIT 1`).get(taskId,taskId);
+  }
+  let verified=false;
+  if(current){
+    try{
+      const root=fs.realpathSync.native(assetsRoot);
+      const real=fs.realpathSync.native(assertLocalArtifactPath(assetsRoot,current.local_path));
+      assertLocalArtifactPath(root,real);
+      verified=verifyLocalHtmlArtifact(real).sha256===current.sha256;
+    }catch{verified=false;}
+  }
+  // This is a user-visible fact, not a model-generated proposal.
+  orchestratorService.recordSiteDelivery({
+    taskId,runId:run.id,verified,sha256:verified?current.sha256:null
+  });
+  const resumed=orchestratorService.autonomous.resumeReconciledTechnical(localOrchestratorContext);
+  notifyOrchestratorChanged();
+  if(resumed)queueMicrotask(()=>{
+    void orchestratorService.autonomous.tick(localOrchestratorContext).catch(()=>{});
+  });
+  return verified;
+}
+
 function notifyOrchestratorChanged(){
   if(win&&!win.isDestroyed())emitRendererEvent('ordax:orchestrator:changed');
 }
+// Preserve evidence after an app restart. Reconcile ONLY finished Runs with
+// a previously attested same-thread reply; no provider request, navigation or
+// raw HTML injection occurs during startup.
+void app.whenReady().then(async()=>{
+  const completed=store.db.prepare(`SELECT r.task_id AS taskId
+    FROM runs r JOIN lab_task_bindings b ON b.task_id=r.task_id AND b.kind='work'
+    WHERE r.status='succeeded' AND
+      r.rowid=(SELECT MAX(x.rowid) FROM runs x WHERE x.task_id=r.task_id)
+      AND EXISTS(SELECT 1 FROM events e WHERE e.task_id=r.task_id
+        AND e.kind='provider.response.reconciled'
+        AND json_extract(e.payload,'$.run_id')=r.id)
+    ORDER BY r.rowid DESC LIMIT 8`).all();
+  for(const row of completed)
+    await finalizeReconciledSiteDelivery(row.taskId,{captureMissing:false})
+      .catch(()=>{});
+}).catch(()=>{});
 registerUiHandler('ordax:orchestrator:chat-status',event=>{
   requireTrustedSupervisorRenderer(event);
   return coordinatorChatStatus();

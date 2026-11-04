@@ -4,7 +4,7 @@
 
 > **SSOT de direção do Orchestrator:** este documento prevalece sobre descrições anteriores de "vários projetos por aplicativo", "Groq opcional", "conversa principal enviada ao GPT Web", "autonomia já disponível" ou "24 h certificado". A documentação histórica continua válida **somente como evidência de implementação e de gates na data observada**. O código/contratos, permissões, CI e evidências físicas prevalecem para dizer o que funciona hoje; este texto não transforma intenção em capacidade entregue.
 
-> **Missão executiva em andamento — Work Surface:** [WORK-SURFACE-EXECUTION.md](./WORK-SURFACE-EXECUTION.md) contém objetivo, estado real, prioridades P0/P1/P2, critérios de aceite e instruções para qualquer novo chat prosseguir sem reiniciar pesquisa. A implementação permanece na PR #445 de `ordax-apps` até integração comprovada.
+> **Missão executiva em andamento — Work Surface:** [WORK-SURFACE-EXECUTION.md](./WORK-SURFACE-EXECUTION.md) contém objetivo, estado real, prioridades P0/P1/P2, critérios de aceite e instruções para qualquer novo chat prosseguir sem reiniciar pesquisa. A PR #445 foi integrada à `main` (captura de HTML e prévia estática). A evolução interativa P1.1 está na branch única `feat/orchestrator-isolated-interactive-preview-20261104`, com gates e prova física documentados na missão; após integração, `main` volta a ser a única autoridade.
 
 ## 1. Identidade e experiência do produto
 
