@@ -139,6 +139,12 @@ export class AutonomousDialogue {
     if(history.length===16&&history.at(-1).origin_mission_id)truncated=true;
     history.reverse();
     const stages=[],reviewTasks=new Map();
+    // Read-only projection of the budget across explicit consent cycles.
+    // A review is counted only after its GPT Run, provenance and Groq receipt
+    // are confirmed; an uncertain send is NEVER advertised as completed.
+    const authorizedGPTSends=history.reduce((total,mission)=>total+
+      (mission.followup_policy==='review_only'?1:
+        Number(mission.max_gpt_sends)===LIMIT?LIMIT:0),0);
     for(const [i,mission] of history.entries()){
       for(const [phase,taskId,raw] of [
         ['a',mission.task_a_id,mission.review_a_json],
@@ -165,14 +171,21 @@ export class AutonomousDialogue {
             'technical_'+mission.id+'_'+phase+'_recovery');
         if(!proven||!reviewed)continue;
         const cycle=i+1,step=phase==='a'?1:2;
+        const proposed=decision.acceptance;
+        const acceptance=proposed&&
+          ['answer_indicates_progress','requires_external_verification','not_met']
+            .includes(proposed.status)&&typeof proposed.criterion==='string'&&
+          proposed.criterion.trim().length>0
+          ?{status:proposed.status,
+            criterion:redactOrchestratorAnalysisText(proposed.criterion,180)}:null;
         stages.push({cycle,step,runId:run.id,taskId,
-          decision:decision.decision});
+          decision:decision.decision,acceptance});
         if(!reviewTasks.has(taskId))
           reviewTasks.set(taskId,{taskId,label:'Trabalho GPT · ciclo '+cycle});
       }
     }
     return {cycles:history.length,completedReviews:stages.length,
-      truncated,stages,reviewTasks:[...reviewTasks.values()]};
+      authorizedGPTSends,truncated,stages,reviewTasks:[...reviewTasks.values()]};
   }
   summary(row) {
     if(!row)return null;
@@ -476,7 +489,14 @@ export class AutonomousDialogue {
   // its mission transition. This is an observed Run/review milestone, never
   // a claim that code, files, tests or an external deployment were verified.
   recordTechnicalReview(row,phase,decision) {
-    if(row.strategy!=='semantic'||row.followup_policy!=='two_send')return false;
+    // One-send TECHNICAL diagnostics deserve an attributable, idempotent
+    // review. Direct natural requests use the same review_only policy but
+    // must keep their existing concise user-facing conclusion, not receive
+    // an extra technical Groq milestone in the conversation.
+    const directNaturalPrompt=row.followup_policy==='review_only'&&
+      row.question_a===row.mission;
+    if(row.strategy!=='semantic'||directNaturalPrompt||
+       !['two_send','review_only'].includes(row.followup_policy))return false;
     const taskId=phase==='a'?row.task_a_id:row.task_b_id;
     const runId=decision?.sourceRunId;
     if(typeof runId!=='string')throw Error('autonomous_review_transcript_source_invalid');

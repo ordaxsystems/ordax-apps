@@ -162,6 +162,10 @@ test('natural site request sends its exact words once; a model-suggested publica
   assert.equal(f.metrics().sends,1);
   assert.equal(f.metrics().plans,0,'do not rewrite the first user request in a Groq planner');
   assert.equal(f.metrics().reviews,1);
+  const adminChat=f.service.orchestrator(ids.projectId,ids.orchestratorId).chat_task_id;
+  assert.equal(f.store.messages(adminChat).filter(x=>
+    x.role==='assistant'&&x.content.startsWith('Ciclo 1: recebi a ')).length,0,
+    'natural first prompt retains concise user-facing outcome, not a technical milestone');
   assert.equal(f.store.messages(m.taskAId).find(x=>x.role==='user').content,content);
   assert.equal(f.store.db.prepare('SELECT followup_policy FROM lab_autonomous_dialogues WHERE id=?')
     .get(m.missionId).followup_policy,'review_only');
@@ -178,12 +182,22 @@ test('diagnostic-only technical mission uses one GPT send and scoped specialist'
   assert.equal(m.state,'verification_required');
   assert.equal(m.maxGPTSends,1);
   assert.equal(m.technicalSpecialist,'sistemas e integrações');
+  assert.equal(m.chainProgress.authorizedGPTSends,1);
+  assert.equal(m.chainProgress.completedReviews,1);
+  assert.equal(m.chainProgress.stages[0].acceptance.status,'requires_external_verification');
+  const adminChat=f.service.orchestrator(ids.projectId,ids.orchestratorId).chat_task_id;
+  assert.equal(f.store.messages(adminChat).filter(x=>
+    x.role==='assistant'&&x.content.startsWith('Ciclo 1: recebi a ')).length,1,
+    'read-only missions must persist their verified acceptance review once');
   assert.equal(m.taskBId,null,'a specialist cannot invent another GPT send');
   assert.equal(m.decision.externalEffectVerified,false);
   assert.equal(f.store.db.prepare('SELECT followup_policy FROM lab_autonomous_dialogues WHERE id=?')
     .get(m.missionId).followup_policy,'review_only');
   assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:1});
   assert.equal((await f.service.autonomous.tick(f.context)).state,'idle');
+  assert.equal(f.store.messages(adminChat).filter(x=>
+    x.role==='assistant'&&x.content.startsWith('Ciclo 1: recebi a ')).length,1,
+    'restarting the tick must not duplicate the reviewed milestone');
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
@@ -303,7 +317,11 @@ test('explicit second consent continues the same project through four GPT Runs',
   assert.equal(first.canContinue,true);
   assert.equal(first.chainProgress.cycles,1);
   assert.equal(first.chainProgress.completedReviews,2);
+  assert.equal(first.chainProgress.authorizedGPTSends,2);
   assert.equal(first.chainProgress.stages.length,2);
+  assert.ok(first.chainProgress.stages.every(x=>
+    x.acceptance?.status==='requires_external_verification'));
+  assert.ok(first.chainProgress.stages.every(x=>x.acceptance?.criterion));
   assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
   const next=await f.service.invoke(f.context,'autonomous_dialogue_continue',{
     ...ids,sourceMissionId:first.missionId,requestId:'consent_2'});
@@ -316,6 +334,8 @@ test('explicit second consent continues the same project through four GPT Runs',
   assert.equal(finished.chainProgress.cycles,2);
   assert.equal(finished.chainProgress.completedReviews,4,
     'two explicitly approved cycles retain all four independently reviewed Runs');
+  assert.equal(finished.chainProgress.authorizedGPTSends,4,
+    'shared budget counts explicit consents, never creates a third GPT send');
   const chatTaskId=f.service.orchestrator(ids.projectId,ids.orchestratorId).chat_task_id;
   const ledger=f.store.messages(chatTaskId).filter(x=>x.role==='assistant'&&
     /^Ciclo [12]: recebi a /.test(x.content));
