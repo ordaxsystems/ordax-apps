@@ -1323,7 +1323,8 @@ export class OrchestratorService {
         draftRevision:sendInput.draftRevision??null,
         taskKind:isWorkSend?'work':null,
         mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork,
-        completionProfile:reviewSource?'technical_review':'standard',workspaceObservation,repositoryUrl});
+        completionProfile:reviewSource?'technical_review':'standard',workspaceObservation,repositoryUrl,
+        delegateWork:operation==='orchestrator_chat'&&input.delegateWork===true});
       this.requireAccess(context,operation,input.projectId);
       if(!usesProvider) {
         // Pause can happen during the external Groq await. A durable receipt
@@ -1335,6 +1336,9 @@ export class OrchestratorService {
           throw Error('orchestrator_reply_invalid');
         // Parse an evidence-anchored decision before it becomes a completed
         // receipt. The model response is never itself permission to execute.
+        if(operation==='orchestrator_chat'&&input.delegateWork===true&&
+          !['technical','none'].includes(reply.delegation))
+          throw Error('orchestrator_jarvis_decision_unconfirmed');
         let reviewDecision=null;
         if(reviewSource){
           try{
@@ -1363,8 +1367,32 @@ export class OrchestratorService {
               {projectId:input.projectId,orchestratorId:owner.id,actorId:context.actorId,clientId:context.clientId,proposal});
             this.store.requestApproval(task.id,proposalActionId,'Revisar nova frente e rascunho; nenhum envio ao GPT');
           }
+          let delegation=null;
+          if(operation==='orchestrator_chat'&&input.delegateWork===true){
+            if(reply.delegation==='none')delegation={status:'not_needed'};
+            else {
+              // One explicit UI command authorizes at most the existing two-send
+              // technical mission. Groq only classifies; it cannot create
+              // grants or dispatch through an unrecognized model reply.
+              this.db.exec('SAVEPOINT jarvis_delegation');
+              try {
+                const accepted=this.autonomous.start(context,{
+                  projectId:input.projectId,orchestratorId:input.orchestratorId,
+                  mission:input.content,mode:'technical',
+                  requestId:'jarvis_'+reserved.commandId
+                });
+                this.db.exec('RELEASE SAVEPOINT jarvis_delegation');
+                delegation={status:'accepted',missionId:accepted.missionId};
+              } catch {
+                this.db.exec('ROLLBACK TO SAVEPOINT jarvis_delegation');
+                this.db.exec('RELEASE SAVEPOINT jarvis_delegation');
+                delegation={status:'blocked'};
+              }
+            }
+          }
           this.store.appendMessage(task.id,'assistant',reply.content);
           return this.finish(reserved.commandId,{taskId:task.id,responseObserved:true,
+            ...(delegation?{delegation}:{}),
             ...(reviewSource?{reviewRunId:reviewSource.runId}:{}),
             ...(proposalActionId?{proposalActionId}:{}),
             ...(reviewDecision?{reviewDecision}:{}),

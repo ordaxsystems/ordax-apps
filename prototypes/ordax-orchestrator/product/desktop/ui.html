@@ -225,7 +225,11 @@
           <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="Envie uma mensagem ao Orchestrator..." aria-describedby="orchestrationConnection" required></textarea>
           <button id="coordinatorSend" class="send-button coordinator-send" type="submit" aria-label="Enviar ao Orquestrador via Groq" disabled>Enviar à Groq</button>
         </form>
-        <small class="coordinator-route-note">Você conversa com o Administrador Geral via Groq. Ctrl+Enter envia · Enter cria nova linha. O GPT Web é um canal separado.</small>
+        <label id="coordinatorDelegationLabel" class="coordinator-delegation-permission">
+          <input id="coordinatorDelegateWork" type="checkbox" checked />
+          <span>Autorizar delegação: se o Groq identificar uma missão técnica, iniciar até 2 envios ao GPT neste pedido. Perguntas comuns ficam no Groq.</span>
+        </label>
+        <small class="coordinator-route-note">Você conversa com o Administrador Geral via Groq. Somente uma missão autorizada pode chegar ao GPT Web, pelo executor canônico. Ctrl+Enter envia · Shift+Enter cria nova linha.</small>
         <small id="coordinatorDraftState" class="coordinator-draft-state" role="status" aria-live="polite"></small>
       </section>
       <p id="orchestrationNotice" class="orchestration-notice" role="status" aria-live="polite"></p>

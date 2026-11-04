@@ -7,6 +7,12 @@ import {buildCoordinatorRequestContext,validateCoordinatorReply} from './coordin
 // the canonical work-proposal policy (field limits, scope and no extra keys).
 // Supported GPT-OSS models receive Groq strict structured output; other
 // configured models use JSON object mode with the same local validation.
+const JARVIS_TURN_SCHEMA=Object.freeze({
+  type:'object',properties:{
+    action:{type:'string',enum:['respond','delegate']},
+    reply:{type:'string'}
+  },required:['action','reply'],additionalProperties:false
+});
 const WORK_PROPOSAL_SCHEMA=Object.freeze({
   type:'object',properties:{
     title:{type:'string'},
@@ -34,6 +40,9 @@ const WORK_REVIEW_SCHEMA=Object.freeze({
   },required:['runId','step','summary','reason','observedExcerpt'],
   additionalProperties:false
 });
+const groqJarvisFormat=model=>/^openai\/gpt-oss-(20b|120b)$/.test(model)
+  ?{type:'json_schema',json_schema:{name:'ordax_jarvis_turn',strict:true,schema:JARVIS_TURN_SCHEMA}}
+  :{type:'json_object'};
 const groqProposalFormat=model=>/^openai\/gpt-oss-(20b|120b)$/.test(model)
   ?{type:'json_schema',json_schema:{name:'ordax_work_proposal',strict:true,schema:WORK_PROPOSAL_SCHEMA}}
   :{type:'json_object'};
@@ -134,7 +143,7 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
   return Object.freeze({
     available:(projectId,orchestratorId)=>isEnabled(projectId,orchestratorId)===true&&Boolean(getApiKey()),
     async send({taskId,mission,projectId,orchestratorId,analysisContext=null,prepareWork=false,
-      workspaceObservation=null,repositoryUrl=null,completionProfile='standard'}) {
+      workspaceObservation=null,repositoryUrl=null,delegateWork=false,completionProfile='standard'}) {
       if(isEnabled(projectId,orchestratorId)!==true)throw Error('supervisor_disabled');
       const apiKey=getApiKey();
       if(typeof apiKey!=='string'||!apiKey.trim()||/[\r\n]/.test(apiKey))throw Error('supervisor_api_key_missing');
@@ -154,7 +163,7 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
       const request=buildCoordinatorRequestContext({store,taskId,mission,projectId,orchestratorId,
         analysisContext,prepareWork,workspaceObservation,repositoryUrl});
       const responseFormat=prepareWork?groqProposalFormat(model):
-        technicalReview?groqReviewFormat(model,analysisContext):null;
+        technicalReview?groqReviewFormat(model,analysisContext):delegateWork?groqJarvisFormat(model):null;
       const standardChat=completionProfile==='standard'&&!prepareWork;
       const strictReview=technicalReview&&/^openai\/gpt-oss-(20b|120b)$/.test(model);
       const outputInstructions=technicalReview
@@ -167,6 +176,15 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
           :' FORMATO JSON: devolva exatamente runId,decision,summary,reason,observedExcerpt,nextPrompt '+
             'na raiz. Para continuar ou corrigir, nextPrompt deve ter pelo menos 20 caracteres; '+
             'para verificar, concluir como candidato ou bloquear, use nextPrompt null.'
+        :delegateWork?' FORMATO OBRIGATÓRIO JSON: responda somente com action e reply. '+
+          'action=delegate somente quando o usuário pede explicitamente que uma tarefa técnica, '+
+          'site, código, arquivo ou outro artefato seja produzido ou corrigido pelo GPT. '+
+          'action=respond para perguntas, análise, esclarecimentos ou conversa. '+
+          'A classificação NÃO é autorização: esta chamada nunca executa o GPT. '+
+          'Se action=delegate, reply deve ser uma breve confirmação de intenção, '+
+          'sem código ou artefato e sem alegar execução; o App decide se a missão poderá iniciar. '+
+          'Se action=respond, reply é a resposta natural curta ao usuário. '+
+          'Não inclua outros campos, markdown JSON, ferramentas ou autorizações inventadas.'
         :'';
       let response;
       try {
@@ -200,7 +218,7 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
       const content=strictReview
         ?flattenStrictReview(parsed?.choices?.[0]?.message?.content)
         :parsed?.choices?.[0]?.message?.content;
-      try {return validateCoordinatorReply(content,{prepareWork,errorPrefix:'groq'});}
+      try {return validateCoordinatorReply(content,{prepareWork,delegateWork,errorPrefix:'groq'});}
       catch(error) {throw coordinatorFailure(error.message,'response_invalid');}
     }
   });

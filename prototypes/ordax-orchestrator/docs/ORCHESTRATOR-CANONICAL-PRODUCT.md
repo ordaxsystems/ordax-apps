@@ -15,6 +15,12 @@
 - Projeto diferente significa **nova instância/perfil isolado ou migração explícita** com confirmação, sem mistura de sessão, dados ou grants. Uma instância NÃO exige um processo, banco ou Electron por agente.
 - A estrutura persistente atual admite vários projetos; **não excluir nem migrar dados existentes às cegas**. A transição é um contrato de produto e UI; exigir migração compatível, testes de isolamento e recuperação antes de impor unicidade no schema.
 
+### Delegação pela conversa principal (candidata local, 03/11/2026)
+
+A entrada principal do Administrador pode aceitar consentimento explícito por turno para até dois envios GPT, usando **o mesmo** motor `AutonomousDialogue`, o mesmo `Task/Run` e o mesmo SQLite. O Groq devolve uma decisão estruturada `respond` ou `delegate`: perguntas comuns ficam no chat administrativo; pedidos técnicos classificados como `delegate` apenas iniciam a missão existente. O Groq não produz o artefato nem concede grants, e a classificação não prova que houve envio GPT. O próprio executor conserva admissão, recibos e reconciliação de efeitos incertos.
+
+O consentimento deve ser visível no compositor, revogável antes do envio, e registrado no comando canônico. Respostas incompletas, schemas inesperados, ausência de executor/autorização e missões concorrentes falham fechados; a UI informa `blocked` sem dizer que executou. O resultado GPT é revisto pelo Groq apenas após recebimento e proveniência confirmados; um Run concluído não certifica arquivo salvo, teste ou deploy. Esta é uma direção implementada em branch de desenvolvimento, **não** uma certificação de operação autônoma 24h ou de arquivos locais pelo Runtime.
+
 ## 2. Inicialização sem mensagem humana
 
 1. **Connect/onboarding**: nome, missão geral opcional, organização/repositórios GitHub autorizados, vínculos de workspace quando grants reais existirem, budget, capacidades e policy. Não inferir autorização apenas de URL.

@@ -97,9 +97,24 @@ export function buildCoordinatorRequestContext({store,taskId,mission,projectId,o
   return {system,history,prepareWork};
 }
 
-export function validateCoordinatorReply(content,{prepareWork=false,errorPrefix='coordinator'}={}) {
+export function validateCoordinatorReply(content,{prepareWork=false,delegateWork=false,errorPrefix='coordinator'}={}) {
   if(typeof content!=='string'||!content.trim()||content.length>12000)
     throw Error(`${errorPrefix}_invalid_response`);
+  if(delegateWork){
+    let decision;
+    try {decision=parseStructuredModelObject(content);}
+    catch {throw Error(`${errorPrefix}_invalid_jarvis_decision`);}
+    if(!decision||typeof decision!=='object'||Array.isArray(decision)||
+      Object.keys(decision).length!==2||
+      !Object.hasOwn(decision,'action')||!Object.hasOwn(decision,'reply')||
+      !['respond','delegate'].includes(decision.action)||
+      typeof decision.reply!=='string'||
+      !decision.reply.trim()||decision.reply.length>500||
+      /<!(?:doctype)|<html\b|<script\b|\x60\x60\x60/i.test(decision.reply))
+      throw Error(`${errorPrefix}_invalid_jarvis_decision`);
+    return {content:decision.reply.trim(),
+      delegation:decision.action==='delegate'?'technical':'none'};
+  }
   if(!prepareWork)return {content};
   let proposal;
   try {proposal=parseStructuredModelObject(content);}

@@ -1059,7 +1059,8 @@ test('Groq and ChatGPT workspaces have distinct visible destinations and fail-cl
   assert.doesNotMatch(orchestratorUi,/orchestratorChatAvailable=gptWebTransportAvailable/);
   assert.match(orchestratorUi,/\$\('coordinatorComposer'\)\.addEventListener\('submit'/);
   assert.match(orchestratorUi,/command\('orchestrator_chat'/);
-  assert.match(contract,/\['orchestrator_chat'.*configured coordinator/);
+  assert.match(contract,/\['orchestrator_chat'.*coordinator turn/);
+  assert.match(contract,/With explicit delegateWork consent/);
   assert.match(service,/const usesProvider=isWorkSend;/);
   assert.match(service,/const port=usesProvider\?this\.provider:this\.coordinator/);
   assert.doesNotMatch(service,/const gptWebChat=operation==='orchestrator_chat'/);

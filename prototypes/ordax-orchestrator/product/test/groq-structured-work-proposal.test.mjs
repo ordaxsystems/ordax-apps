@@ -90,6 +90,52 @@ test('model output may not smuggle extra fields or invalid proposals',async t=>{
   await assert.rejects(adapter.send(args),/groq_invalid_work_proposal/);
 });
 
+test('Jarvis Groq route classifies a technical artifact request without writing the artifact',async t=>{
+  const f=setup(t),args=await f.ids();
+  const groq=createGroqCoordinatorConversation({store:f.store,getApiKey:()=> 'fixture-secret',
+    isEnabled:()=>true,fetchImpl:async(_url,request)=>{
+      const data=JSON.parse(request.body);
+      assert.equal(data.response_format.type,'json_schema');
+      assert.equal(data.response_format.json_schema.json_schema,undefined);
+      assert.equal(data.response_format.json_schema.strict,true);
+      assert.deepEqual(data.response_format.json_schema.schema.required,['action','reply']);
+      assert.ok(data.messages[0].content.includes('action=delegate'));
+      assert.equal(data.tools,undefined);
+      return apiResponse(JSON.stringify({action:'delegate',
+        reply:'Vou coordenar esta missão com o executor GPT e observar o resultado.'}));
+    }});
+  const result=await groq.send({...args,prepareWork:false,delegateWork:true});
+  assert.equal(result.delegation,'technical');
+  assert.match(result.content,/executor GPT/);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,0);
+});
+
+test('Jarvis Groq route keeps ordinary chat local and rejects code masquerading as coordination',async t=>{
+  const f=setup(t),args=await f.ids();
+  let raw=JSON.stringify({action:'respond',reply:'Olá! Como posso ajudar?'});
+  const groq=createGroqCoordinatorConversation({store:f.store,getApiKey:()=> 'fixture-secret',
+    isEnabled:()=>true,model:'llama-3.3-70b-versatile',
+    fetchImpl:async(_url,request)=>{
+      const data=JSON.parse(request.body);
+      assert.deepEqual(data.response_format,{type:'json_object'});
+      return apiResponse(raw);
+    }});
+  const answer=await groq.send({...args,prepareWork:false,delegateWork:true});
+  assert.equal(answer.delegation,'none');
+  assert.match(answer.content,/Olá/);
+  for(const invalid of [
+    {action:'delegate',reply:'<!DOCTYPE html><html><script></script></html>'},
+    {action:'delegate',reply:'Enviarei.',autoSend:true},
+    {action:'unknown',reply:'Talvez'},
+    {action:'delegate',reply:' '.repeat(501)},
+  ]){
+    raw=JSON.stringify(invalid);
+    await assert.rejects(groq.send({...args,prepareWork:false,delegateWork:true}),
+      /groq_invalid_jarvis_decision/);
+  }
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,0);
+});
+
 test('ordinary Groq coordinator remains natural language without JSON format',async t=>{
   const f=setup(t),args=await f.ids();
   const adapter=createGroqCoordinatorConversation({store:f.store,

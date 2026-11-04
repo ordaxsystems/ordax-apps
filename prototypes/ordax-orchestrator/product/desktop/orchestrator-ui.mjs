@@ -140,6 +140,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('startAutonomousStory').disabled=$('startAutonomousDialogue').disabled;
     $('startAutonomousTechnical').disabled=$('startAutonomousDialogue').disabled;
     $('coordinatorPrompt').disabled=coordinatorSubmitting||!chatTaskId;
+    $('coordinatorDelegateWork').disabled=nodeHost||coordinatorSubmitting||!selectedReady;
+    $('coordinatorDelegationLabel').hidden=nodeHost;
   }
   function setCoordinatorDraftState(text='') {
     const compatibility=coordinatorDraftCommitAvailable?'':
@@ -1411,6 +1413,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     // Acquire the single-flight lock BEFORE the first async draft read.
     // The form's button restoration must not allow a second Groq dispatch.
     if(coordinatorSubmitting||analysisBusy||$('coordinatorSend').disabled)return;
+    const delegateWork=!nodeHost&&$('coordinatorDelegateWork').checked;
     coordinatorSubmitting=true;syncCoordinatorActions();
     void formAction(event.currentTarget,async()=>{
       const p=projectId,o=orchestratorId,t=chatTaskId;
@@ -1419,11 +1422,17 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       // stale coordinator message to the old project after navigation.
       if(p!==projectId||o!==orchestratorId||t!==chatTaskId||!content)return;
       status('Consultando o orquestrador…');
-      const receipt=await command('orchestrator_chat',{projectId:p,orchestratorId:o,content,draftRevision:draft.draftRevision});
+      const receipt=await command('orchestrator_chat',{projectId:p,orchestratorId:o,content,delegateWork,draftRevision:draft.draftRevision});
       if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
       await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
-      if(receipt.status==='succeeded')
-        status('Resposta do Orquestrador registrada via '+(receipt.result?.provider||'modelo configurado')+'. Nenhuma mensagem foi enviada às conversas GPT.');
+      if(receipt.status==='succeeded'){
+        const delegation=receipt.result?.delegation;
+        status(delegation?.status==='accepted'
+          ?'Groq classificou uma missão e o Orchestrator a registrou. O GPT é o executor; acompanhe os recibos da missão antes de considerar qualquer envio ou entrega confirmada.'
+          :delegation?.status==='blocked'
+            ?'Groq propôs delegação, mas o executor não foi autorizado ou está indisponível. Nenhuma missão foi iniciada; verifique a sessão GPT e os bloqueios.'
+            :'Resposta do Orquestrador registrada via '+(receipt.result?.provider||'modelo configurado')+'. Nenhuma missão GPT foi iniciada.');
+      }
       else status('Resposta do Orquestrador não confirmada ('+receipt.status+'). O envio não será repetido automaticamente.');
       await renderCoordinator();
     }).finally(()=>{coordinatorSubmitting=false;syncCoordinatorActions();});
