@@ -30,8 +30,8 @@ test('physical frontend monitor describes registered execution, not fictitious a
     assert.throws(()=>describeExecutionMonitor(invalid),/invalid_execution_monitor_counts/);
   assert.match(uiHtml,/id="executionOverviewTitle"/);
   assert.match(uiHtml,/id="executionOverviewDescription"/);
-  assert.match(uiHtml,/Administrador · Groq/);
-  assert.match(uiHtml,/Conversas e Runs · GPT Web/);
+  assert.match(uiHtml,/Assistente OrdaX/);
+  assert.match(uiHtml,/Tarefas e resultados/);
   const renderer=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.match(renderer,/\$\('executionOverviewTitle'\)\.textContent=overview\.title/);
   assert.match(renderer,/\$\('executionOverviewDescription'\)\.textContent=overview\.description/);
@@ -462,7 +462,7 @@ test('project hub exposes creation and switching before the administrative navig
   assert.ok(html.indexOf('id="projectNavList"')<html.indexOf('id="openOrchestrator"'),
     'switching projects must be immediately discoverable in the sidebar');
   assert.match(html,/Administrador Geral/);
-  assert.match(html,/id="openWorks"[\s\S]*?<strong>Missões<\/strong>/);
+  assert.match(html,/id="openWorks"[\s\S]*?<strong>Atividades<\/strong>/);
   assert.match(html,/id="executionOverview"/);
   assert.match(html,/<section id="projectSwitcher" class="project-chooser"[^>]*hidden>/);
   assert.match(orchestration,/projectSwitcher'\)\.hidden=otherProjects\.length===0/);
@@ -479,7 +479,7 @@ test('project hub exposes creation and switching before the administrative navig
   assert.doesNotMatch(html,/Trocar de projeto anterior/);
   assert.match(orchestration,/activeProjectName'\)\.textContent=current\?\.name/);
   assert.match(orchestration,/GitHub vinculado por URL · leitura não verificada/);
-  assert.match(orchestration,/CANAL ADMINISTRATIVO ·/);
+  assert.match(orchestration,/ASSISTENTE ORDAX/);
   assert.match(css,/--font-ui:/);
   for(const token of ['--bg:','--panel:','--panel-2:','--border:','--text:','--muted:','--focus:'])
     assert.ok(css.includes(token),token+' should be defined in the canonical CSS root');
@@ -493,7 +493,7 @@ test('GPT execution navigation opens scoped work chooser, including an empty pro
   const orchestrator=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const shell=fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
   assert.match(html,/id="openWorks"[^>]*aria-controls="orchestratorWorkRail"[^>]*aria-expanded="false"/);
-  assert.match(html,/Missões<\/strong><small>Conversas e Runs · GPT Web/);
+  assert.match(html,/Atividades<\/strong><small>Tarefas e resultados/);
   assert.match(orchestrator,/\$\('openWorks'\)\.disabled=!projectId\|\|!orchestratorId;/);
   assert.match(orchestrator,/\$\('openWorks'\)\.disabled=!p\|\|!selected;/);
   const start=orchestrator.indexOf('  function openMissionNavigation(');
@@ -522,7 +522,7 @@ test('compact administrator navigation retains both accessible selectors and the
   assert.equal((css.match(/:root\{/g)||[]).length,1,'one visual token root');
   assert.match(html,/id="projectSelect"[^>]*aria-label="Selecionar projeto ativo"/);
   assert.match(html,/id="orchestratorSelect"[^>]*aria-label="Selecionar administrador do projeto"/);
-  assert.match(html,/id="coordinatorApiSettings"[^>]*aria-label="Configurar modelo do Administrador Geral"/);
+  assert.match(html,/id="coordinatorApiSettings"[^>]*aria-label="Abrir configurações de modelos"/);
   assert.match(css,/body\.orchestrator-focus \.app-shell\{grid-template-rows:98px minmax\(0,1fr\)\}/);
   assert.match(css,/body\.orchestrator-focus \.orchestration-navigation\{grid-column:1\/-1;grid-row:2;/);
   assert.match(css,/body\.orchestrator-focus \.left-footer\{grid-column:2;grid-row:1\}/);
@@ -725,11 +725,11 @@ test('coordinator shows an actionable empty state and keeps mobile controls insi
   assert.match(orchestration,/page\.messages\.length===0/);
   assert.match(orchestration,/uncertainCommands/);
   assert.match(orchestration,/nada foi reenviado automaticamente/);
-  assert.match(orchestration,/Conversa de coordenação ainda vazia/);
-  assert.match(orchestration,/Este é o chat do Orquestrador via/);
-  assert.match(orchestration,/Configurar '\+model/);
+  assert.match(orchestration,/Como posso ajudar\?/);
+  assert.match(orchestration,/Descreva o que deseja criar/);
+  assert.match(orchestration,/settings.textContent='Ajustes'/);
   assert.match(orchestration,/ChatGPT Plan · autorizado/);
-  assert.match(html,/id="coordinatorApiSettings"[^>]*>Configurar Groq</);
+  assert.match(html,/id="coordinatorApiSettings"[^>]*>Ajustes</);
   assert.match(css,/coordinator-head-actions #coordinatorApiSettings\{font-size:9px;width:auto/);
   assert.match(orchestration,/groq_auth_rejected:/);
   assert.match(orchestration,/O tempo de resposta do \$\{provider\} expirou sem confirmação/);
@@ -1045,11 +1045,11 @@ test('Groq and ChatGPT workspaces have distinct visible destinations and fail-cl
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   assert.match(uiHtml,/id="openOrchestrator"/);
   assert.match(uiHtml,/id="openWorks"/);
-  assert.match(uiHtml,/ADMINISTRAÇÃO · GROQ/);
+  assert.match(uiHtml,/ASSISTENTE ORDAX/);
   assert.match(uiHtml,/CONVERSA DE TRABALHO · CHATGPT WEB/);
   assert.match(uiHtml,/id="coordinatorComposer"/);
   assert.match(uiHtml,/id="composer"/);
-  assert.match(uiHtml,/Enviar à Groq/);
+  assert.match(uiHtml,/id="coordinatorSend"[^>]*>Enviar</);
   assert.match(uiHtml,/Enviar ao GPT/);
   assert.match(ui,/setWorkspaceRoute\('coordinator'\)/);
   assert.match(ui,/setWorkspaceRoute\('gpt'\)/);
@@ -1060,7 +1060,7 @@ test('Groq and ChatGPT workspaces have distinct visible destinations and fail-cl
   assert.match(orchestratorUi,/\$\('coordinatorComposer'\)\.addEventListener\('submit'/);
   assert.match(orchestratorUi,/command\('orchestrator_chat'/);
   assert.match(contract,/\['orchestrator_chat'.*coordinator turn/);
-  assert.match(contract,/With explicit delegateWork consent/);
+  assert.match(contract,/For local user creation requests with delegateWork enabled/);
   assert.match(service,/const usesProvider=isWorkSend;/);
   assert.match(service,/const port=usesProvider\?this\.provider:this\.coordinator/);
   assert.doesNotMatch(service,/const gptWebChat=operation==='orchestrator_chat'/);

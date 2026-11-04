@@ -38,12 +38,12 @@
         <span class="workspace-modes-caption">Áreas do projeto</span>
         <button id="openOrchestrator" class="workspace-mode workspace-mode-coordinator" type="button" aria-pressed="false" disabled>
           <span class="workspace-mode-symbol" aria-hidden="true">◇</span>
-          <span class="workspace-mode-copy"><strong>Administrador · Groq</strong><small id="coordinatorNavProvider">Canal administrativo · Groq</small></span>
+          <span class="workspace-mode-copy"><strong>Assistente OrdaX</strong><small id="coordinatorNavProvider">Conversa do projeto</small></span>
           <span class="workspace-mode-arrow" aria-hidden="true">↗</span>
         </button>
         <button id="openWorks" class="workspace-mode workspace-mode-gpt" type="button" aria-pressed="false" aria-controls="orchestratorWorkRail" aria-expanded="false" disabled>
           <span class="workspace-mode-symbol" aria-hidden="true">⌘</span>
-          <span class="workspace-mode-copy"><strong>Missões</strong><small>Conversas e Runs · GPT Web</small></span>
+          <span class="workspace-mode-copy"><strong>Atividades</strong><small>Tarefas e resultados</small></span>
           <span class="workspace-mode-arrow" aria-hidden="true">↗</span>
         </button>
         <button id="openHistory" class="workspace-mode" type="button" disabled>
@@ -139,16 +139,16 @@
     <section class="chat-column">
       <section id="orchestrationPanel" class="orchestration-panel" hidden aria-label="Conversa com o orquestrador">
         <header class="coordinator-head">
-          <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><span class="route-kicker" id="coordinatorRouteLabel">ADMINISTRAÇÃO · GROQ</span><h2 id="orchestratorTitle">Conversar com Orchestrator</h2><p id="orchestratorMission"></p></div></div>
+          <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><span class="route-kicker" id="coordinatorRouteLabel">ASSISTENTE ORDAX</span><h2 id="orchestratorTitle">Conversa</h2><p id="orchestratorMission"></p></div></div>
           <div class="coordinator-head-actions">
             <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Frentes</button>
             <button id="pauseOrchestrator" class="ghost-button" type="button" disabled>Pausar</button>
-            <button id="coordinatorApiSettings" class="ghost-button" type="button" aria-label="Configurar modelo do Administrador Geral" title="Configurar o modelo do Administrador Geral">Configurar Groq</button>
+            <button id="coordinatorApiSettings" class="ghost-button" type="button" aria-label="Abrir configurações de modelos" title="Configurar modelos conectados">Ajustes</button>
           </div>
         </header>
         <div class="coordinator-transport" role="status" aria-live="polite">
           <span class="transport-symbol" aria-hidden="true">●</span>
-          <span id="orchestrationConnection" class="orchestration-connection">Esta área conversa com o Orquestrador. Nenhuma mensagem daqui vai ao ChatGPT Web.</span>
+          <span id="orchestrationConnection" class="orchestration-connection">Converse normalmente. O OrdaX organiza as tarefas com os serviços conectados.</span>
         </div>
         <details id="projectPulseDisclosure" class="command-advanced"><summary>Ferramentas de missão e diagnóstico local</summary>
         <section id="projectPulse" class="project-pulse" aria-label="Resumo operacional das frentes de trabalho" hidden>
@@ -222,14 +222,10 @@
         <div id="coordinatorProposals" class="coordinator-proposals" aria-label="Propostas para revisão"></div>
         <form id="coordinatorComposer">
           <label class="sr-only" for="coordinatorPrompt">Mensagem ao orquestrador</label>
-          <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="Envie uma mensagem ao Orchestrator..." aria-describedby="orchestrationConnection" required></textarea>
-          <button id="coordinatorSend" class="send-button coordinator-send" type="submit" aria-label="Enviar ao Orquestrador via Groq" disabled>Enviar à Groq</button>
+          <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="O que você quer criar?" aria-describedby="orchestrationConnection" required></textarea>
+          <button id="coordinatorSend" class="send-button coordinator-send" type="submit" aria-label="Enviar mensagem" disabled>Enviar</button>
         </form>
-        <label id="coordinatorDelegationLabel" class="coordinator-delegation-permission">
-          <input id="coordinatorDelegateWork" type="checkbox" checked />
-          <span>Autorizar delegação: se o Groq identificar uma missão técnica, iniciar até 2 envios ao GPT neste pedido. Perguntas comuns ficam no Groq.</span>
-        </label>
-        <small class="coordinator-route-note">Você conversa com o Administrador Geral via Groq. Somente uma missão autorizada pode chegar ao GPT Web, pelo executor canônico. Ctrl+Enter envia · Shift+Enter cria nova linha.</small>
+        <small class="coordinator-route-note">Ao pedir uma criação, você autoriza o OrdaX a usar os serviços conectados para essa tarefa, respeitando os limites da sessão. Ctrl+Enter envia · Shift+Enter cria nova linha.</small>
         <small id="coordinatorDraftState" class="coordinator-draft-state" role="status" aria-live="polite"></small>
       </section>
       <p id="orchestrationNotice" class="orchestration-notice" role="status" aria-live="polite"></p>

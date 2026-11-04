@@ -140,8 +140,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('startAutonomousStory').disabled=$('startAutonomousDialogue').disabled;
     $('startAutonomousTechnical').disabled=$('startAutonomousDialogue').disabled;
     $('coordinatorPrompt').disabled=coordinatorSubmitting||!chatTaskId;
-    $('coordinatorDelegateWork').disabled=nodeHost||coordinatorSubmitting||!selectedReady;
-    $('coordinatorDelegationLabel').hidden=nodeHost;
   }
   function setCoordinatorDraftState(text='') {
     const compatibility=coordinatorDraftCommitAvailable?'':
@@ -802,18 +800,15 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(!coordinatorDraftCommitAvailable)setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
     else if($('coordinatorDraftState').textContent.includes('backend anterior'))
       setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
-    const routingName=nodeHost
-      ?coordinatorProvider==='chatgpt_plan'?'ChatGPT Plan':'Groq'
-      :'Groq';
-    $('coordinatorNavProvider').textContent='Canal administrativo · '+routingName;
-    $('coordinatorRouteLabel').textContent='CANAL ADMINISTRATIVO · '+routingName.toLocaleUpperCase('pt-BR');
-    $('coordinatorApiSettings').textContent='Configurar '+routingName;
-    $('coordinatorPrompt').placeholder='Mensagem para o Orquestrador · '+routingName;
-    $('coordinatorSend').textContent='Enviar à '+(routingName==='Groq'?'Groq':routingName);
-    $('coordinatorSend').setAttribute('aria-label','Enviar mensagem ao Orquestrador via '+routingName);
+    $('coordinatorNavProvider').textContent='Conversa do projeto';
+    $('coordinatorRouteLabel').textContent='ASSISTENTE ORDAX';
+    $('coordinatorApiSettings').textContent='Ajustes';
+    $('coordinatorPrompt').placeholder='O que você quer criar?';
+    $('coordinatorSend').textContent='Enviar';
+    $('coordinatorSend').setAttribute('aria-label','Enviar mensagem');
     $('orchestrationConnection').textContent=coordinatorAvailable
-      ?'Destino: Orquestrador via '+routingName+'. Nenhuma mensagem deste campo vai às conversas do ChatGPT Web.'
-      :'Orquestrador indisponível: configure '+routingName+' para conversar. Nenhuma mensagem será redirecionada ao ChatGPT Web.';
+      ?'Descreva seu pedido normalmente. O OrdaX cuida das etapas disponíveis.'
+      :'Assistente indisponível. Verifique as conexões em Ajustes para continuar.';
     syncCapabilitySummary();
     syncCoordinatorActions();
   }
@@ -1049,7 +1044,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('orchestratorMission').textContent=selected
       ?selected.name+' · '+selected.mission
       :'Configure o Administrador Geral deste projeto.';
-    $('orchestratorTitle').textContent='Conversar com Orchestrator';
+    $('orchestratorTitle').textContent='Conversa';
     syncCoordinatorActions();
     renderOrchestratorNavigation();
     await refreshWorks();
@@ -1143,17 +1138,16 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     }
     if(page.messages.length===0) {
       const empty=document.createElement('div');empty.className='coordinator-empty';
-      const title=document.createElement('strong');title.textContent='Conversa de coordenação ainda vazia';
+      const title=document.createElement('strong');title.textContent='Como posso ajudar?';
       const copy=document.createElement('p');
-      const model=nodeHost&&coordinatorProvider==='chatgpt_plan'?'ChatGPT Plan':'Groq';
-      copy.textContent='Este é o chat do Orquestrador via '+model+'. As conversas GPT de execução ficam no outro ambiente. Configure o modelo para começar; esta área não envia mensagens ao GPT Web.';
-      const settings=document.createElement('button');settings.type='button';settings.className='mini-secondary';settings.textContent='Configurar '+model;
+      copy.textContent='Descreva o que deseja criar, mudar ou entender. Basta escrever normalmente.';
+      const settings=document.createElement('button');settings.type='button';settings.className='mini-secondary';settings.textContent='Ajustes';
       settings.addEventListener('click',()=>$('coordinatorApiSettings').click());
       empty.append(title,copy,settings);box.append(empty);
     }
     for(const message of page.messages) {
       const article=document.createElement('article');article.className='coordinator-message';
-      const role=document.createElement('strong');role.textContent=message.role==='user'?'Você':'Resposta registrada (origem no recibo)';
+      const role=document.createElement('strong');role.textContent=message.role==='user'?'Você':'OrdaX';
       const text=document.createElement('p');text.textContent=message.content;
       article.append(role,text);box.append(article);
     }
@@ -1413,7 +1407,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     // Acquire the single-flight lock BEFORE the first async draft read.
     // The form's button restoration must not allow a second Groq dispatch.
     if(coordinatorSubmitting||analysisBusy||$('coordinatorSend').disabled)return;
-    const delegateWork=!nodeHost&&$('coordinatorDelegateWork').checked;
+    const delegateWork=!nodeHost;
     coordinatorSubmitting=true;syncCoordinatorActions();
     void formAction(event.currentTarget,async()=>{
       const p=projectId,o=orchestratorId,t=chatTaskId;
@@ -1421,19 +1415,19 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       // Selection can change while awaiting the durable draft. Never send a
       // stale coordinator message to the old project after navigation.
       if(p!==projectId||o!==orchestratorId||t!==chatTaskId||!content)return;
-      status('Consultando o orquestrador…');
+      status('Entendendo o pedido…');
       const receipt=await command('orchestrator_chat',{projectId:p,orchestratorId:o,content,delegateWork,draftRevision:draft.draftRevision});
       if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
       await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
       if(receipt.status==='succeeded'){
         const delegation=receipt.result?.delegation;
         status(delegation?.status==='accepted'
-          ?'Groq classificou uma missão e o Orchestrator a registrou. O GPT é o executor; acompanhe os recibos da missão antes de considerar qualquer envio ou entrega confirmada.'
+          ?'Pedido recebido. Preparando a execução…'
           :delegation?.status==='blocked'
-            ?'Groq propôs delegação, mas o executor não foi autorizado ou está indisponível. Nenhuma missão foi iniciada; verifique a sessão GPT e os bloqueios.'
-            :'Resposta do Orquestrador registrada via '+(receipt.result?.provider||'modelo configurado')+'. Nenhuma missão GPT foi iniciada.');
+            ?'Não foi possível começar essa tarefa. Verifique as conexões em Ajustes.'
+            :'Resposta registrada.');
       }
-      else status('Resposta do Orquestrador não confirmada ('+receipt.status+'). O envio não será repetido automaticamente.');
+      else status('Não foi possível confirmar a resposta. Confira o histórico antes de tentar novamente.');
       await renderCoordinator();
     }).finally(()=>{coordinatorSubmitting=false;syncCoordinatorActions();});
   });

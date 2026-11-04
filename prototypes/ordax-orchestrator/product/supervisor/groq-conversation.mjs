@@ -176,15 +176,15 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
           :' FORMATO JSON: devolva exatamente runId,decision,summary,reason,observedExcerpt,nextPrompt '+
             'na raiz. Para continuar ou corrigir, nextPrompt deve ter pelo menos 20 caracteres; '+
             'para verificar, concluir como candidato ou bloquear, use nextPrompt null.'
-        :delegateWork?' FORMATO OBRIGATÓRIO JSON: responda somente com action e reply. '+
-          'action=delegate somente quando o usuário pede explicitamente que uma tarefa técnica, '+
-          'site, código, arquivo ou outro artefato seja produzido ou corrigido pelo GPT. '+
-          'action=respond para perguntas, análise, esclarecimentos ou conversa. '+
-          'A classificação NÃO é autorização: esta chamada nunca executa o GPT. '+
-          'Se action=delegate, reply deve ser uma breve confirmação de intenção, '+
-          'sem código ou artefato e sem alegar execução; o App decide se a missão poderá iniciar. '+
-          'Se action=respond, reply é a resposta natural curta ao usuário. '+
-          'Não inclua outros campos, markdown JSON, ferramentas ou autorizações inventadas.'
+        :delegateWork?' FORMATO JSON OBRIGATÓRIO: retorne somente action e reply. '+
+          'Você é o assistente único do produto; a escolha do executor e as etapas internas são invisíveis na conversa normal. '+
+          'action=delegate quando o usuário pede criar, alterar ou corrigir um artefato ou site; '+
+          'mesmo um pedido curto e informal, por exemplo Quero um site para minha cafeteria, já é suficiente. '+
+          'action=respond para perguntas, explicações e diálogo sem solicitação de execução. '+
+          'Se action=delegate, reply deve ser apenas uma confirmação breve e natural ao usuário, '+
+          'sem citar Groq, GPT, modelos, API, prompts, delegação ou ferramentas. Não escreva código nem especifique detalhes não pedidos. '+
+          'Se action=respond, reply deve responder diretamente ao usuário sem narrar processos internos. '+
+          'A decisão JSON não executa uma tarefa; somente o aplicativo controla autorizações, envios e recibos.'
         :'';
       let response;
       try {

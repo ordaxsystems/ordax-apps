@@ -47,17 +47,27 @@ test('one authorized Jarvis turn classifies and durably starts ONE existing tech
   assert.equal(greeting.result.delegation.status,'not_needed');
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_autonomous_dialogues').get().n,0);
   const input={projectId,orchestratorId,
-    content:'Crie um site HTML e devolva os resultados reais.',delegateWork:true};
+    content:'Quero um site de página única para a cafeteria fictícia Estação Café',delegateWork:true};
   const first=await f.invoke('orchestrator_chat',input,'single_ui_turn_01');
   assert.equal(first.status,'succeeded');
   assert.equal(first.result.delegation.status,'accepted');
   assert.match(first.result.delegation.missionId,/^autonomous_/);
   const replay=await f.invoke('orchestrator_chat',input,'single_ui_turn_01');
   assert.deepEqual(replay,first);
-  const jobs=f.store.db.prepare('SELECT mission,state,strategy FROM lab_autonomous_dialogues').all();
+  const jobs=f.store.db.prepare('SELECT mission,state,strategy,question_a,task_a_id FROM lab_autonomous_dialogues').all();
   assert.equal(jobs.length,1);
   assert.equal(jobs[0].mission,input.content);
   assert.equal(jobs[0].strategy,'semantic');
+  assert.equal(jobs[0].state,'ready_a');
+  assert.equal(jobs[0].question_a,input.content,
+    'first GPT prompt must be the exact user message, without Groq-added instructions');
+  assert.ok(jobs[0].task_a_id,'reuse the canonical work Task for the first send');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_task_bindings WHERE kind='work'").get().n,2,
+    'reuse the existing mission-created work and create only one execution Task');
+  const coordinatorTask=f.store.db.prepare("SELECT chat_task_id FROM lab_orchestrators WHERE id=?").get(orchestratorId).chat_task_id;
+  const last=f.store.messages(coordinatorTask).at(-1);
+  assert.deepEqual(last,{...last,role:'assistant',content:'Vou cuidar disso.'});
+  assert.doesNotMatch(last.content,/Groq|GPT|executor|modelo|delegar/i);
   assert.equal(f.coordinatorCalls,2,'one Groq call per distinct user turn');
   assert.equal(f.providerSends,0,'busy GPT executor cannot be bypassed');
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,0);

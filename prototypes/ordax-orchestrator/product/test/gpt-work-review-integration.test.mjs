@@ -58,9 +58,14 @@ test('a completed, provenance-backed GPT answer is read and classified by Groq a
   const prompt=buildCoordinatorRequestContext({store,taskId:service.orchestrator(projectId,orchestratorId).chat_task_id,
     mission:'Interprete o resultado, sem inventar execucao',projectId,orchestratorId,
     analysisContext:{phase:'gpt_response_review',works:[],reviewEvidence:{answerStart:source.head}}});
-  assert.deepEqual(prompt.history,[],'old Groq turns cannot displace the actual GPT answer');
+  assert.deepEqual(prompt.history.map(item=>item.role),['user'],
+    'focused review must have one internal user turn rather than showing old chat messages');
+  assert.match(prompt.history[0].content,/Interprete o resultado/);
   assert.deepEqual(await service.continuation.tick(context),{state:'analyzed',runId:started.runId});
   assert.equal(reviews,1);
+  const coordinatorChatId=service.orchestrator(projectId,orchestratorId).chat_task_id;
+  assert.equal(store.messages(coordinatorChatId).length,0,
+    'internal Run review must not leak its JSON payload into the human conversation');
   const status=service.continuation.status(projectId,orchestratorId);
   assert.equal(status.latest.reviewDecision.decision,'verify_external_effect');
   assert.equal(status.latest.reviewDecision.automaticGPTSendAuthorized,false);

@@ -131,11 +131,13 @@ export class AutonomousDialogue {
       .get(context.workspaceSessionId,context.actorId,context.clientId,projectId,orchestratorId);
     return {mission:this.summary(row)};
   }
-  start(context,{projectId,orchestratorId,mission,requestId,mode='dialogue'}) {
+  start(context,{projectId,orchestratorId,mission,requestId,mode='dialogue',directUserPrompt=false}) {
     this.service.requireAccess(context,'autonomous_dialogue_start',projectId);
     const owner=this.service.orchestrator(projectId,orchestratorId);
     if(owner.status!=='ready')throw Error('orchestrator_paused');
-    if(!noExtra(mission)||mission.length>4000||!['dialogue','story','technical'].includes(mode))throw Error('autonomous_mission_invalid');
+    if(!noExtra(mission)||mission.length>4000||!['dialogue','story','technical'].includes(mode)||
+       typeof directUserPrompt!=='boolean'||(directUserPrompt&&mode!=='technical'))
+      throw Error('autonomous_mission_invalid');
     if(typeof this.service.coordinator?.send!=='function'||
        this.service.coordinator.available?.(projectId,orchestratorId)!==true||
        typeof this.service.provider?.send!=='function')throw Error('autonomous_provider_unavailable');
@@ -144,7 +146,8 @@ export class AutonomousDialogue {
       .get(context.workspaceSessionId,context.actorId,context.clientId,requestId);
     if(existing) {
       if(existing.project_id!==projectId||existing.orchestrator_id!==orchestratorId||existing.mission!==mission||
-        (existing.mode==='story'?'story':existing.strategy==='semantic'?'technical':'dialogue')!==mode)
+        (existing.mode==='story'?'story':existing.strategy==='semantic'?'technical':'dialogue')!==mode||
+        (directUserPrompt&&existing.question_a!==mission))
         throw Error('autonomous_request_conflict');
       return this.summary(existing);
     }
@@ -158,13 +161,28 @@ export class AutonomousDialogue {
       LIMIT 1`).get(context.workspaceSessionId))
       throw Error('autonomous_mission_already_running');
     const id='autonomous_'+randomUUID(),now=this.store.now();
-    this.db.prepare(`INSERT INTO lab_autonomous_dialogues
-      (id,workspace_session_id,actor_id,client_id,project_id,orchestrator_id,request_id,mission,
-        state,max_gpt_sends,created_at,updated_at,mode,strategy)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(id,context.workspaceSessionId,context.actorId,context.clientId,projectId,orchestratorId,
-        requestId,mission,mode==='story'?'story_queued_1':'queued',LIMIT,now,now,
-        mode==='story'?'story':'dialogue',mode==='technical'?'semantic':'legacy');
+    // The first execution of a conversational request must send the user's
+    // exact message. Do not let the planner add requirements that were never
+    // asked for. Reuse the existing Work/Task, Run and two-send mission ledger.
+    this.db.exec('SAVEPOINT autonomous_start_atomic');
+    try {
+      const initialTask=directUserPrompt?this.service.mutate('work_create',{
+        projectId,orchestratorId,title:Array.from(mission.trim().split(/\\r?\\n/u,1)[0]).slice(0,130).join('')
+      }).taskId:null;
+      this.db.prepare(`INSERT INTO lab_autonomous_dialogues
+        (id,workspace_session_id,actor_id,client_id,project_id,orchestrator_id,request_id,mission,
+          state,max_gpt_sends,task_a_id,question_a,created_at,updated_at,mode,strategy)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(id,context.workspaceSessionId,context.actorId,context.clientId,projectId,orchestratorId,
+          requestId,mission,directUserPrompt?'ready_a':mode==='story'?'story_queued_1':'queued',
+          LIMIT,initialTask,directUserPrompt?mission:null,now,now,
+          mode==='story'?'story':'dialogue',mode==='technical'?'semantic':'legacy');
+      this.db.exec('RELEASE SAVEPOINT autonomous_start_atomic');
+    } catch(error) {
+      this.db.exec('ROLLBACK TO SAVEPOINT autonomous_start_atomic');
+      this.db.exec('RELEASE SAVEPOINT autonomous_start_atomic');
+      throw error;
+    }
     this.notify();
     // Initiating a mission is the ONLY operator action. The existing App
     // lifetime tick also resumes queued/ready (never indeterminate) stages.

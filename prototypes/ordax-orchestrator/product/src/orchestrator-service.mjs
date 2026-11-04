@@ -1306,7 +1306,9 @@ export class OrchestratorService {
             throw Error('task_draft_revision_conflict');
           if(!Number.isSafeInteger(input.draftRevision+1))throw Error('invalid_task_draft_revision');
         }
-        this.store.appendMessage(task.id,'user',content);
+        // Run-specific review is an internal decision stored in the
+        // canonical receipt and mission ledger, not a human chat turn.
+        if(!reviewSource)this.store.appendMessage(task.id,'user',content);
         if(coordinatorDraft) {
           const cleared=this.store.setDraft(task.id,'',input.draftRevision+1);
           if(cleared.draft!==''||cleared.draft_revision!==input.draftRevision+1)
@@ -1378,7 +1380,7 @@ export class OrchestratorService {
               try {
                 const accepted=this.autonomous.start(context,{
                   projectId:input.projectId,orchestratorId:input.orchestratorId,
-                  mission:input.content,mode:'technical',
+                  mission:input.content,mode:'technical',directUserPrompt:true,
                   requestId:'jarvis_'+reserved.commandId
                 });
                 this.db.exec('RELEASE SAVEPOINT jarvis_delegation');
@@ -1390,7 +1392,15 @@ export class OrchestratorService {
               }
             }
           }
-          this.store.appendMessage(task.id,'assistant',reply.content);
+          // The coordinator's internal routing wording is not a user reply.
+          // Report only what the App actually accepted. A model cannot claim
+          // a send, an artifact or a completed run by composing prose.
+          const userReply=delegation?.status==='accepted'
+            ?'Vou cuidar disso.'
+            :delegation?.status==='blocked'
+              ?'Não consegui iniciar essa tarefa. Confira a conexão para continuar.'
+              :reply.content;
+          if(!reviewSource)this.store.appendMessage(task.id,'assistant',userReply);
           return this.finish(reserved.commandId,{taskId:task.id,responseObserved:true,
             ...(delegation?{delegation}:{}),
             ...(reviewSource?{reviewRunId:reviewSource.runId}:{}),
