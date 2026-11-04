@@ -6,7 +6,7 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const cp=require('node:child_process');
-const {createHash}=require('node:crypto');
+const {createHash,randomUUID}=require('node:crypto');
 const asar=require('@electron/asar');
 let buildSourceCommit=null;
 
@@ -80,6 +80,27 @@ async function attestPackagedAsar({archive,sourceCommit,
   }finally{fs.rmSync(temp,{force:true,recursive:true});}
 }
 exports.attestPackagedAsar=attestPackagedAsar;
+// A repeat build owns the same proof path. Replace its previous receipt only
+// after attesting the newly packed bytes; never rewrite Electron's ASAR.
+function writePackagedProofReceipt(receipt,proof){
+  if(!path.isAbsolute(receipt))throw Error('packaged_receipt_target_unsafe');
+  let existing;
+  try{existing=fs.lstatSync(receipt);}
+  catch(error){if(error?.code!=='ENOENT')throw error;}
+  if(existing&&(!existing.isFile()||existing.isSymbolicLink()))
+    throw Error('packaged_receipt_target_unsafe');
+  const temporary=path.join(path.dirname(receipt),
+    '.orchestrator-proof-'+process.pid+'-'+randomUUID()+'.tmp');
+  try{
+    fs.writeFileSync(temporary,JSON.stringify(proof,null,2)+'\n',{flag:'wx',mode:0o600});
+    fs.renameSync(temporary,receipt);
+  }finally{fs.rmSync(temporary,{force:true});}
+  const persisted=JSON.parse(fs.readFileSync(receipt,'utf8'));
+  if(!['schema','status','sourceCommit','contentDigest','asarSha256']
+    .every(key=>persisted[key]===proof[key]))
+    throw Error('packaged_receipt_verification_failed');
+}
+exports.writePackagedProofReceipt=writePackagedProofReceipt;
 exports.beforePack=async function beforePack(){
   const productRoot=path.resolve(__dirname,'..');
   // Build within the packager process. Spawning a nested Node process on
@@ -109,7 +130,7 @@ async function afterPack(context){
   const manifestPath=path.join(resources,'runtime-build.json');
   const proof=await attestPackagedAsar({archive,sourceCommit,manifestPath});
   const receipt=path.join(context.outDir,'orchestrator-packaged-proof.json');
-  fs.writeFileSync(receipt,JSON.stringify(proof,null,2)+'\n',{flag:'wx'});
+  writePackagedProofReceipt(receipt,proof);
   console.log(JSON.stringify({schema:proof.schema,status:proof.status,
     sourceCommit:proof.sourceCommit,contentDigest:proof.contentDigest,
     fileCount:proof.fileCount,asarSha256:proof.asarSha256}));
