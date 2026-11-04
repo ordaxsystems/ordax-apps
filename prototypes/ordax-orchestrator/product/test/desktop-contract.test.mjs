@@ -19,13 +19,42 @@ const uiHtml = fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
 const e2eLock = fs.readFileSync(path.join(root,'scripts','e2e-lock.cjs'),'utf8');
 const liveText = fs.readFileSync(path.join(root,'scripts','live-ui-text-smoke.cjs'),'utf8');
 
+test('GPT Work visibly attributes autonomous messages to OrdaX, never the human author',()=>{
+  const source=fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
+  const service=fs.readFileSync(path.join(root,'src','orchestrator-service.mjs'),'utf8');
+  const desktop=fs.readFileSync(path.join(root,'desktop','main.mjs'),'utf8');
+  assert.match(source,/message\.author_source==='orchestrator'/);
+  assert.match(source,/automatic\?'orchestrator':message\.role/);
+  assert.match(source,/OrdaX · envio automático/);
+  assert.doesNotMatch(source,/message\.role === 'user' \? 'Você' : 'ChatGPT'/,
+    'machine-created work must never silently become user-authored chat');
+  assert.match(source,/author_source:userMessage\.author_source\|\|'human'/);
+  assert.match(service,/author_source:m\.author_source/);
+  assert.match(desktop,/authorSource/);
+});
+
+test('natural project UI does not show model-generated publishing proposals as instructions',()=>{
+  const code=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  const summary=code.match(/\$\('executionMissionDetail'\)\.textContent=([\s\S]*?)\n    const workList/);
+  assert.ok(summary,'execution summary exists');
+  assert.doesNotMatch(summary[1],/\.decision\.summary|questionFinal/);
+  const raw=code.match(/\$\('autonomousDialogueState'\)\.textContent=([\s\S]*?)\n    \/\//);
+  assert.ok(raw,'mission status exists');
+  assert.doesNotMatch(raw[1],/\.decision\.summary|questionFinal|lastError/);
+  assert.match(raw[1],/describeConversationOutcome\(job\)/);
+});
+
 test('human conversation presents a read-only result instead of leaking technical routing',()=>{
   const base={missionId:'autonomous_fixture',mode:'technical',maxGPTSends:1,
-    taskAId:'task_first',taskBId:null,
+    taskAId:'task_first',taskBId:null,reviewedTaskId:'task_first',
     reviewTasks:[{taskId:'task_first',label:'Trabalho GPT'}]};
   const ready=describeConversationOutcome({...base,state:'verification_required',
     decision:{sourceRunId:'run_verified'}});
   assert.equal(ready.taskId,'task_first');
+  assert.equal(describeConversationOutcome({...base,taskBId:'task_unconfirmed',
+    reviewTasks:[...base.reviewTasks,{taskId:'task_unconfirmed'}],
+    state:'reconciliation_required',decision:{sourceRunId:'run_verified'}}).taskId,'task_first',
+    'a second interrupted Task must never replace the confirmed answer link');
   assert.match(ready.message,/Resposta recebida/);
   assert.match(ready.message,/não foram verificados/);
   assert.doesNotMatch(ready.message,/Groq|GPT|API|token|JSON/);
@@ -37,6 +66,9 @@ test('human conversation presents a read-only result instead of leaking technica
   assert.match(uncertain.message,/Nada será reenviado automaticamente/);
   assert.equal(describeConversationOutcome({...base,state:'reconciliation_required',
     decision:null}).taskId,null,'an unverified run cannot open as confirmed result');
+  assert.equal(describeConversationOutcome({...base,reviewedTaskId:null,
+    state:'verification_required',decision:{sourceRunId:'run_verified'}}).taskId,null,
+    'a missing owner match is never a confirmed result');
   assert.equal(describeConversationOutcome(null),null);
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const uiSource=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');

@@ -77,6 +77,33 @@ export class AutonomousDialogue {
       report_json TEXT NOT NULL,
       created_at TEXT NOT NULL
     );`);
+    // Older releases persisted automated GPT submissions with role=user
+    // and no author_source, making the UI falsely call them "Você".
+    // Reclassify only messages whose exact text, Task and Run timestamp
+    // match the original mission ledger. Do not change the transcript,
+    // submission receipts, run state or replay any provider request.
+    if(!this.db.prepare(
+      "SELECT 1 FROM store_migrations WHERE name='automatic-message-author-v1'").get()){
+      this.db.exec('BEGIN IMMEDIATE');
+      try{
+        this.db.prepare(`UPDATE messages SET author_source='orchestrator'
+          WHERE role='user' AND author_source='human' AND EXISTS (
+            SELECT 1 FROM lab_autonomous_dialogues a
+            JOIN runs r ON r.task_id=messages.task_id
+            WHERE (
+              (a.task_a_id=messages.task_id AND a.question_a=messages.content) OR
+              (a.task_b_id=messages.task_id AND a.question_b=messages.content)
+            )
+            AND ABS(unixepoch(r.started_at)-unixepoch(messages.created_at))<=2
+          )`).run();
+        this.db.prepare('INSERT INTO store_migrations(name,applied_at) VALUES(?,?)')
+          .run('automatic-message-author-v1',this.store.now());
+        this.db.exec('COMMIT');
+      }catch(error){
+        if(this.db.isTransaction)this.db.exec('ROLLBACK');
+        throw error;
+      }
+    }
     this.db.prepare(`UPDATE lab_autonomous_dialogues SET
       state='reconciliation_required',
       last_error='interrupted_story_stage_requires_reconciliation',updated_at=?
@@ -110,11 +137,22 @@ export class AutonomousDialogue {
     const semanticReview=semantic?(row.review_b_json||row.review_a_json):null;
     let decision=null;
     if(semanticReview){try{decision=JSON.parse(semanticReview);}catch{}}
+    // Link the user's result action to the Run actually reviewed, not to
+    // the last Task in the mission. A newer Task may have an interrupted or
+    // indeterminate provider submission and must never masquerade as a result.
+    let reviewedTaskId=null;
+    if(semantic&&typeof decision?.sourceRunId==='string'){
+      const reviewed=this.db.prepare('SELECT task_id,status FROM runs WHERE id=?')
+        .get(decision.sourceRunId);
+      if(reviewed?.status==='succeeded'&&
+        [row.task_a_id,row.task_b_id].includes(reviewed.task_id))
+        reviewedTaskId=reviewed.task_id;
+    }
     return {missionId:row.id,projectId:row.project_id,orchestratorId:row.orchestrator_id,
       mission:row.mission,
       mode:story?'story':semantic?'technical':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,quality,reviewTasks,
       state:row.state,maxGPTSends:story?STORY_TURNS:row.followup_policy==='review_only'?1:row.max_gpt_sends,
-      taskAId:row.task_a_id,taskBId:row.task_b_id,
+      taskAId:row.task_a_id,taskBId:row.task_b_id,reviewedTaskId,
       originMissionId:semantic?row.origin_mission_id||null:null,
       canContinue:semantic&&row.state==='budget_exhausted'&&
         ['continue_same_conversation','request_correction','new_conversation','new_work'].includes(decision?.decision)&&
@@ -399,7 +437,7 @@ export class AutonomousDialogue {
       if(decision.decision==='new_conversation')
         this.store.rotateConversation(taskId,'technical_mission_review');
     }
-    const r=await this.service.provider.send({taskId,content,draftRevision:null,taskKind:'work'});
+    const r=await this.service.provider.send({taskId,content,draftRevision:null,taskKind:'work',authorSource:'orchestrator'});
     requireConfirmedChatReceipt(r);
     if(row.strategy==='semantic') {
       const run=this.db.prepare("SELECT id,status FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1").get(taskId);

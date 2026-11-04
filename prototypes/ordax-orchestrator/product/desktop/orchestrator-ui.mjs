@@ -35,14 +35,11 @@ export function resolveProjectOnboardingMission(name,objective) {
  // It cannot confer GitHub/Runtime authority or issue a provider request.
 export function describeConversationOutcome(mission) {
   if(!mission||typeof mission.missionId!=='string')return null;
-  const verifiedReply=typeof mission.decision?.sourceRunId==='string'&&
-    typeof mission.taskAId==='string'&&mission.taskAId.length>0;
-  // A review is evidence of a confirmed GPT Run, not proof of filesystem,
-  // browser tests or deployment. Opening a task is always read-only.
-  const taskId=verifiedReply
-    ?typeof mission.taskBId==='string'&&mission.reviewTasks?.some(x=>x.taskId===mission.taskBId)&&
-      mission.maxGPTSends!==1?mission.taskBId:mission.taskAId
-    :null;
+  // The canonical Store has independently matched the reviewed Run ID,
+  // confirmed its status and returned only its owning Task.
+  const taskId=typeof mission.decision?.sourceRunId==='string'&&
+    typeof mission.reviewedTaskId==='string'&&mission.reviewedTaskId.length>0
+      ?mission.reviewedTaskId:null;
   switch(mission.state) {
     case 'queued':case 'planning_a':case 'ready_a':
       return {message:'Preparando seu pedido…',taskId:null};
@@ -353,12 +350,12 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         ?'attention':state==='blocked'?'blocked':'idle';
     const title=active?.mission?.trim()||'Nenhuma missão técnica registrada';
     $('executionMissionTitle').textContent=title.length>140?title.slice(0,137)+'…':title;
-    $('executionMissionDetail').textContent=active?.decision?.summary
-      ?'Decisão Groq registrada: '+active.decision.summary
-      :active?.lastError
-        ?'Interrupção registrada: '+active.lastError+'. Consulte os recibos antes de agir.'
-        :active?'Missão vinculada ao projeto; resultados externos ainda não certificados.'
-          :'Inicie ou inspecione uma missão para acompanhar as decisões do administrador.';
+    $('executionMissionDetail').textContent=active?.state==='reconciliation_required'
+      ?'Uma etapa foi interrompida. Confira a tarefa existente; nenhum envio será repetido automaticamente.'
+      :active?.state==='verification_required'
+        ?'Resposta recebida. Arquivos, testes e publicação ainda precisam de verificação independente.'
+        :active?'Missão vinculada ao projeto. Nenhuma ação adicional é autorizada por sugestões internas.'
+          :'Acompanhe aqui tarefas e resultados confirmados.';
     const workList=$('executionWorkList');workList.replaceChildren();
     const priority={running:0,attention:1,ready:2,completed:3};
     const ordered=[...works].sort((a,b)=>
@@ -397,8 +394,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const timeline=$('executionActivity');timeline.replaceChildren();
     const entries=[];
     if(active)entries.push(['Missão registrada',stateLabels[state]||state]);
-    if(active?.decision)entries.push(['Análise Groq',active.decision.summary||
-      'Uma decisão foi registrada; consulte a revisão completa.']);
+    if(active?.decision)entries.push(['Revisão registrada',
+      'As sugestões internas não autorizam novas tarefas. Consulte a execução existente.']);
     for(const work of ordered.filter(w=>w.latest_run_status||w.running_runs>0).slice(0,3)){
       entries.push([work.title,work.running_runs>0?'Run GPT em andamento':
         work.latest_run_status==='succeeded'?'Resposta observada; verificação externa pendente':
@@ -1135,8 +1132,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       :job.state==='succeeded'
       ?'História final montada pelo Groq, após duas rodadas GPT A/B'
       :job.state.startsWith('story_')?'História colaborativa: '+job.state.replaceAll('_',' '):null):null;
-    $('autonomousDialogueState').textContent=job?`${technicalLabel||storyLabel||labels[job.state]||job.state}. ${job.lastError||''}${job.decision?.summary?' Decisão Groq: '+job.decision.summary:''}${job.questionFinal?(job.mode==='story'?' História final: ':' Próximo passo proposto (não enviado): ')+job.questionFinal:''}`:
-      'Uma missão autoriza duas perguntas ou quatro cenas em duas rodadas. Groq conduz tudo sem comandos adicionais.';
+    $('autonomousDialogueState').textContent=job
+      ?describeConversationOutcome(job)?.message||technicalLabel||storyLabel||labels[job.state]||'Estado registrado'
+      :'Nenhuma execução ativa. Descreva o que deseja realizar.';
     // A failed or uncertain mission remains read-only. Reuse the canonical
     // Task navigator to inspect confirmed records, never schedule a retry.
     const reviews=$('autonomousReviewActions');

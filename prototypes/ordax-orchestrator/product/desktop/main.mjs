@@ -289,7 +289,7 @@ function persistImages(taskId, messageId, images = [], writtenPaths = null) {
   return out;
 }
 
-async function runTask(taskId, prompt, { newSession = false, draftRevision = null, allowCoordinatorTask = false } = {}, runWorker) {
+async function runTask(taskId, prompt, { newSession = false, draftRevision = null, allowCoordinatorTask = false, authorSource='human' } = {}, runWorker) {
   // An execution is always owned by the physical worker selected by the
   // canonical scheduler, never by whichever view happens to be visible.
   if(!runWorker||providerViews.resolve(runWorker?.view?.webContents)!==runWorker)
@@ -354,7 +354,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   let begun;
   try {
     begun=store.beginProviderRun(taskId, prompt, {
-      draftRevision,workerId:'electron-embedded-chatgpt',observerMode
+      draftRevision,workerId:'electron-embedded-chatgpt',observerMode,authorSource
     });
   } catch(error) {
     if(contextAttachment)try{removeTaskHandoffFile(handoffRoot,contextAttachment.filePath);}catch{}
@@ -906,9 +906,9 @@ const orchestratorKernel=createOrchestratorKernel({
   }),
   provider:{busy:()=>Boolean(liveRun||worker?.active||providerScheduler?.snapshot().pendingTasks),
     ready:async()=>{assertProviderSendReadiness(await worker.health());return true;},
-    send:async({taskId,content,draftRevision,taskKind})=>
+    send:async({taskId,content,draftRevision,taskKind,authorSource='human'})=>
     chatReceiptFromRunTask(await enqueueExecution(taskId,runWorker=>runTask(taskId,content,{newSession:false,draftRevision,
-      allowCoordinatorTask:taskKind==='orchestrator'},runWorker)))},
+      allowCoordinatorTask:taskKind==='orchestrator',authorSource},runWorker)))},
   coordinator:createGroqCoordinatorConversation({store,getApiKey:currentGroqKey,
     isEnabled:coordinatorChatEnabled})
 });

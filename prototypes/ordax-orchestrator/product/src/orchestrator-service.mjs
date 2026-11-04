@@ -533,7 +533,7 @@ export class OrchestratorService {
     if(operation==='work_messages') {
       this.task(input.projectId,input.taskId);
       const page=this.store.messagesPage(input.taskId,{before:input.before||null,limit:input.limit||50});
-      return {...page,messages:page.messages.map(m=>({id:m.id,role:m.role,content:m.content,created_at:m.created_at}))};
+      return {...page,messages:page.messages.map(m=>({id:m.id,role:m.role,content:m.content,created_at:m.created_at,author_source:m.author_source}))};
     }
     if(operation==='command_get')return this.getReceipt(context,input.commandId);
     throw Error('orchestrator_unknown_operation');

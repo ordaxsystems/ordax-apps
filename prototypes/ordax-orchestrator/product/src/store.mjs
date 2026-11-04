@@ -200,6 +200,7 @@ export class Store {
     this.ensureColumn('runs', 'observer_mode', 'TEXT');
     this.ensureColumn('runs', 'metrics', 'TEXT');
     this.ensureColumn('messages','sequence','INTEGER');
+    this.ensureColumn('messages','author_source',"TEXT NOT NULL DEFAULT 'human'");
     this.ensureTaskMessageSequence();
     this.ensureTaskMessageSearchIndex();
     this.memoryCandidates = new MemoryCandidateLedger(this);
@@ -651,10 +652,10 @@ export class Store {
     if (cursor&&cursor.taskId!==taskId) return [];
     const rows = bounded
       ? cursor
-        ? this.db.prepare(`SELECT id,role,content,created_at,sequence FROM messages WHERE task_id=?
+        ? this.db.prepare(`SELECT id,role,content,created_at,sequence,author_source FROM messages WHERE task_id=?
           AND sequence < ? ORDER BY sequence DESC LIMIT ?`).all(taskId,cursor.sequence,limit).reverse()
-        : this.db.prepare('SELECT id,role,content,created_at,sequence FROM messages WHERE task_id=? ORDER BY sequence DESC LIMIT ?').all(taskId,limit).reverse()
-      : this.db.prepare('SELECT id,role,content,created_at,sequence FROM messages WHERE task_id=? ORDER BY sequence').all(taskId);
+        : this.db.prepare('SELECT id,role,content,created_at,sequence,author_source FROM messages WHERE task_id=? ORDER BY sequence DESC LIMIT ?').all(taskId,limit).reverse()
+      : this.db.prepare('SELECT id,role,content,created_at,sequence,author_source FROM messages WHERE task_id=? ORDER BY sequence').all(taskId);
     if (!rows.length) return [];
     const assets = new Map();
     // The bounded continuation path needs at most eight messages. For full history,
@@ -696,21 +697,25 @@ export class Store {
     return rows.reverse().map(row => ({ ...row, payload: JSON.parse(row.payload) }));
   }
 
-  appendMessage(taskId, role, content) {
+  appendMessage(taskId, role, content, {authorSource='human'}={}) {
+    if(!['human','orchestrator'].includes(authorSource))throw Error('invalid_message_author_source');
+    if(role!=='user'&&authorSource!=='human')throw Error('non_user_message_author_source');
     const ownsTransaction=!this.db.isTransaction;
     if(ownsTransaction)this.db.exec('BEGIN IMMEDIATE');
     try {
       const id = `msg_${randomUUID()}`;
       const now = this.now();
-      this.db.prepare('INSERT INTO messages(id,task_id,role,content,created_at) VALUES(?,?,?,?,?)')
-        .run(id, taskId, role, content, now);
+      this.db.prepare('INSERT INTO messages(id,task_id,role,content,created_at,author_source) VALUES(?,?,?,?,?,?)')
+        .run(id, taskId, role, content, now, authorSource);
       this.touch(taskId);
-      this.event(taskId, 'message.appended', { id, role });
+      this.event(taskId, 'message.appended', { id, role, author_source:authorSource });
       const message={ id, role, content };
-      if (role === 'user') this.memoryCandidates.suggestFromMessage(taskId,message);
+      // Automated executor instructions are not human-authored facts or
+      // preferences. Never train the project's memory suggestions on them.
+      if (role === 'user'&&authorSource==='human') this.memoryCandidates.suggestFromMessage(taskId,message);
       else if (role === 'assistant') this.memoryCandidates.suggestFromAssistantMessage(taskId,message);
       if(ownsTransaction)this.db.exec('COMMIT');
-      return { id, role, content, created_at: now, assets: [] };
+      return { id, role, content, created_at: now, author_source:authorSource, assets: [] };
     } catch(error) {
       if(ownsTransaction&&this.db.isTransaction)this.db.exec('ROLLBACK');
       throw error;
@@ -958,7 +963,8 @@ export class Store {
   }
 
   beginProviderRun(taskId, prompt, { draftRevision = null,
-    workerId = 'electron-embedded-chatgpt', observerMode = 'auto' } = {}) {
+    workerId = 'electron-embedded-chatgpt', observerMode = 'auto', authorSource='human' } = {}) {
+    if(!['human','orchestrator'].includes(authorSource))throw Error('invalid_message_author_source');
     // Sending preparation is a SINGLE crash-consistent SQLite operation.
     // Crash before COMMIT: no orphan user message, no lost draft, no Run.
     // Crash after COMMIT: the running Run is recovered as interrupted, NEVER
@@ -978,7 +984,7 @@ export class Store {
         if (nextRevision <= Number(task.draft_revision || 0))
           throw new Error('task_draft_revision_conflict');
       }
-      const userMessage = this.appendMessage(taskId, 'user', content);
+      const userMessage = this.appendMessage(taskId, 'user', content,{authorSource});
       if (draftRevision != null) {
         const draft = this.setDraft(taskId, '', draftRevision);
         if (draft.draft !== '' || draft.draft_revision !== Number(draftRevision))

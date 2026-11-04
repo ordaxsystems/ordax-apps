@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
+import {AutonomousDialogue} from '../src/autonomous-dialogue.mjs';
 
 function setup(t,{providerAvailable=true}={}){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-jarvis-delegation-'));
@@ -32,9 +33,44 @@ function setup(t,{providerAvailable=true}={}){
   let seq=0;
   const invoke=(operation,input,requestId)=>
     svc.invoke(context,operation,{...input,requestId:requestId||'jarvis_req_'+(++seq)});
-  return {store,invoke,get coordinatorCalls(){return coordinatorCalls;},
+  return {store,service:svc,context,invoke,get coordinatorCalls(){return coordinatorCalls;},
     get providerSends(){return providerSends;}};
 }
+
+test('legacy internal GPT instructions are reattributed without deleting receipts or treating them as user speech',async t=>{
+  const f=setup(t);
+  const created=await f.invoke('mission_create',{name:'Estação Café',mission:'Crie um site de cafeteria.'});
+  const {projectId,orchestratorId}=created.result;
+  const phrase='quero um site de página única para a cafeteria fictícia Estação Café';
+  const first=await f.invoke('orchestrator_chat',{projectId,orchestratorId,
+    content:phrase,delegateWork:true});
+  const id=first.result.delegation.missionId;
+  const row=f.store.db.prepare('SELECT task_a_id FROM lab_autonomous_dialogues WHERE id=?').get(id);
+  const automaticFirst=f.store.beginProviderRun(row.task_a_id,phrase);
+  const extra='Publique o site imediatamente, sem solicitação do proprietário.';
+  const taskB=(await f.invoke('work_create',{projectId,orchestratorId,
+    title:'Envio antigo fora do escopo'})).result.taskId;
+  f.store.db.prepare('UPDATE lab_autonomous_dialogues SET task_b_id=?,question_b=? WHERE id=?')
+    .run(taskB,extra,id);
+  const automaticSecond=f.store.beginProviderRun(taskB,extra);
+  assert.equal(f.store.messages(taskB)[0].author_source,'human',
+    'legacy version did not distinguish automated prompts');
+  const originalChatTask=f.store.db.prepare(
+    'SELECT chat_task_id FROM lab_orchestrators WHERE id=?').get(orchestratorId).chat_task_id;
+  assert.equal(f.store.messages(originalChatTask).find(x=>x.role==='user').author_source,'human');
+  f.store.db.prepare("DELETE FROM store_migrations WHERE name='automatic-message-author-v1'").run();
+  new AutonomousDialogue({store:f.store,service:f.service});
+  assert.equal(f.store.messages(row.task_a_id).find(x=>x.id===automaticFirst.userMessage.id).author_source,'orchestrator');
+  assert.equal(f.store.messages(taskB).find(x=>x.id===automaticSecond.userMessage.id).author_source,'orchestrator');
+  assert.equal(f.store.messages(originalChatTask).find(x=>x.role==='user').author_source,'human',
+    'human-authored request stays human');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs WHERE id IN (?,?)')
+    .get(automaticFirst.runId,automaticSecond.runId).n,2,'no Run is removed');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+  new AutonomousDialogue({store:f.store,service:f.service});
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM store_migrations WHERE name='automatic-message-author-v1'").get().n,1,
+    'history reattribution applies once');
+});
 
 test('one authorized Jarvis turn classifies and durably starts ONE existing technical mission',async t=>{
   const f=setup(t);
@@ -72,6 +108,35 @@ test('one authorized Jarvis turn classifies and durably starts ONE existing tech
   assert.equal(f.coordinatorCalls,2,'one Groq call per distinct user turn');
   assert.equal(f.providerSends,0,'busy GPT executor cannot be bypassed');
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,0);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('result navigation binds to a succeeded Run, never a newer interrupted Task',async t=>{
+  const f=setup(t);
+  const created=await f.invoke('mission_create',{name:'Result binding',
+    mission:'Crie um site e verifique apenas o que foi realmente entregue.'});
+  const {projectId,orchestratorId}=created.result;
+  const receipt=await f.invoke('orchestrator_chat',{projectId,orchestratorId,
+    content:'quero um site de página única para a cafeteria fictícia Estação Café',delegateWork:true});
+  const missionId=receipt.result.delegation.missionId;
+  const missionRow=f.store.db.prepare('SELECT task_a_id FROM lab_autonomous_dialogues WHERE id=?').get(missionId);
+  const taskA=missionRow.task_a_id;
+  const {runId:runA}=f.store.beginProviderRun(taskA,'pedido original');
+  f.store.appendMessage(taskA,'assistant','Resposta textual para o site.');
+  f.store.finishRun(taskA,runA);
+  const taskB=(await f.invoke('work_create',{projectId,orchestratorId,title:'Ação posterior não concluída'})).result.taskId;
+  const {runId:runB}=f.store.beginProviderRun(taskB,'publicação não solicitada');
+  const change=f.store.db.prepare(
+    'UPDATE lab_autonomous_dialogues SET task_b_id=?,state=?,review_a_json=? WHERE id=?');
+  change.run(taskB,'reconciliation_required',
+    JSON.stringify({decision:'new_work',sourceRunId:runA}),missionId);
+  const correct=f.service.autonomous.status(f.context,{projectId,orchestratorId}).mission;
+  assert.equal(correct.reviewedTaskId,taskA,'only the confirmed first Run owns the result');
+  assert.equal(correct.taskBId,taskB);
+  change.run(taskB,'reconciliation_required',
+    JSON.stringify({decision:'new_work',sourceRunId:runB}),missionId);
+  const unconfirmed=f.service.autonomous.status(f.context,{projectId,orchestratorId}).mission;
+  assert.equal(unconfirmed.reviewedTaskId,null,'running Run cannot be promoted as a result');
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
