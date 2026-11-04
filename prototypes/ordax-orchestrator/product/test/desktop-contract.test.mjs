@@ -74,7 +74,7 @@ test('natural project UI does not show model-generated publishing proposals as i
   const raw=code.match(/\$\('autonomousDialogueState'\)\.textContent=([\s\S]*?)\n    \/\//);
   assert.ok(raw,'mission status exists');
   assert.doesNotMatch(raw[1],/\.decision\.summary|questionFinal|lastError/);
-  assert.match(raw[1],/describeConversationOutcome\(job\)/);
+  assert.match(raw[1],/outcome\?\.message/);
 });
 
 test('human conversation presents a read-only result instead of leaking technical routing',()=>{
@@ -89,7 +89,11 @@ test('human conversation presents a read-only result instead of leaking technica
     state:'reconciliation_required',decision:{sourceRunId:'run_verified'}}).taskId,'task_first',
     'a second interrupted Task must never replace the confirmed answer link');
   assert.match(ready.message,/Resposta recebida/);
-  assert.match(ready.message,/não foram verificados/);
+  assert.match(ready.message,/nenhum arquivo novo foi verificado/);
+  const delivered=describeConversationOutcome({...base,state:'verification_required',
+    decision:{sourceRunId:'run_verified'}},{artifactVerified:true});
+  assert.match(delivered.message,/disponível na prévia à direita/);
+  assert.match(delivered.message,/Ainda não foi publicado/);
   assert.doesNotMatch(ready.message,/Groq|GPT|API|token|JSON/);
   assert.deepEqual(describeConversationOutcome({...base,state:'sending_a',decision:null}),
     {message:'Trabalhando no seu pedido…',taskId:null});
@@ -108,7 +112,9 @@ test('human conversation presents a read-only result instead of leaking technica
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   for(const id of ['coordinatorOutcome','coordinatorOutcomeText','coordinatorOutcomeOpen'])
     assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1);
-  assert.match(uiSource,/describeConversationOutcome\(job\)/);
+  assert.match(uiSource,/describeConversationOutcome\(currentJob,\{/);
+  assert.match(uiSource,/artifactVerified:proof\?\.verified===true&&proof\?\.currentDelivery===true/);
+  assert.match(uiSource,/outcomePanel\.hidden=!outcome\|\|Boolean\(proof\?\.currentDelivery/);
   assert.match(uiSource,/box\.replaceChildren\(recoveryNotice,\$\('coordinatorOutcome'\)\)/,
     'chat redraw must not remove the sole result node from the DOM');
   assert.match(uiSource,/await onOpenWork\(taskId\)/);
@@ -231,7 +237,7 @@ test('autonomous mission recovery exposes scoped existing Tasks without replay',
   assert.equal((uiHtml.match(/id="autonomousReviewActions"/g)||[]).length,1);
   assert.match(source,/const reviews=\$\('autonomousReviewActions'\)/);
   assert.match(source,/reviews\.replaceChildren\(\)/);
-  assert.match(source,/for\(const item of job\.reviewTasks\|\|\[\]\)/);
+  assert.match(source,/for\(const item of currentJob\.reviewTasks\|\|\[\]\)/);
   assert.match(source,/await onOpenWork\(item\.taskId\)/);
   assert.match(source,/reviews\.hidden=reviews\.childElementCount===0/);
   const start=source.slice(source.indexOf('async function launchAutonomousMission(mode)'));
@@ -245,7 +251,7 @@ test('technical continuation is a separate user action with a fresh GPT readines
   const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.equal((uiHtml.match(/id="continueAutonomousTechnical"/g)||[]).length,1);
   assert.match(uiHtml,/id="continueAutonomousTechnical"[^>]*hidden disabled/);
-  assert.match(source,/continueButton\.hidden=job\?\.canContinue!==true/);
+  assert.match(source,/continueButton\.hidden=currentJob\?\.canContinue!==true/);
   const handler=source.slice(source.indexOf("$('continueAutonomousTechnical').addEventListener"));
   assert.match(handler,/snapshot\?\.mission\?\.canContinue!==true/);
   assert.match(handler,/providerComposeAvailability\(await api\.providerStatus\(\),\{hostMode:nodeHost\}\)/);

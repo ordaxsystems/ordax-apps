@@ -8,6 +8,8 @@ import {interpretGPTWorkReview} from './gpt-work-review.mjs';
 import {findProviderSubmissionProvenance} from './provider-submission-provenance.mjs';
 import {LabContinuation} from './lab-continuation.mjs';
 import {AutonomousDialogue} from './autonomous-dialogue.mjs';
+import {classifyExistingSiteChange} from './natural-site-intent.mjs';
+import {latestSiteWork} from './site-work-context.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
 import {ProjectRepository} from './project-repository.mjs';
 import {workExecutionSummary} from './work-execution-summary.mjs';
@@ -537,6 +539,42 @@ export class OrchestratorService {
     }
     if(operation==='command_get')return this.getReceipt(context,input.commandId);
     throw Error('orchestrator_unknown_operation');
+  }
+
+  // An external GPT answer is not a delivered site. Only the verified
+  // file attached to that exact completed Run can produce this one real
+  // assistant message in the project conversation. Idempotent across
+  // renderer redraws, recovery and repeated notifications.
+  recordSiteDelivery({taskId,runId,verified=false,sha256=null}={}){
+    if(typeof taskId!=='string'||typeof runId!=='string')return false;
+    return this.transaction(()=>{
+      const owner=this.db.prepare(`SELECT o.chat_task_id AS chatTaskId
+        FROM lab_task_bindings b JOIN lab_orchestrators o
+          ON o.id=b.orchestrator_id AND o.project_id=b.project_id
+        JOIN runs r ON r.task_id=b.task_id AND r.status='succeeded'
+        WHERE b.task_id=? AND b.kind='work' AND r.id=?
+        AND o.chat_task_id<>b.task_id`).get(taskId,runId);
+      if(!owner||!this.db.prepare('SELECT 1 FROM conversation_completed_runs WHERE task_id=? AND run_id=?')
+        .get(taskId,runId))return false;
+      if(this.db.prepare(`SELECT 1 FROM events WHERE task_id=? AND kind='orchestrator.site_delivery'
+          AND json_extract(payload,'$.run_id')=? LIMIT 1`).get(owner.chatTaskId,runId))
+        return false;
+      const answer=this.db.prepare("SELECT id FROM messages WHERE task_id=? AND role='assistant' ORDER BY sequence DESC LIMIT 1")
+        .get(taskId);
+      const asset=answer&&this.db.prepare(`SELECT id,sha256 FROM message_assets
+        WHERE task_id=? AND message_id=? AND kind='file'
+        AND mime_type='text/html' ORDER BY rowid DESC LIMIT 1`).get(taskId,answer.id);
+      const delivered=verified===true&&asset&&asset.sha256===sha256;
+      const response=delivered
+        ?'O site foi atualizado e o arquivo está verificado na área de resultados. Você já pode conferir a prévia à direita. Ainda não foi publicado.'
+        :'Recebi a resposta do trabalho, mas ainda não consegui confirmar um novo arquivo para a prévia. Mantive a última versão verificada, sem publicar ou repetir o pedido.';
+      this.store.appendMessage(owner.chatTaskId,'assistant',response);
+      this.store.event(owner.chatTaskId,'orchestrator.site_delivery',{
+        run_id:runId,task_id:taskId,artifact_verified:Boolean(delivered),
+        ...(delivered?{asset_id:asset.id,sha256:asset.sha256}:{})
+      });
+      return Boolean(delivered);
+    });
   }
 
   // The Electron host currently has ONE shared WebContentsView and ONE
@@ -1378,9 +1416,13 @@ export class OrchestratorService {
               // grants or dispatch through an unrecognized model reply.
               this.db.exec('SAVEPOINT jarvis_delegation');
               try {
+                const editing=classifyExistingSiteChange(input.content);
+                const site=editing?latestSiteWork(this.store,input.projectId,input.orchestratorId):null;
+                if(editing&&!site)throw Error('orchestrator_site_to_edit_not_available');
                 const accepted=this.autonomous.start(context,{
                   projectId:input.projectId,orchestratorId:input.orchestratorId,
                   mission:input.content,mode:'technical',directUserPrompt:true,
+                  ...(site?{resumeSiteTaskId:site.taskId}:{}),
                   requestId:'jarvis_'+reserved.commandId
                 });
                 this.db.exec('RELEASE SAVEPOINT jarvis_delegation');
@@ -1398,7 +1440,7 @@ export class OrchestratorService {
           const userReply=delegation?.status==='accepted'
             ?'Vou cuidar disso.'
             :delegation?.status==='blocked'
-              ?'Não consegui iniciar essa tarefa. Confira a conexão para continuar.'
+              ?'Não consegui iniciar essa tarefa. Confira a conexão e o arquivo do projeto para continuar.'
               :reply.content;
           if(!reviewSource)this.store.appendMessage(task.id,'assistant',userReply);
           return this.finish(reserved.commandId,{taskId:task.id,responseObserved:true,

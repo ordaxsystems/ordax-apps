@@ -119,8 +119,11 @@ async function refreshVerifiedWorkSurface(taskId){
     // interpret model prose or a proposal as an existing artifact.
     const task=await window.ordax.getTask(taskId);
     if(epoch!==workSurfacePreviewEpoch)return;
-    const assets=(task?.messages||[]).flatMap(m=>m.assets||[]);
-    const asset=assets.find(a=>a?.kind==='file'&&
+    const ordered=[...(task?.messages||[])].reverse();
+    const lastAnswer=ordered.find(m=>m.role==='assistant');
+    const currentAsset=(lastAnswer?.assets||[]).find(a=>a?.kind==='file'&&
+      a.mime_type==='text/html'&&typeof a.id==='string');
+    const asset=currentAsset||ordered.flatMap(m=>m.assets||[]).find(a=>a?.kind==='file'&&
       a.mime_type==='text/html'&&typeof a.id==='string');
     if(!asset){clearWorkSurfacePreview();return;}
     const proof=await window.ordax.readHtmlPreview(taskId,asset.id);
@@ -140,8 +143,9 @@ async function refreshVerifiedWorkSurface(taskId){
     }
     $('#workSurfaceFilename').textContent=proof.filename||'index.html';
     $('#workSurfaceProof').textContent='Arquivo verificado · '+proof.bytes+' bytes';
-    $('#workSurfaceStatus').textContent=
-      'Prévia visual segura; JavaScript, rede e formulários desativados. Arquivo local verificado, não publicado.';
+    $('#workSurfaceStatus').textContent=currentAsset
+      ?'Versão atual verificada. Prévia visual segura; JavaScript e rede desativados. Não publicado.'
+      :'Última versão verificada. A alteração mais recente ainda não possui novo arquivo comprovado.';
     $('#workSurfacePreview').hidden=false;
     document.body.classList.add('work-surface-active');
     workSurfacePreviewTaskId=taskId;
@@ -161,8 +165,9 @@ async function refreshVerifiedWorkSurface(taskId){
         workSurfaceInteractiveActive=true;
         frame.style.visibility='hidden';
         mode.textContent='Somente visual';
-        $('#workSurfaceStatus').textContent=
-          'Prévia interativa isolada: JavaScript local permitido; rede, permissões, janelas e formulários externos bloqueados. Não publicado.';
+        $('#workSurfaceStatus').textContent=currentAsset
+          ?'Versão atual verificada. Prévia interativa isolada; rede e permissões bloqueadas. Não publicado.'
+          :'Prévia da versão anterior; a alteração atual ainda não tem um novo arquivo verificado.';
       }catch{
         if(epoch!==workSurfacePreviewEpoch)return;
         workSurfaceInteractiveActive=false;
@@ -176,6 +181,9 @@ async function refreshVerifiedWorkSurface(taskId){
       mode.textContent='Interativo';
     }
     queueWorkSurfaceBounds();
+    // Only the native main process can attest this file; a GPT sentence
+    // mentioning a site never produces a verified delivery message.
+    return {verified:true,currentDelivery:Boolean(currentAsset),taskId,assetId:asset.id,sha256:proof.sha256};
   }catch{
     if(epoch!==workSurfacePreviewEpoch)return;
     // A missing/tampered file is NOT a preview and must not display stale

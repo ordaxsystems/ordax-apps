@@ -2,7 +2,8 @@ import {readBoundedJsonResponse} from '../src/bounded-json-response.mjs';
 import {parseStructuredModelObject} from '../src/structured-model-object.mjs';
 import {GPT_REVIEW_FOLLOWUP_DECISIONS,GPT_REVIEW_TERMINAL_DECISIONS} from '../src/gpt-work-review.mjs';
 import {buildCoordinatorRequestContext,validateCoordinatorReply} from './coordinator-request-context.mjs';
-import {ORDAX_CAPABILITY_MANIFEST,appOwnedSiteDecision} from '../src/natural-site-intent.mjs';
+import {ORDAX_CAPABILITY_MANIFEST,appOwnedSiteDecision,classifyProjectStatusQuestion} from '../src/natural-site-intent.mjs';
+import {latestSiteWork} from '../src/site-work-context.mjs';
 
 // Constrain planned work at the model boundary, then validate again with
 // the canonical work-proposal policy (field limits, scope and no extra keys).
@@ -166,7 +167,22 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
       // A clear user request is sufficient authorization for the EXISTING
       // bounded creation workflow. Groq still receives the request, but a
       // malformed classification cannot strand an ordinary site request.
-      const localSiteRoute=appOwnedSiteDecision({delegateWork,currentRequest});
+      const existingSite=latestSiteWork(store,projectId,orchestratorId);
+      const localSiteRoute=appOwnedSiteDecision({delegateWork,currentRequest,
+        existingSite:Boolean(existingSite)});
+      // A status question reads actual project evidence, not generic model
+      // promises. It cannot start a GPT Run or claim that a change was made.
+      if(delegateWork&&classifyProjectStatusQuestion(currentRequest)){
+        const last=store.db.prepare(`SELECT status,result FROM lab_command_receipts
+          WHERE project_id=? AND operation='orchestrator_chat' AND status!='running'
+          ORDER BY rowid DESC LIMIT 1`).get(projectId);
+        const failed=last?.status==='failed'||last?.status==='uncertain';
+        return {content:existingSite
+          ?failed?'O site anterior está disponível na prévia. A última alteração não foi concluída; o pedido foi preservado e não será reenviado sem uma nova solicitação.':
+            'O site do projeto está disponível na prévia. Posso continuar editando essa mesma versão conforme você pedir.'
+          :'Ainda não há um site verificado neste projeto. O andamento fica registrado nas tarefas; não vou afirmar que foi entregue.',
+          delegation:'none',provider:'ordax_project_status'};
+      }
       const responseFormat=prepareWork?groqProposalFormat(model):
         technicalReview?groqReviewFormat(model,analysisContext):delegateWork?groqJarvisFormat(model):null;
       const standardChat=completionProfile==='standard'&&!prepareWork;
@@ -204,7 +220,8 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
             ...((narrative||prepareWork||technicalReview||standardChat)&&/^openai\/gpt-oss-(20b|120b)$/.test(model)
               ?{reasoning_effort:'low'}:{}),
             messages:[{role:'system',content:request.system+outputInstructions+
-              (delegateWork?' CAPACIDADES REAIS DO APLICATIVO: '+JSON.stringify(ORDAX_CAPABILITY_MANIFEST):'')},
+              (delegateWork?' CAPACIDADES REAIS DO APLICATIVO: '+JSON.stringify(ORDAX_CAPABILITY_MANIFEST)+
+                (existingSite?' Este projeto tem um arquivo HTML local registrado e uma conversa GPT existente. Pedidos como melhore o HTML e mude cores/fonte são alterações, não explicações. A execução usa a mesma conversa e a prévia só muda após arquivo verificado.':''):'')},
               ...request.history]})
         });
       } catch(error) {
@@ -213,6 +230,10 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
       }
       if(!response?.ok) {
         const httpStatus=Number.isSafeInteger(response?.status)?response.status:null;
+        // A definite HTTP 400 rejection has not executed a model decision.
+        // For an unambiguous human-authorized site edit, use the already
+        // admitted App-owned route; never bypass auth, quota or unknown 5xx.
+        if(httpStatus===400&&localSiteRoute)return localSiteRoute;
         const code=httpStatus===401||httpStatus===403?'groq_auth_rejected':httpStatus===429?'groq_rate_limited':
           httpStatus!==null&&httpStatus>=500?'groq_service_unavailable':'groq_request_rejected';
         throw coordinatorFailure(code,'rejected',httpStatus);

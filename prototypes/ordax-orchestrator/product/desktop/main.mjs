@@ -786,8 +786,8 @@ async function captureConfirmedHtmlArtifact(requestedId) {
   if(!response||typeof response.content!=='string'||!response.content.trim())
     throw Error('provider_html_response_not_attributable');
   const previous=store.db.prepare(
-    "SELECT id,local_path,sha256 FROM message_assets WHERE task_id=? AND kind='file' AND mime_type='text/html' ORDER BY created_at DESC LIMIT 1"
-  ).get(taskId);
+    "SELECT id,local_path,sha256 FROM message_assets WHERE task_id=? AND message_id=? AND kind='file' AND mime_type='text/html' ORDER BY created_at DESC LIMIT 1"
+  ).get(taskId,response.id);
   if(previous){
     const proof=verifyLocalHtmlArtifact(assertLocalArtifactPath(assetsRoot,previous.local_path));
     if(proof.sha256!==previous.sha256)throw Error('provider_html_existing_asset_changed');
@@ -1077,19 +1077,29 @@ const orchestratorKernel=createOrchestratorKernel({
       if(shouldAttemptAutomaticHtmlCapture({
         authorSource,runId:execution?.result?.runId,text:execution?.result?.text,userRequest:content
       })){
+        let verifiedSha=null;
         try{
           const captured=await captureConfirmedHtmlArtifact(taskId);
           if(captured?.verified){
+            verifiedSha=captured.sha256;
             execution.task=getTaskView(taskId);
-            notifyOrchestratorChanged();
           }
         }catch{
-          // Missing/ambiguous provider attachment is a nonfatal result
-          // verification failure. Preserve the confirmed response and record
-          // no synthetic file. Do not retry the provider send.
+          // No file card or an invalid download cannot be called a site
+          // delivery. A GPT answer is preserved; no repeat send is allowed.
           try{store.event(taskId,'provider.artifact.auto_capture_unavailable',{
             run_id:execution.result.runId,reason:'attachment_not_verified'
           });}catch{}
+        }
+        try{
+          orchestratorService.recordSiteDelivery({
+            taskId,runId:execution.result.runId,
+            verified:Boolean(verifiedSha),sha256:verifiedSha
+          });
+          notifyOrchestratorChanged();
+        }catch{
+          // A delivery notification never changes the already confirmed
+          // provider Run or launches a second provider request.
         }
       }
       return chatReceiptFromRunTask(execution);
