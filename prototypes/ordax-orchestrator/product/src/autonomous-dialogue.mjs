@@ -40,6 +40,7 @@ export class AutonomousDialogue {
       request_id TEXT NOT NULL,mission TEXT NOT NULL,
       state TEXT NOT NULL,
       max_gpt_sends INTEGER NOT NULL CHECK(max_gpt_sends=2),
+      followup_policy TEXT NOT NULL DEFAULT 'two_send' CHECK(followup_policy IN ('two_send','review_only')),
       task_a_id TEXT REFERENCES tasks(id),task_b_id TEXT REFERENCES tasks(id),
       question_a TEXT,question_b TEXT,question_final TEXT,
       last_error TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
@@ -56,6 +57,7 @@ export class AutonomousDialogue {
     for(const [column,definition] of [
       ['strategy',"TEXT NOT NULL DEFAULT 'legacy' CHECK(strategy IN ('legacy','semantic'))"],
       ['review_a_json','TEXT'],
+      ['followup_policy',"TEXT NOT NULL DEFAULT 'two_send' CHECK(followup_policy IN ('two_send','review_only'))"],
       ['review_b_json','TEXT'],
       // A new explicit consent renews the existing two-send budget while
       // preserving the exact previous mission and source GPT Run.
@@ -111,7 +113,8 @@ export class AutonomousDialogue {
     return {missionId:row.id,projectId:row.project_id,orchestratorId:row.orchestrator_id,
       mission:row.mission,
       mode:story?'story':semantic?'technical':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,quality,reviewTasks,
-      state:row.state,maxGPTSends:story?STORY_TURNS:row.max_gpt_sends,taskAId:row.task_a_id,taskBId:row.task_b_id,
+      state:row.state,maxGPTSends:story?STORY_TURNS:row.followup_policy==='review_only'?1:row.max_gpt_sends,
+      taskAId:row.task_a_id,taskBId:row.task_b_id,
       originMissionId:semantic?row.origin_mission_id||null:null,
       canContinue:semantic&&row.state==='budget_exhausted'&&
         ['continue_same_conversation','request_correction','new_conversation','new_work'].includes(decision?.decision)&&
@@ -147,7 +150,7 @@ export class AutonomousDialogue {
     if(existing) {
       if(existing.project_id!==projectId||existing.orchestrator_id!==orchestratorId||existing.mission!==mission||
         (existing.mode==='story'?'story':existing.strategy==='semantic'?'technical':'dialogue')!==mode||
-        (directUserPrompt&&existing.question_a!==mission))
+        (directUserPrompt&&(existing.question_a!==mission||existing.followup_policy!=='review_only')))
         throw Error('autonomous_request_conflict');
       return this.summary(existing);
     }
@@ -171,12 +174,13 @@ export class AutonomousDialogue {
       }).taskId:null;
       this.db.prepare(`INSERT INTO lab_autonomous_dialogues
         (id,workspace_session_id,actor_id,client_id,project_id,orchestrator_id,request_id,mission,
-          state,max_gpt_sends,task_a_id,question_a,created_at,updated_at,mode,strategy)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+          state,max_gpt_sends,task_a_id,question_a,created_at,updated_at,mode,strategy,followup_policy)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
         .run(id,context.workspaceSessionId,context.actorId,context.clientId,projectId,orchestratorId,
           requestId,mission,directUserPrompt?'ready_a':mode==='story'?'story_queued_1':'queued',
           LIMIT,initialTask,directUserPrompt?mission:null,now,now,
-          mode==='story'?'story':'dialogue',mode==='technical'?'semantic':'legacy');
+          mode==='story'?'story':'dialogue',mode==='technical'?'semantic':'legacy',
+          directUserPrompt?'review_only':'two_send');
       this.db.exec('RELEASE SAVEPOINT autonomous_start_atomic');
     } catch(error) {
       this.db.exec('ROLLBACK TO SAVEPOINT autonomous_start_atomic');
@@ -466,7 +470,14 @@ export class AutonomousDialogue {
         const decision=await this.reviewTechnical(row,'a',context);
         this.assertMissionSession(context,row);
         const review_a_json=JSON.stringify(decision);
-        if(['verify_external_effect','candidate_complete','blocked'].includes(decision.decision)) {
+        // A natural conversation authorizes one exact initial GPT request.
+        // Any model-suggested next task (including publishing, deploying or
+        // unrelated work) is advisory until the owner submits a NEW request.
+        // This is a persisted capability boundary, not a textual prompt rule.
+        if(row.followup_policy==='review_only'){
+          this.move(row.id,working,decision.decision==='blocked'?'blocked':'verification_required',
+            {review_a_json});
+        }else if(['verify_external_effect','candidate_complete','blocked'].includes(decision.decision)) {
           this.move(row.id,working,decision.decision==='blocked'?'blocked':'verification_required',
             {review_a_json});
         }else{

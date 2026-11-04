@@ -22,7 +22,8 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
   let plans=0,reviews=0,sends=0,released=false;
   const coordinator={
     available:()=>true,
-    send:async({prepareWork,analysisContext,mission,completionProfile})=>{
+    send:async({prepareWork,analysisContext,mission,completionProfile,delegateWork})=>{
+      if(delegateWork===true)return {provider:'groq',content:'Vou cuidar disso.',delegation:'technical'};
       if(prepareWork){
         plans++;
         assert.match(mission,/missão|MISSÃO/u);
@@ -140,8 +141,29 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
     }
     throw Error('technical_mission_not_terminal_'+service.autonomous.status(context,ids).mission?.state);
   };
-  return {store,service,coordinator,provider,context,setup,start,wait,waitFor,release:()=>{released=true},metrics:()=>({plans,reviews,sends})};
+  return {store,service,coordinator,provider,context,call,setup,start,wait,waitFor,release:()=>{released=true},metrics:()=>({plans,reviews,sends})};
 }
+
+test('natural site request sends its exact words once; a model-suggested publication requires new owner intent',async t=>{
+  const f=fixture(t,{first:'new_work',maxExpectedSends:1}),ids=await f.setup();
+  const content='quero um site de página única para a cafeteria fictícia Estação Café';
+  const receipt=await f.call('orchestrator_chat',{...ids,content,delegateWork:true});
+  assert.equal(receipt.status,'succeeded');
+  assert.equal(receipt.result.delegation.status,'accepted');
+  await f.service.autonomous.tick(f.context);
+  const m=await f.wait(ids);
+  assert.equal(m.state,'verification_required');
+  assert.equal(m.maxGPTSends,1);
+  assert.equal(m.taskBId,null,'unrequested work must not be dispatched');
+  assert.equal(m.decision.decision,'new_work','untrusted next action is recorded as advisory only');
+  assert.equal(f.metrics().sends,1);
+  assert.equal(f.metrics().plans,0,'do not rewrite the first user request in a Groq planner');
+  assert.equal(f.metrics().reviews,1);
+  assert.equal(f.store.messages(m.taskAId).find(x=>x.role==='user').content,content);
+  assert.equal(f.store.db.prepare('SELECT followup_policy FROM lab_autonomous_dialogues WHERE id=?')
+    .get(m.missionId).followup_policy,'review_only');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
 
 test('semantic owner authorization leads Groq -> GPT -> Groq decision -> same GPT thread -> Groq verification gate',async t=>{
   const f=fixture(t),ids=await f.setup();

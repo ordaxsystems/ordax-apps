@@ -54,10 +54,11 @@ test('one authorized Jarvis turn classifies and durably starts ONE existing tech
   assert.match(first.result.delegation.missionId,/^autonomous_/);
   const replay=await f.invoke('orchestrator_chat',input,'single_ui_turn_01');
   assert.deepEqual(replay,first);
-  const jobs=f.store.db.prepare('SELECT mission,state,strategy,question_a,task_a_id FROM lab_autonomous_dialogues').all();
+  const jobs=f.store.db.prepare('SELECT mission,state,strategy,followup_policy,question_a,task_a_id FROM lab_autonomous_dialogues').all();
   assert.equal(jobs.length,1);
   assert.equal(jobs[0].mission,input.content);
   assert.equal(jobs[0].strategy,'semantic');
+  assert.equal(jobs[0].followup_policy,'review_only');
   assert.equal(jobs[0].state,'ready_a');
   assert.equal(jobs[0].question_a,input.content,
     'first GPT prompt must be the exact user message, without Groq-added instructions');

@@ -1064,7 +1064,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const labels={queued:'Missão aceita; planejamento automático pendente',planning_a:'Groq preparando GPT A',ready_a:'Preparado para enviar GPT A',sending_a:'GPT A em execução',ready_b:'GPT A confirmado; preparando GPT B',planning_b:'Groq analisando resposta A',ready_final:'Pergunta B pronta',sending_b:'GPT B em execução',planning_final:'Groq interpretando resposta B',succeeded:'Concluído: duas respostas GPT e proposta final confirmadas',blocked:'Falha comprovada; sem reenvio automático',reconciliation_required:'Resultado incerto: exige reconciliação, sem reenvio'};
     const technicalLabel=job?.mode==='technical'?(
       job.state==='verification_required'
-        ?'GPT respondeu; verificação externa de alterações/testes é necessária'
+        ?job.maxGPTSends===1
+          ?'Primeira resposta recebida; outras ações precisam de novo pedido do usuário'
+          :'GPT respondeu; verificação externa de alterações/testes é necessária'
         :job.state==='budget_exhausted'
           ?'Ciclo de dois envios concluído; decisão Groq registrada'+
             (job.canContinue?'; é possível autorizar outro ciclo':'')
