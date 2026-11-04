@@ -4,7 +4,7 @@
 
 > **SSOT de direção do Orchestrator:** este documento prevalece sobre descrições anteriores de "vários projetos por aplicativo", "Groq opcional", "conversa principal enviada ao GPT Web", "autonomia já disponível" ou "24 h certificado". A documentação histórica continua válida **somente como evidência de implementação e de gates na data observada**. O código/contratos, permissões, CI e evidências físicas prevalecem para dizer o que funciona hoje; este texto não transforma intenção em capacidade entregue.
 
-> **Missão executiva em andamento — Work Surface:** [WORK-SURFACE-EXECUTION.md](./WORK-SURFACE-EXECUTION.md) contém objetivo, estado real, prioridades P0/P1/P2, critérios de aceite e instruções para qualquer novo chat prosseguir sem reiniciar pesquisa. A PR #445 foi integrada à `main` (captura de HTML e prévia estática). A evolução interativa P1.1 está na branch única `feat/orchestrator-isolated-interactive-preview-20261104`, com gates e prova física documentados na missão; após integração, `main` volta a ser a única autoridade.
+> **Missão executiva em andamento — Work Surface / P1.3:** [WORK-SURFACE-EXECUTION.md](./WORK-SURFACE-EXECUTION.md) contém os critérios de aceite e a próxima etapa funcional. A PR #448 já integrou P1.1/P1.2 à `main` (`7202eef2`) e a versão foi homologada no Windows; o trabalho atual P1.3 evolui o histórico multi-etapa dentro do ledger canônico. A execução autônoma geral e a validação independente de efeitos externos **ainda não estão certificadas**.
 
 ## 1. Identidade e experiência do produto
 

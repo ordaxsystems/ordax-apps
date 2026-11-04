@@ -119,6 +119,59 @@ export class AutonomousDialogue {
   }
   setNotifier(notify){if(typeof notify!=='function')throw Error('autonomous_notifier_invalid');this.notify=notify;}
   get(id){return this.db.prepare('SELECT * FROM lab_autonomous_dialogues WHERE id=?').get(id)||null;}
+  // P1.3: project multi-cycle progress from the existing, authenticated
+  // mission ledger. This is observation only: it never grants a new send.
+  technicalHistory(row) {
+    if(row.strategy!=='semantic')return null;
+    const scope=['workspace_session_id','actor_id','client_id','project_id','orchestrator_id'];
+    const visited=new Set(),history=[];
+    let cursor=row,truncated=false;
+    while(cursor&&history.length<16){
+      if(visited.has(cursor.id)||cursor.strategy!=='semantic'||
+         scope.some(key=>cursor[key]!==row[key])){truncated=true;break;}
+      visited.add(cursor.id);history.push(cursor);
+      if(!cursor.origin_mission_id)break;
+      cursor=this.get(cursor.origin_mission_id);
+      if(!cursor)truncated=true;
+    }
+    if(history.length===16&&history.at(-1).origin_mission_id)truncated=true;
+    history.reverse();
+    const stages=[],reviewTasks=new Map();
+    for(const [i,mission] of history.entries()){
+      for(const [phase,taskId,raw] of [
+        ['a',mission.task_a_id,mission.review_a_json],
+        ['final',mission.task_b_id,mission.review_b_json]
+      ]){
+        if(!taskId||!raw)continue;
+        let decision=null;
+        try{decision=JSON.parse(raw);}catch{continue;}
+        if(typeof decision?.sourceRunId!=='string'||decision.reviewOnly!==true||
+           decision.externalEffectVerified!==false||
+           decision.automaticGPTSendAuthorized!==false)continue;
+        const run=this.db.prepare(`SELECT id FROM runs WHERE id=? AND task_id=? AND status='succeeded'
+          AND EXISTS(SELECT 1 FROM conversation_completed_runs c WHERE c.run_id=runs.id
+            AND c.task_id=runs.task_id)`).get(decision.sourceRunId,taskId);
+        if(!run)continue;
+        const proven=this.db.prepare(`SELECT 1 FROM events
+          WHERE task_id=? AND kind='provider.submission.provenance'
+            AND json_extract(payload,'$.run_id')=? LIMIT 1`).get(taskId,run.id);
+        const reviewed=this.db.prepare(`SELECT 1 FROM lab_command_receipts
+          WHERE workspace_session_id=? AND project_id=? AND status='succeeded'
+          AND request_id IN (?,?) LIMIT 1`).get(
+            mission.workspace_session_id,mission.project_id,
+            'technical_'+mission.id+'_'+phase,
+            'technical_'+mission.id+'_'+phase+'_recovery');
+        if(!proven||!reviewed)continue;
+        const cycle=i+1,step=phase==='a'?1:2;
+        stages.push({cycle,step,runId:run.id,taskId,
+          decision:decision.decision});
+        if(!reviewTasks.has(taskId))
+          reviewTasks.set(taskId,{taskId,label:'Trabalho GPT · ciclo '+cycle});
+      }
+    }
+    return {cycles:history.length,completedReviews:stages.length,
+      truncated,stages,reviewTasks:[...reviewTasks.values()]};
+  }
   summary(row) {
     if(!row)return null;
     const a=row.task_a_id?this.db.prepare('SELECT chat_url FROM tasks WHERE id=?').get(row.task_a_id):null;
@@ -129,12 +182,17 @@ export class AutonomousDialogue {
     const turns=story?this.db.prepare('SELECT ordinal,task_id FROM lab_autonomous_story_turns WHERE mission_id=? ORDER BY ordinal').all(row.id):[];
     // Read-only review handles from the existing Store. These never grant a
     // provider send, retry, or evidence verification.
-    const reviewTasks=story
+    const localReviewTasks=story
       ?turns.map(turn=>({taskId:turn.task_id,label:'Cena '+turn.ordinal}))
       :[['GPT A',row.task_a_id],['GPT B',row.task_b_id]]
         .filter(([,taskId],i,all)=>typeof taskId==='string'&&taskId.length>0&&
           (!semantic||all.findIndex(([,id])=>id===taskId)===i))
         .map(([label,taskId])=>({taskId,label:semantic?'Trabalho GPT':label}));
+    const chainProgress=semantic?this.technicalHistory(row):null;
+    const reviewTasks=semantic
+      ?[...(chainProgress?.reviewTasks||[]),...localReviewTasks.filter(item=>
+        !chainProgress?.reviewTasks.some(previous=>previous.taskId===item.taskId))]
+      :localReviewTasks;
     const semanticReview=semantic?(row.review_b_json||row.review_a_json):null;
     let decision=null;
     if(semanticReview){try{decision=JSON.parse(semanticReview);}catch{}}
@@ -152,7 +210,7 @@ export class AutonomousDialogue {
     return {missionId:row.id,projectId:row.project_id,orchestratorId:row.orchestrator_id,
       createdAt:row.created_at,
       mission:row.mission,
-      mode:story?'story':semantic?'technical':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,quality,reviewTasks,
+      mode:story?'story':semantic?'technical':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,quality,reviewTasks,chainProgress,
       state:row.state,maxGPTSends:story?STORY_TURNS:row.followup_policy==='review_only'?1:row.max_gpt_sends,
       taskAId:row.task_a_id,taskBId:row.task_b_id,reviewedTaskId,
       originMissionId:semantic?row.origin_mission_id||null:null,
