@@ -17,6 +17,10 @@ export function pruneDeletedProjectAssets({assetsRoot,taskIds,assetPaths}) {
   const info=fs.lstatSync(root);
   if(!info.isDirectory()||info.isSymbolicLink())
     throw Error('orchestrator_asset_cleanup_root_untrusted');
+  // Compare real paths in the SAME canonical namespace: on Windows CI,
+  // realpathSync.native may use a different spelling or extended-length root
+  // from path.resolve, even for a safe directory with no reparse points.
+  const realRoot=fs.realpathSync.native(root);
   const allowed=new Set(taskIds);
   if(allowed.size!==taskIds.length||[...allowed].some(id=>typeof id!=='string'||!taskPattern.test(id)))
     throw Error('orchestrator_asset_cleanup_tasks_invalid');
@@ -36,7 +40,7 @@ export function pruneDeletedProjectAssets({assetsRoot,taskIds,assetPaths}) {
         result.filesPending++;continue;
       }
       const realFolder=fs.realpathSync.native(folder);
-      if(!equalPath(realFolder,folder)||!equalPath(path.dirname(realFolder),fs.realpathSync.native(root))) {
+      if(!equalPath(realFolder,path.join(realRoot,taskId))) {
         result.filesPending++;continue;
       }
       const fileStat=fs.lstatSync(expected);
@@ -55,7 +59,8 @@ export function pruneDeletedProjectAssets({assetsRoot,taskIds,assetPaths}) {
     const folder=path.join(root,taskId);
     try{
       const stat=fs.lstatSync(folder);
-      if(!stat.isDirectory()||stat.isSymbolicLink()||!equalPath(fs.realpathSync.native(folder),folder)) {
+      if(!stat.isDirectory()||stat.isSymbolicLink()||
+         !equalPath(fs.realpathSync.native(folder),path.join(realRoot,taskId))) {
         result.entriesRemaining++;continue;
       }
       const entries=fs.readdirSync(folder);
