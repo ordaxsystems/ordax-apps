@@ -125,13 +125,20 @@ let cleanupFailurePhase=null;
       missionDraft.draft!==missionDraft.mission||missionDraft.draftRevision!==1)
       throw Error('mission_draft_not_persisted');
     phase='workspace_access';
-    await wait("document.getElementById('workspaceConnection')?.textContent?.includes('ainda indisponível')");
+    await wait("document.getElementById('workspaceConnection')?.textContent?.includes('Runtime/workspace local não conectado') && !document.getElementById('inspectWorkspace')?.disabled");
+    // Real native App click: no read is authorized by absence of a port.
+    await evaluate("document.getElementById('inspectWorkspace').click()");
+    await wait("document.getElementById('workspaceEvidence')?.textContent?.includes('Nenhum snapshot verificado')");
     const workspace=await evaluate(`(async()=>{const projectId=document.getElementById('projectSelect').value;
       const state=await window.ordax.orchestratorInvoke('workspace_status',{projectId});
       return {available:state.available,state:state.state,bindings:state.bindings.length,
-        ui:document.getElementById('workspaceConnection')?.textContent||''};})()`);
+        ui:document.getElementById('workspaceConnection')?.textContent||'',
+        evidence:document.getElementById('workspaceEvidence')?.textContent||'',
+        inspectionEnabled:!document.getElementById('inspectWorkspace')?.disabled};})()`);
     if(workspace.available!==false||workspace.state!=='capability_unavailable'||
-      workspace.bindings!==0||!workspace.ui.includes('ainda indisponível'))
+      workspace.bindings!==0||!workspace.inspectionEnabled||
+      !workspace.ui.includes('Runtime/workspace local não conectado')||
+      !workspace.evidence.includes('Nenhum snapshot verificado'))
       throw Error('workspace_grant_absence_not_visible');
     phase='coordinator_create';
     await evaluate(`(()=>{
