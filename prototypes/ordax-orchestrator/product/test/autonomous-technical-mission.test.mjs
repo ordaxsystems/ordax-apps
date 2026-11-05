@@ -20,6 +20,7 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
   const context=Object.freeze({actorId:'owner',clientId:'lab',
     workspaceSessionId:store.getWorkspaceSession().id});
   let plans=0,reviews=0,sends=0,released=false;
+  const reviewedScopes=[];
   const coordinator={
     available:()=>true,
     send:async({prepareWork,analysisContext,mission,completionProfile,delegateWork})=>{
@@ -52,6 +53,17 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
         throw error;
       }
       assert.equal(analysisContext.phase,'gpt_response_review');
+      assert.equal(analysisContext.technicalMission?.externalEffectsVerified,false);
+      assert.equal(analysisContext.technicalMission?.automaticGPTSendAuthorized,false);
+      assert.equal(analysisContext.technicalMission?.objective?.length>0,true);
+      assert.ok([1,2].includes(analysisContext.technicalMission?.step));
+      if(analysisContext.technicalMission.step===2) {
+        assert.equal(analysisContext.technicalMission.previousAcceptance?.status,
+          'requires_external_verification');
+        assert.match(analysisContext.technicalMission.previousAcceptance?.criterion||'',
+          /Comprovar que a tarefa/u);
+      } else assert.equal(analysisContext.technicalMission.previousAcceptance,null);
+      reviewedScopes.push(analysisContext.technicalMission);
       assert.equal(analysisContext.reviewEvidence.externalEffectsVerified,false);
       assert.match(analysisContext.reviewEvidence.answerStart,/nenhuma alteração externa foi comprovada/);
       const decision=reviews===1?first:last;
@@ -144,7 +156,9 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
     }
     throw Error('technical_mission_not_terminal_'+service.autonomous.status(context,ids).mission?.state);
   };
-  return {store,service,coordinator,provider,context,call,setup,start,wait,waitFor,release:()=>{released=true},metrics:()=>({plans,reviews,sends})};
+  return {store,service,coordinator,provider,context,call,setup,start,wait,waitFor,
+    release:()=>{released=true},metrics:()=>({plans,reviews,sends}),
+    reviewScopes:()=>reviewedScopes.map(x=>({...x}))};
 }
 
 test('natural site request sends its exact words once; a model-suggested publication requires new owner intent',async t=>{
@@ -185,6 +199,8 @@ test('diagnostic-only technical mission uses one GPT send and scoped specialist'
   assert.equal(m.chainProgress.authorizedGPTSends,1);
   assert.equal(m.chainProgress.completedReviews,1);
   assert.equal(m.chainProgress.stages[0].acceptance.status,'requires_external_verification');
+  assert.equal(m.chainProgress.stages[0].specialist,'sistemas e integrações');
+  assert.deepEqual(f.reviewScopes().map(s=>s.step),[1]);
   const adminChat=f.service.orchestrator(ids.projectId,ids.orchestratorId).chat_task_id;
   assert.equal(f.store.messages(adminChat).filter(x=>
     x.role==='assistant'&&x.content.startsWith('Ciclo 1: recebi a ')).length,1,
@@ -319,6 +335,12 @@ test('explicit second consent continues the same project through four GPT Runs',
   assert.equal(first.chainProgress.completedReviews,2);
   assert.equal(first.chainProgress.authorizedGPTSends,2);
   assert.equal(first.chainProgress.stages.length,2);
+  assert.deepEqual(f.reviewScopes().map(s=>s.step),[1,2]);
+  assert.equal(f.reviewScopes()[1].authorizedGPTSends,2);
+  assert.equal(f.reviewScopes()[1].objective,
+    'Audite e corrija o aplicativo conforme as evidências do GPT; não presuma commit, teste ou deploy.');
+  assert.equal(first.chainProgress.stages[0].specialist,'qualidade e diagnóstico');
+  assert.equal(first.chainProgress.stages[1].specialist,'engenharia');
   assert.ok(first.chainProgress.stages.every(x=>
     x.acceptance?.status==='requires_external_verification'));
   assert.ok(first.chainProgress.stages.every(x=>x.acceptance?.criterion));

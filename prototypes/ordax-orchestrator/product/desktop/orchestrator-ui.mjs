@@ -1170,8 +1170,12 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       requires_external_verification:'verificação externa pendente',
       not_met:'critério de aceite não atendido'}[lastAcceptance];
     const acceptanceState=acceptanceLabel?'Aceite: '+acceptanceLabel+' · ':'';
+    const handoff=currentJob?.pendingStage
+      ?'Etapa '+currentJob.pendingStage.step+' · '+currentJob.pendingStage.specialist+
+        ' · depende do Run GPT revisado · '
+      :'';
     $('autonomousDialogueState').textContent=currentJob
-      ?progress+specialist+acceptanceState+(outcome?.message||technicalLabel||storyLabel||labels[job.state]||'Estado registrado')
+      ?progress+specialist+handoff+acceptanceState+(outcome?.message||technicalLabel||storyLabel||labels[job.state]||'Estado registrado')
       :'Nenhuma execução ativa. Descreva o que deseja realizar.';
     // A failed or uncertain mission remains read-only. Reuse the canonical
     // Task navigator to inspect confirmed records, never schedule a retry.

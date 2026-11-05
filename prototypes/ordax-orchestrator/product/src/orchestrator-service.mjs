@@ -1257,10 +1257,15 @@ export class OrchestratorService {
     if(input.reviewRunId&&!reviewSource)throw Error('orchestrator_review_source_unconfirmed');
     const baseAnalysis=operation==='orchestrator_analyze'||prepareWork
       ?this.analysisContext(input.projectId,input.orchestratorId):null;
+    const technicalScope=reviewSource?this.autonomous.reviewScope(context,{
+      projectId:input.projectId,orchestratorId:input.orchestratorId,
+      runId:reviewSource.runId,taskId:reviewSource.taskId
+    }):null;
     const analysisContext=reviewSource?{
       phase:'gpt_response_review',project:baseAnalysis.project,
       orchestrator:baseAnalysis.orchestrator,
       scope:{includedWorkCount:1,totalWorkCount:baseAnalysis.scope.totalWorkCount},
+      ...(technicalScope?{technicalMission:technicalScope}:{}),
       reviewEvidence:{runId:reviewSource.runId,runStatus:'succeeded',
         providerResponseObserved:true,externalEffectsVerified:false,
         responseTruncated:reviewSource.responseTruncated,
@@ -1281,6 +1286,12 @@ export class OrchestratorService {
           'Como especialista em validação independente, confira o critério de aceite contra a resposta observada. '+
           'Não transforme uma alegação GPT em prova de arquivo, execução, teste ou publicação. '+
           'Decida o próximo passo específico para a missão e as pendências. '+
+          (technicalScope
+            ?'REVISÃO DE ETAPA TÉCNICA: use technicalMission no contexto como limite. '+
+              'Observe o objetivo original e o especialista da etapa; previousAcceptance '+
+              'é somente o critério proposto na revisão anterior, NÃO prova de implementação. '+
+              'Não invente uma missão nova, autorização, alteração ou dependência fora desse objetivo. '
+            :'')+
           'Responda SOMENTE JSON conforme o formato do provedor, incluindo o Run, a decisao, resumo, '+
           'justificativa, trecho literal observado, aceite e proxima instrucao conforme a decisao. '+
           'acceptance deve conter {criterion,status,observedExcerpt}: um criterio de aceite '+
