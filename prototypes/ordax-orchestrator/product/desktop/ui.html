@@ -200,10 +200,11 @@
               <small id="remoteRepositoryStatus" role="status">Vincule um repositório GitHub para orientar as conversas de trabalho.</small>
               <small id="remoteRepositoryCapabilityNote">A API recebe somente a URL. No desktop, tarefas podem pedir ao ChatGPT para usar a integração GitHub da sessão; isso não comprova que a integração está disponível. Nenhum arquivo local é lido nesta etapa.</small>
             </section>
-            <section id="workspaceOverview" class="coordinator-analysis-actions" aria-label="Workspace local em etapa futura">
-              <strong>Arquivos locais · etapa posterior</strong>
-              <small id="workspaceConnection" role="status">O workspace local ainda não está conectado. Nenhum arquivo local é lido nesta fase.</small>
-              <small id="workspaceEvidence">Nenhum arquivo local é lido ou enviado nesta fase.</small>
+            <section id="workspaceOverview" class="coordinator-analysis-actions" aria-label="Acesso autorizado ao workspace local">
+              <strong>Workspace · Runtime MCP</strong>
+              <small id="workspaceConnection" role="status">Runtime/workspace local não conectado ao Forge. Nenhum grant foi verificado.</small>
+              <button id="inspectWorkspace" class="mini-secondary" type="button" disabled>Verificar workspace autorizado</button>
+              <small id="workspaceEvidence" role="status" aria-live="polite">Nenhum snapshot autorizado verificado nesta sessão.</small>
             </section>
             <div class="coordinator-analysis-actions">
               <button id="continuityToggle" type="button" class="mini-secondary" disabled>Ativar análise automática</button>
