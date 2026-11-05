@@ -2,6 +2,8 @@
 
 # OrdaX Forge — produto de coordenação (nome comercial)
 
+**Exclusão de projetos pelo proprietário:** o Forge oferece a operação canônica `project_delete` no mesmo catálogo App/IPC/MCP e na configuração do projeto. Exige digitar o nome exato, autorização de sessão e transação SQLite; rejeita tarefas em execução, comandos incertos, observação ativa e bindings do Runtime. Remove o histórico pertencente ao projeto, mas **não exclui pastas externas**, não revoga grants e não altera credenciais. A manutenção remota direta do banco é proibida; a exclusão deve partir da interface autorizada do aplicativo.
+
 **Identidade comercial SSOT:** `product/src/product-brand.mjs` define `OrdaX Forge` para Electron, interface, Groq e `serverInfo.title` do MCP; `product/package.json#build.productName` espelha esse valor e é verificado pelo teste de identidade. O `serverInfo.name` técnico do MCP continua estável, conforme separação entre identificador e título de apresentação do protocolo. O owner permanece `ordaxsystems/ordax-apps/prototypes/ordax-orchestrator`. O pacote npm, `appId`, executável já instalado, diretório de perfil `OrdaX/OrchestratorLab`, SQLite, contratos IPC/MCP e nomes técnicos internos continuam inalterados **por compatibilidade**. Nenhuma instalação, banco ou identidade nova é criada pela troca de marca. Histórico anterior mantém nomenclatura original como evidência.
 
 ## Project-First (decisão 2026-10-21)

@@ -786,6 +786,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('observeProjectRepository').hidden=!repositoryPortAvailable;
     $('observeProjectRepository').disabled=!repositoryPortAvailable||!project?.repository_url||repositoryBusy;
     $('renameProjectButton').disabled=!project;
+    $('deleteProjectButton').disabled=!project;
     $('renameProjectInput').value=project?.name||'';
     $('remoteRepositoryStatus').textContent=nodeHost
       ?!project?'Selecione um projeto.'
@@ -859,6 +860,12 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(!projectId)return;
     $('renameProjectInput').value=projectsCache.find(item=>item.id===projectId)?.name||'';
     $('projectRenameSetup').open=true;$('renameProjectInput').focus();
+  });
+  $('deleteProjectButton').addEventListener('click',()=>{
+    if(!projectId)return;
+    $('projectDeleteName').value='';
+    $('projectDeleteSetup').open=true;
+    $('projectDeleteName').focus();
   });
   $('addOrchestrator').addEventListener('click',()=>{
     if(!projectId){status('Selecione ou crie um projeto antes de adicionar um orquestrador.');return;}
@@ -1363,6 +1370,32 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       $('projectRenameSetup').open=false;
       await refreshProjects();
       status('Nome do projeto atualizado.');
+    });
+  });
+  $('projectDeleteForm').addEventListener('submit',event=>{
+    event.preventDefault();void formAction(event.currentTarget,async()=>{
+      const p=projectId,project=projectsCache.find(item=>item.id===p);
+      const name=$('projectDeleteName').value;
+      if(!project||name!==project.name){
+        status('Digite exatamente o nome do projeto para confirmar a exclusão.');return;
+      }
+      if(analysisBusy||coordinatorSubmitting){
+        status('Existe trabalho em andamento; finalize antes de excluir este projeto.');return;
+      }
+      await flushCoordinatorDraft();
+      const receipt=await command('project_delete',{projectId:p,confirmName:name});
+      if(receipt.status!=='succeeded'||receipt.result?.deleted!==true)
+        throw Error('orchestrator_project_delete_unconfirmed');
+      if(projectId!==p)return;
+      projectId=null;orchestratorId=null;chatTaskId=null;coordinatorOpen=false;
+      clearProjectPreflight();
+      $('orchestrationPanel').hidden=true;
+      $('projectDeleteSetup').open=false;$('projectDeleteName').value='';
+      document.body.classList.remove('orchestrator-focus','orchestrator-rail-open');
+      $('contextRail').classList.remove('open');
+      await refreshProjects();await refreshOrchestrators();
+      await onNavigationChange?.({view:'home',projectId:null,orchestratorId:null,taskId:null});
+      status('Projeto excluído do Forge. Pastas externas não foram apagadas.');
     });
   });
   $('projectRepositoryForm').addEventListener('submit',event=>{

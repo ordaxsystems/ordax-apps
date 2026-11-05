@@ -11,6 +11,7 @@ import {AutonomousDialogue} from './autonomous-dialogue.mjs';
 import {classifyExistingSiteChange} from './natural-site-intent.mjs';
 import {latestSiteWork} from './site-work-context.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
+import {deleteProjectRecords} from './project-deletion.mjs';
 import {ProjectRepository} from './project-repository.mjs';
 import {workExecutionSummary} from './work-execution-summary.mjs';
 import {projectWorkPlan} from './work-plan-read-model.mjs';
@@ -327,6 +328,19 @@ export class OrchestratorService {
 
   async invoke(context,operation,raw={}) {
     const {tool,input}=validateOrchestratorInput(operation,raw);
+    // A completed delete has a projectless tombstone so the same requestId
+    // can be inspected without restoring the deleted project's authority.
+    if(operation==='project_delete') {
+      const prior=this.db.prepare(`SELECT * FROM lab_command_receipts WHERE
+        workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
+        .get(context.workspaceSessionId,context.actorId,context.clientId,input.requestId);
+      if(prior?.operation==='project_delete'&&prior.project_id===null&&prior.status==='succeeded') {
+        this.requireAccess(context,operation);
+        const inputHash=createHash('sha256').update(JSON.stringify({operation,input})).digest('hex');
+        if(prior.input_hash!==inputHash)throw Error('orchestrator_request_conflict');
+        return this.receipt(prior);
+      }
+    }
     this.requireAccess(context,operation,input.projectId||null);
     if(operation==='autonomous_dialogue_status')return this.autonomous.status(context,input);
     if(operation==='autonomous_dialogue_start')return {status:'succeeded',operation,result:this.autonomous.start(context,input)};
@@ -357,6 +371,17 @@ export class OrchestratorService {
     }
     if(operation==='workspace_snapshot')return this.workspace.snapshot(context,input,()=>this.requireAccess(context,operation,input.projectId));
     if(operation==='workspace_bind')return this.bindWorkspace(context,input);
+    if(operation==='project_delete')return this.transaction(()=>{
+      const reserved=this.reserve(context,operation,input);
+      if(reserved.existing)return reserved.existing;
+      if(this.autonomous.inFlight||this.activeCoordinatorTurns.size||this.pendingProposalReviews.size)
+        throw Error('orchestrator_project_delete_work_active');
+      // Detach ONLY the deletion receipt before removing all scoped history.
+      this.db.prepare('UPDATE lab_command_receipts SET project_id=NULL WHERE id=?').run(reserved.commandId);
+      const result=deleteProjectRecords(this.db,{projectId:input.projectId,
+        workspaceSessionId:context.workspaceSessionId,confirmName:input.confirmName});
+      return this.finish(reserved.commandId,result);
+    });
     if(tool.readOnly)return this.read(context,operation,input);
     if(operation==='proposal_send')return this.confirmAndSendProposal(context,input);
     if(operation==='proposal_review'&&input.approved)return this.confirmAndReviewProposal(context,input);

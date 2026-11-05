@@ -1101,8 +1101,10 @@ const orchestratorKernel=createOrchestratorKernel({
     return {verified:true,sha256:proof.sha256,bytes:proof.bytes,
       verification:'local_bytes_and_structure'};
   },
+  // Destructive project deletion is authorized only from the local UI owner,
+  // never delegated through the Runtime MCP bridge (even if a remote grant exists).
   authorize:({context,operation})=>context===localOrchestratorContext||
-    runtimeOrchestratorBridge?.allows(context,operation)===true,
+    (operation!=='project_delete'&&runtimeOrchestratorBridge?.allows(context,operation)===true),
   confirmProposalSend:async({title,content})=>confirmInActiveUi({
     title:'Confirmar primeiro envio ao ChatGPT',message:title,
     detail:'Mensagem exata a enviar:\n\n'+content+'\n\nSerá enviada uma única mensagem pelo executor do App. Uma resposta observada não comprova alterações em arquivos ou outros efeitos.',

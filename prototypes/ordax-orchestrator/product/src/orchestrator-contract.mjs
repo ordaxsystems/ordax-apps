@@ -15,6 +15,7 @@ const definitions = [
   ['project_create','Create an isolated Lab project and optionally bind its canonical GitHub repository URL. No repository contents are read.',{name:text(140),objective:text(4000,0),repositoryUrl:text(300,0)},['name'],false],
   ['mission_create','Atomically create a project, coordinator and first work conversation with the mission saved as a draft. Does not submit to GPT.',{name:text(140,0),mission:text(4000),repositoryUrl:text(300,0)},['mission'],false],
   ['project_rename','Rename one accessible project. Does not alter its repository or work.',{projectId:id,name:text(140)},['projectId','name'],false],
+  ['project_delete','Permanently delete one confirmed project and its App-owned conversations. Blocks running or uncertain effects, active observation and resource bindings. Never removes external filesystem projects.',{projectId:id,confirmName:text(140)},['projectId','confirmName'],false],
   ['project_observation_set','Persist or revoke explicit project-level intent to begin read-only observation. Never starts a scheduler, authenticates GitHub, submits GPT or grants authority.',{projectId:id,enabled:{type:'boolean'}},['projectId','enabled'],false],
   ['project_repository_set','Set or clear the project GitHub remote reference. This stores a URL only and does not read or write the repository.',{projectId:id,repositoryUrl:text(300,0)},['projectId','repositoryUrl'],false],
   ['orchestrators_list','List coordinators of one project.',{projectId:id},['projectId'],true],
@@ -49,7 +50,7 @@ export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,desc
   inputSchema:{type:'object',additionalProperties:false,
     properties:{...(!readOnly?{requestId}:{}),...properties},
     required:[...(!readOnly?['requestId']:[]),...required]},
-  annotations:{readOnlyHint:readOnly,destructiveHint:false,idempotentHint:true,
+  annotations:{readOnlyHint:readOnly,destructiveHint:operation==='project_delete',idempotentHint:true,
     openWorldHint:['work_send','proposal_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare','autonomous_dialogue_start','autonomous_dialogue_continue'].includes(operation)}
 })));
 
