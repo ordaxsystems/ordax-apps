@@ -1,5 +1,5 @@
 import {WebContentsView,session} from 'electron';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {buildInteractiveHtmlDocument,isPreviewNetworkRequestAllowed} from '../src/interactive-html-preview-policy.mjs';
 import {normalizeProviderViewBounds} from '../src/provider-view-bounds.mjs';
 
@@ -14,6 +14,9 @@ export class IsolatedInteractiveHtmlPreview {
     this.requestedBounds=null;
     this.loaded=false;
     this.opening=null;
+    this.renderObservation=null;
+    this.renderInFlight=null;
+    this.renderReceiptRecorded=false;
   }
   snapshot(){
     return {active:Boolean(this.view&&!this.view.webContents.isDestroyed()&&this.loaded),
@@ -88,6 +91,41 @@ export class IsolatedInteractiveHtmlPreview {
     this.view.setBounds(clipped||{x:0,y:0,width:1,height:1});
     this.view.setVisible(Boolean(this.loaded&&clipped));
   }
+  // Browser evidence is a screenshot of the ACTUAL isolated renderer, not a
+  // model claim. It does not certify interactions, external services or deploys.
+  async observeRender(){
+    if(!this.loaded||!this.requestedBounds||!this.view||
+       this.view.webContents.isDestroyed())return null;
+    if(this.renderObservation)return this.renderObservation;
+    if(this.renderInFlight)return this.renderInFlight;
+    const view=this.view,owner=this.owner;
+    const bounds=view.getBounds();
+    if(bounds.width<200||bounds.height<160)return null;
+    const pending=(async()=>{
+      const state=await view.webContents.executeJavaScript(
+        "({ready:document.readyState,origin:location.origin,bodyPresent:!!document.body})");
+      if(state?.ready!=='complete'||state.origin!=='null'||state.bodyPresent!==true)
+        return null;
+      const image=await view.webContents.capturePage();
+      const png=image.toPNG(),size=image.getSize();
+      if(png.length<100||png.length>4*1024*1024||
+         size.width<200||size.height<160)return null;
+      if(this.view!==view||this.owner!==owner||!this.loaded||
+         !this.requestedBounds||view.webContents.isDestroyed())return null;
+      this.renderObservation=Object.freeze({
+        taskId:owner.taskId,assetId:owner.assetId,sha256:owner.sha256,
+        screenshotSha256:createHash('sha256').update(png).digest('hex'),
+        width:size.width,height:size.height,
+        kind:'isolated_browser_snapshot',browserTested:false,
+        published:false,externalEffectVerified:false
+      });
+      return this.renderObservation;
+    })().catch(()=>null).finally(()=>{
+      if(this.renderInFlight===pending)this.renderInFlight=null;
+    });
+    this.renderInFlight=pending;
+    return pending;
+  }
   async debugProbe({port}={}){
     if(process.env.ORDAX_DESKTOP_DEBUG!=='1'||!Number.isInteger(port)||
        port<1||port>65535||!this.loaded||!this.view||
@@ -121,7 +159,8 @@ export class IsolatedInteractiveHtmlPreview {
     const view=this.view;
     this.view=null;this.session=null;this.owner=null;
     this.loaded=false;this.requestedBounds=null;
-    this.opening=null;
+    this.opening=null;this.renderObservation=null;
+    this.renderInFlight=null;this.renderReceiptRecorded=false;
     if(!view)return;
     try{view.setVisible(false);}catch{}
     try{const win=this.getWindow();if(win&&!win.isDestroyed())win.contentView.removeChildView(view);}catch{}

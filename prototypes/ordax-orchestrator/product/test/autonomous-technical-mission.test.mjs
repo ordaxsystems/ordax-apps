@@ -211,6 +211,36 @@ test('a confirmed HTML attachment is rehashed locally and scoped to its real GPT
   assert.equal(f.service.autonomous.verifiedHtmlForRun(ids.projectId,ids.orchestratorId,runId),null);
 });
 
+test('native isolated browser snapshot is Run-bound, idempotent and never certifies deployment',async t=>{
+  const f=fixture(t,{withHtmlProof:true,first:'candidate_complete'}),ids=await f.setup();
+  await f.start(ids,'browser_proof','Crie um HTML local e confirme a prévia isolada.');
+  const mission=await f.wait(ids);
+  const html=mission.verifiedArtifact;
+  assert.equal(html?.browserRenderObserved,false);
+  const observation={kind:'isolated_browser_snapshot',
+    taskId:f.store.db.prepare("SELECT task_id FROM runs WHERE id=?").get(html.runId).task_id,
+    assetId:html.assetId,sha256:html.sha256,
+    screenshotSha256:'a'.repeat(64),width:442,height:388,
+    browserTested:false,published:false,externalEffectVerified:false};
+  assert.equal(f.service.autonomous.recordBrowserRenderObservation({
+    ...observation,sha256:'b'.repeat(64)}),null);
+  assert.equal(f.service.autonomous.recordBrowserRenderObservation({
+    ...observation,externalEffectVerified:true}),null);
+  const receipt=f.service.autonomous.recordBrowserRenderObservation(observation);
+  assert.equal(receipt.browserRenderObserved,true);
+  assert.equal(receipt.browserRender.screenshotSha256,'a'.repeat(64));
+  assert.equal(receipt.browserTested,false);
+  assert.equal(receipt.externalEffectVerified,false);
+  assert.equal(receipt.published,false);
+  assert.equal(f.service.autonomous.recordBrowserRenderObservation(observation)?.browserRenderObserved,true);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE kind='provider.artifact.browser_render_observed'").get().n,1);
+  assert.equal(f.service.autonomous.status(f.context,ids).mission.verifiedArtifact.browserRenderObserved,true);
+  fs.appendFileSync(f.artifactFile(),'<!-- changed -->');
+  assert.equal(f.service.autonomous.status(f.context,ids).mission.verifiedArtifact,null);
+  assert.equal(f.service.autonomous.recordBrowserRenderObservation(observation),null);
+  assert.equal(f.metrics().sends,1);
+});
+
 test('an HTML row without an App verifier remains unverified even with a captured receipt',async t=>{
   const f=fixture(t,{withHtmlProof:true,missingArtifactPort:true,first:'candidate_complete'}),ids=await f.setup();
   await f.start(ids,'no_host_verifier','Crie um arquivo HTML local e revise-o.');

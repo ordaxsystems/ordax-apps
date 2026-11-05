@@ -88,7 +88,15 @@ function queueWorkSurfaceBounds(){
     const rect=active&&right-left>=200&&bottom-top>=160
       ?{x:left,y:top,width:right-left,height:bottom-top,visible:true}
       :{visible:false};
-    window.ordax.setInteractivePreviewBounds(rect).catch(()=>{});
+    const epoch=workSurfacePreviewEpoch,key=workSurfacePreviewKey;
+    window.ordax.setInteractivePreviewBounds(rect).then(receipt=>{
+      if(!active||epoch!==workSurfacePreviewEpoch||key!==workSurfacePreviewKey||
+         receipt?.browserRenderObserved!==true||
+         receipt.sha256!==key?.split(':').at(-1))return;
+      $('#workSurfaceStatus').textContent=
+        'Arquivo verificado e imagem da prévia capturada pelo navegador isolado. '+
+        'Interações, serviços externos e publicação não certificados.';
+    }).catch(()=>{});
   });
 }
 function clearWorkSurfacePreview(){
