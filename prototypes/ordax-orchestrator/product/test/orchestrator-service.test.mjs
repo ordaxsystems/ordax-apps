@@ -1369,6 +1369,16 @@ test('MCP initialize/discovery/call use exactly the same App service and persist
   assert.ok(tools.some(tool=>tool.name==='orchestrator_continuity_status'&&tool.annotations.readOnlyHint===true));
   assert.ok(tools.some(tool=>tool.name==='orchestrator_continuity_set'&&tool.annotations.readOnlyHint===false));
   assert.ok(tools.every(tool=>tool.inputSchema.additionalProperties===false));
+  // Forge's own MCP is a domain adapter, never the external OrdaX computer
+  // control transport. A real grant/Runtime port cannot be inferred from
+  // successful MCP initialize or tools/list discovery.
+  const forgeStatus=(await rpc('tools/call',{name:'orchestrator_status',arguments:{}}))
+    .result.structuredContent;
+  assert.equal(forgeStatus.engine,'app-owned');
+  assert.equal(forgeStatus.externalTransport,'not_connected');
+  assert.equal(forgeStatus.workspacePortAvailable,false);
+  assert.equal(forgeStatus.repositoryPortAvailable,false);
+  assert.equal(forgeStatus.autonomousExecution,false);
   const created=await rpc('tools/call',{name:'orchestrator_project_create',arguments:{requestId:'mcp-one',name:'MCP project'}});
   const receipt=created.result.structuredContent;
   assert.equal(receipt.status,'succeeded');
