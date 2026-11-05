@@ -162,7 +162,11 @@ async function waitForHttp(url, child) {
 }
 
 async function waitForChromeDebugger(port, child) {
-  for (let attempt = 0; attempt < 160; attempt += 1) {
+  // GitHub-hosted Linux Chrome can spend over 16 seconds in cold startup
+  // before its first DevTools socket exists. Keep the same real-browser
+  // assertion and process-exit failure, with a bounded 60-second readiness gate.
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
     if (child.exitCode !== null) {
       throw new Error(`Chrome encerrou antes de publicar DevTools (exit=${child.exitCode}).`);
     }
