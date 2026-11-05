@@ -161,7 +161,10 @@ export class IsolatedInteractiveHtmlPreview {
             "noNode:typeof require==='undefined'&&typeof process==='undefined',"+
             "noOrdaX:typeof window.ordax==='undefined',"+
             "report:("+probeIsolatedHtmlControls.toString()+")()}))()";
-          return tester.webContents.executeJavaScript(script);
+          // A separate JS world keeps the probe's DOM APIs out of the
+          // untrusted HTML's scope (the page cannot monkey-patch our probe).
+          return tester.webContents.executeJavaScriptInIsolatedWorld(
+            1001,[{code:script}],false);
         };
         const result=await Promise.race([run(),new Promise((_,reject)=>{
           timeout=setTimeout(()=>reject(Error('isolated_controls_timeout')),12000);

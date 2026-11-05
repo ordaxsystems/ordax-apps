@@ -59,6 +59,8 @@ test('native Work Surface has separate transient WebContentsView with no IPC or 
   assert.match(source,/async observeRender\(\)/);
   assert.match(source,/async observeControls\(html\)/);
   assert.match(source,/sandboxedPreviewView\(\{session:ses\}\)/);
+  assert.match(source,/executeJavaScriptInIsolatedWorld\(/);
+  assert.doesNotMatch(source,/tester\.webContents\.executeJavaScript\(script\)/);
   assert.match(source,/normalizedHtmlControlChecks\(result\.report\)/);
   assert.match(source,/view\.webContents\.capturePage\(\)/);
   assert.match(source,/screenshotSha256:createHash\('sha256'\)/);
