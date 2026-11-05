@@ -52,7 +52,7 @@ Runtime has a native Windows folder-picker adapter and an in-memory selection br
 
 - `workspace_status`: available=false and state=`capability_unavailable` when no port is wired. Lists only bindingId, deviceId and timestamp, never the resource path, content or credential.
 - `workspace_bind`: await Runtime proof **outside** SQLite transaction; recheck App actor/project authorization; atomically reserve command receipt and save idempotent binding. An unavailable grant/port cannot create a binding. Replays of the same requestId return a prior receipt only under current authorization.
-- `workspace_snapshot`: require both App project scope and fresh Runtime proof; Runtime returns an already authorized bounded summary. App drops any extraneous `path`, file contents or secrets and rejects bad hashes, timestamps and counters. Failure does not promote a stale snapshot to verified.
+- `workspace_snapshot`: require both App project scope and fresh Runtime proof; Runtime returns an already authorized bounded summary. App drops any extraneous `path`, file contents or secrets and rejects bad hashes, timestamps and counters. A connected observation must be at most **5 minutes old**, allowing **60 seconds of positive clock skew**; otherwise it fails closed with `workspace_snapshot_stale`, even when the resource grant is still valid. Failure does not promote a stale snapshot to verified.
 - No destructive operation, Git write, terminal command, network push, AI submission or watcher in M1.
 - SQLite Lab persists `projectId, workspaceSessionId, actorId, clientId, deviceId, resourceId, createdAt` only. **No raw directory or Git checkout contents**.
 
