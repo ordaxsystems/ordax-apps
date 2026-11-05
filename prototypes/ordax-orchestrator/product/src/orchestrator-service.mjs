@@ -1294,7 +1294,8 @@ export class OrchestratorService {
               'Observe o objetivo original e o especialista da etapa; previousAcceptance '+
               'é somente o critério proposto na revisão anterior, NÃO prova de implementação. '+
               'verifiedArtifact, quando presente, comprova APENAS o arquivo HTML local cujo SHA-256 foi relido '+
-              'pelo App; não é prova de GitHub, testes, implantação ou satisfação geral do aceite. '+
+              'pelo App. browserRenderObserved indica somente captura de imagem em navegador isolado, '+
+               'não prova interações, testes funcionais, serviços externos, GitHub, publicação ou aceite geral. '+
               'Não invente uma missão nova, autorização, alteração ou dependência fora desse objetivo. '
             :'')+
           'Responda SOMENTE JSON conforme o formato do provedor, incluindo o Run, a decisao, resumo, '+

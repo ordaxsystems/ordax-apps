@@ -217,11 +217,74 @@ export class AutonomousDialogue {
          !Number.isSafeInteger(proof.bytes)||proof.bytes<40||
          proof.bytes>2*1024*1024||
          proof.verification!=='local_bytes_and_structure')return null;
+      // Only a native, hashed snapshot receipt of THIS Run and file may
+      // attest isolated browser rendering. It never certifies interaction or deploy.
+      const render=this.db.prepare(`SELECT
+        json_extract(payload,'$.screenshot_sha256') screenshotSha256,
+        json_extract(payload,'$.width') width,
+        json_extract(payload,'$.height') height
+        FROM events WHERE task_id=? AND kind='provider.artifact.browser_render_observed'
+          AND json_valid(payload)
+          AND json_extract(payload,'$.run_id')=?
+          AND json_extract(payload,'$.asset_id')=?
+          AND json_extract(payload,'$.sha256')=?
+          AND json_extract(payload,'$.kind')='isolated_browser_snapshot'
+          AND json_extract(payload,'$.browser_tested')=0
+          AND json_extract(payload,'$.published')=0
+          AND json_extract(payload,'$.external_effect_verified')=0
+        ORDER BY rowid DESC LIMIT 1`).get(source.taskId,runId,asset.id,proof.sha256);
+      const browserRender=render&&/^[a-f0-9]{64}$/.test(render.screenshotSha256||'')&&
+        Number.isSafeInteger(render.width)&&render.width>=200&&render.width<=5000&&
+        Number.isSafeInteger(render.height)&&render.height>=160&&render.height<=5000
+        ?Object.freeze({kind:'isolated_browser_snapshot',screenshotSha256:render.screenshotSha256,
+          width:render.width,height:render.height}):null;
       return Object.freeze({kind:'local_html_file',runId,assetId:asset.id,
         sha256:proof.sha256,bytes:proof.bytes,
         verification:'local_bytes_and_structure',
+        browserRenderObserved:Boolean(browserRender),browserRender,
         browserTested:false,published:false,externalEffectVerified:false});
     }catch{return null;}
+  }
+  // Native-only entrypoint, never an Orchestrator operation or model command.
+  // Provenance, latest Run, file hash and workspace owner must all be current.
+  recordBrowserRenderObservation(observation) {
+    if(observation?.kind!=='isolated_browser_snapshot'||
+       typeof observation.taskId!=='string'||typeof observation.assetId!=='string'||
+       !/^[a-f0-9]{64}$/.test(observation.sha256||'')||
+       !/^[a-f0-9]{64}$/.test(observation.screenshotSha256||'')||
+       !Number.isSafeInteger(observation.width)||observation.width<200||
+       observation.width>5000||!Number.isSafeInteger(observation.height)||
+       observation.height<160||observation.height>5000||
+       observation.browserTested!==false||observation.published!==false||
+       observation.externalEffectVerified!==false)return null;
+    const row=this.db.prepare(`SELECT b.project_id projectId,
+      b.orchestrator_id orchestratorId,
+      json_extract(e.payload,'$.run_id') runId
+      FROM lab_task_bindings b JOIN events e ON e.task_id=b.task_id
+      WHERE b.kind='work' AND b.task_id=? AND
+        e.kind='provider.artifact.html_verified' AND json_valid(e.payload)
+        AND json_extract(e.payload,'$.asset_id')=?
+        AND json_extract(e.payload,'$.sha256')=?
+      ORDER BY e.rowid DESC LIMIT 1`).get(
+      observation.taskId,observation.assetId,observation.sha256);
+    if(!row||typeof row.runId!=='string')return null;
+    const proof=this.verifiedHtmlForRun(row.projectId,row.orchestratorId,row.runId);
+    if(!proof||proof.assetId!==observation.assetId||
+       proof.sha256!==observation.sha256)return null;
+    const existing=this.db.prepare(`SELECT 1 FROM events WHERE task_id=?
+      AND kind='provider.artifact.browser_render_observed' AND json_valid(payload)
+      AND json_extract(payload,'$.run_id')=?
+      AND json_extract(payload,'$.asset_id')=?
+      AND json_extract(payload,'$.sha256')=? LIMIT 1`).get(
+      observation.taskId,row.runId,observation.assetId,observation.sha256);
+    if(!existing)this.store.event(observation.taskId,'provider.artifact.browser_render_observed',{
+      run_id:row.runId,asset_id:observation.assetId,sha256:observation.sha256,
+      kind:'isolated_browser_snapshot',
+      screenshot_sha256:observation.screenshotSha256,
+      width:observation.width,height:observation.height,
+      browser_tested:false,published:false,external_effect_verified:false
+    });
+    return this.verifiedHtmlForRun(row.projectId,row.orchestratorId,row.runId);
   }
   // The active Groq review receives a verified, mission-scoped handoff.
   // This is derived only from canonical Run/mission/review evidence and
