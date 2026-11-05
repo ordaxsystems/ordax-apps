@@ -884,7 +884,7 @@ test('Host keeps execution truth visible while collapsing project setup below th
   assert.match(orchestration,/function syncCapabilitySummary\(\)/);
   assert.match(orchestration,/summary\.hidden=!nodeHost/);
   assert.match(orchestration,/GitHub · URL salva, leitura ausente/);
-  assert.match(orchestration,/Runtime · workspace sem grant/);
+  assert.match(orchestration,/Runtime · sem porta autenticada no Forge/);
   assert.match(orchestration,/24 h · supervisor ausente/);
   assert.match(css,/\.orchestration-capabilities span\[data-state="partial"\]/);
   assert.match(css,/\.orchestration-integrations-content\{max-height:min\(42vh,340px\);overflow:auto/);

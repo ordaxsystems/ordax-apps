@@ -124,10 +124,41 @@ export function describeProjectPreflight(snapshot) {
   };
 }
 
+// Presentation only. Neither a saved binding nor a connected computer-wide
+// MCP session proves a current project resource grant.
+export function describeWorkspaceSnapshot(snapshot) {
+  const unavailable={offline:'dispositivo offline',denied:'acesso negado',
+    revoked:'grant revogado',moved:'recurso movido',unavailable:'indisponível',
+    capability_unavailable:'Runtime não conectado'};
+  if(snapshot?.verified!==true||snapshot?.state!=='connected')
+    return 'Nenhum workspace verificado. Estado: '+
+      (unavailable[snapshot?.state]||'sem prova válida')+'. Nenhum arquivo foi lido pelo Forge.';
+  if(!Number.isSafeInteger(snapshot.fileCount)||snapshot.fileCount<0||
+    !Number.isSafeInteger(snapshot.changedCount)||snapshot.changedCount<0||
+    typeof snapshot.observedAt!=='string'||!Number.isFinite(Date.parse(snapshot.observedAt)))
+    return 'Resposta incompleta do Runtime. Nenhuma leitura foi considerada verificada.';
+  const git=snapshot.git?.isRepository===true&&
+    typeof snapshot.git.branch==='string'&&typeof snapshot.git.head==='string'
+      ?' Git '+snapshot.git.branch+' @ '+snapshot.git.head.slice(0,12)+'.'
+      :'';
+  return 'Snapshot autenticado pelo Runtime em '+snapshot.observedAt+': '+
+    snapshot.fileCount+' arquivo(s), '+snapshot.changedCount+' alteração(ões).'+git+
+    ' Somente metadados verificados; nenhum conteúdo de arquivo foi lido ou alterado pelo Forge.';
+}
+
+export function describeWorkspaceConnection(state) {
+  if(state?.available!==true)
+    return 'Runtime/workspace local não conectado ao Forge. O acesso MCP do ChatGPT não concede permissão a este aplicativo.';
+  if(state.state==='bound'&&Array.isArray(state.bindings)&&state.bindings.length)
+    return state.bindings.length+' vínculo(s) registrado(s), ainda sem grant atual confirmado. Verifique o snapshot autorizado.';
+  return 'Porta Runtime disponível, mas nenhum workspace com grant vinculado a este projeto.';
+}
+
 export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onSelectRightPane,onOpenAppSettings,onNavigationChange,onArtifactPreviewTask}) {
   const $=id=>document.getElementById(id);
   let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
   let projectRefreshGeneration=0,orchestratorRefreshGeneration=0,autonomousRefreshGeneration=0;
+  let workspaceInspectionGeneration=0,workspacePortAvailable=false;
   let lastPresentedMissionStatusKey=null;
   let coordinatorOpen=false,coordinatorAvailable=false,orchestratorChatAvailable=false,coordinatorDraftCommitAvailable=false;
   let gptWebTransportAvailable=false;
@@ -158,7 +189,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       ?'GitHub · adaptador disponível, acesso não verificado'
       :project?.repository_url?'GitHub · URL salva, leitura ausente':'GitHub · sem leitura autenticada',
       project?.repository_url?'partial':'blocked');
-    set('capabilityRuntime','Runtime · workspace sem grant','blocked');
+    set('capabilityRuntime',workspacePortAvailable
+      ?'Runtime · porta detectada, grant não verificado':'Runtime · sem porta autenticada no Forge',
+      workspacePortAvailable?'partial':'blocked');
     set('capabilityContinuity','24 h · supervisor ausente','blocked');
   }
   function syncCoordinatorActions() {
@@ -802,9 +835,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         ?'O chat coordenador recebe somente esta URL como contexto; não consulta arquivos, commits ou branches. Nenhuma integração GitHub está conectada ao Host.'
         :'Nenhuma URL de repositório está vinculada. O Host não tem leitura autenticada do GitHub; nenhuma integração GitHub está conectada.'
       :'A API recebe somente a URL. No desktop, tarefas podem pedir ao ChatGPT para usar a integração GitHub da sessão; isso não comprova que a integração está disponível. Nenhum arquivo local é lido nesta etapa.';
-    $('workspaceConnection').textContent=nodeHost
-      ?'Runtime/workspace local não conectado a esta página; nenhuma pasta ou arquivo local é lido.'
-      :'Acesso ao workspace local ainda indisponível. Nenhum arquivo local é lido nesta fase.';
+    // Every project/scope change revokes any pending UI snapshot result.
+    workspaceInspectionGeneration++;
+    $('inspectWorkspace').disabled=!project;
+    $('workspaceConnection').textContent=!project?'Selecione um projeto para verificar o Runtime.':
+      workspacePortAvailable?'Porta Runtime detectada; nenhum grant atual foi verificado para este projeto.':
+        'Runtime/workspace local não conectado a esta página; nenhuma pasta ou arquivo local é lido.';
+    $('workspaceEvidence').textContent='Nenhum snapshot autorizado verificado nesta sessão.';
     syncCapabilitySummary();
     syncProjectObservation();
   }
@@ -826,6 +863,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const engineStatus=await call('status');
     coordinatorAvailable=engineStatus.coordinatorAvailable===true;
     repositoryPortAvailable=engineStatus.repositoryPortAvailable===true;
+    workspacePortAvailable=engineStatus.workspacePortAvailable===true;
     gptWebTransportAvailable=engineStatus.providerExecutionAvailable===true&&!nodeHost;
     // The coordinator is a distinct conversation, not another GPT Web front.
     orchestratorChatAvailable=coordinatorAvailable;
@@ -1314,6 +1352,39 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const previous=buttons.map(b=>b.disabled);buttons.forEach(b=>b.disabled=true);
     try {await action();}catch{error();}finally{buttons.forEach((b,i)=>b.disabled=previous[i]);}
   }
+  $('inspectWorkspace').addEventListener('click',()=>{
+    const p=projectId;if(!p)return;
+    const generation=++workspaceInspectionGeneration;
+    const button=$('inspectWorkspace');
+    button.disabled=true;
+    $('workspaceEvidence').textContent='Consultando somente o estado do grant do Runtime...';
+    void (async()=>{
+      try {
+        const current=await call('workspace_status',{projectId:p});
+        if(generation!==workspaceInspectionGeneration||p!==projectId)return;
+        $('workspaceConnection').textContent=describeWorkspaceConnection(current);
+        if(current?.available!==true||current.state!=='bound'||!Array.isArray(current.bindings)||
+          typeof current.bindings[0]?.bindingId!=='string') {
+          $('workspaceEvidence').textContent='Nenhum snapshot verificado. Sem leitura de arquivos ou execução local.';
+          return;
+        }
+        // One explicit, read-only snapshot. Runtime must reverify the grant
+        // before AND after the remote observation; no path or content reaches UI.
+        const snapshot=await call('workspace_snapshot',{
+          projectId:p,bindingId:current.bindings[0].bindingId
+        });
+        if(generation!==workspaceInspectionGeneration||p!==projectId)return;
+        $('workspaceEvidence').textContent=describeWorkspaceSnapshot(snapshot);
+      }catch {
+        if(generation===workspaceInspectionGeneration&&p===projectId)
+          $('workspaceEvidence').textContent=
+            'Não foi possível verificar o grant atual. Nenhum arquivo foi lido ou modificado pelo Forge.';
+      }finally {
+        if(generation===workspaceInspectionGeneration&&p===projectId)
+          button.disabled=false;
+      }
+    })();
+  });
   $('projectSelect').addEventListener('change',async()=>{
     document.body.classList.remove('orchestrator-rail-open');$('contextRail').classList.remove('open');
     const previous=projectId,next=$('projectSelect').value||null;
