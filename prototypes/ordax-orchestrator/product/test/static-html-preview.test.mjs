@@ -42,6 +42,9 @@ test('work surface is visibly inside the existing right rail and only receives h
   assert.match(main,/registerUiHandler\('ordax:tasks:html-artifact:preview'/);
   assert.match(main,/requireTrustedSupervisorRenderer\(event\)/);
   assert.match(main,/verifyLocalHtmlArtifact\(real\)/);
+  assert.match(main,/readVerifiedLocalHtmlArtifact\(real\)/);
+  assert.match(main,/sha256:proof\.sha256,bytes:proof\.bytes,html:proof\.html/);
+  assert.doesNotMatch(main,/html:fs\.readFileSync\(real,'utf8'\)/);
   assert.match(main,/proof\.sha256!==asset\.sha256/);
   assert.match(main,/will-frame-navigate/);
   assert.match(main,/details\.preventDefault\(\)/);
