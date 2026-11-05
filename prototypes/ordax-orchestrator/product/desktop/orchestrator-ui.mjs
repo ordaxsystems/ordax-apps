@@ -1395,7 +1395,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       $('contextRail').classList.remove('open');
       await refreshProjects();await refreshOrchestrators();
       await onNavigationChange?.({view:'home',projectId:null,orchestratorId:null,taskId:null});
-      status('Projeto excluído do Forge. Pastas externas não foram apagadas.');
+      const cleanup=receipt.result?.localAssetCleanup;
+      status(cleanup&&cleanup.filesPending===0&&cleanup.entriesRemaining===0
+        ?'Projeto e anexos locais excluídos. Pastas externas preservadas.'
+        :'Projeto excluído. Alguns anexos locais podem exigir limpeza; pastas externas preservadas.');
     });
   });
   $('projectRepositoryForm').addEventListener('submit',event=>{

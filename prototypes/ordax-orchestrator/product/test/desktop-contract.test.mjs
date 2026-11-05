@@ -923,6 +923,8 @@ test('new missions are local drafts and never silently start a GPT work conversa
   assert.match(contract,/\['mission_create'/);
   assert.match(contract,/\['project_rename'/);
   assert.match(main,/operation!=='project_delete'&&runtimeOrchestratorBridge\?\.allows/);
+  assert.match(main,/projectAssetCleanupScope/);
+  assert.match(main,/pruneDeletedProjectAssets/);
   assert.match(packagedSmoke,/missionDraftPreserved/);
   assert.match(packagedSmoke,/mission_draft_not_persisted/);
   assert.match(packagedSmoke,/conversationCards!==2/);

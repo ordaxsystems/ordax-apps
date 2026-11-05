@@ -33,6 +33,7 @@ import { normalizeProviderViewBounds } from '../src/provider-view-bounds.mjs';
 import { createProviderProvisionalRecorder } from '../src/provider-provisional-recorder.mjs';
 import { resolveLabUserRoot, labProfileFingerprint } from '../src/lab-profile-binding.mjs';
 import { PRODUCT_NAME } from '../src/product-brand.mjs';
+import { pruneDeletedProjectAssets } from '../src/project-assets-cleanup.mjs';
 import { verifyRuntimeManifest } from '../src/runtime-build-identity.mjs';
 import { assertTaskHandoffCoversOmissions, buildProviderContextAttachmentNotice, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
 import { removeStaleTaskHandoffFiles, removeTaskHandoffFile, resolveTaskHandoffRoot, writeTaskHandoffFile } from '../src/task-handoff-file.mjs';
@@ -1174,9 +1175,30 @@ if(runtimeTransportRequest) {
   const detach=attachOrchestratorRuntimePipes({...streams,bridge:runtimeOrchestratorBridge});
   closeRuntimeOrchestratorPipe=()=>{detach();streams.close();};
 }
+// Capture the App-owned asset scope before the SQLite deletion cascades. This
+// never includes external project paths or arbitrary computer files.
+function projectAssetCleanupScope(projectId){
+  if(typeof projectId!=='string'||!projectId.startsWith('project_'))return null;
+  const taskIds=store.db.prepare('SELECT task_id FROM lab_task_bindings WHERE project_id=?').all(projectId)
+    .map(row=>row.task_id);
+  const assetPaths=store.db.prepare(`SELECT a.local_path FROM message_assets a
+    JOIN lab_task_bindings b ON b.task_id=a.task_id WHERE b.project_id=?`).all(projectId)
+    .map(row=>row.local_path);
+  return {assetsRoot,taskIds,assetPaths};
+}
+function withDeletedProjectAssetCleanup(receipt,scope){
+  if(receipt?.status!=='succeeded'||receipt?.result?.deleted!==true||!scope?.taskIds.length)return receipt;
+  let localAssetCleanup;
+  try{localAssetCleanup=pruneDeletedProjectAssets(scope);}
+  catch{localAssetCleanup={filesRemoved:0,foldersRemoved:0,
+    filesPending:scope.assetPaths.length,entriesRemaining:scope.taskIds.length};}
+  return {...receipt,result:{...receipt.result,localAssetCleanup}};
+}
 registerUiHandler('ordax:orchestrator:invoke',async(event,payload)=>{
   requireTrustedSupervisorRenderer(event);
-  const result=await orchestratorService.invoke(localOrchestratorContext,payload?.operation,payload?.input??{});
+  const scope=payload?.operation==='project_delete'?projectAssetCleanupScope(payload?.input?.projectId):null;
+  const receipt=await orchestratorService.invoke(localOrchestratorContext,payload?.operation,payload?.input??{});
+  const result=withDeletedProjectAssetCleanup(receipt,scope);
   if(ORCHESTRATOR_TOOLS.some(t=>t.operation===payload?.operation&&!t.readOnly)&&win&&!win.isDestroyed())
     emitRendererEvent('ordax:orchestrator:changed');
   return result;
@@ -1184,7 +1206,14 @@ registerUiHandler('ordax:orchestrator:invoke',async(event,payload)=>{
 // Local protocol conformance/host integration entrypoint, never arbitrary eval.
 registerUiHandler('ordax:orchestrator:mcp',async(event,message)=>{
   requireTrustedSupervisorRenderer(event);
-  const result=await localOrchestratorMcp.handle(message);
+  const deleting=message?.method==='tools/call'&&message?.params?.name==='orchestrator_project_delete';
+  const scope=deleting?projectAssetCleanupScope(message?.params?.arguments?.projectId):null;
+  let result=await localOrchestratorMcp.handle(message);
+  if(deleting&&result?.result?.structuredContent){
+    const receipt=withDeletedProjectAssetCleanup(result.result.structuredContent,scope);
+    result={...result,result:{...result.result,structuredContent:receipt,
+      content:[{type:'text',text:JSON.stringify(receipt)}]}};
+  }
   if(message?.method==='tools/call'&&ORCHESTRATOR_TOOLS.some(t=>t.name===message.params?.name&&!t.readOnly)&&win&&!win.isDestroyed())
     emitRendererEvent('ordax:orchestrator:changed');
   return result;
