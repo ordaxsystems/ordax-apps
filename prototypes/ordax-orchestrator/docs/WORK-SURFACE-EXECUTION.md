@@ -91,3 +91,7 @@ Work Surface de arquivos, console e testes, revisão iterativa com aprovação c
 - Nunca mostrar dados de Groq, tokens, caminhos locais privados ou HTML não confiável em contexto privilegiado com execução.
 - Se a visualização isolada falhar, mostrar mensagem humana e manter o arquivo/recibo; **não** gerar/rebaixar cópia nem solicitar ao GPT outra resposta.
 - Retomar em outro chat buscando `WORK-SURFACE-EXECUTION.md` e executando o **primeiro item ainda pendente**, sem nova rodada de planejamento.
+
+
+### P1.3.7 — prova independente do arquivo local [CANDIDATO]
+O handoff Groq recebe `verifiedArtifact` **somente** quando o mesmo Run GPT confirmado possui evento de captura `provider.artifact.html_verified`, asset preso à última resposta e a ponte do App revalida bytes/estrutura/SHA-256 via verificador de prévia. A leitura de status também revalida os bytes; arquivo alterado, sem porta host ou fora do escopo vira `null` (fail-closed). Isso prova apenas **HTML local**: não certifica código Git, publicação, testes no navegador ou a conclusão geral. Sem nova execução GPT, segunda base de dados ou circuito de filesystem. Atualizar status após CI e homologação física.

@@ -1057,6 +1057,13 @@ let runtimeOrchestratorBridge=null;
 let closeRuntimeOrchestratorPipe=null;
 const orchestratorKernel=createOrchestratorKernel({
   store,version:app.getVersion(),
+  // Reuse the exact preview's path, symlink, structure and SHA-256 verifier.
+  // Never return HTML bytes to Groq or grant arbitrary file reads.
+  verifyLocalArtifact:({taskId,assetId})=>{
+    const proof=readVerifiedHtmlPreview({taskId,assetId});
+    return {verified:true,sha256:proof.sha256,bytes:proof.bytes,
+      verification:'local_bytes_and_structure'};
+  },
   authorize:({context,operation})=>context===localOrchestratorContext||
     runtimeOrchestratorBridge?.allows(context,operation)===true,
   confirmProposalSend:async({title,content})=>confirmInActiveUi({

@@ -1174,8 +1174,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       ?'Etapa '+currentJob.pendingStage.step+' · '+currentJob.pendingStage.specialist+
         ' · depende do Run GPT revisado · '
       :'';
+    const localFile=currentJob?.verifiedArtifact?.kind==='local_html_file'
+      ?'HTML local verificado · SHA-256 '+currentJob.verifiedArtifact.sha256.slice(0,12)+'… · '
+      :'';
     $('autonomousDialogueState').textContent=currentJob
-      ?progress+specialist+handoff+acceptanceState+(outcome?.message||technicalLabel||storyLabel||labels[job.state]||'Estado registrado')
+      ?progress+specialist+handoff+localFile+acceptanceState+(outcome?.message||technicalLabel||storyLabel||labels[job.state]||'Estado registrado')
       :'Nenhuma execução ativa. Descreva o que deseja realizar.';
     // A failed or uncertain mission remains read-only. Reuse the canonical
     // Task navigator to inspect confirmed records, never schedule a retry.

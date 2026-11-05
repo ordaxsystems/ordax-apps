@@ -17,13 +17,15 @@ export function createOrchestratorKernel({
   confirmProposalSend=null,
   workspacePort=null,
   repositoryPort=null,
+  verifyLocalArtifact=null,
   version='development'
 }={}) {
   if(!store?.getWorkspaceSession||typeof authorize!=='function')
     throw Error('orchestrator_kernel_ports_required');
   const context=Object.freeze({actorId,clientId,workspaceSessionId:store.getWorkspaceSession().id});
   const service=new OrchestratorService({
-    store,authorize,provider,coordinator,confirmProposal,confirmProposalSend,workspacePort,repositoryPort
+    store,authorize,provider,coordinator,confirmProposal,confirmProposalSend,workspacePort,repositoryPort,
+    verifyLocalArtifact
   });
   const mcp=createOrchestratorMcp({service,getContext:()=>context,version});
   return Object.freeze({context,service,mcp});
