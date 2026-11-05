@@ -25,10 +25,13 @@ function missionProjectName(mission) {
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
 export class OrchestratorService {
-  constructor({store,authorize,provider=null,coordinator=null,confirmProposal=null,confirmProposalSend=null,workspacePort=null,repositoryPort=null}={}) {
+  constructor({store,authorize,provider=null,coordinator=null,confirmProposal=null,confirmProposalSend=null,workspacePort=null,repositoryPort=null,verifyLocalArtifact=null}={}) {
     if(!store?.db || typeof authorize!=='function')throw Error('orchestrator_ports_required');
     this.store=store; this.db=store.db; this.authorize=authorize;
     this.provider=provider; this.coordinator=coordinator;
+    // Optional App-owned, read-only local proof port. No filesystem authority
+    // is inferred from a persisted model answer, asset path or remote URL.
+    this.verifyLocalArtifact=typeof verifyLocalArtifact==='function'?verifyLocalArtifact:null;
     this.confirmProposal=confirmProposal;
     this.confirmProposalSend=confirmProposalSend;
     this.pendingProposalReviews=new Set();
@@ -1290,6 +1293,8 @@ export class OrchestratorService {
             ?'REVISÃO DE ETAPA TÉCNICA: use technicalMission no contexto como limite. '+
               'Observe o objetivo original e o especialista da etapa; previousAcceptance '+
               'é somente o critério proposto na revisão anterior, NÃO prova de implementação. '+
+              'verifiedArtifact, quando presente, comprova APENAS o arquivo HTML local cujo SHA-256 foi relido '+
+              'pelo App; não é prova de GitHub, testes, implantação ou satisfação geral do aceite. '+
               'Não invente uma missão nova, autorização, alteração ou dependência fora desse objetivo. '
             :'')+
           'Responda SOMENTE JSON conforme o formato do provedor, incluindo o Run, a decisao, resumo, '+

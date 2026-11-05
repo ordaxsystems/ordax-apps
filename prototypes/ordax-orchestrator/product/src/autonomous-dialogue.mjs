@@ -189,6 +189,40 @@ export class AutonomousDialogue {
     return {cycles:history.length,completedReviews:stages.length,
       authorizedGPTSends,truncated,stages,reviewTasks:[...reviewTasks.values()]};
   }
+  // A model answer and a DB asset record cannot attest a file. Reuse the
+  // native preview verifier against CURRENT bytes and require the canonical
+  // capture receipt bound to this exact latest completed GPT Run.
+  verifiedHtmlForRun(projectId,orchestratorId,runId) {
+    if(typeof this.service.verifyLocalArtifact!=='function')return null;
+    const source=this.service.reviewableGPTResult(projectId,orchestratorId,runId);
+    if(!source)return null;
+    const asset=this.db.prepare(`SELECT a.id,a.sha256
+      FROM message_assets a
+      JOIN messages m ON m.id=a.message_id AND m.task_id=a.task_id
+        AND m.role='assistant'
+      JOIN events e ON e.task_id=a.task_id AND e.kind='provider.artifact.html_verified'
+        AND json_valid(e.payload)
+        AND json_extract(e.payload,'$.run_id')=?
+        AND json_extract(e.payload,'$.asset_id')=a.id
+        AND json_extract(e.payload,'$.sha256')=a.sha256
+      WHERE a.task_id=? AND a.kind='file' AND a.mime_type='text/html'
+        AND length(a.sha256)=64
+        AND m.id=(SELECT id FROM messages WHERE task_id=?
+          AND role='assistant' ORDER BY rowid DESC LIMIT 1)
+      ORDER BY e.seq DESC LIMIT 1`).get(runId,source.taskId,source.taskId);
+    if(!asset)return null;
+    try {
+      const proof=this.service.verifyLocalArtifact({taskId:source.taskId,assetId:asset.id});
+      if(proof?.verified!==true||proof.sha256!==asset.sha256||
+         !Number.isSafeInteger(proof.bytes)||proof.bytes<40||
+         proof.bytes>2*1024*1024||
+         proof.verification!=='local_bytes_and_structure')return null;
+      return Object.freeze({kind:'local_html_file',runId,assetId:asset.id,
+        sha256:proof.sha256,bytes:proof.bytes,
+        verification:'local_bytes_and_structure',
+        browserTested:false,published:false,externalEffectVerified:false});
+    }catch{return null;}
+  }
   // The active Groq review receives a verified, mission-scoped handoff.
   // This is derived only from canonical Run/mission/review evidence and
   // never authorizes another GPT send or certifies external effects.
@@ -222,6 +256,7 @@ export class AutonomousDialogue {
       cycle,step,specialist,
       authorizedGPTSends:row.followup_policy==='review_only'?1:LIMIT,
       previousAcceptance:previousAcceptance?Object.freeze(previousAcceptance):null,
+      verifiedArtifact:this.verifiedHtmlForRun(projectId,orchestratorId,runId),
       externalEffectsVerified:false,automaticGPTSendAuthorized:false
     });
   }
@@ -242,6 +277,10 @@ export class AutonomousDialogue {
           (!semantic||all.findIndex(([,id])=>id===taskId)===i))
         .map(([label,taskId])=>({taskId,label:semantic?'Trabalho GPT':label}));
     const chainProgress=semantic?this.technicalHistory(row):null;
+    const lastReviewed=chainProgress?.stages.at(-1);
+    const verifiedArtifact=lastReviewed&&lastReviewed.cycle===chainProgress.cycles
+      ?this.verifiedHtmlForRun(row.project_id,row.orchestrator_id,lastReviewed.runId)
+      :null;
     const verifiedFirstStage=chainProgress?.stages.find(stage=>
       stage.cycle===chainProgress.cycles&&stage.step===1);
     const pendingStage=semantic&&['ready_final','sending_b','ready_review_final','reviewing_final']
@@ -271,7 +310,7 @@ export class AutonomousDialogue {
     return {missionId:row.id,projectId:row.project_id,orchestratorId:row.orchestrator_id,
       createdAt:row.created_at,
       mission:row.mission,
-      mode:story?'story':semantic?'technical':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,quality,reviewTasks,chainProgress,pendingStage,
+      mode:story?'story':semantic?'technical':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,quality,reviewTasks,chainProgress,pendingStage,verifiedArtifact,
       technicalSpecialist:semantic?technicalMissionPolicy(row.mission).label:null,
       state:row.state,maxGPTSends:story?STORY_TURNS:row.followup_policy==='review_only'?1:row.max_gpt_sends,
       taskAId:row.task_a_id,taskBId:row.task_b_id,reviewedTaskId,

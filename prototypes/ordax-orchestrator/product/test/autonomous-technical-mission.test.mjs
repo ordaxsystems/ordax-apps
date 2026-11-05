@@ -7,19 +7,21 @@ import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {recordProviderSubmissionProvenance} from '../src/provider-submission-provenance.mjs';
 import {inspectProviderLinkedThread,reconcileProviderLinkedReply} from '../src/provider-linked-thread-recovery.mjs';
+import {verifyLocalHtmlArtifact,assertLocalArtifactPath} from '../src/provider-html-artifact.mjs';
 
 const quote='nenhuma alteração externa foi comprovada';
 const response='O GPT investigou o código e propôs alterações e testes de regressão; nenhuma alteração externa foi comprovada. A validação de efeito deve ser realizada separadamente.';
 const instruction='Revise o resultado observado, defina se continua na conversa ou exige outra frente, e produza provas verificáveis.';
 
 function fixture(t,{first='continue_same_conversation',last='verify_external_effect',providerFailure=null,lateResponseAt=null,groqTruncateReviews=[],groqFilteredReviews=[],groqInvalidEvidenceReviews=[],groqInvalidNextStepReviews=[],holdAfterFirstReview=false,holdProviderBusyAfterFirstSend=false,
-  holdProviderBusyAfterSecondSend=false,maxExpectedSends=2}={}){
+  holdProviderBusyAfterSecondSend=false,maxExpectedSends=2,withHtmlProof=false,missingArtifactPort=false}={}){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-semantic-mission-'));
   const store=new Store(path.join(dir,'canonical.sqlite'));
   t.after(()=>{store.close();fs.rmSync(dir,{force:true,recursive:true})});
   const context=Object.freeze({actorId:'owner',clientId:'lab',
     workspaceSessionId:store.getWorkspaceSession().id});
   let plans=0,reviews=0,sends=0,released=false;
+  let assetFile=null;
   const reviewedScopes=[];
   const coordinator={
     available:()=>true,
@@ -64,6 +66,9 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
           /Comprovar que a tarefa/u);
       } else assert.equal(analysisContext.technicalMission.previousAcceptance,null);
       reviewedScopes.push(analysisContext.technicalMission);
+      if(withHtmlProof&&!missingArtifactPort&&sends===1)
+        assert.equal(analysisContext.technicalMission.verifiedArtifact?.kind,'local_html_file');
+      else assert.equal(analysisContext.technicalMission.verifiedArtifact,null);
       assert.equal(analysisContext.reviewEvidence.externalEffectsVerified,false);
       assert.match(analysisContext.reviewEvidence.answerStart,/nenhuma alteração externa foi comprovada/);
       const decision=reviews===1?first:last;
@@ -122,12 +127,34 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
       const proof=recordProviderSubmissionProvenance({store,taskId,runId,messageId,
         providerPrompt:content,chatUrl:previous||chatUrl,submittedAt:Date.now()});
       assert.equal(proof.recorded,true);
-      store.appendMessage(taskId,'assistant',response);
+      const assistant=store.appendMessage(taskId,'assistant',response);
       store.finishRun(taskId,runId);
+      if(withHtmlProof&&sends===1){
+        assetFile=path.join(dir,'asset_site.html');
+        fs.writeFileSync(assetFile,'<!doctype html><html><head><title>Prova local</title></head><body><h1>OK</h1></body></html>');
+        const proof=verifyLocalHtmlArtifact(assetFile);
+        store.addAsset(taskId,assistant.id,{id:'asset_site_proof',kind:'file',
+          mimeType:'text/html',localPath:assetFile,alt:'index.html',sha256:proof.sha256});
+        store.event(taskId,'provider.artifact.html_verified',{
+          run_id:runId,asset_id:'asset_site_proof',sha256:proof.sha256,
+          bytes:proof.bytes,scope:'private_local_file',browser_tested:false,published:false});
+      }
       return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
     }
   };
   const service=new OrchestratorService({store,coordinator,provider,
+    verifyLocalArtifact:missingArtifactPort?null:({assetId,taskId})=>{
+      const asset=store.getAsset(assetId);
+      if(asset?.task_id!==taskId||asset?.kind!=='file'||asset?.mime_type!=='text/html')
+        throw Error('artifact_unscoped');
+      const root=fs.realpathSync.native(dir);
+      const real=fs.realpathSync.native(assertLocalArtifactPath(dir,asset.local_path));
+      assertLocalArtifactPath(root,real);
+      const proof=verifyLocalHtmlArtifact(real);
+      if(proof.sha256!==asset.sha256)throw Error('artifact_changed');
+      return {verified:true,sha256:proof.sha256,bytes:proof.bytes,
+        verification:proof.verification};
+    },
     authorize:({context:c})=>c===context});
   let seq=0;
   const call=(operation,input={})=>service.invoke(context,operation,{requestId:'req_'+(++seq),...input});
@@ -158,8 +185,40 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
   };
   return {store,service,coordinator,provider,context,call,setup,start,wait,waitFor,
     release:()=>{released=true},metrics:()=>({plans,reviews,sends}),
-    reviewScopes:()=>reviewedScopes.map(x=>({...x}))};
+    reviewScopes:()=>reviewedScopes.map(x=>({...x})),artifactFile:()=>assetFile};
 }
+
+test('a confirmed HTML attachment is rehashed locally and scoped to its real GPT Run, never to a claimed deploy',async t=>{
+  const f=fixture(t,{withHtmlProof:true,first:'candidate_complete',maxExpectedSends:2}),ids=await f.setup();
+  await f.start(ids,'local_file_proof','Crie um site HTML local e confira o arquivo de saída.');
+  const m=await f.wait(ids);
+  assert.equal(m.state,'verification_required');
+  assert.equal(m.verifiedArtifact?.kind,'local_html_file');
+  assert.equal(m.verifiedArtifact?.verification,'local_bytes_and_structure');
+  assert.equal(m.verifiedArtifact?.published,false);
+  assert.equal(m.verifiedArtifact?.browserTested,false);
+  assert.equal(m.verifiedArtifact?.externalEffectVerified,false);
+  assert.equal(m.decision.externalEffectVerified,false);
+  assert.equal(f.reviewScopes()[0]?.verifiedArtifact?.sha256,m.verifiedArtifact.sha256);
+  const runId=m.verifiedArtifact.runId;
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+  // A byte change invalidates the proof on the next read, without another GPT send.
+  fs.appendFileSync(f.artifactFile(),'<!-- tampered -->');
+  const after=f.service.autonomous.status(f.context,ids).mission;
+  assert.equal(after.verifiedArtifact,null);
+  assert.equal(f.metrics().sends,1);
+  assert.equal(f.service.autonomous.verifiedHtmlForRun(ids.projectId,ids.orchestratorId,'wrong_run'),null);
+  assert.equal(f.service.autonomous.verifiedHtmlForRun(ids.projectId,ids.orchestratorId,runId),null);
+});
+
+test('an HTML row without an App verifier remains unverified even with a captured receipt',async t=>{
+  const f=fixture(t,{withHtmlProof:true,missingArtifactPort:true,first:'candidate_complete'}),ids=await f.setup();
+  await f.start(ids,'no_host_verifier','Crie um arquivo HTML local e revise-o.');
+  const m=await f.wait(ids);
+  assert.equal(m.verifiedArtifact,null);
+  assert.equal(f.reviewScopes()[0].verifiedArtifact,null);
+  assert.equal(m.decision.externalEffectVerified,false);
+});
 
 test('natural site request sends its exact words once; a model-suggested publication requires new owner intent',async t=>{
   const f=fixture(t,{first:'new_work',maxExpectedSends:1}),ids=await f.setup();
