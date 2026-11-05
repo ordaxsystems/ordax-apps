@@ -1311,6 +1311,8 @@ test('MCP initialize/discovery/call use exactly the same App service and persist
   assert.equal((await rpc('tools/list')).error.code,-32002);
   const init=await rpc('initialize',{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'fixture',version:'1'}});
   assert.equal(init.result.protocolVersion,'2025-11-25');
+  assert.equal(init.result.serverInfo.name,'ordax-orchestrator-lab');
+  assert.equal(init.result.serverInfo.title,'OrdaX Forge');
   await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
   const tools=(await rpc('tools/list')).result.tools;
   assert.equal(tools.length,ORCHESTRATOR_TOOLS.length);

@@ -2,7 +2,7 @@
 
 # OrdaX Forge — produto de coordenação (nome comercial)
 
-**Identidade comercial SSOT:** `product/src/product-brand.mjs` define `OrdaX Forge` para Electron, interface e Groq; `product/package.json#build.productName` espelha esse valor e é verificado pelo teste de identidade. O owner permanece `ordaxsystems/ordax-apps/prototypes/ordax-orchestrator`. O pacote npm, `appId`, executável já instalado, diretório de perfil `OrdaX/OrchestratorLab`, SQLite, contratos IPC/MCP e nomes técnicos internos continuam inalterados **por compatibilidade**. Nenhuma instalação, banco ou identidade nova é criada pela troca de marca. Histórico anterior mantém nomenclatura original como evidência.
+**Identidade comercial SSOT:** `product/src/product-brand.mjs` define `OrdaX Forge` para Electron, interface, Groq e `serverInfo.title` do MCP; `product/package.json#build.productName` espelha esse valor e é verificado pelo teste de identidade. O `serverInfo.name` técnico do MCP continua estável, conforme separação entre identificador e título de apresentação do protocolo. O owner permanece `ordaxsystems/ordax-apps/prototypes/ordax-orchestrator`. O pacote npm, `appId`, executável já instalado, diretório de perfil `OrdaX/OrchestratorLab`, SQLite, contratos IPC/MCP e nomes técnicos internos continuam inalterados **por compatibilidade**. Nenhuma instalação, banco ou identidade nova é criada pela troca de marca. Histórico anterior mantém nomenclatura original como evidência.
 
 ## Project-First (decisão 2026-10-21)
 
