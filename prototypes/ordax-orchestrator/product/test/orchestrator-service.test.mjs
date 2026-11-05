@@ -42,6 +42,55 @@ async function preparedWork(f) {
 }
 const proposedReply=async()=>({content:'Proposta para revisão',proposal:{title:'Pesquisar',content:'Compare as alternativas.',reason:'Fundamentar o projeto'}});
 
+test('project deletion requires exact owner confirmation and removes only project-owned App records',async t=>{
+  const f=fixture(t),a=await project(f,'Projeto para excluir'),b=await project(f,'Projeto preservado');
+  f.store.appendMessage(a.w,'user','Mensagem somente do projeto descartável');
+  f.store.event(a.w,'test.event',{source:'test'});
+  const runId=f.store.startRun(a.w);f.store.finishRun(a.w,runId);
+  const before=f.store.db.prepare('SELECT COUNT(*) AS n FROM tasks').get().n;
+  await assert.rejects(f.call('project_delete',{projectId:a.p,confirmName:'nome incorreto'}),/confirmation_invalid/);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) AS n FROM tasks').get().n,before);
+  const receipt=await f.service.invoke(f.context,'project_delete',{
+    requestId:'delete-only-this-project',projectId:a.p,confirmName:'Projeto para excluir'});
+  assert.equal(receipt.status,'succeeded');
+  assert.equal(receipt.result.deleted,true);
+  assert.equal(receipt.result.tasksRemoved,2);
+  assert.equal(receipt.result.externalFilesRemoved,false);
+  const repeated=await f.service.invoke(f.context,'project_delete',{
+    requestId:'delete-only-this-project',projectId:a.p,confirmName:'Projeto para excluir'});
+  assert.deepEqual(repeated,receipt);
+  await assert.rejects(f.service.invoke(f.context,'project_delete',{
+    requestId:'delete-only-this-project',projectId:a.p,confirmName:'outro nome'}),/request_conflict/);
+  const remaining=(await f.call('projects_list')).projects;
+  assert.deepEqual(remaining.map(p=>p.id),[b.p]);
+  assert.equal(f.store.getTask(a.w),null);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) AS n FROM events WHERE task_id=?').get(a.w).n,0);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) AS n FROM runs WHERE task_id=?').get(a.w).n,0);
+  assert.ok(f.store.getTask(b.w));
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+  assert.deepEqual(f.store.db.prepare('PRAGMA foreign_key_check').all(),[]);
+});
+
+test('project deletion refuses active or uncertain work and resource bindings',async t=>{
+  const f=fixture(t),a=await project(f,'Protegido');
+  const active=f.store.startRun(a.w);
+  await assert.rejects(f.call('project_delete',{projectId:a.p,confirmName:'Protegido'}),/run_active/);
+  f.store.finishRun(a.w,active);
+  f.service.transaction(()=>f.service.reserve(f.context,'work_send',{
+    requestId:'pending-protected-work',projectId:a.p,taskId:a.w,content:'sensitive'}));
+  await assert.rejects(f.call('project_delete',{projectId:a.p,confirmName:'Protegido'}),/commands_unresolved/);
+  assert.ok(f.store.getTask(a.w));
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) AS n FROM lab_projects WHERE id=?').get(a.p).n,1);
+  f.store.db.prepare("UPDATE lab_command_receipts SET status='failed' WHERE request_id='pending-protected-work'").run();
+  f.store.db.prepare('UPDATE lab_projects SET observation_requested=1 WHERE id=?').run(a.p);
+  await assert.rejects(f.call('project_delete',{projectId:a.p,confirmName:'Protegido'}),/observation_active/);
+  f.store.db.prepare('UPDATE lab_projects SET observation_requested=0 WHERE id=?').run(a.p);
+  const session=f.store.getWorkspaceSession().id;
+  f.store.db.prepare('INSERT INTO lab_project_workspaces(id,project_id,workspace_session_id,device_id,resource_id,actor_id,client_id,created_at) VALUES(?,?,?,?,?,?,?,?)')
+    .run('binding-test',a.p,session,'device-test','resource_test12345678',f.context.actorId,f.context.clientId,new Date().toISOString());
+  await assert.rejects(f.call('project_delete',{projectId:a.p,confirmName:'Protegido'}),/workspace_bound/);
+});
+
 test('project preflight reports only scoped local evidence, never manufactures external access or dispatches',async t=>{
   let providerSends=0,modelCalls=0;
   const f=fixture(t,{provider:{send:()=>{providerSends++;throw Error('unexpected GPT send');}},

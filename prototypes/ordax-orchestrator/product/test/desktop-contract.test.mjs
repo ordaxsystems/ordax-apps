@@ -908,6 +908,10 @@ test('new missions are local drafts and never silently start a GPT work conversa
   const hostFixture=fs.readFileSync(path.join(root,'scripts','orchestrator-host-e2e-client.cjs'),'utf8');
   assert.match(html,/id="newProjectForm"/);
   assert.match(html,/id="renameProjectForm"/);
+  assert.match(html,/id="projectDeleteForm"/);
+  assert.match(html,/id="projectDeleteName"/);
+  assert.match(orchestration,/command\('project_delete',\{projectId:p,confirmName:name\}\)/);
+  assert.match(contract,/\['project_delete'/);
   assert.match(html,/aria-label="Nome da conversa"/);
   assert.match(orchestration,/command\('mission_create',input\)/);
   assert.doesNotMatch(orchestration,/onStartMission\(/);

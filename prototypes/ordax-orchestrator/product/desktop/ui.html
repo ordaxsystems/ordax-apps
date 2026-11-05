@@ -56,7 +56,7 @@
         </button>
       </nav>
       <section class="orchestration-navigation" aria-label="Configuração do projeto e administração">
-        <div class="nav-section-heading"><span>Configuração do projeto</span><div class="nav-heading-actions"><button id="renameProjectButton" class="nav-add" type="button" aria-label="Renomear projeto" disabled>✎</button><button id="addProject" class="nav-add" type="button" aria-label="Conectar projeto">+</button></div></div>
+        <div class="nav-section-heading"><span>Configuração do projeto</span><div class="nav-heading-actions"><button id="renameProjectButton" class="nav-add" type="button" aria-label="Renomear projeto" disabled>✎</button><button id="deleteProjectButton" class="nav-add" type="button" aria-label="Excluir projeto" disabled>×</button><button id="addProject" class="nav-add" type="button" aria-label="Conectar projeto">+</button></div></div>
 
         <select id="projectSelect" class="native-state-control" aria-label="Selecionar projeto ativo" title="Projeto ativo"><option value="">Conversas sem projeto</option></select>
         <details id="projectSetup" class="nav-setup">
@@ -74,6 +74,15 @@
           <form id="renameProjectForm">
             <label for="renameProjectInput">Nome do projeto</label><input id="renameProjectInput" maxlength="140" required />
             <button type="submit">Salvar nome</button>
+          </form>
+        </details>
+        <details id="projectDeleteSetup" class="nav-setup">
+          <summary>Excluir projeto</summary>
+          <form id="projectDeleteForm">
+            <small>Exclusão irreversível das conversas, tarefas e histórico deste projeto no Forge. Não exclui pastas externas do computador ou revoga grants.</small>
+            <label for="projectDeleteName">Digite o nome exato do projeto para confirmar</label>
+            <input id="projectDeleteName" maxlength="140" required autocomplete="off" />
+            <button id="projectDeleteSubmit" type="submit">Excluir projeto definitivamente</button>
           </form>
         </details>
         <div class="nav-section-heading orchestrator-heading"><span>Administração</span><button id="addOrchestrator" class="nav-add" type="button" aria-label="Novo orquestrador">+</button></div>
