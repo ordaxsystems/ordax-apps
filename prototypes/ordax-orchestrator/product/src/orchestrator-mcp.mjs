@@ -1,4 +1,5 @@
 import {ORCHESTRATOR_TOOLS,ORCHESTRATOR_CONTRACT} from './orchestrator-contract.mjs';
+import {PRODUCT_NAME} from './product-brand.mjs';
 
 // MCP tools/lifecycle adapter hosted by the App. The host supplies the trusted
 // context on EVERY call. This module opens no port, reads no database and owns
@@ -38,7 +39,8 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
           phase='initializing';
           return result(id,{protocolVersion:supported.includes(p.protocolVersion)?p.protocolVersion:supported[0],
             capabilities:{tools:{listChanged:false}},
-            serverInfo:{name:'ordax-orchestrator-lab',version},
+            // Protocol name is stable across the rebrand; MCP title is user-facing.
+            serverInfo:{name:'ordax-orchestrator-lab',title:PRODUCT_NAME,version},
             instructions:ORCHESTRATOR_CONTRACT+'. App-owned state; query receipts before any retry. External transport requires Platform/Runtime authorization.'});
         }
         if(phase!=='ready')return error(id,-32002,'Initialization required');
