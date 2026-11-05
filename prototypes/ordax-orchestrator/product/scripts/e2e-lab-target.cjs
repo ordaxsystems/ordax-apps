@@ -7,7 +7,7 @@ const requestedPort=process.env.ORDAX_LAB_E2E_DEBUG_PORT || '9445';
 if(!['9445','9446'].includes(requestedPort))throw new Error('lab_e2e_debug_port_not_allowed');
 const DEBUG_PORT=requestedPort;
 const DEBUG_URL='http://127.0.0.1:'+DEBUG_PORT+'/json/list';
-const PRODUCT_TITLE='OrdaX Orchestrator Lab';
+const PRODUCT_TITLE=require('../package.json').build.productName;
 const LAB_ID='OrchestratorLab';
 const DB_FILENAME='ordax-orchestrator-lab.sqlite';
 

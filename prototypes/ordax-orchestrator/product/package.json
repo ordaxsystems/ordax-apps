@@ -52,7 +52,7 @@
   },
   "build": {
     "appId": "br.com.ordax.orchestrator.lab",
-    "productName": "OrdaX Orchestrator Lab",
+    "productName": "OrdaX Forge",
     "asar": true,
     "files": [
       "desktop/**/*",

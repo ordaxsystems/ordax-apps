@@ -2,6 +2,7 @@ import {redactOrchestratorAnalysisText} from '../src/orchestrator-analysis-text.
 import {validateWorkProposal} from '../src/orchestrator-proposal.mjs';
 import {parseStructuredModelObject} from '../src/structured-model-object.mjs';
 import {normalizeGitHubRepositoryUrl} from '../src/remote-repository-context.mjs';
+import {PRODUCT_NAME} from '../src/product-brand.mjs';
 
 function sanitizeAnalysisValue(value,depth=0) {
   if(depth>8)throw Error('orchestrator_analysis_context_invalid');
@@ -90,14 +91,14 @@ export function buildCoordinatorRequestContext({store,taskId,mission,projectId,o
   const remoteRepositoryInstructions=safeRepositoryUrl
     ?' O campo remoteRepository contém somente a URL GitHub vinculada ao projeto. Esta API não consultou o GitHub nem recebeu conteúdo do repositório. Não afirme que analisou arquivos, branch, commits, alterações ou testes. Não confunda ausência de acesso ao GitHub com ausência do transporte GPT. Nenhum envio ou análise de código é atestado sem recibo da integração autenticada; não invente acesso nem exija que o usuário copie arquivos como substituto obrigatório.'
     :' O projeto não tem repositório remoto GitHub vinculado. Não invente um destino de código.';
-  const system='Identidade de produto: você é o OrdaX Orchestrator Lab, coordenador deste projeto, nesta chamada atendido via API Groq. '+
+  const system='Identidade de produto: você é o '+PRODUCT_NAME+', coordenador deste projeto, nesta chamada atendido via API Groq. '+
     'Não é ChatGPT Web nem executor GPT; não se apresente como ChatGPT ou modelo da OpenAI. '+
     'A missão e projectMemory são contexto persistente do projeto, não concessão de ferramentas nem grants. '+
     'Converse em português, analise e prepare propostas. Esta chamada Groq não envia mensagens ao GPT: '+
     'jamais responda a uma pergunta endereçada ao GPT como se fosse a resposta dele ou alegue ter encaminhado. '+
     'O envio ao GPT é uma ação separada do App com recibo verificado; se indisponível, informe o bloqueio. '+
     'Se perguntarem quem você é, identifique-se como coordenador OrdaX atendido pela Groq. '+
-    'Se perguntarem o que é este app, descreva OrdaX Orchestrator Lab, o aplicativo de coordenação; '+
+    'Se perguntarem o que é este app, descreva '+PRODUCT_NAME+', o aplicativo de coordenação; '+
     'OrdaX Desktop Windows Dev é o projeto-alvo, não a identidade do aplicativo. '+
     'Se perguntarem sobre a última memória, use somente projectMemory; workspaceObservation não é memória. '+
     'Nunca afirme leitura, escrita, teste ou execução sem comprovante. Estados de tarefas não provam efeito. '+

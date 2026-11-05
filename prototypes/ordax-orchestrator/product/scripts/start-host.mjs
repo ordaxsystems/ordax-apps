@@ -1,6 +1,7 @@
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHostApplication} from '../host/host-application.mjs';
+import {PRODUCT_NAME} from '../src/product-brand.mjs';
 import {acquireHostProfileLock,resolveHostProfileRoot} from '../host/host-profile-lock.mjs';
 
 const [major,minor]=process.versions.node.split('.').map(Number);
@@ -26,7 +27,7 @@ try {
   server=application.createServer({onShutdown:()=>{void shutdown();}});
   const {url}=await server.listen();
   process.stdout.write(`ORDAX_HOST_BROWSER_URL=${url}\n`);
-  process.stdout.write(`OrdaX Orchestrator Node host iniciado. Perfil: ${dataRoot}. Executor das conversas de trabalho ainda não conectado.\n`);
+  process.stdout.write(`${PRODUCT_NAME} Node host iniciado. Perfil: ${dataRoot}. Executor das conversas de trabalho ainda não conectado.\n`);
   process.once('SIGINT',()=>{void shutdown().finally(()=>process.exit(0));});
   process.once('SIGTERM',()=>{void shutdown().finally(()=>process.exit(0));});
 } catch(error) {

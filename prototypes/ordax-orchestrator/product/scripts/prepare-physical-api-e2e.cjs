@@ -41,7 +41,7 @@ const expectedArchive='3e8c4bf5653a8ed1df6ca39f0ea4162280206cd0d781e6edf05d1de52
     try {
       const response=await fetch(endpoint,{signal:AbortSignal.timeout(2000)});
       const rows=await response.json();
-      target=rows.find(row=>row.type==='page'&&row.title==='OrdaX Orchestrator Lab'&&
+      target=rows.find(row=>row.type==='page'&&row.title===require('../package.json').build.productName&&
         /^file:\/\//.test(row.url)&&/\/desktop\/ui\.html$/.test(row.url));
       if(target)break;
     }catch{}

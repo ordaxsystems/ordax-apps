@@ -32,6 +32,7 @@ import { createProviderExecutionScheduler } from '../src/provider-execution-sche
 import { normalizeProviderViewBounds } from '../src/provider-view-bounds.mjs';
 import { createProviderProvisionalRecorder } from '../src/provider-provisional-recorder.mjs';
 import { resolveLabUserRoot, labProfileFingerprint } from '../src/lab-profile-binding.mjs';
+import { PRODUCT_NAME } from '../src/product-brand.mjs';
 import { verifyRuntimeManifest } from '../src/runtime-build-identity.mjs';
 import { assertTaskHandoffCoversOmissions, buildProviderContextAttachmentNotice, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
 import { removeStaleTaskHandoffFiles, removeTaskHandoffFile, resolveTaskHandoffRoot, writeTaskHandoffFile } from '../src/task-handoff-file.mjs';
@@ -43,7 +44,7 @@ if (process.env.ORDAX_DESKTOP_DEBUG === '1') {
 }
 
 const runtimeTransportRequest=resolveOrchestratorRuntimeTransport();
-app.setName('OrdaX Orchestrator Lab');
+app.setName(PRODUCT_NAME);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const hostBrowserMode=!app.isPackaged&&(process.env.ORDAX_HOST_BROWSER_UI==='1'||process.argv.includes('--host-browser'));
@@ -134,11 +135,11 @@ async function ensureBackgroundTray() {
       const icon=await app.getFileIcon(process.execPath,{size:'small'});
       if(!icon||icon.isEmpty())return false;
       const tray=new Tray(icon);
-      tray.setToolTip('OrdaX Orchestrator Lab — em segundo plano');
+      tray.setToolTip(PRODUCT_NAME+' — em segundo plano');
       tray.setContextMenu(Menu.buildFromTemplate([
-        {label:'Abrir OrdaX Orchestrator',click:showCanonicalWindow},
+        {label:'Abrir '+PRODUCT_NAME,click:showCanonicalWindow},
         {type:'separator'},
-        {label:'Sair do OrdaX Orchestrator',click:()=>{quittingIntentionally=true;app.quit();}}
+        {label:'Sair do '+PRODUCT_NAME,click:()=>{quittingIntentionally=true;app.quit();}}
       ]));
       tray.on('double-click',showCanonicalWindow);
       backgroundTray=tray;
@@ -571,7 +572,7 @@ async function createWindowOnce() {
     height: 920,
     minWidth: 1160,
     minHeight: 700,
-    title: 'OrdaX Orchestrator Lab',
+    title: PRODUCT_NAME,
     backgroundColor: '#0b0e13',
     autoHideMenuBar: true,
     show:!hostBrowserMode&&!backgroundStartupAllowed({optedIn:backgroundOptedIn,
@@ -666,9 +667,9 @@ async function createWindowOnce() {
     shellFailureReported=true;
     dialog.showMessageBox(win,{
       type:'error',
-      title:'OrdaX Orchestrator — falha na interface',
+      title:PRODUCT_NAME+' — falha na interface',
       message:'A interface do aplicativo não pôde ser carregada.',
-      detail:'Código local: '+code+'. Nenhuma tarefa foi enviada. Feche esta janela e reinicie o Orchestrator.',
+      detail:'Código local: '+code+'. Nenhuma tarefa foi enviada. Feche esta janela e reinicie o '+PRODUCT_NAME+'.',
       buttons:['Entendi'],defaultId:0
     }).catch(()=>{});
   };
