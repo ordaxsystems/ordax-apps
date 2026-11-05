@@ -904,6 +904,7 @@ test('new missions are local drafts and never silently start a GPT work conversa
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const contract=fs.readFileSync(path.join(root,'src','orchestrator-contract.mjs'),'utf8');
+  const main=fs.readFileSync(path.join(root,'desktop','main.mjs'),'utf8');
   const packagedSmoke=fs.readFileSync(path.join(root,'scripts','live-ui-orchestration-smoke.cjs'),'utf8');
   const hostFixture=fs.readFileSync(path.join(root,'scripts','orchestrator-host-e2e-client.cjs'),'utf8');
   assert.match(html,/id="newProjectForm"/);
@@ -921,6 +922,7 @@ test('new missions are local drafts and never silently start a GPT work conversa
   assert.match(ui,/window\.ordax\.send\(\{ taskId, content, draftRevision \}\)/);
   assert.match(contract,/\['mission_create'/);
   assert.match(contract,/\['project_rename'/);
+  assert.match(main,/operation!=='project_delete'&&runtimeOrchestratorBridge\?\.allows/);
   assert.match(packagedSmoke,/missionDraftPreserved/);
   assert.match(packagedSmoke,/mission_draft_not_persisted/);
   assert.match(packagedSmoke,/conversationCards!==2/);
