@@ -35,7 +35,7 @@ import { resolveLabUserRoot, labProfileFingerprint } from '../src/lab-profile-bi
 import { verifyRuntimeManifest } from '../src/runtime-build-identity.mjs';
 import { assertTaskHandoffCoversOmissions, buildProviderContextAttachmentNotice, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
 import { removeStaleTaskHandoffFiles, removeTaskHandoffFile, resolveTaskHandoffRoot, writeTaskHandoffFile } from '../src/task-handoff-file.mjs';
-import {verifyLocalHtmlArtifact,assertLocalArtifactPath} from '../src/provider-html-artifact.mjs';
+import {verifyLocalHtmlArtifact,readVerifiedLocalHtmlArtifact,assertLocalArtifactPath} from '../src/provider-html-artifact.mjs';
 import {shouldAttemptAutomaticHtmlCapture} from '../src/automatic-html-capture-policy.mjs';
 
 if (process.env.ORDAX_DESKTOP_DEBUG === '1') {
@@ -873,11 +873,10 @@ function readVerifiedHtmlPreview(payload={}) {
   const root=fs.realpathSync.native(assetsRoot);
   const real=fs.realpathSync.native(assertLocalArtifactPath(assetsRoot,asset.local_path));
   assertLocalArtifactPath(root,real);
-  const proof=verifyLocalHtmlArtifact(real);
+  const proof=readVerifiedLocalHtmlArtifact(real);
   if(proof.sha256!==asset.sha256)throw Error('html_preview_integrity_mismatch');
   return Object.freeze({verified:true,taskId,assetId,filename:'index.html',
-    sha256:proof.sha256,bytes:proof.bytes,
-    html:fs.readFileSync(real,'utf8')});
+    sha256:proof.sha256,bytes:proof.bytes,html:proof.html});
 }
 registerUiHandler('ordax:tasks:html-artifact:preview',(event,payload={})=>{
   requireTrustedSupervisorRenderer(event);
