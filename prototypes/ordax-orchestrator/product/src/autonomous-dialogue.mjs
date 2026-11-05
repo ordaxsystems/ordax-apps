@@ -178,14 +178,52 @@ export class AutonomousDialogue {
           proposed.criterion.trim().length>0
           ?{status:proposed.status,
             criterion:redactOrchestratorAnalysisText(proposed.criterion,180)}:null;
+        const prompt=phase==='a'?mission.mission:mission.question_b||mission.mission;
+        const specialist=technicalMissionPolicy(prompt).label;
         stages.push({cycle,step,runId:run.id,taskId,
-          decision:decision.decision,acceptance});
+          decision:decision.decision,acceptance,specialist});
         if(!reviewTasks.has(taskId))
           reviewTasks.set(taskId,{taskId,label:'Trabalho GPT · ciclo '+cycle});
       }
     }
     return {cycles:history.length,completedReviews:stages.length,
       authorizedGPTSends,truncated,stages,reviewTasks:[...reviewTasks.values()]};
+  }
+  // The active Groq review receives a verified, mission-scoped handoff.
+  // This is derived only from canonical Run/mission/review evidence and
+  // never authorizes another GPT send or certifies external effects.
+  reviewScope(context,{projectId,orchestratorId,runId,taskId}={}) {
+    if(!context||!projectId||!orchestratorId||!runId||!taskId)return null;
+    const row=this.db.prepare(`SELECT * FROM lab_autonomous_dialogues
+      WHERE workspace_session_id=? AND actor_id=? AND client_id=?
+        AND project_id=? AND orchestrator_id=? AND strategy='semantic'
+        AND ((state='reviewing_a' AND task_a_id=?) OR
+             (state='reviewing_final' AND task_b_id=?))
+      ORDER BY rowid DESC LIMIT 1`).get(context.workspaceSessionId,
+        context.actorId,context.clientId,projectId,orchestratorId,taskId,taskId);
+    if(!row)return null;
+    const current=this.db.prepare('SELECT id,status FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1')
+      .get(taskId);
+    if(current?.id!==runId||current.status!=='succeeded')
+      throw Error('autonomous_review_run_superseded');
+    const step=row.state==='reviewing_a'?1:2;
+    const history=this.technicalHistory(row);
+    const cycle=history?.cycles||1;
+    let previousAcceptance=null;
+    if(step===2){
+      const prior=history?.stages.find(x=>x.cycle===cycle&&x.step===1);
+      if(!prior||prior.taskId!==row.task_a_id||!row.review_a_json)
+        throw Error('autonomous_review_prerequisite_unconfirmed');
+      previousAcceptance=prior.acceptance||null;
+    }
+    const specialist=technicalMissionPolicy(step===1?row.mission:row.question_b).label;
+    return Object.freeze({
+      objective:redactOrchestratorAnalysisText(row.mission,500),
+      cycle,step,specialist,
+      authorizedGPTSends:row.followup_policy==='review_only'?1:LIMIT,
+      previousAcceptance:previousAcceptance?Object.freeze(previousAcceptance):null,
+      externalEffectsVerified:false,automaticGPTSendAuthorized:false
+    });
   }
   summary(row) {
     if(!row)return null;
@@ -204,6 +242,14 @@ export class AutonomousDialogue {
           (!semantic||all.findIndex(([,id])=>id===taskId)===i))
         .map(([label,taskId])=>({taskId,label:semantic?'Trabalho GPT':label}));
     const chainProgress=semantic?this.technicalHistory(row):null;
+    const verifiedFirstStage=chainProgress?.stages.find(stage=>
+      stage.cycle===chainProgress.cycles&&stage.step===1);
+    const pendingStage=semantic&&['ready_final','sending_b','ready_review_final','reviewing_final']
+      .includes(row.state)&&row.question_b&&verifiedFirstStage
+      ?{step:2,specialist:technicalMissionPolicy(row.question_b).label,
+        prerequisiteRunId:verifiedFirstStage.runId,
+        acceptance:verifiedFirstStage.acceptance,
+        state:row.state==='ready_final'?'ready':'under_review_or_execution'}:null;
     const reviewTasks=semantic
       ?[...(chainProgress?.reviewTasks||[]),...localReviewTasks.filter(item=>
         !chainProgress?.reviewTasks.some(previous=>previous.taskId===item.taskId))]
@@ -225,7 +271,7 @@ export class AutonomousDialogue {
     return {missionId:row.id,projectId:row.project_id,orchestratorId:row.orchestrator_id,
       createdAt:row.created_at,
       mission:row.mission,
-      mode:story?'story':semantic?'technical':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,quality,reviewTasks,chainProgress,
+      mode:story?'story':semantic?'technical':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,quality,reviewTasks,chainProgress,pendingStage,
       technicalSpecialist:semantic?technicalMissionPolicy(row.mission).label:null,
       state:row.state,maxGPTSends:story?STORY_TURNS:row.followup_policy==='review_only'?1:row.max_gpt_sends,
       taskAId:row.task_a_id,taskBId:row.task_b_id,reviewedTaskId,
