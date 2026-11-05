@@ -57,12 +57,20 @@ test('native Work Surface has separate transient WebContentsView with no IPC or 
     'a stale refresh must not close the active native preview');
   assert.match(source,/devTools:false/);
   assert.match(source,/async observeRender\(\)/);
+  assert.match(source,/async observeControls\(html\)/);
+  assert.match(source,/sandboxedPreviewView\(\{session:ses\}\)/);
+  assert.match(source,/executeJavaScriptInIsolatedWorld\(/);
+  assert.doesNotMatch(source,/tester\.webContents\.executeJavaScript\(script\)/);
+  assert.match(source,/normalizedHtmlControlChecks\(result\.report\)/);
   assert.match(source,/view\.webContents\.capturePage\(\)/);
   assert.match(source,/screenshotSha256:createHash\('sha256'\)/);
   assert.match(main,/recordBrowserRenderObservation\(observation\)/);
+  assert.match(main,/recordBrowserControlsObservation\(observation\)/);
+  assert.match(ui,/controles locais aprovados/);
   assert.match(main,/const proof=readVerifiedHtmlPreview\(\{/);
   assert.match(ui,/receipt\?\.browserRenderObserved!==true/);
-  assert.match(ui,/Interações, serviços externos e publicação não certificados/);
+  assert.match(ui,/Não certifica site completo ou publicação/);
+  assert.match(ui,/funcionamento e publicação não certificados/);
   assert.match(ui,/onArtifactPreviewTask:refreshVerifiedWorkSurface/);
   assert.match(markup,/id="workSurfaceModeToggle"/);
   const handler=main.slice(main.indexOf("registerUiHandler('ordax:preview:interactive:open'"),

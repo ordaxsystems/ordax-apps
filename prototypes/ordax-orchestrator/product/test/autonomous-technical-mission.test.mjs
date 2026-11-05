@@ -241,6 +241,48 @@ test('native isolated browser snapshot is Run-bound, idempotent and never certif
   assert.equal(f.metrics().sends,1);
 });
 
+test('bounded browser control receipt requires verified render, latest Run and exact unchanged asset',async t=>{
+  const f=fixture(t,{withHtmlProof:true,first:'candidate_complete'}),ids=await f.setup();
+  await f.start(ids,'local_controls','Crie um HTML local e verifique os controles isolados.');
+  const mission=await f.wait(ids);
+  const html=mission.verifiedArtifact;
+  const taskId=f.store.db.prepare('SELECT task_id FROM runs WHERE id=?').get(html.runId).task_id;
+  const report={schema:'ordax.lab.isolated-html-controls.v1',
+    scope:'bounded_local_dom',status:'passed',checked:2,passed:2,failed:0,
+    checks:[{id:'details_toggle',status:'passed'},
+      {id:'aria_toggle',status:'not_applicable'},
+      {id:'required_form',status:'passed'}]};
+  const observation={kind:'isolated_browser_controls',taskId,
+    assetId:html.assetId,sha256:html.sha256,report,
+    browserTested:false,published:false,externalEffectVerified:false};
+  assert.equal(f.service.autonomous.recordBrowserControlsObservation(observation),null,
+    'render receipt required before any control evidence');
+  const render={kind:'isolated_browser_snapshot',taskId,
+    assetId:html.assetId,sha256:html.sha256,screenshotSha256:'a'.repeat(64),
+    width:442,height:388,browserTested:false,published:false,externalEffectVerified:false};
+  assert.equal(f.service.autonomous.recordBrowserRenderObservation(render).browserRenderObserved,true);
+  assert.equal(f.service.autonomous.recordBrowserControlsObservation({
+    ...observation,report:{...report,status:'verified',passed:3}}),null);
+  assert.equal(f.service.autonomous.recordBrowserControlsObservation({
+    ...observation,sha256:'b'.repeat(64)}),null);
+  assert.equal(f.service.autonomous.recordBrowserControlsObservation({
+    ...observation,browserTested:true}),null);
+  const proof=f.service.autonomous.recordBrowserControlsObservation(observation);
+  assert.equal(proof.browserControls.status,'passed');
+  assert.equal(proof.browserControls.passed,2);
+  assert.equal(proof.browserTested,false);
+  assert.equal(proof.published,false);
+  assert.equal(proof.externalEffectVerified,false);
+  assert.equal(f.service.autonomous.recordBrowserControlsObservation(observation)?.browserControls?.passed,2);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE kind='provider.artifact.browser_controls_observed'").get().n,1);
+  assert.equal(f.service.autonomous.status(f.context,ids).mission.verifiedArtifact.browserControls.checked,2);
+  fs.appendFileSync(f.artifactFile(),'<!-- changed -->');
+  assert.equal(f.service.autonomous.status(f.context,ids).mission.verifiedArtifact,null);
+  assert.equal(f.service.autonomous.recordBrowserControlsObservation(observation),null);
+  assert.equal(f.metrics().sends,1);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
 test('an HTML row without an App verifier remains unverified even with a captured receipt',async t=>{
   const f=fixture(t,{withHtmlProof:true,missingArtifactPort:true,first:'candidate_complete'}),ids=await f.setup();
   await f.start(ids,'no_host_verifier','Crie um arquivo HTML local e revise-o.');

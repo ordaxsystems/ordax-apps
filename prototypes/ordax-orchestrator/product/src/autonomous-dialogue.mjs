@@ -7,6 +7,7 @@ import {advanceStory,STORY_TURNS} from './autonomous-story.mjs';
 import {diagnoseAgentFailure} from './agent-failure-diagnosis.mjs';
 import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
 import {technicalMissionPolicy} from './technical-mission-policy.mjs';
+import {normalizedHtmlControlChecks} from './isolated-html-controls.mjs';
 
 // One mission, one owner authorization, ONE canonical Store and existing GPT
 // executor. A mission's consent covers at most two GPT Web submissions.
@@ -238,12 +239,47 @@ export class AutonomousDialogue {
         Number.isSafeInteger(render.height)&&render.height>=160&&render.height<=5000
         ?Object.freeze({kind:'isolated_browser_snapshot',screenshotSha256:render.screenshotSha256,
           width:render.width,height:render.height}):null;
+      let browserControls=null;
+      if(browserRender){
+        const row=this.db.prepare(`SELECT payload FROM events
+          WHERE task_id=? AND kind='provider.artifact.browser_controls_observed'
+            AND json_valid(payload)
+            AND json_extract(payload,'$.run_id')=?
+            AND json_extract(payload,'$.asset_id')=?
+            AND json_extract(payload,'$.sha256')=?
+          ORDER BY rowid DESC LIMIT 1`).get(source.taskId,runId,asset.id,proof.sha256);
+        if(row)try{
+          const event=JSON.parse(row.payload);
+          if(event.kind==='isolated_browser_controls'&&
+             event.browser_tested===false&&event.published===false&&
+             event.external_effect_verified===false)
+            browserControls=normalizedHtmlControlChecks(event.report);
+        }catch{}
+      }
       return Object.freeze({kind:'local_html_file',runId,assetId:asset.id,
         sha256:proof.sha256,bytes:proof.bytes,
         verification:'local_bytes_and_structure',
         browserRenderObserved:Boolean(browserRender),browserRender,
+        browserControls,
         browserTested:false,published:false,externalEffectVerified:false});
     }catch{return null;}
+  }
+  // Shared SSOT for Run/Task/project/asset provenance. A row alone never
+  // grants proof: the native file verifier must still confirm current bytes.
+  resolveVerifiedHtmlSource(taskId,assetId,sha256){
+    const row=this.db.prepare(`SELECT b.project_id projectId,
+      b.orchestrator_id orchestratorId,
+      json_extract(e.payload,'$.run_id') runId
+      FROM lab_task_bindings b JOIN events e ON e.task_id=b.task_id
+      WHERE b.kind='work' AND b.task_id=? AND
+        e.kind='provider.artifact.html_verified' AND json_valid(e.payload)
+        AND json_extract(e.payload,'$.asset_id')=?
+        AND json_extract(e.payload,'$.sha256')=?
+      ORDER BY e.rowid DESC LIMIT 1`).get(taskId,assetId,sha256);
+    if(!row||typeof row.runId!=='string')return null;
+    const proof=this.verifiedHtmlForRun(row.projectId,row.orchestratorId,row.runId);
+    if(!proof||proof.assetId!==assetId||proof.sha256!==sha256)return null;
+    return {row,proof};
   }
   // Native-only entrypoint, never an Orchestrator operation or model command.
   // Provenance, latest Run, file hash and workspace owner must all be current.
@@ -257,20 +293,10 @@ export class AutonomousDialogue {
        observation.height<160||observation.height>5000||
        observation.browserTested!==false||observation.published!==false||
        observation.externalEffectVerified!==false)return null;
-    const row=this.db.prepare(`SELECT b.project_id projectId,
-      b.orchestrator_id orchestratorId,
-      json_extract(e.payload,'$.run_id') runId
-      FROM lab_task_bindings b JOIN events e ON e.task_id=b.task_id
-      WHERE b.kind='work' AND b.task_id=? AND
-        e.kind='provider.artifact.html_verified' AND json_valid(e.payload)
-        AND json_extract(e.payload,'$.asset_id')=?
-        AND json_extract(e.payload,'$.sha256')=?
-      ORDER BY e.rowid DESC LIMIT 1`).get(
+    const linked=this.resolveVerifiedHtmlSource(
       observation.taskId,observation.assetId,observation.sha256);
-    if(!row||typeof row.runId!=='string')return null;
-    const proof=this.verifiedHtmlForRun(row.projectId,row.orchestratorId,row.runId);
-    if(!proof||proof.assetId!==observation.assetId||
-       proof.sha256!==observation.sha256)return null;
+    if(!linked)return null;
+    const {row}=linked;
     const existing=this.db.prepare(`SELECT 1 FROM events WHERE task_id=?
       AND kind='provider.artifact.browser_render_observed' AND json_valid(payload)
       AND json_extract(payload,'$.run_id')=?
@@ -283,6 +309,32 @@ export class AutonomousDialogue {
       screenshot_sha256:observation.screenshotSha256,
       width:observation.width,height:observation.height,
       browser_tested:false,published:false,external_effect_verified:false
+    });
+    return this.verifiedHtmlForRun(row.projectId,row.orchestratorId,row.runId);
+  }
+  // A bounded, trusted native DOM probe may attest its own narrow scope,
+  // never the site as a whole, external effects or published behavior.
+  recordBrowserControlsObservation(observation){
+    const report=normalizedHtmlControlChecks(observation?.report);
+    if(observation?.kind!=='isolated_browser_controls'||!report||
+       typeof observation.taskId!=='string'||typeof observation.assetId!=='string'||
+       !/^[a-f0-9]{64}$/.test(observation.sha256||'')||
+       observation.browserTested!==false||observation.published!==false||
+       observation.externalEffectVerified!==false)return null;
+    const linked=this.resolveVerifiedHtmlSource(
+      observation.taskId,observation.assetId,observation.sha256);
+    if(!linked||linked.proof.browserRenderObserved!==true)return null;
+    const {row}=linked;
+    const exists=this.db.prepare(`SELECT 1 FROM events WHERE task_id=?
+      AND kind='provider.artifact.browser_controls_observed' AND json_valid(payload)
+      AND json_extract(payload,'$.run_id')=?
+      AND json_extract(payload,'$.asset_id')=?
+      AND json_extract(payload,'$.sha256')=? LIMIT 1`).get(
+      observation.taskId,row.runId,observation.assetId,observation.sha256);
+    if(!exists)this.store.event(observation.taskId,'provider.artifact.browser_controls_observed',{
+      kind:'isolated_browser_controls',run_id:row.runId,
+      asset_id:observation.assetId,sha256:observation.sha256,
+      report,browser_tested:false,published:false,external_effect_verified:false
     });
     return this.verifiedHtmlForRun(row.projectId,row.orchestratorId,row.runId);
   }

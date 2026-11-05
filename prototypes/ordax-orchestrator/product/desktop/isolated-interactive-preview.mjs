@@ -2,6 +2,24 @@ import {WebContentsView,session} from 'electron';
 import {randomUUID,createHash} from 'node:crypto';
 import {buildInteractiveHtmlDocument,isPreviewNetworkRequestAllowed} from '../src/interactive-html-preview-policy.mjs';
 import {normalizeProviderViewBounds} from '../src/provider-view-bounds.mjs';
+import {probeIsolatedHtmlControls,normalizedHtmlControlChecks} from '../src/isolated-html-controls.mjs';
+
+// Both live preview and disposable control probe share the same hardened
+// WebContentsView policy and ephemeral, network-denied Electron session.
+function sandboxedPreviewView(webPreferences){
+  const view=new WebContentsView({webPreferences:{
+    ...webPreferences,sandbox:true,nodeIntegration:false,contextIsolation:true,
+    webviewTag:false,webSecurity:true,allowRunningInsecureContent:false,
+    javascript:true,devTools:false
+    // Intentionally NO preload.
+  }});
+  view.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+  view.webContents.on('will-navigate',event=>event.preventDefault());
+  view.webContents.on('will-frame-navigate',event=>event.preventDefault());
+  view.webContents.on('will-redirect',event=>event.preventDefault());
+  view.webContents.setAudioMuted(true);
+  return view;
+}
 
 // A purpose-built child of the EXISTING main window. No extra BrowserWindow,
 // no preload, no IPC, no persistent data and no reuse of the GPT session.
@@ -17,6 +35,9 @@ export class IsolatedInteractiveHtmlPreview {
     this.renderObservation=null;
     this.renderInFlight=null;
     this.renderReceiptRecorded=false;
+    this.controlsInFlight=null;
+    this.controlObservation=null;
+    this.controlsReceiptRecorded=false;
   }
   snapshot(){
     return {active:Boolean(this.view&&!this.view.webContents.isDestroyed()&&this.loaded),
@@ -45,17 +66,7 @@ export class IsolatedInteractiveHtmlPreview {
       callback({cancel:!isPreviewNetworkRequestAllowed(details.url)});
     });
     ses.on('will-download',(event,item)=>{event.preventDefault();item.cancel();});
-    const view=new WebContentsView({webPreferences:{
-      partition,sandbox:true,nodeIntegration:false,contextIsolation:true,
-      webviewTag:false,webSecurity:true,allowRunningInsecureContent:false,
-      javascript:true,devTools:false
-      // Intentionally NO preload.
-    }});
-    view.webContents.setWindowOpenHandler(()=>({action:'deny'}));
-    view.webContents.on('will-navigate',event=>event.preventDefault());
-    view.webContents.on('will-frame-navigate',event=>event.preventDefault());
-    view.webContents.on('will-redirect',event=>event.preventDefault());
-    view.webContents.setAudioMuted(true);
+    const view=sandboxedPreviewView({partition});
     this.view=view;this.session=ses;
     this.owner={taskId,assetId,sha256,key};
     this.loaded=false;
@@ -126,6 +137,61 @@ export class IsolatedInteractiveHtmlPreview {
     this.renderInFlight=pending;
     return pending;
   }
+  // A disposable renderer runs bounded, real DOM interactions without
+  // touching the visible preview, provider session, network or persistent data.
+  async observeControls(html){
+    if(!this.renderReceiptRecorded||!this.loaded||!this.requestedBounds||
+       !this.view||this.view.webContents.isDestroyed()||!this.session)return null;
+    if(this.controlObservation)return this.controlObservation;
+    if(this.controlsInFlight)return this.controlsInFlight;
+    const owner=this.owner,view=this.view,ses=this.session,win=this.getWindow();
+    if(!owner||!win||win.isDestroyed())return null;
+    const doc=buildInteractiveHtmlDocument(html);
+    const pending=(async()=>{
+      const tester=sandboxedPreviewView({session:ses});
+      let timeout=null;
+      tester.setBounds({x:0,y:0,width:1,height:1});
+      tester.setVisible(false);
+      win.contentView.addChildView(tester);
+      try{
+        const run=async()=>{
+          await tester.webContents.loadURL(
+            'data:text/html;charset=utf-8,'+encodeURIComponent(doc));
+          const script="(()=>({origin:location.origin,"+
+            "noNode:typeof require==='undefined'&&typeof process==='undefined',"+
+            "noOrdaX:typeof window.ordax==='undefined',"+
+            "report:("+probeIsolatedHtmlControls.toString()+")()}))()";
+          // A separate JS world keeps the probe's DOM APIs out of the
+          // untrusted HTML's scope (the page cannot monkey-patch our probe).
+          return tester.webContents.executeJavaScriptInIsolatedWorld(
+            1001,[{code:script}],false);
+        };
+        const result=await Promise.race([run(),new Promise((_,reject)=>{
+          timeout=setTimeout(()=>reject(Error('isolated_controls_timeout')),12000);
+        })]);
+        if(result?.origin!=='null'||result.noNode!==true||
+           result.noOrdaX!==true)return null;
+        const report=normalizedHtmlControlChecks(result.report);
+        if(!report||this.view!==view||this.owner!==owner||
+           this.session!==ses||!this.loaded||!this.requestedBounds||
+           view.webContents.isDestroyed())return null;
+        this.controlObservation=Object.freeze({
+          taskId:owner.taskId,assetId:owner.assetId,sha256:owner.sha256,
+          kind:'isolated_browser_controls',report,
+          browserTested:false,published:false,externalEffectVerified:false
+        });
+        return this.controlObservation;
+      }finally{
+        if(timeout)clearTimeout(timeout);
+        try{win.contentView.removeChildView(tester);}catch{}
+        try{if(!tester.webContents.isDestroyed())tester.webContents.close();}catch{}
+      }
+    })().catch(()=>null).finally(()=>{
+      if(this.controlsInFlight===pending)this.controlsInFlight=null;
+    });
+    this.controlsInFlight=pending;
+    return pending;
+  }
   async debugProbe({port}={}){
     if(process.env.ORDAX_DESKTOP_DEBUG!=='1'||!Number.isInteger(port)||
        port<1||port>65535||!this.loaded||!this.view||
@@ -161,6 +227,8 @@ export class IsolatedInteractiveHtmlPreview {
     this.loaded=false;this.requestedBounds=null;
     this.opening=null;this.renderObservation=null;
     this.renderInFlight=null;this.renderReceiptRecorded=false;
+    this.controlsInFlight=null;this.controlObservation=null;
+    this.controlsReceiptRecorded=false;
     if(!view)return;
     try{view.setVisible(false);}catch{}
     try{const win=this.getWindow();if(win&&!win.isDestroyed())win.contentView.removeChildView(view);}catch{}
