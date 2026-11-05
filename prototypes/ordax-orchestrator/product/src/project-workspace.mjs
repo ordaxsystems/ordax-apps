@@ -5,6 +5,10 @@ import {randomUUID} from 'node:crypto';
 const IDENTIFIER=/^[A-Za-z0-9_-]{1,180}$/;
 const RESOURCE=/^resource_[A-Za-z0-9_-]{8,160}$/;
 const PROJECT_STATES=new Set(['connected','offline','denied','revoked','moved','unavailable']);
+// A grant can be current while its returned filesystem observation is stale.
+// Only a recent, bounded timestamp can be presented as a verified snapshot.
+const MAX_SNAPSHOT_AGE_MS=5*60*1000;
+const MAX_SNAPSHOT_CLOCK_SKEW_MS=60*1000;
 const string=(value,max)=>typeof value==='string'&&value.length>0&&value.length<=max&&!/[\x00-\x1f\x7f]/.test(value);
 function identity(context,projectId) {
   if(!context||!IDENTIFIER.test(projectId)||!string(context.actorId,180)||
@@ -34,6 +38,9 @@ function cleanSnapshot(result,deviceId,resourceId) {
     !Number.isSafeInteger(result.changedCount)||result.changedCount<0||result.changedCount>100000000||
     !result.git||typeof result.git!=='object'||Array.isArray(result.git))
     throw Error('workspace_snapshot_invalid');
+  const age=Date.now()-Date.parse(observedAt);
+  if(age>MAX_SNAPSHOT_AGE_MS||age< -MAX_SNAPSHOT_CLOCK_SKEW_MS)
+    throw Error('workspace_snapshot_stale');
   const {git}=result;
   if(typeof git.isRepository!=='boolean'||(git.isRepository&&(!string(git.branch,140)||
     !/^[A-Za-z0-9_.\/-]+$/.test(git.branch)||!string(git.head,64)||

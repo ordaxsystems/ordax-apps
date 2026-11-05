@@ -8,6 +8,7 @@ import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {ORCHESTRATOR_TOOLS} from '../src/orchestrator-contract.mjs';
 
 const RESOURCE='resource_fixture_987654321',DEVICE='device_fixture_1';
+const OBSERVED_AT=new Date().toISOString();
 function fixture(t,port=null) {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-workspace-scope-'));
   const file=path.join(dir,'work.sqlite');
@@ -38,7 +39,7 @@ function trustedPort() {
     async snapshot({deviceId,resourceId}) {
       reads++;
       return {authorized:true,deviceId,resourceId,state:'connected',
-        revision:'rev_25',observedAt:'2026-10-21T19:00:00-03:00',
+        revision:'rev_25',observedAt:OBSERVED_AT,
         fileCount:8,changedCount:1,git:{isRepository:true,branch:'test/fixture',head:'abcdef1234'},
         path:'C:\\private\\DO_NOT_EXPOSE',files:[{content:'SECRET_NEVER_PRINT'}]};
     }
@@ -65,7 +66,7 @@ test('a verified opaque Runtime resource attaches once; read-only snapshot exclu
   assert.equal((await f.invoke('workspace_status',{projectId})).bindings.length,1);
   const result=await f.invoke('workspace_snapshot',{projectId,bindingId:receipt.result.bindingId});
   assert.deepEqual(result,{bindingId:receipt.result.bindingId,state:'connected',verified:true,
-    revision:'rev_25',observedAt:'2026-10-21T19:00:00-03:00',
+    revision:'rev_25',observedAt:OBSERVED_AT,
     fileCount:8,changedCount:1,git:{isRepository:true,branch:'test/fixture',head:'abcdef1234'}});
   assert.ok(!JSON.stringify(result).includes('SECRET_NEVER_PRINT'));
   assert.ok(!JSON.stringify(result).includes('private'));
@@ -195,4 +196,23 @@ test('malformed Runtime snapshot is rejected, including unverified Git/provenanc
     revision:'../../secret',observedAt:'yesterday',fileCount:2,changedCount:1,
     git:{isRepository:true,branch:'main',head:'nohash'}});
   await assert.rejects(f.invoke('workspace_snapshot',{projectId,bindingId:result.bindingId}),/workspace_snapshot_invalid/);
+});
+
+test('stale or future-dated Runtime workspace observations never become verified',async t=>{
+  const port=trustedPort(),f=fixture(t,port),projectId=await project(f);
+  const {result}=await f.invoke('workspace_bind',{projectId,deviceId:DEVICE,resourceId:RESOURCE});
+  const original=port.snapshot;
+  for(const skew of [-60*60*1000,60*60*1000]){
+    port.snapshot=async input=>({...await original(input),
+      observedAt:new Date(Date.now()+skew).toISOString()});
+    await assert.rejects(
+      f.invoke('workspace_snapshot',{projectId,bindingId:result.bindingId}),
+      /workspace_snapshot_stale/);
+  }
+  // A fresh snapshot remains usable under the same three-step authority gate.
+  port.snapshot=original;
+  const fresh=await f.invoke('workspace_snapshot',{projectId,bindingId:result.bindingId});
+  assert.equal(fresh.verified,true);
+  assert.equal(fresh.observedAt,OBSERVED_AT);
+  assert.equal(fresh.fileCount,8);
 });
