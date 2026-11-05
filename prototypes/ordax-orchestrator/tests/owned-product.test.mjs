@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readProductVersion } from '../lib/version-policy.mjs';
+import {PRODUCT_NAME} from '../product/src/product-brand.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ownedRoot = path.join(root, 'product');
@@ -18,7 +19,9 @@ test('tracked product has its own canonical identity and version', () => {
   assert.equal(pkg.version,version.version);
   assert.equal(pkg.name,sourceLock.targetIdentity.name);
   assert.equal(pkg.build.appId,sourceLock.targetIdentity.appId);
-  assert.equal(pkg.build.productName,sourceLock.targetIdentity.productName);
+  // The source lock preserves the original technical snapshot, not the live commercial brand.
+  assert.equal(pkg.build.productName,PRODUCT_NAME);
+  assert.equal(sourceLock.targetIdentity.productName,'OrdaX Orchestrator Lab');
   assert.equal(npmLock.version,version.version);
   assert.equal(npmLock.packages[''].version,version.version);
   assert.equal(origin.source.repository,sourceLock.repository);

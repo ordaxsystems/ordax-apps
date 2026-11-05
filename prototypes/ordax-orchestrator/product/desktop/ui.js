@@ -1,4 +1,5 @@
 import { renderLiveStage } from './ui-stage.mjs';
+import { PRODUCT_NAME, PRODUCT_SHORT_NAME } from '../src/product-brand.mjs';
 import { providerComposeAvailability, canStartFreshProviderChat, COMPOSE_STATUS_MESSAGES } from '../src/provider-compose-availability.mjs';
 import { resolveProviderLoginAction } from '../src/provider-login-action.mjs';
 import { taskListStatusLabel, taskNavigationStatus } from '../src/task-navigation-status.mjs';
@@ -7,6 +8,16 @@ import { SUPERVISOR_ROLES, supervisorRole } from '../src/supervisor-role-presets
 import { mountOrchestratorUi } from './orchestrator-ui.mjs';
 import {buildStaticPreviewSource} from '../src/static-html-preview.mjs';
 const $ = selector => document.querySelector(selector);
+// The same commercial identity is used by Electron, Groq and the renderer.
+document.title = PRODUCT_NAME;
+for(const id of ['productNameHeader','productNameSettings']) {
+  const target=document.getElementById(id);
+  if(target)target.textContent=PRODUCT_NAME;
+}
+const brandEyebrow=document.getElementById('productBrandEyebrow');
+if(brandEyebrow)brandEyebrow.textContent=PRODUCT_NAME.toUpperCase();
+const exitLabel=document.getElementById('backgroundExitApp');
+if(exitLabel)exitLabel.textContent='Sair completamente do '+PRODUCT_SHORT_NAME;
 let currentTaskId = null;
 let currentTask = null;
 let runReviewBusy = false;
@@ -1766,11 +1777,11 @@ document.getElementById('backgroundExitApp')?.addEventListener('click',async()=>
 const canConfigureLabKey=()=>labStatus.secureStorageAvailable===true;
 function showSupervisorStatus() {
   document.getElementById('brandMode').textContent=labStatus.environment==='node_host'
-    ? 'Orchestrator • Host Node de desenvolvimento'
-    : 'Orchestrator Lab • aplicativo desktop';
+    ? PRODUCT_SHORT_NAME+' • Host Node de desenvolvimento'
+    : PRODUCT_SHORT_NAME+' • aplicativo desktop';
   document.getElementById('labVersion').textContent=labStatus.environment==='node_host'
-    ? 'OrdaX Orchestrator • Host Node (desenvolvimento)'
-    : labStatus.version?'OrdaX Orchestrator Lab v'+labStatus.version:'Versão do Lab indisponível';
+    ? PRODUCT_NAME+' • Host Node (desenvolvimento)'
+    : labStatus.version?PRODUCT_NAME+' v'+labStatus.version:'Versão do aplicativo indisponível';
   labState.textContent=labStatus.enabled
     ? 'Supervisor habilitado no ambiente Dev: cada mensagem proposta exige aprovação.'
     : 'Supervisor desativado. A configuração da chave não inicia comandos nem faz chamadas à API.';

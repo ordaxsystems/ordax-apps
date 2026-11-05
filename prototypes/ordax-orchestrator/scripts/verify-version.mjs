@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertBootstrapVersion } from '../lib/version-policy.mjs';
+import { PRODUCT_NAME } from '../product/src/product-brand.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const bootstrap=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
@@ -18,7 +19,7 @@ assert.equal(source.modelSupervisorEnabled,false,'supervisor_off_by_default');
 assert.equal(source.externalUserIngressEnabled,false,'external_ingress_off_by_default');
 
 process.stdout.write(
-  'OrdaX Orchestrator Lab '+current.version+' ('+current.channel+')\n'+
+  PRODUCT_NAME+' '+current.version+' ('+current.channel+')\n'+
   'Pinned Flow/Gratis '+source.sourceVersion+' @ '+source.commit+'\n'+
   'Distribution: disabled\n'
 );

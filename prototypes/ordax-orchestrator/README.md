@@ -1,6 +1,10 @@
 > **DIREÇÃO ATUAL DO PRODUTO — 2026-11-01:** [Contrato canônico de instância única com administrador autônomo](docs/ORCHESTRATOR-CANONICAL-PRODUCT.md). A descrição Project-First, os nomes alpha e os cenários multi-projeto abaixo documentam evolução e mecanismos existentes, **não** definem mais a UX-alvo. Nenhuma nova IA deve retomar arquitetura de múltiplos projetos ativos, Groq secundário ou GPT Web como chat do administrador. Implementação ainda precisa de gates de autorização e E2E reais.
 
-# OrdaX Orchestrator — Project-First (decisão 2026-10-21)
+# OrdaX Forge — produto de coordenação (nome comercial)
+
+**Identidade comercial SSOT:** `product/src/product-brand.mjs` define `OrdaX Forge` para Electron, interface e Groq; `product/package.json#build.productName` espelha esse valor e é verificado pelo teste de identidade. O owner permanece `ordaxsystems/ordax-apps/prototypes/ordax-orchestrator`. O pacote npm, `appId`, executável já instalado, diretório de perfil `OrdaX/OrchestratorLab`, SQLite, contratos IPC/MCP e nomes técnicos internos continuam inalterados **por compatibilidade**. Nenhuma instalação, banco ou identidade nova é criada pela troca de marca. Histórico anterior mantém nomenclatura original como evidência.
+
+## Project-First (decisão 2026-10-21)
 
 ## Capacidade correta do executor GPT Web — alpha.38
 

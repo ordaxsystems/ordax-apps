@@ -4,6 +4,7 @@ import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {buildCoordinatorRequestContext} from '../supervisor/coordinator-request-context.mjs';
 import {createGroqCoordinatorConversation} from '../supervisor/groq-conversation.mjs';
+import {PRODUCT_NAME} from '../src/product-brand.mjs';
 
 test('OrdaX coordinator identifies the Groq model as a coordinator, not as ChatGPT',async t=>{
   const store=new Store(':memory:');t.after(()=>store.close());
@@ -22,7 +23,7 @@ test('OrdaX coordinator identifies the Groq model as a coordinator, not as ChatG
     content:'Memória da frente Auditar ordax-apps, não da telemetria do workspace.'});
   const context=buildCoordinatorRequestContext({store,taskId:chatTaskId,mission,projectId,orchestratorId,
     workspaceObservation:{state:'capability_unavailable',filesRead:0,snapshotObserved:false}});
-  assert.match(context.system,/OrdaX Orchestrator Lab/);
+  assert.ok(context.system.includes(PRODUCT_NAME));
   assert.match(context.system,/via API Groq/);
   assert.match(context.system,/não envia mensagens ao GPT/);
   assert.match(context.system,/não se apresente como ChatGPT/);
@@ -44,10 +45,10 @@ test('OrdaX coordinator identifies the Groq model as a coordinator, not as ChatG
     isEnabled:()=>true,fetchImpl:async(_url,options)=>{
       actual=JSON.parse(options.body);
       return new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{
-        content:'Sou OrdaX Orchestrator, coordenador do projeto via API Groq, distinto do GPT Web.'}}]}));
+        content:'Sou OrdaX Forge, coordenador do projeto via API Groq, distinto do GPT Web.'}}]}));
     }});
   const result=await model.send({taskId:chatTaskId,mission,projectId,orchestratorId});
-  assert.match(result.content,/OrdaX Orchestrator/);
+  assert.ok(result.content.includes(PRODUCT_NAME));
   assert.match(actual.messages[0].content,/projectMemory/);
   assert.equal(actual.messages[0].role,'system');
 });

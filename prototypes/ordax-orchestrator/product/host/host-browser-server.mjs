@@ -14,6 +14,7 @@ const STATIC_FILES = new Map([
   ['/ui-stage.mjs',['desktop/ui-stage.mjs','text/javascript; charset=utf-8']],
   ['/orchestrator-ui.mjs',['desktop/orchestrator-ui.mjs','text/javascript; charset=utf-8']],
   ['/host-browser-bridge.js',['desktop/host-browser-bridge.js','text/javascript; charset=utf-8']],
+  ['/src/product-brand.mjs',['src/product-brand.mjs','text/javascript; charset=utf-8']],
   ['/src/static-html-preview.mjs',['src/static-html-preview.mjs','text/javascript; charset=utf-8']],
   ['/src/provider-compose-availability.mjs',['src/provider-compose-availability.mjs','text/javascript; charset=utf-8']],
   ['/src/provider-login-action.mjs',['src/provider-login-action.mjs','text/javascript; charset=utf-8']],

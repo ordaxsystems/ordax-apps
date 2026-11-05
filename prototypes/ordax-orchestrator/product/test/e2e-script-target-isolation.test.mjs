@@ -36,7 +36,7 @@ function withStagedEnv(stagedRoot,approved,fn) {
 test('E2E defaults to isolated port 9445 and exact Orchestrator Lab title',()=>{
   assert.equal(DEBUG_PORT,'9445');
   assert.equal(DEBUG_URL,'http://127.0.0.1:9445/json/list');
-  assert.equal(PRODUCT_TITLE,'OrdaX Orchestrator Lab');
+  assert.equal(PRODUCT_TITLE,'OrdaX Forge');
   assert.equal(isLabUiTarget({type:'page',title:PRODUCT_TITLE,
     url:'file:///C:/test/desktop/ui.html'}),true);
   for(const impostor of [

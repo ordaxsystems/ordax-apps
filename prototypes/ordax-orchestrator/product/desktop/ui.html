@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>OrdaX Orchestrator Lab</title>
+  <title>OrdaX Forge</title>
   <link rel="stylesheet" href="./ui.css" />
 </head>
 <body>
@@ -12,7 +12,7 @@
       <header class="brand-row">
         <div class="logo">O</div>
         <div class="brand-copy">
-          <h1>OrdaX</h1>
+          <h1 id="productNameHeader">OrdaX Forge</h1>
           <p id="brandMode">Projeto dedicado • carregando ambiente</p>
         </div>
         <button id="openAppSettings" class="app-settings-trigger" type="button" aria-label="Configurações do aplicativo" title="Configurações do aplicativo" aria-haspopup="dialog" aria-controls="appSettingsDialog">⚙</button>
@@ -38,7 +38,7 @@
         <span class="workspace-modes-caption">Áreas do projeto</span>
         <button id="openOrchestrator" class="workspace-mode workspace-mode-coordinator" type="button" aria-pressed="false" disabled>
           <span class="workspace-mode-symbol" aria-hidden="true">◇</span>
-          <span class="workspace-mode-copy"><strong>Assistente OrdaX</strong><small id="coordinatorNavProvider">Conversa do projeto</small></span>
+          <span class="workspace-mode-copy"><strong>Assistente Forge</strong><small id="coordinatorNavProvider">Conversa do projeto</small></span>
           <span class="workspace-mode-arrow" aria-hidden="true">↗</span>
         </button>
         <button id="openWorks" class="workspace-mode workspace-mode-gpt" type="button" aria-pressed="false" aria-controls="orchestratorWorkRail" aria-expanded="false" disabled>
@@ -305,9 +305,9 @@
 
       <section id="empty" class="empty">
         <div class="empty-mark">O</div>
-        <h2>Seu projeto começa no Orquestrador.</h2>
-        <p>Crie uma missão, converse com o Orquestrador na área Groq e abra frentes de execução no ChatGPT Web quando precisar. Cada campo identifica o seu destino.</p>
-        <button class="primary empty-create" type="button" data-start-project>Começar pelo Orquestrador</button>
+        <h2>Seu projeto começa no Forge.</h2>
+        <p>Crie uma missão, converse com o Forge na área Groq e abra frentes de execução no ChatGPT Web quando precisar. Cada campo identifica o seu destino.</p>
+        <button class="primary empty-create" type="button" data-start-project>Começar pelo Forge</button>
       </section>
     </section>
 
@@ -536,7 +536,7 @@
   <dialog id="appSettingsDialog" class="app-settings-dialog" aria-labelledby="appSettingsTitle">
     <div class="app-settings-frame">
       <header class="app-settings-header">
-        <div><span class="app-settings-eyebrow">ORDAX ORCHESTRATOR</span><h2 id="appSettingsTitle">Configurações</h2><p>Preferências do aplicativo, provedores e estado das conexões.</p></div>
+        <div><span id="productBrandEyebrow" class="app-settings-eyebrow">ORDAX FORGE</span><h2 id="appSettingsTitle">Configurações</h2><p>Preferências do aplicativo, provedores e estado das conexões.</p></div>
         <button id="closeAppSettings" class="app-settings-close" type="button" aria-label="Fechar configurações">×</button>
       </header>
       <div class="app-settings-body">
@@ -548,7 +548,7 @@
         <div class="app-settings-content">
           <section id="settingsPanelGeneral" class="app-settings-panel" role="tabpanel" aria-labelledby="settingsTabGeneral" data-settings-panel="general" tabindex="0">
             <div class="app-settings-card">
-              <span class="app-settings-eyebrow">APLICATIVO</span><h3>OrdaX Orchestrator</h3>
+              <span class="app-settings-eyebrow">APLICATIVO</span><h3 id="productNameSettings">OrdaX Forge</h3>
               <p id="labVersion" class="diagnostics-hint">Versão do Lab indisponível</p>
               <p>As preferências e sessões deste aplicativo ficam no perfil local do Windows. Fechar esta janela não remove seus dados.</p>
             </div>
@@ -556,7 +556,7 @@
               <h3>Inicialização e segundo plano</h3>
               <label for="backgroundModeToggle"><input type="checkbox" id="backgroundModeToggle" /> Continuar em segundo plano ao fechar a janela</label>
               <p id="backgroundModeState" class="diagnostics-hint" role="status" aria-live="polite">Verificando disponibilidade no Windows...</p>
-              <button id="backgroundExitApp" type="button" class="mini-secondary">Sair completamente do Orquestrador</button>
+              <button id="backgroundExitApp" type="button" class="mini-secondary">Sair completamente do Forge</button>
               <p class="diagnostics-hint">Usa a mesma instalação e o mesmo perfil. Só funciona enquanto o computador e a sessão Windows estiverem ativos; isso não comprova operação contínua por 24 horas.</p>
             </section>
           </section>

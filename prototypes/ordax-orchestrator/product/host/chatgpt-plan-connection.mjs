@@ -1,5 +1,6 @@
 import {createHash,createPublicKey,randomBytes,randomUUID,verify as verifySignature,constants as cryptoConstants} from 'node:crypto';
 import {createRequire} from 'node:module';
+import {PRODUCT_NAME} from '../src/product-brand.mjs';
 
 const require=createRequire(import.meta.url);
 const ISSUER='https://auth.openai.com';
@@ -158,7 +159,7 @@ export function createChatGPTPlanConnection({hostId,credentialStore=defaultCrede
     const params=new URLSearchParams({client_id:clientId,response_type:'code',redirect_uri:callback,
       scope:[...REQUIRED_SCOPES].join(' '),resource:RESOURCE,state,nonce,
       code_challenge_method:'S256',code_challenge:challenge,ext_agent_host_id:hostId});
-    if(!existing)params.set('agent_name_hint','OrdaX Orchestrator');
+    if(!existing)params.set('agent_name_hint',PRODUCT_NAME);
     if(existing?.idToken)params.set('id_token_hint',existing.idToken);
     if(existing?.email)params.set('login_hint',existing.email);
     if(existing&&!existing.scopes.includes(PLAN_SCOPE))params.set('prompt','consent');
