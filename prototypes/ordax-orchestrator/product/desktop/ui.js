@@ -93,9 +93,23 @@ function queueWorkSurfaceBounds(){
       if(!active||epoch!==workSurfacePreviewEpoch||key!==workSurfacePreviewKey||
          receipt?.browserRenderObserved!==true||
          receipt.sha256!==key?.split(':').at(-1))return;
-      $('#workSurfaceStatus').textContent=
-        'Arquivo verificado e imagem da prévia capturada pelo navegador isolado. '+
-        'Interações, serviços externos e publicação não certificados.';
+      const controls=receipt.browserControls;
+      if(controls?.status==='passed'){
+        $('#workSurfaceStatus').textContent=
+          'Navegador isolado: '+controls.passed+'/'+controls.checked+
+          ' controles locais aprovados. Não certifica site completo ou publicação.';
+      }else if(controls?.status==='failed'){
+        $('#workSurfaceStatus').textContent=
+          'Navegador isolado: '+controls.failed+' controle(s) local(is) falharam. '+
+          'Entrega funcional ainda não comprovada; não publicado.';
+      }else if(controls?.status==='not_applicable'){
+        $('#workSurfaceStatus').textContent=
+          'Imagem verificada. Nenhum controle compatível com o teste local foi encontrado; '+
+          'funcionamento e publicação não certificados.';
+      }else{
+        $('#workSurfaceStatus').textContent=
+          'Arquivo e imagem verificados. Interações e publicação ainda não comprovadas.';
+      }
     }).catch(()=>{});
   });
 }

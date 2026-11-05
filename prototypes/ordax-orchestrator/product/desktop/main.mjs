@@ -893,26 +893,41 @@ registerUiHandler('ordax:preview:interactive:bounds',async(event,rect)=>{
   if(!interactiveHtmlPreview)return {visible:false};
   const positioned=interactiveHtmlPreview.bounds(rect);
   if(!positioned.visible)return positioned;
-  if(interactiveHtmlPreview.renderReceiptRecorded)
-    return {...positioned,browserRenderObserved:true,
-      sha256:interactiveHtmlPreview.owner?.sha256||null};
   const identity=interactiveHtmlPreview.owner;
-  try {
-    const observation=await interactiveHtmlPreview.observeRender();
-    if(!observation||interactiveHtmlPreview.owner!==identity)return positioned;
-    // Reverify the current file after the screenshot: an old or tampered
-    // asset cannot be represented by a current native browser receipt.
-    const proof=readVerifiedHtmlPreview({
-      taskId:observation.taskId,assetId:observation.assetId
-    });
-    if(proof.sha256!==observation.sha256)return positioned;
-    const recorded=orchestratorService.autonomous.recordBrowserRenderObservation(observation);
-    if(recorded?.browserRenderObserved===true &&
-       interactiveHtmlPreview.owner===identity) {
+  if(!identity)return positioned;
+  try{
+    const key={taskId:identity.taskId,assetId:identity.assetId};
+    if(!interactiveHtmlPreview.renderReceiptRecorded){
+      const observation=await interactiveHtmlPreview.observeRender();
+      if(!observation||interactiveHtmlPreview.owner!==identity)return positioned;
+      // Always rehash current bytes after rendering, never trust a past file.
+      const proof=readVerifiedHtmlPreview(key);
+      if(proof.sha256!==observation.sha256)return positioned;
+      const receipt=orchestratorService.autonomous.recordBrowserRenderObservation(observation);
+      if(receipt?.browserRenderObserved!==true||
+         interactiveHtmlPreview.owner!==identity)return positioned;
       interactiveHtmlPreview.renderReceiptRecorded=true;
-      return {...positioned,browserRenderObserved:true,sha256:proof.sha256};
     }
-  }catch{/* No browser claim without a native, Run-bound receipt. */}
+    const proof=readVerifiedHtmlPreview(key);
+    if(proof.sha256!==identity.sha256||
+       interactiveHtmlPreview.owner!==identity)return positioned;
+    const result={...positioned,browserRenderObserved:true,sha256:proof.sha256};
+    if(!interactiveHtmlPreview.controlsReceiptRecorded){
+      const observation=await interactiveHtmlPreview.observeControls(proof.html);
+      if(observation&&interactiveHtmlPreview.owner===identity){
+        // A changed file, project or Run invalidates the DOM control test.
+        const current=readVerifiedHtmlPreview(key);
+        if(current.sha256===observation.sha256){
+          const recorded=orchestratorService.autonomous.recordBrowserControlsObservation(observation);
+          if(recorded?.browserControls&&interactiveHtmlPreview.owner===identity)
+            interactiveHtmlPreview.controlsReceiptRecorded=true;
+        }
+      }
+    }
+    if(interactiveHtmlPreview.controlsReceiptRecorded)
+      result.browserControls=interactiveHtmlPreview.controlObservation?.report||null;
+    return result;
+  }catch{/* Missing/altered proof never creates a positive receipt. */}
   return positioned;
 });
 registerUiHandler('ordax:preview:interactive:close',(event,taskId)=>{
