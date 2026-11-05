@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {resolveProjectOnboardingMission,describeProjectPreflight,describeExecutionMonitor,describeConversationOutcome} from '../desktop/orchestrator-ui.mjs';
+import {PRODUCT_NAME,PRODUCT_SHORT_NAME} from '../src/product-brand.mjs';
 const root = path.resolve(import.meta.dirname, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
 const bootstrap = JSON.parse(fs.readFileSync(path.join(root,'..','package.json'),'utf8'));
@@ -139,7 +140,7 @@ test('physical frontend monitor describes registered execution, not fictitious a
     assert.throws(()=>describeExecutionMonitor(invalid),/invalid_execution_monitor_counts/);
   assert.match(uiHtml,/id="executionOverviewTitle"/);
   assert.match(uiHtml,/id="executionOverviewDescription"/);
-  assert.match(uiHtml,/Assistente OrdaX/);
+  assert.match(uiHtml,new RegExp('Assistente '+PRODUCT_SHORT_NAME));
   assert.match(uiHtml,/Tarefas e resultados/);
   const renderer=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.match(renderer,/\$\('executionOverviewTitle'\)\.textContent=overview\.title/);
@@ -154,7 +155,8 @@ test('desktop package ships only canonical desktop runtime', () => {
   assert.match(main,/const hostBrowserMode=!app\.isPackaged&&/);
   assert.match(main,/await import\('\.\.\/host\/host-browser-server\.mjs'\)/);
   assert.match(main,/createTaskUiHandlers/);
-  assert.match(ui,/Orchestrator • Host Node de desenvolvimento/);
+  assert.match(ui,/PRODUCT_SHORT_NAME\+' • Host Node de desenvolvimento'/);
+  assert.equal(pkg.build.productName,PRODUCT_NAME);
   assert.match(ui,/const observerRow=\$\('\.observer-row'\);/);
   assert.match(ui,/observerRow\.classList\.add\('hidden'\)/);
   assert.equal(pkg.scripts.start,'node scripts/start-host.mjs');
@@ -169,8 +171,8 @@ test('desktop package ships only canonical desktop runtime', () => {
 });
 
 test('empty project state promises persistence without claiming autonomous execution',()=>{
-  assert.match(uiHtml,/Seu projeto começa no Orquestrador/);
-  assert.match(uiHtml,/data-start-project>Começar pelo Orquestrador/);
+  assert.match(uiHtml,new RegExp('Seu projeto começa no '+PRODUCT_SHORT_NAME));
+  assert.match(uiHtml,new RegExp('data-start-project>Começar pelo '+PRODUCT_SHORT_NAME));
   assert.doesNotMatch(uiHtml,/data-create-task/);
   assert.match(ui,/document\.querySelector\('\[data-start-project\]'\)/);
   assert.doesNotMatch(ui,/querySelector\('\[data-create-task\]'\)/);
