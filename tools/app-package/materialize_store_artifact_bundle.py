@@ -12,6 +12,8 @@ from __future__ import annotations
 import argparse
 import ctypes
 import hashlib
+import subprocess
+import uuid
 import json
 import os
 from pathlib import Path
@@ -331,13 +333,122 @@ def _write_blob(path: Path, payload: bytes) -> None:
         raise StoreArtifactBundleError("content-addressed artifact persistence failed") from exc
 
 
+
+def _verify_signed_transport_envelope(
+    *, envelope_path: Path, trust_path: Path, verifier_path: Path,
+    staging: Path, publication: dict, publication_bytes: bytes,
+) -> bytes:
+    """Verify the exact signed catalog through the canonical Go owner.
+
+    This prepares HTTPS bytes only; it cannot pin trust, authorize a
+    publication, install a component or perform operator signing.
+    """
+    envelope_bytes = _read_bounded_regular_bytes(
+        envelope_path, "signed Store catalog envelope", 4 * 1024 * 1024,
+    )
+    trust_bytes = _read_bounded_regular_bytes(
+        trust_path, "public component trust", 16 * 1024,
+    )
+    _regular_file(verifier_path, "canonical Go verifier", 32 * 1024 * 1024)
+    if os.name != "nt" and not os.access(verifier_path, os.X_OK):
+        raise StoreArtifactBundleError("canonical Go verifier is not executable")
+    verified_path = staging / (".verified-store-" + uuid.uuid4().hex + ".json")
+    try:
+        try:
+            result = subprocess.run(
+                [
+                    str(verifier_path), "verify-store-catalog",
+                    "--envelope", str(envelope_path),
+                    "--trust", str(trust_path),
+                    "--out", str(verified_path),
+                ],
+                capture_output=True, timeout=20, check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise StoreArtifactBundleError(
+                "canonical Store signature verifier unavailable"
+            ) from exc
+        if result.returncode != 0:
+            raise StoreArtifactBundleError(
+                "canonical Store signature verification failed"
+            )
+        verified_bytes = _read_bounded_regular_bytes(
+            verified_path, "Go-verified Store catalog", 2 * 1024 * 1024,
+        )
+        try:
+            verified = json.loads(verified_bytes.decode("utf-8"))
+        except (ValueError, UnicodeError) as exc:
+            raise StoreArtifactBundleError(
+                "Go-verified Store catalog is malformed"
+            ) from exc
+        expected_entries = [
+            {
+                "appId": entry["appId"],
+                "title": entry["title"],
+                "version": entry["version"],
+                "releaseMode": entry["releaseMode"],
+                "sourceCommit": entry["sourceCommit"],
+                "artifacts": entry["artifacts"],
+            }
+            for entry in publication["entries"]
+        ]
+        if (
+            not isinstance(verified, dict)
+            or set(verified) != {
+                "schema", "state", "sequence", "catalogSha256",
+                "source", "trust", "entries", "reason", "authority",
+            }
+            or verified["schema"] != "ordax.verified-app-store-catalog/1"
+            or verified["state"] != "ready"
+            or verified["sequence"] != publication["sequence"]
+            or verified["catalogSha256"] != hashlib.sha256(publication_bytes).hexdigest()
+            or verified["source"] != publication["source"]
+            or verified["trust"] != {
+                "domain": TRUST_DOMAIN, "keyId": KEY_ID,
+            }
+            or verified["entries"] != expected_entries
+            or verified["reason"] is not None
+            or verified["authority"] != "none"
+        ):
+            raise StoreArtifactBundleError(
+                "verified signed catalog differs from exact artifact publication"
+            )
+        # The Go verifier reads paths after our bounded read. Reject changes
+        # of either input while verifying before committing any output.
+        if (
+            _read_bounded_regular_bytes(
+                envelope_path, "signed Store catalog envelope", 4 * 1024 * 1024,
+            ) != envelope_bytes
+            or _read_bounded_regular_bytes(
+                trust_path, "public component trust", 16 * 1024,
+            ) != trust_bytes
+        ):
+            raise StoreArtifactBundleError(
+                "Store signature inputs changed during verification"
+            )
+        return envelope_bytes
+    finally:
+        try:
+            verified_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def materialize_bundle(
     *,
     publication_path: Path,
     artifacts_root: Path,
     out_root: Path,
+    envelope_path: Path | None = None,
+    verifier_path: Path | None = None,
+    trust_path: Path | None = None,
 ) -> dict:
     publication, publication_bytes = read_publication(publication_path)
+    signed_args = (envelope_path, verifier_path, trust_path)
+    if any(value is not None for value in signed_args) and not all(
+        value is not None for value in signed_args
+    ):
+        raise StoreArtifactBundleError("signed transport requires envelope, verifier and trust")
     artifacts_root = _real_directory(artifacts_root, "Store artifact source root")
     if out_root.exists() or out_root.is_symlink():
         raise StoreArtifactBundleError("refusing to overwrite Store artifact bundle output")
@@ -349,6 +460,27 @@ def materialize_bundle(
         seen: set[str] = set()
         total_bytes = 0
         normalized_entries = publication.pop("_normalizedEntries")
+        signed_envelope = None
+        if envelope_path is not None:
+            signed_envelope = _verify_signed_transport_envelope(
+                envelope_path=envelope_path,
+                trust_path=trust_path,
+                verifier_path=verifier_path,
+                staging=staging,
+                publication=publication,
+                publication_bytes=publication_bytes,
+            )
+            # The Store HTTPS reader consumes this fixed filename. It is
+            # included in the SAME atomic, exclusive directory commit as
+            # every content-addressed blob; no intermediate public state.
+            envelope_target = staging / "catalog-envelope.json"
+            descriptor = os.open(
+                envelope_target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444,
+            )
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(signed_envelope)
+                stream.flush()
+                os.fsync(stream.fileno())
         for entry in normalized_entries:
             app_id = entry["appId"]
             app_root = _real_directory(artifacts_root / app_id, f"{app_id} artifact source")
@@ -380,6 +512,14 @@ def materialize_bundle(
                 "activation": False,
             },
         }
+        if signed_envelope is not None:
+            descriptor["signedCatalog"] = {
+                "envelopeSha256": hashlib.sha256(signed_envelope).hexdigest(),
+                "catalogSha256": hashlib.sha256(publication_bytes).hexdigest(),
+                "verifiedBy": "ordax-runtime-component-channel",
+                "status": "transport-staging-only",
+                "productionPublicationAuthorized": False,
+            }
         descriptor_path = staging / "store-artifact-layout.json"
         descriptor_bytes = canonical_json(descriptor)
         try:
@@ -415,14 +555,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--publication", type=Path, required=True)
     parser.add_argument("--artifacts-root", type=Path, required=True)
     parser.add_argument("--out-root", type=Path, required=True)
+    parser.add_argument("--envelope", type=Path,
+                        help="optional already-signed catalog envelope (requires --verifier and --trust)")
+    parser.add_argument("--verifier", type=Path,
+                        help="canonical Go runtime-component-channel CLI")
+    parser.add_argument("--trust", type=Path,
+                        help="public-only component trust (never a private key)")
     args = parser.parse_args(argv)
     try:
         descriptor = materialize_bundle(
             publication_path=args.publication,
             artifacts_root=args.artifacts_root,
             out_root=args.out_root,
+            envelope_path=args.envelope,
+            verifier_path=args.verifier,
+            trust_path=args.trust,
         )
         print("ORDAX_STORE_ARTIFACT_BUNDLE=PASS")
+        print("SIGNED_CATALOG_TRANSPORT_STAGED=" + (
+            "YES" if "signedCatalog" in descriptor else "NO"
+        ))
         print(f"BLOB_COUNT={descriptor['blobCount']}")
         print(f"TOTAL_BYTES={descriptor['totalBytes']}")
         print("URLS_EMBEDDED=NO")
