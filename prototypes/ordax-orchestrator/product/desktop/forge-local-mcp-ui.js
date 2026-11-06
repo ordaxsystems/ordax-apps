@@ -3,6 +3,7 @@
 const localMcpElement=id=>document.getElementById(id);
 const mcpStart=localMcpElement('forgeLocalMcpStart');
 const mcpStop=localMcpElement('forgeLocalMcpStop');
+const mcpRevoke=localMcpElement('forgeLocalMcpRevoke');
 const mcpProject=localMcpElement('forgeLocalMcpProject');
 const mcpState=localMcpElement('forgeLocalMcpState');
 const mcpCredentials=localMcpElement('forgeLocalMcpCredentials');
@@ -12,6 +13,8 @@ let mcpBusy=false;
 const api=window.ordax;
 const usable=typeof api?.forgeLocalMcpStatus==='function'&&
   typeof api?.forgeLocalMcpStart==='function'&&
+  typeof api?.forgeLocalMcpAdd==='function'&&
+  typeof api?.forgeLocalMcpRevoke==='function'&&
   typeof api?.forgeLocalMcpStop==='function';
 
 function hideSecret(){
@@ -27,16 +30,22 @@ async function refreshMcp(){
     setState('Disponível somente no aplicativo Electron local; não está conectado ao GPT Web.');
     if(mcpStart)mcpStart.disabled=true;
     if(mcpStop)mcpStop.disabled=true;
+    if(mcpRevoke)mcpRevoke.disabled=true;
     return;
   }
   try{
     const status=await api.forgeLocalMcpStatus();
-    if(mcpStart)mcpStart.disabled=mcpBusy||status.running||!mcpProject?.value;
+    const scopes=Array.isArray(status.scopes)?status.scopes:(status.scope?[status.scope]:[]);
+    const selected=scopes.includes(mcpProject?.value);
+    if(mcpStart){
+      mcpStart.disabled=mcpBusy||!mcpProject?.value||selected;
+      mcpStart.textContent=status.running?'Autorizar outro projeto':'Ativar MCP local';
+    }
+    if(mcpRevoke)mcpRevoke.disabled=mcpBusy||!selected;
     if(mcpStop)mcpStop.disabled=mcpBusy||!status.running;
-    if(mcpProject)mcpProject.disabled=mcpBusy||status.running;
+    if(mcpProject)mcpProject.disabled=mcpBusy;
     if(status.running){
-      setState('MCP local ativo para '+status.scope+'. Expira: '+status.expiresAt+
-        '. Não conectado ao GPT Web.');
+      setState('MCP local ativo para '+scopes.length+' projeto(s), com tokens e sessões independentes. Cada autorização expira individualmente em 30 minutos. Não conectado ao GPT Web.');
     }else{
       hideSecret();
       setState('MCP local desativado. Nenhuma porta MCP aberta pelo Forge.');
@@ -46,6 +55,7 @@ async function refreshMcp(){
     setState('Não foi possível verificar o MCP local.');
     if(mcpStart)mcpStart.disabled=true;
     if(mcpStop)mcpStop.disabled=true;
+    if(mcpRevoke)mcpRevoke.disabled=true;
   }
 }
 async function loadProjects(){
@@ -71,7 +81,10 @@ mcpStart?.addEventListener('click',async()=>{
   if(mcpBusy||!usable||!mcpProject?.value)return;
   mcpBusy=true;hideSecret();mcpStart.disabled=true;
   try{
-    const enabled=await api.forgeLocalMcpStart(mcpProject.value);
+    const active=await api.forgeLocalMcpStatus();
+    const enabled=active.running
+      ?await api.forgeLocalMcpAdd(mcpProject.value)
+      :await api.forgeLocalMcpStart(mcpProject.value);
     if(enabled?.running&&enabled?.token&&enabled?.endpoint){
       mcpUrl.value=enabled.endpoint;
       mcpToken.value=enabled.token;
@@ -87,7 +100,14 @@ mcpStop?.addEventListener('click',async()=>{
   catch{setState('Não foi possível confirmar o encerramento do MCP.');}
   finally{mcpBusy=false;await refreshMcp();}
 });
-mcpProject?.addEventListener('change',()=>{void refreshMcp();});
+mcpRevoke?.addEventListener('click',async()=>{
+  if(mcpBusy||!usable||!mcpProject?.value)return;
+  mcpBusy=true;mcpRevoke.disabled=true;
+  try{await api.forgeLocalMcpRevoke(mcpProject.value);hideSecret();}
+  catch{setState('Não foi possível revogar a autorização deste projeto.');}
+  finally{mcpBusy=false;await refreshMcp();}
+});
+mcpProject?.addEventListener('change',()=>{hideSecret();void refreshMcp();});
 localMcpElement('settingsTabConnections')?.addEventListener('click',()=>{void loadProjects();});
 localMcpElement('openAppSettings')?.addEventListener('click',()=>{void loadProjects();});
 localMcpElement('appSettingsDialog')?.addEventListener('close',hideSecret);

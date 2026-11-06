@@ -37,20 +37,28 @@ async function bodyJson(req) {
 }
 
 // Disabled until explicit owner action in the Electron settings panel.
-// One project per ephemeral bearer token; no remote listening, auto-connect,
-// browser origins, filesystem token, storage, OpenAI credential or OAuth claim.
+// One listener, distinct owner-approved tokens and immutable project-scoped sessions.
+// No remote listening, auto-connect, browser origins, persistence or OAuth claim.
 export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.now}={}) {
   if(typeof createMcp!=='function'||typeof authorizeProject!=='function'||
      typeof clock!=='function')throw Error('forge_mcp_transport_ports_required');
-  let server=null,token=null,projectId=null,port=null,startedAt=0;
-  const sessions=new Map();
+  let server=null,port=null;
+  const sessions=new Map(),grants=new Map();
   const bound=()=>server?.listening===true;
-  const active=()=>bound()&&clock()-startedAt<DEADLINE_MS;
-  const status=()=>({running:active(),transport:'http_streamable_local',scope:projectId,
-    loopbackOnly:true,tokenPersisted:false,remoteChatGptConnected:false,
-    endpoint:active()?'http://127.0.0.1:'+port+'/mcp':null,
-    expiresAt:active()?new Date(startedAt+DEADLINE_MS).toISOString():null,
-    sessions:sessions.size});
+  const valid=grant=>grant&&clock()-grant.startedAt<DEADLINE_MS;
+  const authorizedGrants=()=>[...grants.values()].filter(valid);
+  const active=()=>bound()&&authorizedGrants().length>0;
+  const status=()=>{
+    const current=bound()?authorizedGrants():[];
+    return {running:current.length>0,transport:'http_streamable_local',
+      scope:current[0]?.projectId??null,scopes:current.map(grant=>grant.projectId),
+      grants:current.map(grant=>({projectId:grant.projectId,
+        expiresAt:new Date(grant.startedAt+DEADLINE_MS).toISOString()})),
+      loopbackOnly:true,tokenPersisted:false,remoteChatGptConnected:false,
+      endpoint:current.length?'http://127.0.0.1:'+port+'/mcp':null,
+      expiresAt:current.length?new Date(Math.min(...current.map(grant=>grant.startedAt))+DEADLINE_MS).toISOString():null,
+      sessions:[...sessions.values()].filter(entry=>valid(entry.grant)).length};
+  };
 
   async function onRequest(req,res){
     try{
@@ -60,14 +68,17 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.no
       // No browser origins: prevents web pages from using local owner powers.
       if(req.headers.origin!==undefined)return json(res,403,{error:'forge_mcp_browser_origin_denied'});
       if(req.headers.host!=='127.0.0.1:'+port)return json(res,403,{error:'forge_mcp_host_rejected'});
-      if(!constantMatch(req.headers.authorization,'Bearer '+token))
-        return json(res,401,{error:'forge_mcp_authorization_required'});
+      const grant=authorizedGrants().find(item=>constantMatch(
+        req.headers.authorization,'Bearer '+item.token));
+      if(!grant)return json(res,401,{error:'forge_mcp_authorization_required'});
       if(req.method==='GET')return json(res,405,{error:'forge_mcp_sse_not_supported'},
         {Allow:'POST, DELETE'});
       const sessionId=req.headers['mcp-session-id'];
       if(req.method==='DELETE'){
-        if(typeof sessionId!=='string'||!sessions.delete(sessionId))
+        const entry=sessions.get(sessionId);
+        if(typeof sessionId!=='string'||!entry||entry.grant!==grant)
           return json(res,404,{error:'forge_mcp_session_unavailable'});
+        sessions.delete(sessionId);
         return json(res,200,{closed:true});
       }
       if(typeof req.headers['content-type']!=='string'||
@@ -83,21 +94,27 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.no
       let session;
       let newSessionId=null;
       if(message.method==='initialize'){
-        if(sessionId!==undefined||sessions.size>=4)
+        if(sessionId!==undefined||sessions.size>=8)
           return json(res,409,{error:'forge_mcp_session_limit'});
         newSessionId=randomUUID();
-        session=createMcp({projectId,allowedOperations:FORGE_LOCAL_MCP_OPERATIONS});
+        session=createMcp({projectId:grant.projectId,
+          allowedOperations:FORGE_LOCAL_MCP_OPERATIONS});
       }else{
-        if(typeof sessionId!=='string'||!SESSION.test(sessionId)||
-          !sessions.has(sessionId))return json(res,404,{error:'forge_mcp_session_required'});
-        session=sessions.get(sessionId);
+        if(typeof sessionId!=='string'||!SESSION.test(sessionId))
+          return json(res,404,{error:'forge_mcp_session_required'});
+        const entry=sessions.get(sessionId);
+        // A valid token for B cannot reuse A's session, even on the same URL.
+        if(!entry||entry.grant!==grant)
+          return json(res,404,{error:'forge_mcp_session_required'});
+        session=entry.handler;
       }
-      // Project authorization is checked on each call, not only on activation.
-      if(!authorizeProject(projectId))return json(res,403,{error:'forge_mcp_project_revoked'});
+      // Project authority is revalidated for every request, not just approval.
+      if(!authorizeProject(grant.projectId))
+        return json(res,403,{error:'forge_mcp_project_revoked'});
       const result=await session.handle(message);
       if(newSessionId){
         if(!result?.result?.protocolVersion)return json(res,400,{error:'forge_mcp_initialize_rejected'});
-        sessions.set(newSessionId,session);
+        sessions.set(newSessionId,{handler:session,grant});
       }
       if(result===null){res.writeHead(202,{'Cache-Control':'no-store'});return res.end();}
       if(Buffer.byteLength(JSON.stringify(result))>MAX_RESPONSE_BYTES)
@@ -117,8 +134,9 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.no
         if(active())throw Error('forge_mcp_already_active');
         await this.stop();
       }
-      token=randomBytes(32).toString('base64url');
-      projectId=requestedProjectId;
+      const grant={projectId:requestedProjectId,
+        token:randomBytes(32).toString('base64url'),startedAt:clock()};
+      grants.clear();grants.set(requestedProjectId,grant);
       sessions.clear();
       server=http.createServer((req,res)=>{void onRequest(req,res);});
       server.requestTimeout=15_000;
@@ -133,18 +151,38 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.no
           });
         });
         port=server.address().port;
-        startedAt=clock();
-        return {...status(),token};
+        return {...status(),token:grant.token,projectId:grant.projectId};
       }catch(error){
         try{server?.close();}catch{}
-        server=null;token=null;projectId=null;port=null;
+        server=null;port=null;grants.clear();sessions.clear();
         throw error;
       }
     },
+    addProject(requestedProjectId){
+      if(!active())throw Error('forge_mcp_not_active');
+      if(!ID.test(requestedProjectId)||!authorizeProject(requestedProjectId))
+        throw Error('forge_mcp_project_not_authorized');
+      if(valid(grants.get(requestedProjectId)))throw Error('forge_mcp_project_already_granted');
+      if(authorizedGrants().length>=8)throw Error('forge_mcp_project_limit');
+      // Re-authorizing an expired project rotates its token and invalidates
+      // previous sessions. Every new project requires independent Owner consent.
+      for(const [id,entry] of sessions)
+        if(entry.grant.projectId===requestedProjectId)sessions.delete(id);
+      const grant={projectId:requestedProjectId,
+        token:randomBytes(32).toString('base64url'),startedAt:clock()};
+      grants.set(requestedProjectId,grant);
+      return {...status(),token:grant.token,projectId:grant.projectId};
+    },
+    async revokeProject(requestedProjectId){
+      if(!grants.delete(requestedProjectId))throw Error('forge_mcp_project_not_granted');
+      for(const [id,entry] of sessions)
+        if(entry.grant.projectId===requestedProjectId)sessions.delete(id);
+      if(!authorizedGrants().length)return this.stop();
+      return status();
+    },
     async stop(){
       const old=server;
-      server=null;token=null;projectId=null;port=null;startedAt=0;
-      sessions.clear();
+      server=null;port=null;grants.clear();sessions.clear();
       if(old)await new Promise(resolve=>old.close(()=>resolve()));
       return status();
     }

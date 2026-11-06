@@ -1339,6 +1339,25 @@ registerUiHandler('ordax:forge:local-mcp:start',async(event,projectId)=>{
     approveLabel:'Habilitar por 30 minutos'}))return {running:false,declined:true};
   return forgeLocalMcp.start(projectId);
 });
+// One loopback endpoint can host multiple owner-authorized projects, but
+// never grants a second project implicitly or shares its bearer/session.
+registerUiHandler('ordax:forge:local-mcp:add',async(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
+  if(!forgeLocalMcp.status().running)throw Error('forge_mcp_not_active');
+  if(!await confirmInActiveUi({title:'Autorizar projeto no MCP Forge',
+    message:'Permitir uma conexão MCP independente para este outro projeto?',
+    detail:'O servidor local permanece na mesma porta. Este projeto terá token e sessões exclusivos por 30 minutos. A autorização não inclui outros projetos, não publica na internet e não conecta automaticamente ao GPT Web.',
+    approveLabel:'Autorizar este projeto'}))return {declined:true};
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
+  return forgeLocalMcp.addProject(projectId);
+});
+registerUiHandler('ordax:forge:local-mcp:revoke',async(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
+  return forgeLocalMcp.revokeProject(projectId);
+});
 registerUiHandler('ordax:forge:local-mcp:stop',async event=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');

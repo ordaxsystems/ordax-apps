@@ -54,10 +54,12 @@ históricos, não instruções de implementação. A realidade de cada funcional
 - **Um aplicativo Forge e um Runtime de arquivos interno:** reutilizar o
   broker, o serviço e as políticas presentes. O OrdaX Runtime permanece
   separado e **opcional** para controlar outros dispositivos/sistema.
-- **Um MCP Forge multiprojeto:** um servidor instalado no Forge, sessões
-  autenticadas e escopadas por projeto. Atualmente o listener local em
-  `127.0.0.1` permite **um projeto por ativação**; multiplexação de sessões
-  independentes no mesmo listener e ponte HTTPS segura ainda são pendentes.
+- **Um MCP Forge multiprojeto:** um único listener `127.0.0.1` com até
+  oito projetos autorizados por ações Owner independentes, tokens efêmeros
+  exclusivos por projeto e sessões MCP ligadas à identidade do token. Cada
+  concessão expira após 30 minutos, sem renovar a validade das anteriores;
+  revogação encerra apenas sessões do projeto revogado. `status` não revela
+  tokens. A ponte HTTPS remota com consentimento ainda está pendente.
   Não criar processos MCP nem URLs separados para cada projeto.
 - **Autodescoberta:** `orchestrator_forge_discover`, recursos MCP
   `forge://app/guide` e `forge://project/current` anunciam regras,
@@ -89,9 +91,12 @@ históricos, não instruções de implementação. A realidade de cada funcional
    confirmação, SHA-256, rollback em falha e nenhuma cópia duplicada no
    mesmo disco; migração entre volumes ainda bloqueada (EXDEV). Continuam
    pendentes arquivos binários, edições robustas, execução/testes e preview real.
-4. **PENDENTE:** multiplexação segura de sessões/projetos em um único
-   servidor MCP e uma ponte remota HTTPS com autenticação/consentimento.
-   Não supor disponibilidade de escrita no GPT Web sem homologação.
+4. **IMPLEMENTADO E TESTADO NO CÓDIGO:** multiplexação local de projetos
+   em um único listener MCP, com autorização explícita de cada projeto,
+   token/sessão independente, expiração individual, revogação parcial e
+   bloqueio de sessões cruzadas. **PENDENTE:** homologar no Electron Windows
+   e criar ponte HTTPS segura com autenticação/consentimento. Não supor
+   disponibilidade de escrita no GPT Web sem prova física.
 5. **PENDENTE:** prova física no Windows/cliente GPT real, pacote oficial,
    reconciliação do trabalho paralelo, integração dos gates aplicáveis,
    push/merge apenas após autorização para operações remotas.
