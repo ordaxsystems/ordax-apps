@@ -1086,8 +1086,10 @@ const currentGroqKey=()=>groqCredential.read()||process.env.GROQ_API_KEY||null;
 // Readable protected Groq key is the sole advisory availability source.
 // Background project continuation and GPT sends retain separate authorizations.
 const coordinatorChatEnabled=()=>Boolean(currentGroqKey());
-const coordinatorChatStatus=()=>({enabled:coordinatorChatEnabled(),configured:Boolean(currentGroqKey()),
-  groqConfigured:Boolean(currentGroqKey()),provider:'groq',executionSurface:'electron'});
+// Normal Forjador chat is GPT-first. Groq remains an optional analytical port;
+// an available Web worker is not proof of user login or a selected MCP app.
+const coordinatorChatStatus=()=>({enabled:Boolean(worker),configured:Boolean(worker),
+  groqConfigured:Boolean(currentGroqKey()),provider:'chatgpt_web',executionSurface:'electron'});
 function requireLabSupervisor() {
   if (process.env.ORDAX_LAB_SUPERVISOR_ENABLE !== '1') throw new Error('supervisor_disabled');
   const apiKey=currentGroqKey();
@@ -1148,7 +1150,8 @@ const orchestratorKernel=createOrchestratorKernel({
   // Destructive project deletion is authorized only from the local UI owner,
   // never delegated through the Runtime MCP bridge (even if a remote grant exists).
   authorize:({context,operation})=>context===localOrchestratorContext||
-    (operation!=='project_delete'&&runtimeOrchestratorBridge?.allows(context,operation)===true),
+    (!['project_delete','forjador_send'].includes(operation)&&
+      runtimeOrchestratorBridge?.allows(context,operation)===true),
   confirmProposalSend:async({title,content})=>confirmInActiveUi({
     title:'Confirmar primeiro envio ao ChatGPT',message:title,
     detail:'Mensagem exata a enviar:\n\n'+content+'\n\nSerá enviada uma única mensagem pelo executor do App. Uma resposta observada não comprova alterações em arquivos ou outros efeitos.',

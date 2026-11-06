@@ -925,7 +925,7 @@ test('new missions are local drafts and never silently start a GPT work conversa
   assert.match(ui,/window\.ordax\.send\(\{ taskId, content, draftRevision \}\)/);
   assert.match(contract,/\['mission_create'/);
   assert.match(contract,/\['project_rename'/);
-  assert.match(main,/operation!=='project_delete'&&runtimeOrchestratorBridge\?\.allows/);
+  assert.match(main,/!\['project_delete','forjador_send'\]\.includes\(operation\)/);
   assert.match(main,/projectAssetCleanupScope/);
   assert.match(main,/pruneDeletedProjectAssets/);
   assert.match(packagedSmoke,/missionDraftPreserved/);
@@ -1161,7 +1161,7 @@ test('Groq analysis uses the configured credential automatically, never a volati
   assert.match(main,/createGroqCoordinatorConversation/);
 });
 
-test('Groq and ChatGPT workspaces have distinct visible destinations and fail-closed routes',()=>{
+test('Forjador GPT-first and optional Groq analyses have distinct fail-closed routes',()=>{
   const orchestratorUi=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const contract=fs.readFileSync(path.join(root,'src','orchestrator-contract.mjs'),'utf8');
   const service=fs.readFileSync(path.join(root,'src','orchestrator-service.mjs'),'utf8');
@@ -1178,13 +1178,13 @@ test('Groq and ChatGPT workspaces have distinct visible destinations and fail-cl
   assert.match(ui,/setWorkspaceRoute\('gpt'\)/);
   assert.match(ui,/flushDraft\(\);await selectRightPane\('execution'\)/);
   assert.match(ui,/await selectRightPane\('provider'\)/);
-  assert.match(orchestratorUi,/orchestratorChatAvailable=coordinatorAvailable/);
-  assert.doesNotMatch(orchestratorUi,/orchestratorChatAvailable=gptWebTransportAvailable/);
+  assert.match(orchestratorUi,/orchestratorChatAvailable=gptWebTransportAvailable/);
+  assert.doesNotMatch(orchestratorUi,/orchestratorChatAvailable=coordinatorAvailable/);
   assert.match(orchestratorUi,/\$\('coordinatorComposer'\)\.addEventListener\('submit'/);
-  assert.match(orchestratorUi,/command\('orchestrator_chat'/);
-  assert.match(contract,/\['orchestrator_chat'.*coordinator turn/);
-  assert.match(contract,/For local user creation requests with delegateWork enabled/);
-  assert.match(service,/const usesProvider=isWorkSend;/);
+  assert.match(orchestratorUi,/command\('forjador_send'/);
+  assert.match(contract,/\['forjador_send'.*directly to the GPT executor/);
+  assert.match(contract,/\['orchestrator_chat'.*Legacy optional Groq coordination/);
+  assert.match(service,/const usesProvider=isWorkSend\|\|isForjadorSend;/);
   assert.match(service,/const port=usesProvider\?this\.provider:this\.coordinator/);
   assert.doesNotMatch(service,/const gptWebChat=operation==='orchestrator_chat'/);
   assert.match(css,/#orchestratorWorkRail\{display:flex!important/);
@@ -1194,7 +1194,7 @@ test('Groq and ChatGPT workspaces have distinct visible destinations and fail-cl
 });
 
 
-test('coordinator UI admits a single Groq chat or proposal while an async draft is being committed',()=>{
+test('Forjador UI admits a single GPT send or optional proposal while an async draft is being committed',()=>{
   const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const admission=source.slice(source.indexOf('function syncCoordinatorActions()'),
     source.indexOf('function setCoordinatorDraftState('));
@@ -1206,7 +1206,7 @@ test('coordinator UI admits a single Groq chat or proposal while an async draft 
   assert.match(chat,/if\(coordinatorSubmitting\|\|analysisBusy\|\|\$\('coordinatorSend'\)\.disabled\)return/);
   const locked=chat.indexOf('coordinatorSubmitting=true;syncCoordinatorActions()');
   const draft=chat.indexOf('await prepareCoordinatorDraft(t)');
-  const dispatch=chat.indexOf("command('orchestrator_chat'");
+  const dispatch=chat.indexOf("command('forjador_send'");
   assert.ok(locked>=0&&draft>locked&&dispatch>draft,'acquire before the first await and dispatch');
   assert.match(chat,/if\(p!==projectId\|\|o!==orchestratorId\|\|t!==chatTaskId\|\|!content\)return/);
   assert.match(chat,/\.finally\(\(\)=>\{coordinatorSubmitting=false;syncCoordinatorActions\(\);\}\)/);
@@ -1218,7 +1218,7 @@ test('coordinator UI admits a single Groq chat or proposal while an async draft 
     proposal.indexOf('await prepareCoordinatorDraft(t)'),
     'proposal must lock the shared coordinator before awaiting SQLite draft');
   assert.match(proposal,/finally\{analysisBusy=false;coordinatorSubmitting=false;syncCoordinatorActions\(\);\}/);
-  assert.doesNotMatch(chat,/window\.ordax\.send\(/,'Groq UI must never invoke the GPT Web sender');
+  assert.doesNotMatch(chat,/window\.ordax\.send\(/,'UI must use the canonical Forjador operation, not bypass the service');
   assert.doesNotMatch(proposal,/window\.ordax\.send\(/,'Groq planning must never invoke the GPT Web sender');
 });
 

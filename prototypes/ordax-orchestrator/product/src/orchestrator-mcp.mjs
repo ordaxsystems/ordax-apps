@@ -1,6 +1,9 @@
 import {ORCHESTRATOR_TOOLS,ORCHESTRATOR_CONTRACT} from './orchestrator-contract.mjs';
 import {PRODUCT_NAME} from './product-brand.mjs';
 import {FORGE_MCP_INSTRUCTIONS} from './forge-executor-context.mjs';
+// The direct GPT send is a trusted GUI action, never an MCP tool exposed to GPT.
+// Prevent a model from invoking itself recursively through this same adapter.
+const UI_ONLY_OPERATIONS=new Set(['forjador_send']);
 
 // MCP tools/lifecycle adapter hosted by the App. The host supplies the trusted
 // context on EVERY call. This module opens no port, reads no database and owns
@@ -48,13 +51,14 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
         if(method==='tools/list') {
           if(message.params?.cursor!==undefined)return error(id,-32602,'Invalid cursor');
           const tools=ORCHESTRATOR_TOOLS.filter(tool=>{
+            if(UI_ONLY_OPERATIONS.has(tool.operation))return false;
             try {service.requireAccess(context,tool.operation);return true;}catch{return false;}
           }).map(({operation,readOnly,...tool})=>tool);
           return result(id,{tools});
         }
         if(method==='tools/call') {
           const tool=ORCHESTRATOR_TOOLS.find(t=>t.name===message.params?.name);
-          if(!tool)return error(id,-32602,'Unknown tool');
+          if(!tool||UI_ONLY_OPERATIONS.has(tool.operation))return error(id,-32602,'Unknown tool');
           try {
             const output=await service.invoke(context,tool.operation,message.params?.arguments??{});
             return result(id,{content:[{type:'text',text:JSON.stringify(output)}],structuredContent:output});

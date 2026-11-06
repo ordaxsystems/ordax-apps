@@ -9,6 +9,7 @@ const definitions = [
   ['projects_list','List accessible Lab projects.',{},[],true],
   ['project_preflight','Inspect project-scoped local evidence and external capability blockers without a provider request, GitHub read, grant or GPT send.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
   ['project_context','Discover the canonical Forge execution protocol, selected project identity, workspace grant state and work availability. Does not read or create files, grant access or send GPT.',{projectId:id},['projectId'],true],
+  ['project_memory','Read bounded canonical memory and pending suggestions across all project conversations. Every item retains its source; provider replies are never proof of filesystem effects. No model call.',{projectId:id},['projectId'],true],
   ['repository_observe','Read bounded GitHub HEAD metadata only after the owner port verifies and rechecks a project-scoped grant; cache only historical metadata in the App Store. No live authorization, file content, PR mutation or GPT send.',{projectId:id},['projectId'],true],
   ['workspace_status','Inspect verified project-local workspace bindings and capability availability. No filesystem access.',{projectId:id},['projectId'],true],
   ['workspace_snapshot','Read a bounded Runtime-verified workspace summary through a project-scoped resource grant.',{projectId:id,bindingId:id},['projectId','bindingId'],true],
@@ -40,7 +41,8 @@ const definitions = [
   ['work_messages','Read a bounded page of persisted work or coordinator messages.',{projectId:id,taskId:id,before:text(1000),limit:{type:'integer',minimum:1,maximum:50}},['projectId','taskId'],true],
   ['work_send','Send one authorized prompt through the existing App executor. An uncertain command must never be replayed.',{projectId:id,taskId:id,content:text(6000),draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','taskId','content'],false],
   ['conversation_rotate','Prepare a new GPT segment for the same work. Does not send or bypass limits.',{projectId:id,taskId:id},['projectId','taskId'],false],
-  ['orchestrator_chat','Send a coordinator turn. For local user creation requests with delegateWork enabled, the assistant may classify the intent and start the existing bounded autonomous work executor; all decisions and receipts remain scoped and durable.',{projectId:id,orchestratorId:id,content:text(4000),delegateWork:{type:'boolean'},draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','orchestratorId','content'],false],
+  ['orchestrator_chat','Legacy optional Groq coordination. For local user creation requests with delegateWork enabled, the assistant may classify the intent and start the existing bounded autonomous work executor; all decisions and receipts remain scoped and durable.',{projectId:id,orchestratorId:id,content:text(4000),delegateWork:{type:'boolean'},draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','orchestratorId','content'],false],
+  ['forjador_send','Send one normal Forjador chat turn directly to the GPT executor in the same project conversation, without a Groq request. Uses canonical Run and command receipts; uncertain delivery is never replayed.',{projectId:id,orchestratorId:id,content:text(4000),draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','orchestratorId','content'],false],
   ['orchestrator_analyze','Review recent project work, or interpret one receipt-backed GPT Run and propose an evidence-grounded next step. Recommendations only; no GPT submission.',{projectId:id,orchestratorId:id,reviewRunId:id},['projectId','orchestratorId'],false],
   ['orchestrator_prepare','Prepare one proposed new work and initial draft with the coordinator API. No work or GPT submission until local review.',{projectId:id,orchestratorId:id,content:text(4000),draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','orchestratorId','content'],false],
   ['proposals_list','Read pending work proposals for the selected coordinator.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
@@ -54,7 +56,7 @@ export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,desc
     properties:{...(!readOnly?{requestId}:{}),...properties},
     required:[...(!readOnly?['requestId']:[]),...required]},
   annotations:{readOnlyHint:readOnly,destructiveHint:operation==='project_delete',idempotentHint:true,
-    openWorldHint:['work_send','proposal_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare','autonomous_dialogue_start','autonomous_dialogue_continue'].includes(operation)}
+    openWorldHint:['work_send','proposal_send','forjador_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare','autonomous_dialogue_start','autonomous_dialogue_continue'].includes(operation)}
 })));
 
 export function validateOrchestratorInput(operation, input) {

@@ -878,8 +878,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     repositoryPortAvailable=engineStatus.repositoryPortAvailable===true;
     workspacePortAvailable=engineStatus.workspacePortAvailable===true;
     gptWebTransportAvailable=engineStatus.providerExecutionAvailable===true&&!nodeHost;
-    // The coordinator is a distinct conversation, not another GPT Web front.
-    orchestratorChatAvailable=coordinatorAvailable;
+    // GPT-first: the same canonical Forjador Task is now served by GPT Web.
+    // Groq is optional for the advanced analyst, not the normal chat.
+    orchestratorChatAvailable=gptWebTransportAvailable;
     coordinatorDraftCommitAvailable=engineStatus.coordinatorDraftCommitAvailable===true;
     if(!coordinatorDraftCommitAvailable)setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
     else if($('coordinatorDraftState').textContent.includes('backend anterior'))
@@ -890,10 +891,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('coordinatorPrompt').placeholder='Descreva o que você quer criar ou mudar…';
     $('coordinatorSend').textContent='Enviar';
     $('coordinatorSend').setAttribute('aria-label','Enviar mensagem');
-    $('orchestrationConnection').textContent=coordinatorAvailable
-      ?'Conexão pronta.'
-      :'Forjador indisponível. Verifique a conexão em Ajustes.';
-    if($('coordinatorTransport'))$('coordinatorTransport').hidden=coordinatorAvailable;
+    $('orchestrationConnection').textContent=orchestratorChatAvailable
+      ?'GPT Web disponível. O envio exige uma sessão autenticada.'
+      :'GPT Web indisponível. Verifique a sessão em Ajustes.';
+    if($('coordinatorTransport'))$('coordinatorTransport').hidden=orchestratorChatAvailable;
     syncCapabilitySummary();
     syncCoordinatorActions();
   }
@@ -1706,9 +1707,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   $('coordinatorComposer').addEventListener('submit',event=>{
     event.preventDefault();
     // Acquire the single-flight lock BEFORE the first async draft read.
-    // The form's button restoration must not allow a second Groq dispatch.
+    // The form's button restoration must not allow a second GPT dispatch.
     if(coordinatorSubmitting||analysisBusy||$('coordinatorSend').disabled)return;
-    const delegateWork=!nodeHost;
     coordinatorSubmitting=true;syncCoordinatorActions();
     void formAction(event.currentTarget,async()=>{
       const p=projectId,o=orchestratorId,t=chatTaskId;
@@ -1716,27 +1716,16 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       // Selection can change while awaiting the durable draft. Never send a
       // stale coordinator message to the old project after navigation.
       if(p!==projectId||o!==orchestratorId||t!==chatTaskId||!content)return;
-      status('Entendendo o pedido…');
-      const receipt=await command('orchestrator_chat',{projectId:p,orchestratorId:o,content,delegateWork,draftRevision:draft.draftRevision});
+      status('Enviando ao GPT…');
+      const receipt=await command('forjador_send',{projectId:p,orchestratorId:o,content,draftRevision:draft.draftRevision});
       if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
-      await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
       if(receipt.status==='succeeded'){
-        const delegation=receipt.result?.delegation;
-        status(delegation?.status==='accepted'
-          ?'Pedido recebido. Preparando a execução…'
-          :delegation?.status==='blocked'
-            ?'Não foi possível começar essa tarefa. Verifique as conexões em Ajustes.'
-            :'Resposta registrada.');
-      }
-      else {
-        const code=receipt?.result?.failureCode;
-        status(code==='groq_auth_rejected'
-          ?'A conexão do administrador não está autorizada. Nenhum trabalho foi iniciado.'
-          :code==='groq_invalid_response'||code==='groq_invalid_jarvis_decision'
-            ?'O administrador não conseguiu interpretar a resposta. O pedido está salvo; nenhum envio GPT foi iniciado.'
-            :receipt.status==='uncertain'
-              ?'O resultado do administrador está incerto. Verifique o histórico; não vou repetir o pedido.'
-              :'A solicitação não foi concluída. O pedido foi salvo sem executar o GPT.');
+        await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
+        status('Resposta do GPT registrada. Efeitos externos ainda exigem verificação.');
+      } else if(receipt.status==='uncertain'){
+        status('Envio GPT incerto. Consulte Execução antes de qualquer novo envio; não houve repetição.');
+      } else {
+        status('GPT não confirmou o envio. O rascunho foi mantido para verificação.');
       }
       // Auto-label only a still-untitled project after a persisted first turn.
       // User-selected names always win; this never calls a model or GPT.

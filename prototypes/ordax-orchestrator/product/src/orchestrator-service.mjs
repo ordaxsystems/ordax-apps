@@ -12,6 +12,7 @@ import {classifyExistingSiteChange} from './natural-site-intent.mjs';
 import {latestSiteWork} from './site-work-context.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
 import {forgeProjectContext} from './forge-executor-context.mjs';
+import {forgeProjectMemoryView} from './forge-project-memory-view.mjs';
 import {UNTITLED_FORGE_PROJECT,suggestForgeProjectTitle} from './project-auto-title.mjs';
 import {deleteProjectRecords} from './project-deletion.mjs';
 import {ProjectRepository} from './project-repository.mjs';
@@ -387,7 +388,7 @@ export class OrchestratorService {
     if(tool.readOnly)return this.read(context,operation,input);
     if(operation==='proposal_send')return this.confirmAndSendProposal(context,input);
     if(operation==='proposal_review'&&input.approved)return this.confirmAndReviewProposal(context,input);
-    if(['work_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare'].includes(operation))return this.dispatch(context,operation,input);
+    if(['work_send','forjador_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare'].includes(operation))return this.dispatch(context,operation,input);
     return this.transaction(()=>{
       const reserved=this.reserve(context,operation,input);
       if(reserved.existing)return reserved.existing;
@@ -471,6 +472,7 @@ export class OrchestratorService {
         workspace:this.workspace.status(context,input.projectId),workCount:total,
         latestRunStatus:last?.status||null});
     }
+    if(operation==='project_memory')return forgeProjectMemoryView(this.store,input.projectId);
     if(operation==='continuity_status') {
       this.orchestrator(input.projectId,input.orchestratorId);
       return this.continuation.status(input.projectId,input.orchestratorId);
@@ -1238,7 +1240,7 @@ export class OrchestratorService {
     return this.activeCoordinatorTurns.has(taskId)||Boolean(this.db.prepare(`
       SELECT 1 FROM lab_command_receipt_scope
       WHERE status='running' AND operation IN
-        ('orchestrator_chat','orchestrator_analyze','orchestrator_prepare')
+        ('forjador_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare')
       AND task_id=? LIMIT 1`).get(taskId));
   }
 
@@ -1312,16 +1314,17 @@ export class OrchestratorService {
     // Return an accepted command even if the provider is now offline; never replay.
     if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
     const isWorkSend=operation==='work_send'||operation==='proposal_send';
-    // Transport is determined by the operation, never by the visible GPT pane.
-    // Coordinator conversations use the configured coordinator (Groq on
-    // Windows); only explicit work sends reach the ChatGPT Web executor.
-    const usesProvider=isWorkSend;
+    const isForjadorSend=operation==='forjador_send';
+    // Ordinary Forjador turns now use the same GPT transport as work. Groq
+    // remains an optional analysis/proposal port, not a chat dependency.
+    const usesProvider=isWorkSend||isForjadorSend;
     const sendInput=preparedSend||input;
     const orch=isWorkSend?null:this.orchestrator(input.projectId,input.orchestratorId);
     const task=isWorkSend?this.task(input.projectId,sendInput.taskId,'work'):
       this.task(input.projectId,orch.chat_task_id,'orchestrator');
     const owner=orch||this.orchestrator(input.projectId,task.orchestrator_id);
     if(isWorkSend)this.assertDependenciesSatisfied(input.projectId,task.id);
+    if(isForjadorSend)this.assertProviderTaskAvailable(task.id,{allowCoordinator:true});
     const repositoryUrl=this.projectRepositoryUrl(input.projectId);
     if(owner.status==='paused')throw Error('orchestrator_paused');
     const port=usesProvider?this.provider:this.coordinator;
@@ -1389,7 +1392,7 @@ export class OrchestratorService {
     const providerContent=usesProvider
       ?preparedSend?.providerContent||appendRemoteRepositoryInstructions(content,repositoryUrl)
       :content;
-    const workspaceStatus=isWorkSend?null:this.workspace.status(context,input.projectId);
+    const workspaceStatus=usesProvider?null:this.workspace.status(context,input.projectId);
     const workspaceObservation=workspaceStatus?{
       state:workspaceStatus.state,
       capabilityAvailable:workspaceStatus.available===true,
@@ -1461,7 +1464,8 @@ export class OrchestratorService {
       this.requireAccess(context,operation,input.projectId);
       const reply=await port.send({taskId:task.id,content:usesProvider?providerContent:content,
         draftRevision:sendInput.draftRevision??null,
-        taskKind:isWorkSend?'work':null,
+        taskKind:isForjadorSend?'orchestrator':isWorkSend?'work':null,
+        authorSource:isForjadorSend?'orchestrator':'human',
         mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork,
         completionProfile:reviewSource?'technical_review':'standard',workspaceObservation,repositoryUrl,
         delegateWork:operation==='orchestrator_chat'&&input.delegateWork===true});
