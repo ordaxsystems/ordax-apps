@@ -24,6 +24,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import {HTML_ARTIFACT_LIMIT_BYTES,validateHtmlArtifactName} from '../src/provider-html-artifact.mjs';
+import {classifyProviderMcpSelection} from '../src/provider-mcp-selection.mjs';
 import { fileURLToPath } from 'node:url';
 import { classifyProviderContextAttachmentObservation, selectProviderContextFileInput, PROVIDER_CONTEXT_FILE_INPUT_SELECTOR, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
 
@@ -572,6 +573,37 @@ export class EmbeddedChatWorker {
     }
     if (current !== url) await this.#safeLoad(url, { requireComposer, protectDraft: !force, readOnlyThread });
     return { ...this.status(), navigated:true };
+  }
+
+  // Read only the currently composed ChatGPT message; no app-menu click,
+  // credential handling, navigation, permission grant or provider send.
+  async inspectMcpSelectionReadOnly({allowDuringRun=false}={}) {
+    if((this.active&&!allowDuringRun) || !/^https:\/\/chatgpt\.com\//i.test(this.view.webContents.getURL()))
+      return classifyProviderMcpSelection(null);
+    const wc=this.view.webContents;
+    const observation=await evaluateProviderReadOnlyDom({
+      debugger:wc.debugger,expression:`(() => {
+        const composer=${composerExpression()};
+        if(!composer)return {composerPresent:false};
+        const scope=composer.closest('form')||composer.parentElement;
+        if(!scope)return {composerPresent:true};
+        const visible=node=>{
+          const rect=node.getBoundingClientRect(),style=getComputedStyle(node);
+          return rect.width>0&&rect.height>0&&style.display!=='none'&&style.visibility!=='hidden';
+        };
+        const candidates=[...scope.querySelectorAll('button,[role="button"],[aria-selected],[data-selected]')];
+        const matches=candidates.filter(node=>{
+          if(!visible(node))return false;
+          const label=String(node.getAttribute('aria-label')||node.getAttribute('title')||node.textContent||'').trim();
+          return label.length<=120&&/\\bOrdaX\\s+MCP\\b/i.test(label);
+        });
+        const selected=matches.some(node=>node.getAttribute('aria-pressed')==='true'||
+          node.getAttribute('aria-selected')==='true'||node.getAttribute('data-selected')==='true'||
+          node.getAttribute('data-state')==='active');
+        return {composerPresent:true,exactNamedControl:matches.length>0,exactSelectedControl:selected};
+      })()`,timeoutMs:5000,timeoutCode:'provider_mcp_selection_observation_timeout'
+    }).catch(()=>null);
+    return classifyProviderMcpSelection(observation);
   }
 
   // Inspect the currently visible provider page; never navigate or submit.
@@ -1361,7 +1393,7 @@ export class EmbeddedChatWorker {
 
   async sendPrompt({ prompt, chatUrl = null, newSession = false, contextAttachment = null,
     onContextAttachmentObserved = null, onDeliveryObserved = null, onProvisionalProgress = null,
-    onSubmissionIntent = null }) {
+    onSubmissionIntent = null, onMcpSelectionObserved = null }) {
     return this.enqueue(async () => {
       const wc = this.view.webContents;
       this.lastFailureMetrics = null;
@@ -1411,6 +1443,14 @@ export class EmbeddedChatWorker {
       const promptText = String(prompt || '').trim();
       this.streamContext = { beforeCount, baseline, promptText, beforeImageSources:new Set(beforeImages), currentAssistantMessageId:null, lastSignature:'', firstActivityAt:null, firstDeltaAt:null, firstObserver:null, fastFirstDeltaAt:null, betaFirstDeltaAt:null, submitAttemptAt:null, providerRequestSeenAt:null, submittedAt:null, networkFirstByteAt:null, fastSeen:false, betaSeen:false, fastDelivered:false, fastSuppressed:false, fastSuppressionReason:null, lastDeliveredText:'', lastDeliveredSource:null, prepareStartedAt, healthCompletedAt, draftCheckedAt, conversationReadyAt, observerReadyAt, baselineReadyAt };
 
+      // One read-only MCP selection observation per GPT message, AFTER the
+      // target conversation has been chosen and BEFORE the submit attempt.
+      // Never assert that a plugin executed from a selected UI marker.
+      const selection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true});
+      this.streamContext.mcpSelectionState=selection.state;
+      if(typeof onMcpSelectionObserved==='function') {
+        try { await onMcpSelectionObserved(selection); }catch{/* optional observation */}
+      }
       if(contextAttachment)await this.#attachContextFile(contextAttachment,onContextAttachmentObserved);
       this.#setStage('submit');
       await this.#setComposerAndSend(promptText,{onSubmissionIntent});

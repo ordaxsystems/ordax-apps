@@ -2016,6 +2016,38 @@ labSendButton.addEventListener("click",async()=>{
   finally {labProposal=null;labSendButton.disabled=false;}
 });
 
+// The Forjador owns Groq coordination. This checks only the current GPT
+// composer, never installs, attaches or silently invokes a ChatGPT plugin.
+const mcpCheckButtons=['forjadorMcpCheck','settingsMcpCheck']
+  .map(id=>document.getElementById(id)).filter(Boolean);
+const mcpStatusLabels=['forjadorMcpStatus','settingsMcpState']
+  .map(id=>document.getElementById(id)).filter(Boolean);
+const mcpStatusText=Object.freeze({
+  selection_visible:'OrdaX MCP marcado no compositor do GPT. Ainda não há recibo de execução; a seleção precisa ser verificada a cada mensagem.',
+  name_visible_unverified:'OrdaX MCP aparece no compositor, mas a seleção efetiva não foi confirmada. Nenhuma ação MCP comprovada.',
+  not_observed:'OrdaX MCP não foi observado na mensagem atual do GPT. Selecione o plugin no ChatGPT antes do envio; não basta escrever seu nome no prompt.',
+  unavailable:'Não foi possível verificar a seleção MCP nesta sessão. Nenhum envio ou permissão foi criado.'
+});
+function displayMcpSelectionState(rawState){
+  const state=Object.hasOwn(mcpStatusText,rawState)?rawState:'unavailable';
+  for(const label of mcpStatusLabels){
+    label.textContent=mcpStatusText[state];
+    label.dataset.state=state==='selection_visible'?'unverified':'blocked';
+  }
+}
+window.ordax?.onProviderMcpObserved?.(observation=>displayMcpSelectionState(observation?.state));
+async function inspectMcpForForjador(){
+  for(const button of mcpCheckButtons)button.disabled=true;
+  for(const label of mcpStatusLabels)label.textContent='Observando somente o compositor do GPT…';
+  try{
+    const result=await window.ordax?.providerMcpSelection?.();
+    displayMcpSelectionState(result?.state);
+  }catch{
+    displayMcpSelectionState('unavailable');
+  }finally{for(const button of mcpCheckButtons)button.disabled=false;}
+}
+for(const button of mcpCheckButtons)button.addEventListener('click',inspectMcpForForjador);
+
 const diagnosticButton = document.getElementById('providerDiagnostic');
 const diagnosticOutput = document.getElementById('providerDiagnosticResult');
 diagnosticButton.addEventListener('click', async () => {

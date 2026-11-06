@@ -38,7 +38,7 @@
         <span class="workspace-modes-caption">Áreas do projeto</span>
         <button id="openOrchestrator" class="workspace-mode workspace-mode-coordinator" type="button" aria-pressed="false" disabled>
           <span class="workspace-mode-symbol" aria-hidden="true">◇</span>
-          <span class="workspace-mode-copy"><strong>Assistente Forge</strong><small id="coordinatorNavProvider">Conversa do projeto</small></span>
+          <span class="workspace-mode-copy"><strong>Forjador</strong><small id="coordinatorNavProvider">Coordenação Groq do projeto</small></span>
           <span class="workspace-mode-arrow" aria-hidden="true">↗</span>
         </button>
         <button id="openWorks" class="workspace-mode workspace-mode-gpt" type="button" aria-pressed="false" aria-controls="orchestratorWorkRail" aria-expanded="false" disabled>
@@ -148,7 +148,7 @@
     <section class="chat-column">
       <section id="orchestrationPanel" class="orchestration-panel" hidden aria-label="Conversa com o orquestrador">
         <header class="coordinator-head">
-          <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><span class="route-kicker" id="coordinatorRouteLabel">ASSISTENTE ORDAX</span><h2 id="orchestratorTitle">Conversa</h2><p id="orchestratorMission"></p></div></div>
+          <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><span class="route-kicker" id="coordinatorRouteLabel">FORJADOR · GROQ</span><h2 id="orchestratorTitle">Conversa</h2><p id="orchestratorMission"></p></div></div>
           <div class="coordinator-head-actions">
             <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Frentes</button>
             <button id="pauseOrchestrator" class="ghost-button" type="button" disabled>Pausar</button>
@@ -199,6 +199,12 @@
               <small id="repositoryObservationState" role="status" aria-live="polite" data-state="idle">Nenhum HEAD autenticado verificado nesta sessão.</small>
               <small id="remoteRepositoryStatus" role="status">Vincule um repositório GitHub para orientar as conversas de trabalho.</small>
               <small id="remoteRepositoryCapabilityNote">A API recebe somente a URL. No desktop, tarefas podem pedir ao ChatGPT para usar a integração GitHub da sessão; isso não comprova que a integração está disponível. Nenhum arquivo local é lido nesta etapa.</small>
+            </section>
+            <section class="coordinator-analysis-actions" aria-label="Ferramentas do executor GPT">
+              <strong>Executor GPT · Ferramentas MCP</strong>
+              <small>O Forjador usa Groq para coordenar e envia a tarefa ao GPT Web. Para utilizar o OrdaX MCP, a ferramenta deve estar selecionada na mensagem do ChatGPT. Instruções de texto não ativam um plugin.</small>
+              <button id="forjadorMcpCheck" class="mini-secondary" type="button">Verificar seleção no GPT</button>
+              <small id="forjadorMcpStatus" role="status" aria-live="polite">Seleção de ferramentas não verificada. Nenhuma execução MCP comprovada nesta conversa.</small>
             </section>
             <section id="workspaceOverview" class="coordinator-analysis-actions" aria-label="Acesso autorizado ao workspace local">
               <strong>Workspace · Runtime MCP</strong>
@@ -608,6 +614,7 @@
           </section>
           <section id="settingsPanelConnections" class="app-settings-panel" role="tabpanel" aria-labelledby="settingsTabConnections" data-settings-panel="connections" tabindex="0" hidden>
             <div class="app-settings-card"><span class="app-settings-eyebrow">GITHUB</span><h3>Repositórios</h3><p>O endereço do repositório é configurado dentro de cada projeto. A leitura de branches, PRs e verificações depende de uma conexão autorizada pelo Platform; este perfil ainda não a confirma.</p><button id="settingsOpenProject" type="button" class="mini-secondary">Configurar projeto</button></div>
+            <div class="app-settings-card"><span class="app-settings-eyebrow">FERRAMENTAS DO GPT</span><h3>OrdaX MCP · conexão de teste</h3><p>O Forjador conversa pela Groq; o GPT Web é o executor. O MCP instalado na conta do ChatGPT precisa ser escolhido no envio de cada mensagem. Esta consulta não cria arquivos nem envia mensagens.</p><button id="settingsMcpCheck" type="button" class="mini-secondary">Verificar seleção no ChatGPT</button><p id="settingsMcpState" class="settings-connection-state" role="status" aria-live="polite">Seleção do plugin não verificada.</p><p class="diagnostics-hint">O marcador visual do plugin não comprova uma ação. Arquivos e comandos só contam como feitos quando houver recibo verificável. O futuro MCP Forge será uma conexão separada, usando o mesmo Forjador.</p></div>
             <div class="app-settings-card"><span class="app-settings-eyebrow">RUNTIME</span><h3>Execução local</h3><p>Arquivos, testes e alterações no computador exigem um dispositivo conectado e um grant válido do Runtime/Platform. Nenhum grant é criado por esta tela.</p><p class="settings-connection-state" data-state="blocked">Aguardando conexão autorizada</p></div>
             <div class="app-settings-card"><span class="app-settings-eyebrow">CONTINUIDADE</span><h3>Operação em segundo plano</h3><p>O estado de segundo plano aparece em Geral quando o Windows oferece esse recurso. Operação contínua só será indicada após integração e verificação pelo Runtime/Scheduler.</p></div>
           </section>

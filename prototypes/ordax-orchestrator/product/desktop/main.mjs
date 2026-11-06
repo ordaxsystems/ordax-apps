@@ -405,6 +405,16 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       onProvisionalProgress:({text,source})=>{
         if(providerViews.runForWorker(runWorker)===runContext)provisional.capture(text,source);
       },
+      onMcpSelectionObserved:selection=>{
+        if(providerViews.runForWorker(runWorker)!==runContext)return;
+        const state=['selection_visible','name_visible_unverified','not_observed','unavailable']
+          .includes(selection?.state)?selection.state:'unavailable';
+        try {store.event(taskId,'provider.mcp.selection_observed',{
+          run_id:runId,state,selection_observed:state==='selection_visible',
+          invocation_verified:false
+        });}catch{/* diagnostic cannot affect delivery */}
+        emitRendererEvent('ordax:provider:mcp-observed',{state,taskId,runId});
+      },
       onSubmissionIntent:({intentAt,chatUrl,baselineUserMessageId,baselineUserMessagePresent,baselinePromptMatches})=>{
         if(providerViews.runForWorker(runWorker)!==runContext)throw new Error('submission_run_context_changed');
         const requireRecordedIntent=intent=>{
@@ -985,6 +995,12 @@ registerUiHandler('ordax:provider:diagnostic', async event => {
   requireTrustedSupervisorRenderer(event);
   // Read-only provider UI inspection; no API key, chat submission or disk write.
   return worker.inspectDiagnosticReadOnly();
+});
+registerUiHandler('ordax:provider:mcp-selection', async event => {
+  requireTrustedSupervisorRenderer(event);
+  // UI markers are diagnostic, never proof of a selected tool invocation.
+  if(hostBrowserMode)return {state:'unavailable',selectionObserved:false,invocationVerified:false};
+  return worker.inspectMcpSelectionReadOnly();
 });
 registerUiHandler('ordax:provider:view-bounds', (event,rect) => {
   requireTrustedSupervisorRenderer(event);

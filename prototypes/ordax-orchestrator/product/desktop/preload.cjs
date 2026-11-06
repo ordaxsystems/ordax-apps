@@ -52,6 +52,8 @@ contextBridge.exposeInMainWorld('ordax', {
   labBuildProof: () => ipcRenderer.invoke('ordax:lab:build-proof'),
   providerStatus: () => ipcRenderer.invoke('ordax:provider:status'),
   providerDiagnostic: () => ipcRenderer.invoke('ordax:provider:diagnostic'),
+  providerMcpSelection: () => ipcRenderer.invoke('ordax:provider:mcp-selection'),
+  onProviderMcpObserved: callback => ipcRenderer.on('ordax:provider:mcp-observed',(_event,data)=>callback(data)),
   providerNavigate: direction => ipcRenderer.invoke('ordax:provider:navigate',direction),
   setProviderBounds: bounds => ipcRenderer.invoke('ordax:provider:view-bounds',bounds),
   getObserverMode: () => ipcRenderer.invoke('ordax:provider:observer-mode:get'),
