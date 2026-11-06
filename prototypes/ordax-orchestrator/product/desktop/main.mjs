@@ -1299,7 +1299,13 @@ registerUiHandler('ordax:forge:workspace:choose',async(event,projectId)=>{
   if(current.configured)throw Error('forge_workspace_already_bound');
   const chosen=await dialog.showOpenDialog(win,{
     title:'Selecionar a pasta oficial deste projeto Forge',
-    defaultPath:app.getPath('documents'),
+    // Staged verification must never open the owner's real Documents by
+    // default. The native owner may choose a folder explicitly only after
+    // the ordinary binding and overlap checks.
+    defaultPath:stagedProfile
+      ?(fs.existsSync(forgeLocalWorkspaces.base)
+        ?forgeLocalWorkspaces.base:path.dirname(userRoot))
+      :app.getPath('documents'),
     properties:['openDirectory'],
     buttonLabel:'Vincular esta pasta'
   });

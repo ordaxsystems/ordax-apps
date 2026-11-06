@@ -86,27 +86,37 @@ históricos, não instruções de implementação. A realidade de cada funcional
    tabela única de workspace real, criação padrão após novo projeto no
    IPC nativo e broker ligado à raiz única, com readback e SHA-256 dos
    bytes físicos conferidos independentemente. Perfil DEV aprovado
-   `candidate-userdata-v2.4.6-alpha.31073` escreve somente em sua própria
-   pasta `OrdaX/staged-documents/Forge`, jamais em Documentos reais;
-   o perfil operacional usa a localização Documentos do Windows.
-   **Pendente:** prova visual do seletor nativo para pastas existentes.
-3. **MIGRAÇÃO NO WINDOWS IMPLEMENTADA; PROVA FÍSICA DO DIÁLOGO PENDENTE:**
-   o Owner pode mover a pasta privada anterior para Documentos/Forge, com
-   confirmação, SHA-256, rollback em falha e nenhuma cópia duplicada no
-   mesmo disco; migração entre volumes ainda bloqueada (EXDEV). Continuam
-   pendentes arquivos binários, edições robustas, execução/testes e preview real.
-4. **IMPLEMENTADO E TESTADO NO CÓDIGO:** multiplexação local de projetos
-   em um único listener MCP, com autorização explícita de cada projeto,
-   token/sessão independente, expiração individual, revogação parcial e
-   bloqueio de sessões cruzadas. **PENDENTE:** homologar no Electron Windows
-   e criar ponte HTTPS segura com autenticação/consentimento. Não supor
-   disponibilidade de escrita no GPT Web sem prova física.
-5. **PROVA WINDOWS PARCIAL:** Electron DEV isolado carregou a interface,
-   seus controles e métodos IPC; criou um projeto com pasta física temporária,
-   escreveu um HTML e conferiu SHA-256 independente. **Pendente:** aprovação
-   de MCP por diálogo nativo, seleção/migração por UI, cliente GPT Web real,
-   pacote oficial e gates aplicáveis. Preservar alterações paralelas;
-   push/merge somente após autorização para operações remotas.
+   `candidate-userdata-v2.4.6-alpha.31073` e `31074` escreve somente
+   em sua própria pasta `OrdaX/staged-documents/Forge`, jamais nos
+   Documentos reais; o perfil operacional usa a localização Documentos do
+   Windows. O seletor nativo de pasta foi aberto para projeto não vinculado
+   e cancelado sem criar grant; a seleção efetiva de pasta existente ainda
+   precisa de prova física (o Windows bloqueou o foco automatizado).
+3. **MIGRAÇÃO FÍSICA DE STAGING VERIFICADA:** um projeto legado foi
+   criado apenas no perfil descartável `31074`; o botão nativo de migrar
+   foi acionado e o arquivo de origem passou a existir somente no destino
+   autorizado, com bytes e SHA-256 conferidos fora da UI; SQLite manteve
+   o projeto e vínculo. O diálogo de confirmação exige aprovação no código,
+   mas seu clique não foi observado separadamente na captura física.
+   Migração entre volumes continua bloqueada (EXDEV); binários, edições
+   robustas, execução/testes e preview real seguem como capacidades distintas.
+4. **MCP MULTIPROJETO HOMOLOGADO NO ELECTRON WINDOWS ISOLADO:**
+   dois projetos receberam autorização por diálogo nativo e Controles de
+   Configurações, usando a mesma porta de loopback e tokens/sessões
+   independentes. Chamadas MCP reais gravaram e leram arquivos diferentes;
+   tentativa de cruzar sessão retornou HTTP 404 e trocar `projectId`
+   retornou -32602. Revogar pela UI invalidou somente o token selecionado
+   (HTTP 401), preservando o outro (HTTP 200); Desativar todos fechou o
+   servidor. As chaves não foram persistidas, publicadas ou copiadas para
+   documentação. **PENDENTE:** ponte HTTPS autenticada/consentida para GPT
+   Web; não presumir suporte a escrita sem prova externa.
+5. **PROVAS WINDOWS REAIS (sem uso do perfil operacional):** interfaces
+   MCP e arquivos, autorizações, criação/leitura/escrita e revogação foram
+   executadas em Electron DEV com perfil descartável. O seletor de pastas
+   abriu, porém a escolha real permanece pendente. **PENDENTE:** cliente GPT
+   Web via MCP remoto, instalador oficial, autorização de pastas existentes
+   por diálogo completo e demais gates aplicáveis. Preservar alterações
+   paralelas; push/merge somente após autorização remota.
 
 **Critérios de saída:** pasta escrita e lida fisicamente, isolamento entre
 projetos, manutenção do histórico após restart, sem duplicidade entre
