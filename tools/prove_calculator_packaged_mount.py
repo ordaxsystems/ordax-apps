@@ -50,7 +50,7 @@ def prove(candidate: Path) -> dict:
     metadata = json.loads(release.read_text(encoding="utf-8"))
     if metadata["source_commit"] != source_commit:
         raise ValueError("Candidate source commit does not match the checkout")
-    if metadata["component"] != {"id": "calculator", "version": "0.2.1"}:
+    if metadata["component"]["id"] != "calculator" or metadata["component"]["version"] != "0.2.1":
         raise ValueError("Calculator release identity/version drifted")
     if metadata["activation"]["direct_activation_allowed"] is not False:
         raise ValueError("Unsigned candidate must not activate directly")
@@ -65,7 +65,11 @@ def prove(candidate: Path) -> dict:
             # The canonical builder verified ZIP member names, permissions,
             # size, content hashes and module imports before extraction.
             archive.extractall(extracted)
-        env = dict(os.environ, ORDAX_CALCULATOR_VERIFIED_PACKAGE_ROOT=str(extracted))
+        env = dict(
+            os.environ,
+            ORDAX_CALCULATOR_VERIFIED_PACKAGE_ROOT=str(extracted),
+            ORDAX_CALCULATOR_COMPATIBILITY_PATH=str(compatibility),
+        )
         output = run("node", "--test", str(SMOKE), env=env)
         matches = re.findall(r"^# pass (\d+)$", output, re.MULTILINE)
         failures = re.findall(r"^# fail (\d+)$", output, re.MULTILINE)
