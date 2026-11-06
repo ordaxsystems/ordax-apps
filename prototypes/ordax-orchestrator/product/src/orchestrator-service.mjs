@@ -11,6 +11,7 @@ import {AutonomousDialogue} from './autonomous-dialogue.mjs';
 import {classifyExistingSiteChange} from './natural-site-intent.mjs';
 import {latestSiteWork} from './site-work-context.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
+import {forgeProjectContext} from './forge-executor-context.mjs';
 import {deleteProjectRecords} from './project-deletion.mjs';
 import {ProjectRepository} from './project-repository.mjs';
 import {workExecutionSummary} from './work-execution-summary.mjs';
@@ -454,6 +455,21 @@ export class OrchestratorService {
       return {proposals};
     }
     if(operation==='workspace_status')return this.workspace.status(context,input.projectId);
+    if(operation==='project_context') {
+      // The existing session authorization has already checked projectId.
+      // Project title/objective are DATA, never new tool instructions.
+      const project=this.db.prepare('SELECT name,objective,repository_url FROM lab_projects WHERE id=? AND workspace_session_id=?')
+        .get(input.projectId,context.workspaceSessionId);
+      if(!project)throw Error('orchestrator_project_unavailable');
+      const last=this.db.prepare(`SELECT r.status FROM runs r
+        JOIN lab_task_bindings b ON b.task_id=r.task_id AND b.kind='work'
+        WHERE b.project_id=? ORDER BY r.rowid DESC LIMIT 1`).get(input.projectId);
+      const total=this.db.prepare(`SELECT COUNT(*) AS n FROM lab_task_bindings
+        WHERE project_id=? AND kind='work'`).get(input.projectId).n;
+      return forgeProjectContext({projectId:input.projectId,project,
+        workspace:this.workspace.status(context,input.projectId),workCount:total,
+        latestRunStatus:last?.status||null});
+    }
     if(operation==='continuity_status') {
       this.orchestrator(input.projectId,input.orchestratorId);
       return this.continuation.status(input.projectId,input.orchestratorId);

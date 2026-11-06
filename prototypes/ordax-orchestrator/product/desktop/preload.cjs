@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('ordax', {
   coordinatorChatStatus: () => ipcRenderer.invoke('ordax:orchestrator:chat-status'),
+  forjadorGroqPrompt: projectId => ipcRenderer.invoke('ordax:forjador:groq-prompt',projectId),
   orchestratorInvoke: (operation,input={}) => ipcRenderer.invoke('ordax:orchestrator:invoke',{operation,input}),
   orchestratorMcp: message => ipcRenderer.invoke('ordax:orchestrator:mcp',message),
   onOrchestratorChanged: callback => {

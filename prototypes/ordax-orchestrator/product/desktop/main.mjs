@@ -1004,6 +1004,13 @@ registerUiHandler('ordax:provider:diagnostic', async event => {
   // Read-only provider UI inspection; no API key, chat submission or disk write.
   return worker.inspectDiagnosticReadOnly();
 });
+registerUiHandler('ordax:forjador:groq-prompt', (event,projectId) => {
+  requireTrustedSupervisorRenderer(event);
+  if(typeof projectId!=='string'||!projectId||
+    lastGroqModelRequest?.projectId!==projectId)return null;
+  // Local, read-only, last request only; nothing is persisted or re-sent.
+  return lastGroqModelRequest;
+});
 registerUiHandler('ordax:provider:mcp-selection', async event => {
   requireTrustedSupervisorRenderer(event);
   // UI markers are diagnostic, never proof of a selected tool invocation.
@@ -1115,6 +1122,9 @@ async function confirmInActiveUi({title,message,detail,approveLabel='Confirmar',
 // One App service for native UI and the MCP adapter. The fixed identity is
 // local-only; it is NOT exported as authentication for a remote MCP endpoint.
 let localOrchestratorContext=null;
+// Latest exact Groq model messages kept only in memory for the owner DEV
+// inspector. No API keys, authorization headers, disk logs or remote MCP.
+let lastGroqModelRequest=null;
 let runtimeOrchestratorBridge=null;
 let closeRuntimeOrchestratorPipe=null;
 const orchestratorKernel=createOrchestratorKernel({
@@ -1180,7 +1190,8 @@ const orchestratorKernel=createOrchestratorKernel({
       return chatReceiptFromRunTask(execution);
     }},
   coordinator:createGroqCoordinatorConversation({store,getApiKey:currentGroqKey,
-    isEnabled:coordinatorChatEnabled})
+    isEnabled:coordinatorChatEnabled,
+    onModelRequest:payload=>{lastGroqModelRequest=payload;}})
 });
 localOrchestratorContext=orchestratorKernel.context;
 const {service:orchestratorService,mcp:localOrchestratorMcp}=orchestratorKernel;

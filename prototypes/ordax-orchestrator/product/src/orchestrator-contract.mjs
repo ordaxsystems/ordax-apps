@@ -8,6 +8,7 @@ const definitions = [
   ['status','Inspect local engine state and limitations.',{},[],true],
   ['projects_list','List accessible Lab projects.',{},[],true],
   ['project_preflight','Inspect project-scoped local evidence and external capability blockers without a provider request, GitHub read, grant or GPT send.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
+  ['project_context','Discover the canonical Forge execution protocol, selected project identity, workspace grant state and work availability. Does not read or create files, grant access or send GPT.',{projectId:id},['projectId'],true],
   ['repository_observe','Read bounded GitHub HEAD metadata only after the owner port verifies and rechecks a project-scoped grant; cache only historical metadata in the App Store. No live authorization, file content, PR mutation or GPT send.',{projectId:id},['projectId'],true],
   ['workspace_status','Inspect verified project-local workspace bindings and capability availability. No filesystem access.',{projectId:id},['projectId'],true],
   ['workspace_snapshot','Read a bounded Runtime-verified workspace summary through a project-scoped resource grant.',{projectId:id,bindingId:id},['projectId','bindingId'],true],

@@ -185,6 +185,14 @@
           <span id="capabilityRuntime" data-state="blocked">Runtime · sem conexão</span>
           <span id="capabilityContinuity" data-state="blocked">24 h · não operacional</span>
         </div>
+        <details id="forjadorGroqInspector" class="command-advanced forjador-prompt-inspector">
+          <summary>Diagnóstico DEV · prompt real enviado à Groq</summary>
+          <div class="forjador-prompt-inspector-body">
+            <p>Somente nesta sessão, após uma solicitação à Groq. Exibe as mensagens exatas preparadas para a API, sem chaves ou cabeçalhos. Não reenvia nada.</p>
+            <button id="inspectGroqPrompt" class="mini-secondary" type="button">Mostrar último prompt da Groq</button>
+            <pre id="groqPromptDisplay" role="status" aria-live="polite">Nenhum prompt inspecionado.</pre>
+          </div>
+        </details>
         <details id="orchestrationIntegrations" class="orchestration-integrations">
           <summary><span>Projeto, conexões e automação</span><small>Configurações e limites de execução</small></summary>
           <div class="orchestration-integrations-content">

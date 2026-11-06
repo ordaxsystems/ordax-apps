@@ -1047,3 +1047,10 @@ body.orchestrator-focus .project-chooser .project-nav-item:before{color:#dfa58b}
  body.orchestrator-focus .project-hub{display:none!important}
  body.orchestrator-focus #addProject{display:inline-grid;place-items:center}
 }
+
+/* DEV: inspect the exact locally prepared Groq model messages on demand. */
+.forjador-prompt-inspector{margin:8px 20px;border-radius:10px}
+.forjador-prompt-inspector-body{display:grid;gap:8px;padding:10px 12px}
+.forjador-prompt-inspector-body p{margin:0;font-size:12px;line-height:1.5;color:var(--muted)}
+.forjador-prompt-inspector-body button{justify-self:start}
+#groqPromptDisplay{max-height:300px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;border-radius:8px;background:var(--panel-2);border:1px solid var(--border);font:11px/1.5 ui-monospace,Consolas,monospace}

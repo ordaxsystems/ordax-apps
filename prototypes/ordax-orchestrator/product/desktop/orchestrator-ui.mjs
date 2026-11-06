@@ -1605,6 +1605,24 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   });
   // One keyboard submission path: Enter or Ctrl/Cmd+Enter submits; Shift+Enter
   // inserts a newline and IME composition must never trigger an early send.
+  // DEV-only, explicit read of the last exact Groq request for this project.
+  // The Forjador's ordinary chat never exposes internal model messages.
+  $('inspectGroqPrompt').addEventListener('click',async()=>{
+    const selected=projectId,button=$('inspectGroqPrompt'),display=$('groqPromptDisplay');
+    if(!selected){display.textContent='Selecione um projeto para inspecionar.';return;}
+    button.disabled=true;
+    display.textContent='Consultando o último payload da Groq, sem enviar mensagem…';
+    try{
+      const trace=await api.forjadorGroqPrompt?.(selected);
+      if(selected!==projectId)return;
+      display.textContent=trace?.projectId===selected&&Array.isArray(trace.messages)
+        ?JSON.stringify({observedAt:trace.observedAt,model:trace.model,
+          phase:trace.phase,messages:trace.messages},null,2)
+        :'Não há uma solicitação Groq nesta sessão para este projeto. A consulta não inicia uma nova.';
+    }catch{
+      if(selected===projectId)display.textContent='Diagnóstico local indisponível. Nenhuma mensagem foi enviada.';
+    }finally{button.disabled=false;}
+  });
   $('coordinatorPrompt').addEventListener('keydown',event=>{
     if(event.key!=='Enter'||event.isComposing||event.shiftKey)return;
     event.preventDefault();
