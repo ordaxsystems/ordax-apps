@@ -1615,10 +1615,19 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     try{
       const trace=await api.forjadorGroqPrompt?.(selected);
       if(selected!==projectId)return;
-      display.textContent=trace?.projectId===selected&&Array.isArray(trace.messages)
-        ?JSON.stringify({observedAt:trace.observedAt,model:trace.model,
-          phase:trace.phase,messages:trace.messages},null,2)
-        :'Não há uma solicitação Groq nesta sessão para este projeto. A consulta não inicia uma nova.';
+      display.textContent=trace&&(trace.groq||trace.gpt)
+        ?JSON.stringify({
+          groq:trace.groq&&Array.isArray(trace.groq.messages)?{
+            observedAt:trace.groq.observedAt,model:trace.groq.model,
+            phase:trace.groq.phase,messages:trace.groq.messages}:null,
+          gpt:trace.gpt?{preparedAt:trace.gpt.preparedAt,
+            taskId:trace.gpt.taskId,runId:trace.gpt.runId,
+            authorSource:trace.gpt.authorSource,
+            originalRequest:trace.gpt.originalRequest,
+            composedPrompt:trace.gpt.composedPrompt,
+            deliveryObserved:trace.gpt.deliveryObserved}:null
+        },null,2)
+        :'Não há requisição Groq ou GPT preparada nesta sessão para este projeto. Nenhum envio foi iniciado.';
     }catch{
       if(selected===projectId)display.textContent='Diagnóstico local indisponível. Nenhuma mensagem foi enviada.';
     }finally{button.disabled=false;}

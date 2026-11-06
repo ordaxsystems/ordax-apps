@@ -385,6 +385,11 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   try {
     providerViews.bindRun(runWorker,runContext);
     if (win && !win.isDestroyed()) emitRendererEvent('ordax:task:run-started', { taskId, runId, userMessage });
+    const projectId=store.db.prepare('SELECT project_id FROM lab_task_bindings WHERE task_id=? LIMIT 1')
+      .get(taskId)?.project_id||null;
+    lastGptDispatch={projectId,taskId,runId,authorSource,
+      originalRequest:prompt,composedPrompt:providerPrompt,
+      preparedAt:new Date().toISOString(),deliveryObserved:false};
     const result = await runWorker.sendPrompt({
       prompt:providerPrompt,chatUrl:task.chat_url,newSession:conversationPlan.newSession,
       contextAttachment,
@@ -479,6 +484,8 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
           try { store.event(taskId,'provider.submission.provenance_unavailable',{run_id:runId}); }
           catch { /* Preserve transport result; reconcile conservatively. */ }
         }
+        if(lastGptDispatch?.runId===runId)
+          lastGptDispatch={...lastGptDispatch,deliveryObserved:true};
         return binding;
       }
     });
@@ -1006,10 +1013,11 @@ registerUiHandler('ordax:provider:diagnostic', async event => {
 });
 registerUiHandler('ordax:forjador:groq-prompt', (event,projectId) => {
   requireTrustedSupervisorRenderer(event);
-  if(typeof projectId!=='string'||!projectId||
-    lastGroqModelRequest?.projectId!==projectId)return null;
-  // Local, read-only, last request only; nothing is persisted or re-sent.
-  return lastGroqModelRequest;
+  if(typeof projectId!=='string'||!projectId)return null;
+  // Both are local, read-only, last request only; no keys, storage or replay.
+  const groq=lastGroqModelRequest?.projectId===projectId?lastGroqModelRequest:null;
+  const gpt=lastGptDispatch?.projectId===projectId?lastGptDispatch:null;
+  return groq||gpt?{groq,gpt}:null;
 });
 registerUiHandler('ordax:provider:mcp-selection', async event => {
   requireTrustedSupervisorRenderer(event);
@@ -1125,6 +1133,7 @@ let localOrchestratorContext=null;
 // Latest exact Groq model messages kept only in memory for the owner DEV
 // inspector. No API keys, authorization headers, disk logs or remote MCP.
 let lastGroqModelRequest=null;
+let lastGptDispatch=null;
 let runtimeOrchestratorBridge=null;
 let closeRuntimeOrchestratorPipe=null;
 const orchestratorKernel=createOrchestratorKernel({

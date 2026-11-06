@@ -186,10 +186,10 @@
           <span id="capabilityContinuity" data-state="blocked">24 h · não operacional</span>
         </div>
         <details id="forjadorGroqInspector" class="command-advanced forjador-prompt-inspector">
-          <summary>Diagnóstico DEV · prompt real enviado à Groq</summary>
+          <summary>Diagnóstico DEV · prompts reais Groq e GPT</summary>
           <div class="forjador-prompt-inspector-body">
-            <p>Somente nesta sessão, após uma solicitação à Groq. Exibe as mensagens exatas preparadas para a API, sem chaves ou cabeçalhos. Não reenvia nada.</p>
-            <button id="inspectGroqPrompt" class="mini-secondary" type="button">Mostrar último prompt da Groq</button>
+            <p>Somente nesta sessão: mensagens exatas preparadas para a Groq e prompt montado pelo Forge para o GPT, com estado da entrega. Sem chaves, cabeçalhos, arquivos gravados ou reenvios.</p>
+            <button id="inspectGroqPrompt" class="mini-secondary" type="button">Mostrar prompts reais</button>
             <pre id="groqPromptDisplay" role="status" aria-live="polite">Nenhum prompt inspecionado.</pre>
           </div>
         </details>
