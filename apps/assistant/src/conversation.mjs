@@ -196,6 +196,9 @@ export function createAssistantConversationRuntime({
     schema: ASSISTANT_CONVERSATION_SCHEMA,
     state,
     messages,
+    // Monotonic, non-authoritative scope fence for local UI drafts. The
+    // canonical conversation alone decides whether Account/Space/Profile changed.
+    scopeRevision: scopeGeneration,
     lastError,
     authority: "none",
     toolExecution: false,

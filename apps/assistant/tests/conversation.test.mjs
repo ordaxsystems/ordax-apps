@@ -351,6 +351,39 @@ test("Assistant binds its transcript to the account and active Space, including 
   conversation.dispose();
 });
 
+test("Assistant exposes the same canonical scope revision for safe unsent drafts", () => {
+  const scope = scopePorts("account-a", "space-a");
+  const conversation = createBoundConversationRuntime({
+    identitySessionPort: scope.identity,
+    spaceSelectionPort: scope.spaceSelection,
+    profileActivationStatePort: scope.profileActivation,
+  });
+  const initial = conversation.getSnapshot().scopeRevision;
+  assert.equal(Number.isSafeInteger(initial), true);
+
+  // Token/display-name refresh is not a new owner or Space.
+  scope.identity.setSnapshot({ state: "signed-in", subjectId: "account-a", displayName: "Novo nome" });
+  assert.equal(conversation.getSnapshot().scopeRevision, initial);
+  scope.spaceSelection.setSnapshot(selectedSpace("account-a", "space-a"));
+  assert.equal(conversation.getSnapshot().scopeRevision, initial);
+
+  scope.spaceSelection.setSnapshot(selectedSpace("account-a", "space-b"));
+  assert.equal(conversation.getSnapshot().scopeRevision, initial + 1);
+  scope.profileActivation.setSnapshot({
+    schema: "ordax.profile-activation-state/1", revision: 1,
+    persistence: "session", spaces: [],
+  });
+  assert.equal(conversation.getSnapshot().scopeRevision, initial + 2);
+
+  scope.identity.setSnapshot({ state: "signed-in", subjectId: "account-b", displayName: "Outra conta" });
+  assert.equal(conversation.getSnapshot().scopeRevision, initial + 3);
+  scope.spaceSelection.setSnapshot(selectedSpace("account-b", "space-c"));
+  assert.equal(conversation.getSnapshot().scopeRevision, initial + 4);
+  conversation.clear();
+  assert.equal(conversation.getSnapshot().scopeRevision, initial + 4, "Clearing messages is not a scope change");
+  conversation.dispose();
+});
+
 test("Assistant invalidates history when the active Profile revision changes", async () => {
   const scope = scopePorts("account-a", "space-a");
   const intelligence = intelligencePort();

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 
 import { INTELLIGENCE_MAX_PROMPT_CHARS } from "../src/sdk/contracts/intelligence.mjs";
 import {
@@ -77,4 +78,16 @@ test("Assistant does not invoke send while submission is not ready", () => {
   assert.equal(submission.accepted, false);
   assert.equal(submission.pending, null);
   assert.equal(sendCalls, 0);
+});
+
+test("Assistant clears unsent input only when canonical Account/Space/Profile scope changes", () => {
+  const controls = readFileSync(new URL("../src/ui/conversation-controls.mjs", import.meta.url), "utf8");
+  const runtime = readFileSync(new URL("../src/conversation.mjs", import.meta.url), "utf8");
+  assert.match(runtime, /scopeRevision: scopeGeneration/);
+  assert.match(runtime, /scopeGeneration \+= 1/);
+  assert.match(controls, /let observedScopeRevision = conversation\.getSnapshot\(\)\.scopeRevision/);
+  const render = controls.slice(controls.indexOf("  const render = () => {"), controls.indexOf("  const submit = () => {"));
+  assert.match(render, /if \(snapshot\.scopeRevision !== observedScopeRevision\) \{\s*observedScopeRevision = snapshot\.scopeRevision;\s*draft = "";\s*recordedWorkError = false;\s*activityNavigationError = false;/);
+  assert.match(render, /textarea\.value = draft/);
+  assert.doesNotMatch(controls, /localStorage|sessionStorage|document\.cookie/);
 });
