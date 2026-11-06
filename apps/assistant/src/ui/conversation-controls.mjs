@@ -145,6 +145,9 @@ export function mountAssistantConversationControls(
   let recordedWorkError = false;
   let activityNavigationError = false;
   let mountedSlot = null;
+  // Reuse the conversation's canonical scope fence: no second Account/Space
+  // projection and no persistence of unsent text across subjects or Spaces.
+  let observedScopeRevision = conversation.getSnapshot().scopeRevision;
 
   const workCards = () => {
     if (!personalOrdax || !identitySessionPort || !spaceSelectionPort) return { cards: [], remainingCount: 0 };
@@ -174,6 +177,12 @@ export function mountAssistantConversationControls(
     // Do not trust an old observer argument when Identity/Space changed between
     // publication and rendering. Reconcile the canonical conversation scope.
     const snapshot = conversation.getSnapshot();
+    if (snapshot.scopeRevision !== observedScopeRevision) {
+      observedScopeRevision = snapshot.scopeRevision;
+      draft = "";
+      recordedWorkError = false;
+      activityNavigationError = false;
+    }
     const slot = root.querySelector(ASSISTANT_CONVERSATION_EXTENSION_SELECTOR);
     if (!slot) {
       mountedSlot = null;
