@@ -72,8 +72,10 @@ Permitir ao OrdaX selecionar Groq, GPT e especialistas quando a tarefa exigir, m
 
 **Próxima lacuna:** provas independentes de backend/publicação, navegação de múltiplas páginas e critérios específicos de aceite por projeto; registrar somente após atestação pelo owner real. Não confundir uma imagem, um teste limitado de DOM, texto do GPT ou revisão Groq com entrega externa.
 
-### P2 — Produto tipo Lovable [PENDENTE]
+### P2 — Produto tipo Lovable [EM INCREMENTOS]
 Work Surface de arquivos, console e testes, revisão iterativa com aprovação contextual, rollback de artefatos, múltiplos modelos; manter um único SSOT de ferramentas, autorizações, recibos e versões. Publicação só mediante autorização separada.
+
+**P2.1 — histórico HTML local (candidato):** na mesma Work Surface, listar até 20 versões `text/html` vinculadas a mensagens reais `assistant` da mesma Task. A seleção é apenas visual e temporária, sem rollback, sobrescrita, envio GPT, acesso a caminhos ou novos bancos. Cada abertura reusa `readHtmlPreview` com vínculo Task/asset e SHA-256 relido; arquivo alterado, ausente ou pertencente a outro projeto bloqueia a exibição. Ao trocar de Task a seleção é descartada, e a versão atual volta a ser preferida. A UI diferencia a versão histórica da entrega atual e mantém o preview isolado sem credenciais, Node, permissões, rede ou publicação. Não declarar P2 completo com esse incremento.
 
 ## Evidência P0.2 — Windows físico (04/11/2026)
 - Commit `8c861851` instalado fisicamente na única instalação `OrdaX Orchestrator Lab` do `DESKTOP-4UFL03B` (manifesto, EXE e ASAR conferidos); arquivo Estação Café recuperado **17.211 bytes**.
