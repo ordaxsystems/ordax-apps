@@ -292,6 +292,17 @@ jobs:
           python3 tools/prove_assistant_packaged_mount.py \
             --verified-candidate-dir "$out/artifacts/assistant"
 
+      - name: Prove Calculator 0.2.1 mounts from the existing verified Store ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-store-catalog-proof"
+          # Reuse the exact package and Ed25519 test envelope validated above.
+          # Neither signature authority nor a Windows installer is created.
+          test -f "$out/artifacts/calculator/calculator.runtime-component-envelope.json"
+          python3 tools/prove_calculator_packaged_mount.py \
+            --verified-candidate-dir "$out/artifacts/calculator"
+
       - name: Assert catalog boundaries remain authority-free
         run: |
           set -euo pipefail
