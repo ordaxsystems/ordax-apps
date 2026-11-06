@@ -13,6 +13,7 @@ import {latestSiteWork} from './site-work-context.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
 import {forgeProjectContext} from './forge-executor-context.mjs';
 import {forgeProjectMemoryView} from './forge-project-memory-view.mjs';
+import {forgeProjectAdministratorView} from './forge-project-administrator-view.mjs';
 import {UNTITLED_FORGE_PROJECT,suggestForgeProjectTitle} from './project-auto-title.mjs';
 import {deleteProjectRecords} from './project-deletion.mjs';
 import {ProjectRepository} from './project-repository.mjs';
@@ -276,8 +277,9 @@ export class OrchestratorService {
     if(binding?.status==='paused')throw Error('orchestrator_paused');
     const uncertain=binding?.kind==='work'
       ?this.hasUnresolvedWorkReceipt(binding.project_id,taskId)
-      :Boolean(this.db.prepare(`SELECT 1 FROM lab_command_receipt_scope
-        WHERE status='uncertain' AND task_id=? LIMIT 1`).get(taskId));
+      :Boolean(this.db.prepare(`SELECT 1 FROM lab_command_receipts
+        WHERE project_id=? AND operation='forjador_send' AND status='uncertain'
+        LIMIT 1`).get(binding?.project_id));
     if(uncertain)throw Error('orchestrator_reconciliation_required');
   }
 
@@ -392,7 +394,9 @@ export class OrchestratorService {
     return this.transaction(()=>{
       const reserved=this.reserve(context,operation,input);
       if(reserved.existing)return reserved.existing;
-      const result=operation==='proposal_review'?this.reviewProposal(context,input):this.mutate(operation,input);
+      const result=operation==='project_memory_propose'
+        ?(this.task(input.projectId,input.taskId),this.store.memoryCandidates.proposeFromAssistant(input.taskId,input))
+        :operation==='proposal_review'?this.reviewProposal(context,input):this.mutate(operation,input);
       if(['project_create','project_quick_create','mission_create'].includes(operation))this.db.prepare('UPDATE lab_command_receipts SET project_id=? WHERE id=?')
         .run(result.projectId,reserved.commandId);
       return this.finish(reserved.commandId,result);
@@ -473,6 +477,7 @@ export class OrchestratorService {
         latestRunStatus:last?.status||null});
     }
     if(operation==='project_memory')return forgeProjectMemoryView(this.store,input.projectId);
+    if(operation==='project_administrator_snapshot')return forgeProjectAdministratorView(this.store,input.projectId);
     if(operation==='continuity_status') {
       this.orchestrator(input.projectId,input.orchestratorId);
       return this.continuation.status(input.projectId,input.orchestratorId);
@@ -637,7 +642,7 @@ export class OrchestratorService {
     // Keep ALL in-flight GPT sends reserved until their durable receipt ends.
     const activeCommands=Number(this.db.prepare(`SELECT COUNT(*) n
       FROM lab_command_receipts WHERE status='running'
-      AND operation IN ('work_send','proposal_send')`).get().n);
+      AND operation IN ('work_send','proposal_send','forjador_send')`).get().n);
     const hostOccupied=Boolean(this.provider?.busy?.());
     const occupied=activeRuns>0||activeCommands>0||hostOccupied;
     return Object.freeze({
@@ -1250,7 +1255,7 @@ export class OrchestratorService {
   projectWorkInProgress(projectId) {
     return Boolean(this.db.prepare(`SELECT 1 FROM lab_command_receipts
       WHERE project_id=? AND status='running'
-        AND operation IN ('work_send','proposal_send')
+        AND operation IN ('work_send','proposal_send','forjador_send')
       UNION ALL
       SELECT 1 FROM runs r JOIN lab_task_bindings b ON b.task_id=r.task_id
       WHERE b.project_id=? AND b.kind='work' AND r.status='running'

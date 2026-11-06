@@ -62,6 +62,8 @@ test('uncertain GPT response never becomes a completed Forjador message or verif
   assert.equal(receipt.requiresReconciliation,true);
   assert.equal(sends,1);
   assert.deepEqual(await f.service.invoke(f.context,'forjador_send',payload),receipt);
+  await assert.rejects(f.service.invoke(f.context,'forjador_send',
+    {...payload,requestId:'new_request_must_not_replay'}),/orchestrator_reconciliation_required/);
   assert.equal(sends,1);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM messages').get().n,0);
   assert.equal(f.getGroqCalls(),0);
@@ -107,4 +109,23 @@ test('MCP exposes project memory but never the recursive Forjador-to-GPT send',a
       arguments:{requestId:'model_try',projectId:'project_other',
         orchestratorId:'orchestrator_other',content:'loop'}}});
   assert.equal(call.error.code,-32602);
+});
+
+
+test('Forjador GPT turn reserves the same single physical executor lane as work sends',async t=>{
+  let release,entered;
+  const enteredProvider=new Promise(resolve=>{entered=resolve;});
+  const f=fixture(t,{send:async()=>{entered();return new Promise(resolve=>{release=resolve;});},busy:()=>false});
+  const created=(await f.call('project_quick_create',{creationNonce:'busy_lane'})).result;
+  const pending=f.service.invoke(f.context,'forjador_send',{requestId:'live_lane',
+    projectId:created.projectId,orchestratorId:created.orchestratorId,content:'Olá'});
+  await enteredProvider;
+  const inFlight=f.service.executorAdmission();
+  assert.equal(inFlight.maxConcurrentSends,1);
+  assert.equal(inFlight.availableSlots,0);
+  assert.ok(inFlight.activeCommands>=1);
+  release({confirmed:false,deliveryObserved:false,responseObserved:false,effectVerified:false});
+  const final=await pending;
+  assert.equal(final.status,'uncertain');
+  assert.equal(f.service.executorAdmission().activeCommands,0);
 });

@@ -93,6 +93,45 @@ export class MemoryCandidateLedger {
     return added;
   }
 
+  // GPT Administrator can propose a bounded, source-attributed note using an
+  // ALREADY PERSISTED assistant message. The proposal remains pending until
+  // the existing review mechanism accepts or rejects it. No model text is canon.
+  proposeFromAssistant(taskId, {sourceMessageId,category,key,content,evidence}={}) {
+    const allowed=new Set(['goal','constraint','decision','entity','structure',
+      'fact','open_loop','reference']);
+    const clean=value=>typeof value==='string'?value.replace(/\s+/g,' ').trim():'';
+    const name=clean(key),body=clean(content),quote=clean(evidence);
+    if(!allowed.has(category)||name.length<2||name.length>160||
+      body.length<5||body.length>8000||quote.length<8||quote.length>600)
+      throw Error('project_memory_proposal_invalid');
+    const source=this.store.db.prepare("SELECT id,content FROM messages WHERE id=? AND task_id=? AND role='assistant'")
+      .get(sourceMessageId,taskId);
+    if(!source)throw Error('project_memory_source_not_found');
+    if(!clean(source.content).includes(quote))
+      throw Error('project_memory_evidence_must_quote_source');
+    const existing=this.store.db.prepare("SELECT id,content FROM project_memory_items WHERE task_id=? AND category=? AND memory_key COLLATE NOCASE=? AND status='active'")
+      .get(taskId,category,name);
+    if(existing?.content===body)return {id:null,status:'already_canonical',created:false};
+    const fingerprint=createHash('sha256').update(JSON.stringify([
+      taskId,sourceMessageId,category,name.toLocaleLowerCase('pt-BR'),body
+    ])).digest('hex');
+    const candidateId='candidate_'+randomUUID();
+    const inserted=this.store.db.prepare(`INSERT OR IGNORE INTO project_memory_candidates
+      (id,task_id,source_message_id,extractor_version,fingerprint,
+       category,memory_key,proposed_content,evidence,status,created_at)
+      VALUES(?,?,?,?,?,?,?,?,?,'pending',?)`).run(
+        candidateId,taskId,sourceMessageId,'forge-admin-source-v1',fingerprint,
+        category,name,body,quote,this.store.now());
+    const stored=this.store.db.prepare('SELECT id,status FROM project_memory_candidates WHERE fingerprint=?')
+      .get(fingerprint);
+    if(inserted.changes) this.store.event(taskId,'project_memory.candidate_suggested',{
+      source_message_id:sourceMessageId,source_role:'assistant',category,key:name,
+      extractor_version:'forge-admin-source-v1'
+    });
+    return {id:stored.id,status:stored.status,created:inserted.changes===1,
+      sourceMessageId,canonicalUpdated:false,externalEffectVerified:false};
+  }
+
   scan(taskId, limit = 100) {
     if (!this.store.db.prepare('SELECT id FROM tasks WHERE id=?').get(taskId)) throw new Error('task_not_found');
     const count=Math.max(1,Math.min(200,Number(limit)||100));
