@@ -632,7 +632,25 @@
           </section>
           <section id="settingsPanelConnections" class="app-settings-panel" role="tabpanel" aria-labelledby="settingsTabConnections" data-settings-panel="connections" tabindex="0" hidden>
             <div class="app-settings-card"><span class="app-settings-eyebrow">GITHUB</span><h3>Repositórios</h3><p>O endereço do repositório é configurado dentro de cada projeto. A leitura de branches, PRs e verificações depende de uma conexão autorizada pelo Platform; este perfil ainda não a confirma.</p><button id="settingsOpenProject" type="button" class="mini-secondary">Configurar projeto</button></div>
-            <div class="app-settings-card"><span class="app-settings-eyebrow">FERRAMENTAS DO GPT</span><h3>OrdaX MCP · conexão de teste</h3><p>O Forjador usa Groq e acrescenta @ordax-mcp automaticamente às tarefas enviadas ao GPT Web. O plugin precisa estar disponível na conta; a seleção Owner do dispositivo continua obrigatória. A verificação não envia mensagens nem cria arquivos.</p><button id="settingsMcpCheck" type="button" class="mini-secondary">Verificar seleção no ChatGPT</button><p id="settingsMcpState" class="settings-connection-state" role="status" aria-live="polite">Seleção do plugin não verificada.</p><p class="diagnostics-hint">O marcador visual do plugin não comprova uma ação. Arquivos e comandos só contam como feitos quando houver recibo verificável. O futuro MCP Forge será uma conexão separada, usando o mesmo Forjador.</p></div>
+            <div class="app-settings-card"><span class="app-settings-eyebrow">FERRAMENTAS DO GPT</span><h3>OrdaX MCP · conexão de teste</h3><p>O Forjador envia mensagens comuns ao GPT Web; Groq é opcional para análise. O marcador @ordax-mcp pode ser solicitado nas tarefas enviadas ao GPT Web. O plugin precisa estar disponível na conta; a seleção Owner do dispositivo continua obrigatória. A verificação não envia mensagens nem cria arquivos.</p><button id="settingsMcpCheck" type="button" class="mini-secondary">Verificar seleção no ChatGPT</button><p id="settingsMcpState" class="settings-connection-state" role="status" aria-live="polite">Seleção do plugin não verificada.</p><p class="diagnostics-hint">O marcador visual do plugin não comprova uma ação. Arquivos e comandos só contam como feitos quando houver recibo verificável. O MCP Forge local abaixo é separado do OrdaX MCP e ainda não está conectado ao GPT Web.</p></div>
+            <div id="forgeLocalMcpPanel" class="app-settings-card">
+              <span class="app-settings-eyebrow">FORGE MCP · LOCAL</span><h3>Conexão do projeto neste computador</h3>
+              <p>Ativação manual, válida por 30 minutos e restrita a 127.0.0.1. Dá acesso apenas aos arquivos privados do projeto selecionado. Não conecta automaticamente o GPT Web nem concede acesso a outras pastas.</p>
+              <label for="forgeLocalMcpProject">Projeto autorizado</label>
+              <select id="forgeLocalMcpProject" aria-label="Projeto que poderá ser acessado pelo cliente MCP local"></select>
+              <div class="settings-connection-actions">
+                <button id="forgeLocalMcpStart" type="button" class="mini-secondary">Ativar MCP local</button>
+                <button id="forgeLocalMcpStop" type="button" class="mini-secondary">Desativar</button>
+              </div>
+              <p id="forgeLocalMcpState" class="settings-connection-state" role="status" aria-live="polite">O MCP local está desativado.</p>
+              <div id="forgeLocalMcpCredentials" hidden>
+                <label for="forgeLocalMcpUrl">Endpoint (somente clientes MCP locais)</label>
+                <input id="forgeLocalMcpUrl" type="text" readonly autocomplete="off" spellcheck="false"/>
+                <label for="forgeLocalMcpToken">Token temporário (não compartilhar)</label>
+                <textarea id="forgeLocalMcpToken" rows="3" readonly autocomplete="off" spellcheck="false"></textarea>
+                <p class="diagnostics-hint">Configure o cliente local com Authorization: Bearer &lt;token&gt;. Esta chave aparece uma só vez: para recuperá-la, desative e reative a conexão.</p>
+              </div>
+            </div>
             <div class="app-settings-card"><span class="app-settings-eyebrow">RUNTIME</span><h3>Execução local</h3><p>Arquivos, testes e alterações no computador exigem um dispositivo conectado e um grant válido do Runtime/Platform. Nenhum grant é criado por esta tela.</p><p class="settings-connection-state" data-state="blocked">Aguardando conexão autorizada</p></div>
             <div class="app-settings-card"><span class="app-settings-eyebrow">CONTINUIDADE</span><h3>Operação em segundo plano</h3><p>O estado de segundo plano aparece em Geral quando o Windows oferece esse recurso. Operação contínua só será indicada após integração e verificação pelo Runtime/Scheduler.</p></div>
           </section>
@@ -663,5 +681,6 @@
   </dialog>
   <script src="./host-browser-bridge.js"></script>
   <script type="module" src="./ui.js"></script>
+  <script type="module" src="./forge-local-mcp-ui.js"></script>
 </body>
 </html>

@@ -5,6 +5,9 @@ contextBridge.exposeInMainWorld('ordax', {
   forjadorGroqPrompt: projectId => ipcRenderer.invoke('ordax:forjador:groq-prompt',projectId),
   orchestratorInvoke: (operation,input={}) => ipcRenderer.invoke('ordax:orchestrator:invoke',{operation,input}),
   orchestratorMcp: message => ipcRenderer.invoke('ordax:orchestrator:mcp',message),
+  forgeLocalMcpStatus: () => ipcRenderer.invoke('ordax:forge:local-mcp:status'),
+  forgeLocalMcpStart: projectId => ipcRenderer.invoke('ordax:forge:local-mcp:start',projectId),
+  forgeLocalMcpStop: () => ipcRenderer.invoke('ordax:forge:local-mcp:stop'),
   onOrchestratorChanged: callback => {
     const listener=()=>callback();
     ipcRenderer.on('ordax:orchestrator:changed',listener);
