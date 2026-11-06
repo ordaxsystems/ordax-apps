@@ -248,7 +248,11 @@ test("Calculator runtime and CSS resolve from the actual extracted component-slo
   if (!packaged) return;
   const base = join(rootDir, "system/apps/calculator");
   const manifest = JSON.parse(readFileSync(join(base, "app.json"), "utf8"));
-  const compatibility = JSON.parse(readFileSync(join(base, "compatibility.json"), "utf8"));
+  // Compatibility is a separately verified release descriptor, not a ZIP
+  // member. Reading it from the canonical candidate keeps roles distinct.
+  const compatibilityPath = process.env.ORDAX_CALCULATOR_COMPATIBILITY_PATH;
+  assert.ok(compatibilityPath, "canonical compatibility descriptor required");
+  const compatibility = JSON.parse(readFileSync(compatibilityPath, "utf8"));
   const presentation = JSON.parse(readFileSync(join(base, "presentation/manifest.json"), "utf8"));
   assert.equal(manifest.id, "calculator");
   assert.equal(manifest.owner, "ordaxsystems/ordax-apps");
