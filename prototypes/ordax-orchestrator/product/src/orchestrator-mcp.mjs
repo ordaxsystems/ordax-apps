@@ -1,6 +1,6 @@
 import {ORCHESTRATOR_TOOLS,ORCHESTRATOR_CONTRACT} from './orchestrator-contract.mjs';
 import {PRODUCT_NAME} from './product-brand.mjs';
-import {FORGE_MCP_INSTRUCTIONS} from './forge-executor-context.mjs';
+import {FORGE_EXECUTOR_PROTOCOL,FORGE_MCP_INSTRUCTIONS,FORGE_SCOPED_MCP_INSTRUCTIONS} from './forge-executor-context.mjs';
 // The direct GPT send is a trusted GUI action, never an MCP tool exposed to GPT.
 // Prevent a model from invoking itself recursively through this same adapter.
 const UI_ONLY_OPERATIONS=new Set(['forjador_send']);
@@ -18,6 +18,13 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
   if(allowedProjectId!==null&&(typeof allowedProjectId!=='string'||!allowedProjectId))
     throw Error('orchestrator_mcp_scope_invalid');
   const allow=allowedOperations===null?null:new Set(allowedOperations);
+  const scoped=allowedProjectId!==null;
+  const resources=Object.freeze([
+    {uri:'forge://app/guide',name:'OrdaX Forge — regras e operação',mimeType:'application/json',
+      description:'Canonical execution and evidence rules from the Forge application, not from the model.'},
+    ...(scoped?[{uri:'forge://project/current',name:'Projeto autorizado no Forge',mimeType:'application/json',
+      description:'Live authorized project, workspace facts and capability limits. No external directory grants.'}]:[])
+  ]);
   let phase='new';
   const supported=['2025-11-25','2025-06-18'];
   const error=(id,code,message)=>({jsonrpc:'2.0',id,error:{code,message}});
@@ -49,31 +56,62 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
             return error(id,-32602,'Invalid initialize parameters');
           phase='initializing';
           return result(id,{protocolVersion:supported.includes(p.protocolVersion)?p.protocolVersion:supported[0],
-            capabilities:{tools:{listChanged:false}},
+            capabilities:{tools:{listChanged:false},resources:{subscribe:false,listChanged:false}},
             // Protocol name is stable across the rebrand; MCP title is user-facing.
             serverInfo:{name:'ordax-orchestrator-lab',title:PRODUCT_NAME,version},
-            instructions:ORCHESTRATOR_CONTRACT+'. '+FORGE_MCP_INSTRUCTIONS+
-              (allowedProjectId?' Local token scoped to projectId='+allowedProjectId+'.': '')});
+            instructions:ORCHESTRATOR_CONTRACT+'. '+(scoped?FORGE_SCOPED_MCP_INSTRUCTIONS:FORGE_MCP_INSTRUCTIONS)+
+              (scoped?' Authorized project: '+allowedProjectId+'.':'')});
         }
         if(phase!=='ready')return error(id,-32002,'Initialization required');
+        if(method==='resources/list') {
+          if(message.params?.cursor!==undefined)return error(id,-32602,'Invalid cursor');
+          if(scoped)service.requireAccess(context,'forge_discover',allowedProjectId);
+          return result(id,{resources});
+        }
+        if(method==='resources/read') {
+          const uri=message.params?.uri;
+          if(typeof uri!=='string')return error(id,-32602,'Invalid resource URI');
+          if(uri==='forge://app/guide'){
+            const guide={schema:'ordax.forge.mcp-guide/1',product:PRODUCT_NAME,
+              contract:ORCHESTRATOR_CONTRACT,protocol:FORGE_EXECUTOR_PROTOCOL,
+              instructions:scoped?FORGE_SCOPED_MCP_INSTRUCTIONS:FORGE_MCP_INSTRUCTIONS};
+            return result(id,{contents:[{uri,mimeType:'application/json',text:JSON.stringify(guide)}]});
+          }
+          if(uri==='forge://project/current'&&scoped){
+            service.requireAccess(context,'forge_discover',allowedProjectId);
+            const live=await service.invoke(context,'forge_discover',{projectId:allowedProjectId});
+            return result(id,{contents:[{uri,mimeType:'application/json',text:JSON.stringify(live)}]});
+          }
+          return error(id,-32002,'Resource unavailable');
+        }
         if(method==='tools/list') {
           if(message.params?.cursor!==undefined)return error(id,-32602,'Invalid cursor');
           const tools=ORCHESTRATOR_TOOLS.filter(tool=>{
             if(UI_ONLY_OPERATIONS.has(tool.operation)||
               (allow!==null&&!allow.has(tool.operation)))return false;
-            try {service.requireAccess(context,tool.operation);return true;}catch{return false;}
-          }).map(({operation,readOnly,...tool})=>tool);
+            try {service.requireAccess(context,tool.operation,scoped?allowedProjectId:null);return true;}catch{return false;}
+          }).map(({operation,readOnly,...tool})=>{
+            if(!scoped||!Object.hasOwn(tool.inputSchema.properties,'projectId'))return tool;
+            const {projectId,...properties}=tool.inputSchema.properties;
+            return {...tool,
+              description:tool.description+' Project is already selected and authorized by Forge.',
+              inputSchema:{...tool.inputSchema,properties,
+                required:tool.inputSchema.required.filter(field=>field!=='projectId')}};
+          });
           return result(id,{tools});
         }
         if(method==='tools/call') {
           const tool=ORCHESTRATOR_TOOLS.find(t=>t.name===message.params?.name);
           if(!tool||UI_ONLY_OPERATIONS.has(tool.operation)||
             (allow!==null&&!allow.has(tool.operation)))return error(id,-32602,'Unknown tool');
-          if(allowedProjectId!==null&&
-            message.params?.arguments?.projectId!==allowedProjectId)
+          const supplied=message.params?.arguments??{};
+          if(!supplied||typeof supplied!=='object'||Array.isArray(supplied))
+            return error(id,-32602,'Invalid tool arguments');
+          if(scoped&&Object.hasOwn(supplied,'projectId')&&supplied.projectId!==allowedProjectId)
             return error(id,-32602,'Project scope rejected');
+          const args=scoped?{...supplied,projectId:allowedProjectId}:supplied;
           try {
-            const output=await service.invoke(context,tool.operation,message.params?.arguments??{});
+            const output=await service.invoke(context,tool.operation,args);
             return result(id,{content:[{type:'text',text:JSON.stringify(output)}],structuredContent:output});
           } catch {
             return result(id,{isError:true,content:[{type:'text',text:'Command unavailable or input rejected. Inspect authorized state; do not repeat an uncertain effect.'}]});

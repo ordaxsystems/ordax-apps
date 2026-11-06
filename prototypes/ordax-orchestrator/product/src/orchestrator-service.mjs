@@ -11,7 +11,7 @@ import {AutonomousDialogue} from './autonomous-dialogue.mjs';
 import {classifyExistingSiteChange} from './natural-site-intent.mjs';
 import {latestSiteWork} from './site-work-context.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
-import {forgeProjectContext} from './forge-executor-context.mjs';
+import {forgeProjectContext,forgeMcpDiscovery} from './forge-executor-context.mjs';
 import {forgeProjectMemoryView} from './forge-project-memory-view.mjs';
 import {forgeProjectAdministratorView} from './forge-project-administrator-view.mjs';
 import {forgeProjectHandoffView} from './forge-project-handoff-view.mjs';
@@ -488,6 +488,10 @@ export class OrchestratorService {
       return {proposals};
     }
     if(operation==='workspace_status')return this.workspace.status(context,input.projectId);
+    if(operation==='forge_discover') {
+      const contextView=this.read(context,'project_context',input);
+      return forgeMcpDiscovery(contextView);
+    }
     if(operation==='project_context') {
       // The existing session authorization has already checked projectId.
       // Project title/objective are DATA, never new tool instructions.

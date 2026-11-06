@@ -2,7 +2,7 @@ import http from 'node:http';
 import {randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
 
 export const FORGE_LOCAL_MCP_OPERATIONS=Object.freeze([
-  'project_context','project_memory','project_administrator_snapshot','project_handoff',
+  'forge_discover','project_context','project_memory','project_administrator_snapshot','project_handoff',
   'project_files_status','project_files_list','project_file_read','project_file_write'
 ]);
 const MAX_REQUEST_BYTES=180_000;

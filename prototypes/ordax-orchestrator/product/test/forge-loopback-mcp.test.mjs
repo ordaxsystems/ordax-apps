@@ -114,3 +114,59 @@ test('local MCP token expires and a project can be revoked mid-session',async t=
   assert.equal(expired.status,503);
   assert.equal(f.transport.status().running,false);
 });
+
+test('Forge MCP discovers its own rules, authorized project and live state without a prompt or projectId argument',async t=>{
+  const f=fixture(t);
+  const projectId=await f.makeProject('self_discover');
+  const started=await f.transport.start(projectId);
+  const session=(await rpc(started.endpoint,started.token,null,initialize)).session;
+  await rpc(started.endpoint,started.token,session,notify);
+  const tools=(await rpc(started.endpoint,started.token,session,
+    {jsonrpc:'2.0',id:11,method:'tools/list'})).payload.result.tools;
+  const discover=tools.find(tool=>tool.name==='orchestrator_forge_discover');
+  assert.ok(discover,'Forge must advertise a first-party live capability discovery tool');
+  assert.deepEqual(discover.inputSchema.required,[]);
+  assert.ok(!Object.hasOwn(discover.inputSchema.properties,'projectId'));
+  const fileWrite=tools.find(tool=>tool.name==='orchestrator_project_file_write');
+  assert.ok(!Object.hasOwn(fileWrite.inputSchema.properties,'projectId'));
+  assert.ok(!fileWrite.inputSchema.required.includes('projectId'));
+  const reply=await rpc(started.endpoint,started.token,session,call(12,'forge_discover',{}));
+  const live=reply.payload.result.structuredContent;
+  assert.equal(live.projectId,projectId);
+  assert.equal(live.workspace.selection,'owned_by_forge_not_by_gpt');
+  assert.equal(live.workspace.requiresPathInUserPrompt,false);
+  assert.equal(live.workspace.privateFileWriteAvailable,true);
+  assert.equal(live.workspace.externalFolderWriteAvailable,false);
+  assert.equal(live.verification.modelReplyIsFileProof,false);
+  assert.equal(live.projectState.repositoryAccessVerified,false);
+  const resources=(await rpc(started.endpoint,started.token,session,
+    {jsonrpc:'2.0',id:13,method:'resources/list'})).payload.result.resources;
+  assert.deepEqual(resources.map(resource=>resource.uri),[
+    'forge://app/guide','forge://project/current']);
+  const guide=(await rpc(started.endpoint,started.token,session,{
+    jsonrpc:'2.0',id:14,method:'resources/read',params:{uri:'forge://app/guide'}
+  })).payload.result.contents[0];
+  assert.equal(guide.mimeType,'application/json');
+  assert.match(JSON.parse(guide.text).instructions,/do not/i);
+  const current=(await rpc(started.endpoint,started.token,session,{
+    jsonrpc:'2.0',id:15,method:'resources/read',params:{uri:'forge://project/current'}
+  })).payload.result.contents[0];
+  assert.equal(JSON.parse(current.text).projectId,projectId);
+  const write=await rpc(started.endpoint,started.token,session,
+    call(16,'project_file_write',{path:'site/index.html',
+      content:'<html><title>Café</title></html>',requestId:'self_doc_write'}));
+  assert.equal(write.payload.result.structuredContent.status,'succeeded');
+  const now=await rpc(started.endpoint,started.token,session,call(17,'forge_discover',{}));
+  assert.equal(now.payload.result.structuredContent.workspace.appPrivate.exists,true);
+  const read=await rpc(started.endpoint,started.token,session,
+    call(18,'project_file_read',{path:'site/index.html'}));
+  assert.equal(read.payload.result.structuredContent.content,'<html><title>Café</title></html>');
+  const other=await f.makeProject('self_discover_other');
+  const denied=await rpc(started.endpoint,started.token,session,
+    call(19,'forge_discover',{projectId:other}));
+  assert.equal(denied.payload.error.code,-32602);
+  const unknown=await rpc(started.endpoint,started.token,session,{
+    jsonrpc:'2.0',id:20,method:'resources/read',params:{uri:'forge://computer/secrets'}
+  });
+  assert.equal(unknown.payload.error.code,-32002);
+});
