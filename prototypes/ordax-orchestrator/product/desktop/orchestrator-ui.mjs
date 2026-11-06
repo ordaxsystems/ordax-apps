@@ -872,7 +872,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     else if($('coordinatorDraftState').textContent.includes('backend anterior'))
       setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
     $('coordinatorNavProvider').textContent='Conversa do projeto';
-    $('coordinatorRouteLabel').textContent='ASSISTENTE ORDAX';
+    $('coordinatorRouteLabel').textContent='FORJADOR';
     $('coordinatorApiSettings').textContent='Ajustes';
     $('coordinatorPrompt').placeholder='O que você quer criar?';
     $('coordinatorSend').textContent='Enviar';

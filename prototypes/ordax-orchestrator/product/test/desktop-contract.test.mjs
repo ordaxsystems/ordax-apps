@@ -591,7 +591,7 @@ test('project hub exposes creation and switching before the administrative navig
   assert.doesNotMatch(html,/Trocar de projeto anterior/);
   assert.match(orchestration,/activeProjectName'\)\.textContent=current\?\.name/);
   assert.match(orchestration,/GitHub vinculado por URL · leitura não verificada/);
-  assert.match(orchestration,/ASSISTENTE ORDAX/);
+  assert.match(orchestration,/coordinatorRouteLabel'\)\.textContent='FORJADOR'/);
   assert.match(css,/--font-ui:/);
   for(const token of ['--bg:','--panel:','--panel-2:','--border:','--text:','--muted:','--focus:'])
     assert.ok(css.includes(token),token+' should be defined in the canonical CSS root');
@@ -723,8 +723,9 @@ test('work rail separates observed evidence from advisory plans without duplicat
   assert.match(css,/\.work-plan-details\[open\]>summary\{/);
   assert.ok(html.indexOf('id="contextPanel"')<html.indexOf('id="orchestratorWorkRail"'),
     'work rail is nested in contextPanel and requires its parent visible');
-  assert.match(css,/#contextRail>:not\(#contextPanel\)\{display:none!important\}/);
-  assert.match(css,/#contextPanel\{display:flex!important;overflow:hidden;padding:0\}/);
+  assert.doesNotMatch(css,/#contextRail>:not\(#contextPanel\)\{display:none!important\}/);
+  assert.match(css,/body\.orchestrator-focus #contextRail>\.right-pane-tabs\{\s*display:grid!important;/);
+  assert.match(css,/#contextRail>#contextPanel:not\(\[hidden\]\)\{display:flex!important\}/);
   assert.match(css,/#contextPanel>:not\(#orchestratorWorkRail\)\{display:none!important\}/);
   assert.doesNotMatch(css,/#contextRail>:not\(#orchestratorWorkRail\)/);
 });

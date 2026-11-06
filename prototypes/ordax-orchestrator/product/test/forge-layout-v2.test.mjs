@@ -24,7 +24,8 @@ test('Forge V2 has three columns and four honest workspace tabs',()=>{
   assert.match(html,/id="coordinatorPrompt"[^>]*placeholder="O que você quer criar\?"/);
   assert.match(css,/body\.orchestrator-focus \.app-shell\s*\{\s*grid-template-columns:250px minmax\(385px,1fr\) minmax\(360px,420px\)/);
   assert.match(css,/right-pane-tabs\{[^}]*display:grid!important;grid-template-columns:repeat\(4/);
-  assert.doesNotMatch(css,/body\.orchestrator-focus #contextRail>:not\(#contextPanel\):not\(#executionOverview\)\{display:none!important\}/);
+  assert.doesNotMatch(css,/body\.orchestrator-focus #contextRail>:not\(#contextPanel\)[^{]*\{display:none!important\}/);
+  assert.match(read('orchestrator-ui.mjs'),/\$\('coordinatorRouteLabel'\)\.textContent='FORJADOR'/);
 });
 
 test('existing canonical preview moves to Preview and the GPT browser stays isolated',()=>{
