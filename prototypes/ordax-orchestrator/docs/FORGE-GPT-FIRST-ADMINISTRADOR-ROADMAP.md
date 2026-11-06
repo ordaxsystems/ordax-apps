@@ -71,7 +71,7 @@ históricos, não instruções de implementação. A realidade de cada funcional
   aprovações para futura reativação. Cada aprovação guarda um hash SHA-256
   da identidade do workspace, não seu caminho ou credencial: mudar a pasta
   verificada invalida a confiança anterior e exige nova aprovação Owner.
-  **Reconexão segura opcional implementada no checkout (prova física pendente):**
+  **Reconexão segura opcional homologada em Electron Windows isolado (`31076`):**
   o Owner pode habilitar por projeto **Manter conectado após reinício** via
   confirmação nativa. Electron `safeStorage`/DPAPI cifra o bearer no SQLite
   canônico `forge_mcp_secure_resume` e grava a porta loopback; o servidor
@@ -88,7 +88,19 @@ históricos, não instruções de implementação. A realidade de cada funcional
   **Transporte com GPT Web:** priorizar o Secure MCP Tunnel oficial da OpenAI
   em vez de expor uma URL HTTPS pública; requer tunnel_id, runtime key, app
   de conexão autorizado e validação real de permissões do plano/workspace.
-  Não foi instalado/conectado nesta etapa e não deve receber tokens em logs
+  **Preparação oficial implementada (`forge-mcp-official-tunnel.mjs`):**
+  valida túnel, projeto e endpoint estritamente em `127.0.0.1`; gera apenas
+  argumentos documentados para o `tunnel-client` oficial, com referências
+  `env:` para Authorization em chamadas e em descoberta, incluindo porta
+  de saúde efêmera. Nunca inclui API key ou bearer no argv e rejeita
+  parâmetros externos, binários não correspondentes e autorização ausente.
+  A preparação é intencionalmente inativa; não inicia novo processo sem
+  consentimento, binário oficial, tunnel_id e chave de Runtime válidos.
+  **Bloqueio externo em 06/11/2026:** `tunnel-client` não encontrado no PATH
+  do Windows; tunnel_id e credenciais de organização não verificados.
+  A documentação oficial reserva custom MCP completo/escrita no ChatGPT Web
+  para Business e Enterprise/Edu; em conta Plus, não declarar esse acesso.
+  O transporte real permanece não conectado. Não receber tokens em logs
   ou parâmetros de linha de comando.
   Fontes: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
   e https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt.
@@ -144,9 +156,13 @@ históricos, não instruções de implementação. A realidade de cada funcional
    reativação sem novo diálogo com token diferente; após encerrar e iniciar
    outra vez o Electron usando o mesmo SQLite, a confiança foi restaurada,
    gerou novo token sem repetir o diálogo e foi revogada de forma durável.
-   Nenhuma chave foi gravada na tabela. **PENDENTE:** reconexão automática
-   do cliente após reinício e ponte HTTPS autenticada/consentida para GPT
-   Web; não presumir suporte a escrita sem prova externa.
+   Nenhuma chave foi gravada na tabela. **Nova prova física (`31076`):**
+   após consentimento na UI, `safeStorage` gravou BLOB cifrado no SQLite;
+   após reiniciar a instância Electron, o MCP retornou automaticamente na
+   mesma porta, com projeto autorizado e sem exibir token. `Desativar todos`
+   removeu o modo automático; revogação apagou a confiança. Perfil descartável
+   removido, instalação operacional preservada. **PENDENTE:** cliente oficial
+   de túnel e chamada autêntica GPT Web, não presumir escrita sem E2E.
 5. **PROVAS WINDOWS REAIS (sem uso do perfil operacional):** interfaces
    MCP e arquivos, autorizações, criação/leitura/escrita e revogação foram
    executadas em Electron DEV com perfil descartável. O seletor de pastas
