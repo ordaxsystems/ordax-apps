@@ -13,6 +13,10 @@ const definitions = [
   ['project_memory_propose','Stage a GPT Administrator note for human review, citing an exact excerpt from an already persisted assistant message of this project. Never updates canon or certifies files. No GPT send.',{projectId:id,taskId:id,sourceMessageId:id,category:{...text(20),pattern:'^(goal|constraint|decision|entity|structure|fact|open_loop|reference)$'},key:text(160),content:text(8000),evidence:text(600)},['projectId','taskId','sourceMessageId','category','key','content','evidence'],false],
   ['project_administrator_snapshot','Read a bounded project-wide evidence snapshot of works, GPT Runs, unresolved commands, accepted notes and pending suggestions. Not a semantic model review or proof of file changes.',{projectId:id},['projectId'],true],
   ['project_handoff','Read a bounded project handoff from canonical SQLite: tasks, message excerpts, accepted decisions, pending receipts and an optional selected task. No GPT send, session rotation, model summary or filesystem proof.',{projectId:id,taskId:id},['projectId'],true],
+  ['project_files_status','Inspect this project private Forge workspace (not an external folder grant). No file content or model call.',{projectId:id},['projectId'],true],
+  ['project_files_list','List up to 100 entries of a relative directory in one app-owned project sandbox. Rejects traversal and reparse points.',{projectId:id,directory:text(240,0)},['projectId'],true],
+  ['project_file_read','Read one UTF-8 file up to 64 KiB from the selected project sandbox, with SHA-256. No arbitrary computer access.',{projectId:id,path:text(240)},['projectId','path'],true],
+  ['project_file_write','Create or replace one UTF-8 file up to 64 KiB inside the project sandbox. Existing files require their previous SHA-256. Saves a durable command receipt and checks the final file bytes. Not an external folder grant.',{projectId:id,path:text(240),content:text(65536,0),expectedSha256:{...text(64),pattern:'^[a-f0-9]{64}$'}},['projectId','path','content'],false],
   ['repository_observe','Read bounded GitHub HEAD metadata only after the owner port verifies and rechecks a project-scoped grant; cache only historical metadata in the App Store. No live authorization, file content, PR mutation or GPT send.',{projectId:id},['projectId'],true],
   ['workspace_status','Inspect verified project-local workspace bindings and capability availability. No filesystem access.',{projectId:id},['projectId'],true],
   ['workspace_snapshot','Read a bounded Runtime-verified workspace summary through a project-scoped resource grant.',{projectId:id,bindingId:id},['projectId','bindingId'],true],
@@ -79,7 +83,10 @@ export function validateOrchestratorInput(operation, input) {
       if(typeof value!=='string' || value.includes('\0') || value.length>schema.maxLength ||
         value.trim().length<schema.minLength || (schema.pattern&&!new RegExp(schema.pattern).test(value)))
         throw Error('orchestrator_invalid_input');
-      normalized[key]=value.trim();
+      // Preserve exact bytes of file content and exact relative path syntax;
+      // silently trimming either would bypass validation or alter source code.
+      normalized[key]=((operation.startsWith('project_file_')&&['content','path'].includes(key))||
+        (operation==='project_files_list'&&key==='directory'))?value:value.trim();
     } else if(schema.type==='array') {
       const item=schema.items;
       if(!Array.isArray(value)||value.length>schema.maxItems||

@@ -31,7 +31,7 @@ function missionProjectName(mission) {
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
 export class OrchestratorService {
-  constructor({store,authorize,provider=null,coordinator=null,confirmProposal=null,confirmProposalSend=null,workspacePort=null,repositoryPort=null,verifyLocalArtifact=null}={}) {
+  constructor({store,authorize,provider=null,coordinator=null,confirmProposal=null,confirmProposalSend=null,workspacePort=null,fileBroker=null,repositoryPort=null,verifyLocalArtifact=null}={}) {
     if(!store?.db || typeof authorize!=='function')throw Error('orchestrator_ports_required');
     this.store=store; this.db=store.db; this.authorize=authorize;
     this.provider=provider; this.coordinator=coordinator;
@@ -143,6 +143,7 @@ export class OrchestratorService {
     this.continuation=new LabContinuation({store,service:this});
     this.autonomous=new AutonomousDialogue({store,service:this});
     this.workspace=new ProjectWorkspace({store,port:workspacePort});
+    this.files=fileBroker;
     this.repository=new ProjectRepository({port:repositoryPort});
   }
 
@@ -388,6 +389,7 @@ export class OrchestratorService {
         workspaceSessionId:context.workspaceSessionId,confirmName:input.confirmName});
       return this.finish(reserved.commandId,result);
     });
+    if(operation==='project_file_write')return this.writeProjectFile(context,input);
     if(tool.readOnly)return this.read(context,operation,input);
     if(operation==='proposal_send')return this.confirmAndSendProposal(context,input);
     if(operation==='proposal_review'&&input.approved)return this.confirmAndReviewProposal(context,input);
@@ -402,6 +404,30 @@ export class OrchestratorService {
         .run(result.projectId,reserved.commandId);
       return this.finish(reserved.commandId,result);
     });
+  }
+
+  // A filesystem effect must reserve its durable command BEFORE writing.
+  // A crash or uncertain readback leaves a non-replayable receipt; successful
+  // SHA-256 readback is required before reporting completion.
+  writeProjectFile(context,input) {
+    if(!this.files)throw Error('forge_file_broker_unavailable');
+    const reserved=this.transaction(()=>this.reserve(context,'project_file_write',input));
+    if(reserved.existing)return reserved.existing;
+    try {
+      this.requireAccess(context,'project_file_write',input.projectId);
+      const proof=this.files.write(input.projectId,input.path,input.content,
+        input.expectedSha256??null);
+      return this.transaction(()=>this.finish(reserved.commandId,proof));
+    }catch(error){
+      const deterministic=new Set(['forge_file_path_invalid','forge_file_content_invalid',
+        'forge_file_size_limit','forge_file_expected_hash_invalid',
+        'forge_file_version_conflict','forge_file_not_found','forge_file_reparse_denied']);
+      const reason=deterministic.has(error?.message)?error.message:'forge_file_effect_uncertain';
+      try{this.transaction(()=>this.finish(reserved.commandId,
+        {reason,path:input.path,verified:false},
+        deterministic.has(error?.message)?'failed':'uncertain'));}catch{}
+      throw error;
+    }
   }
 
   async bindWorkspace(context,input) {
@@ -473,12 +499,23 @@ export class OrchestratorService {
         WHERE b.project_id=? ORDER BY r.rowid DESC LIMIT 1`).get(input.projectId);
       const total=this.db.prepare(`SELECT COUNT(*) AS n FROM lab_task_bindings
         WHERE project_id=? AND kind='work'`).get(input.projectId).n;
-      return forgeProjectContext({projectId:input.projectId,project,
+      return {...forgeProjectContext({projectId:input.projectId,project,
         workspace:this.workspace.status(context,input.projectId),workCount:total,
-        latestRunStatus:last?.status||null});
+        latestRunStatus:last?.status||null}),
+        appPrivateFiles:this.files?.status(input.projectId)||{available:false,mode:'capability_unavailable'}};
     }
     if(operation==='project_memory')return forgeProjectMemoryView(this.store,input.projectId);
     if(operation==='project_administrator_snapshot')return forgeProjectAdministratorView(this.store,input.projectId);
+    if(operation==='project_files_status')return this.files?.status(input.projectId)||{
+      projectId:input.projectId,available:false,mode:'capability_unavailable'};
+    if(operation==='project_files_list'){
+      if(!this.files)throw Error('forge_file_broker_unavailable');
+      return this.files.list(input.projectId,input.directory||'');
+    }
+    if(operation==='project_file_read'){
+      if(!this.files)throw Error('forge_file_broker_unavailable');
+      return this.files.read(input.projectId,input.path);
+    }
     if(operation==='project_handoff')return forgeProjectHandoffView(this.store,input.projectId,{taskId:input.taskId||null});
     if(operation==='continuity_status') {
       this.orchestrator(input.projectId,input.orchestratorId);

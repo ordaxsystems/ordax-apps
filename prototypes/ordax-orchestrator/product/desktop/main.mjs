@@ -24,6 +24,7 @@ import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { Store, MESSAGE_PAGE_SIZE } from '../src/store.mjs';
+import {ForgeProjectFiles} from '../src/forge-project-files.mjs';
 import {forgeFreshConversationContext} from '../src/forge-fresh-conversation-context.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
@@ -106,6 +107,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const store = new Store(path.join(dataRoot, 'ordax-orchestrator-lab.sqlite'));
+const forgeProjectFiles=new ForgeProjectFiles({root:path.join(dataRoot,'project-files')});
 
 const stagedLab=process.argv.includes('--ordax-lab-staged-approved');
 const backgroundSupported=process.platform==='win32'&&app.isPackaged&&!hostBrowserMode&&!stagedLab;
@@ -1144,7 +1146,7 @@ let lastGptDispatch=null;
 let runtimeOrchestratorBridge=null;
 let closeRuntimeOrchestratorPipe=null;
 const orchestratorKernel=createOrchestratorKernel({
-  store,version:app.getVersion(),
+  store,version:app.getVersion(),fileBroker:forgeProjectFiles,
   // Reuse the exact preview's path, symlink, structure and SHA-256 verifier.
   // Never return HTML bytes to Groq or grant arbitrary file reads.
   verifyLocalArtifact:({taskId,assetId})=>{
