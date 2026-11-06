@@ -14,6 +14,7 @@ import {ProjectWorkspace} from './project-workspace.mjs';
 import {forgeProjectContext} from './forge-executor-context.mjs';
 import {forgeProjectMemoryView} from './forge-project-memory-view.mjs';
 import {forgeProjectAdministratorView} from './forge-project-administrator-view.mjs';
+import {forgeProjectHandoffView} from './forge-project-handoff-view.mjs';
 import {UNTITLED_FORGE_PROJECT,suggestForgeProjectTitle} from './project-auto-title.mjs';
 import {deleteProjectRecords} from './project-deletion.mjs';
 import {ProjectRepository} from './project-repository.mjs';
@@ -478,6 +479,7 @@ export class OrchestratorService {
     }
     if(operation==='project_memory')return forgeProjectMemoryView(this.store,input.projectId);
     if(operation==='project_administrator_snapshot')return forgeProjectAdministratorView(this.store,input.projectId);
+    if(operation==='project_handoff')return forgeProjectHandoffView(this.store,input.projectId,{taskId:input.taskId||null});
     if(operation==='continuity_status') {
       this.orchestrator(input.projectId,input.orchestratorId);
       return this.continuation.status(input.projectId,input.orchestratorId);
