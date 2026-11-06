@@ -164,7 +164,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   let gptWebTransportAvailable=false;
   let chatgptPlanStatus={connected:false,planUsageAuthorized:false,secureStorageAvailable:false};
   let groqConfigured=false,coordinatorProvider=null;
-  let analysisBusy=false,preflightBusy=false,preflightGeneration=0,repositoryBusy=false,observationBusy=false,repositoryPortAvailable=false,coordinatorSubmitting=false,nodeHost=false;
+  let analysisBusy=false,preflightBusy=false,preflightGeneration=0,repositoryBusy=false,observationBusy=false,repositoryPortAvailable=false,coordinatorSubmitting=false,quickProjectCreating=false,nodeHost=false;
   let coordinatorDraftTaskId=null,coordinatorDraftRevision=0,coordinatorDraftTimer=null;
   let coordinatorDraftGeneration=0,pendingCoordinatorDraft=null,coordinatorDraftWrite=Promise.resolve();
   const requestKeys=new Map();
@@ -315,7 +315,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('activeProjectName').textContent=current?.name||'Conecte seu projeto';
     const otherProjects=projects.filter(project=>project.id!==projectId);
     const repository=current?.repository_url?'GitHub vinculado por URL · leitura não verificada':'Repositório GitHub ainda não vinculado';
-    $('activeProjectDetail').textContent=current?repository:'Crie seu primeiro projeto usando Novo projeto.';
+    $('activeProjectDetail').textContent=current?.name==='Novo projeto'
+      ?'Conversa vazia · faça seu primeiro pedido ao Forjador.'
+      :current?repository:'Crie seu primeiro projeto usando Novo projeto.';
     // One canonical Store supplies the active project and switchable others.
     // Previously created projects are first-class, never hidden as legacy.
     $('projectSwitcher').hidden=otherProjects.length===0;
@@ -894,7 +896,35 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('projectName').focus();
   }
   $('addProject').addEventListener('click',openNewProjectForm);
-  $('quickNewProject').addEventListener('click',openNewProjectForm);
+  async function createBlankProject(){
+    if(quickProjectCreating)return;
+    quickProjectCreating=true;
+    const button=$('quickNewProject');button.disabled=true;
+    try{
+      await flushCoordinatorDraft();
+      const previous=projectId;
+      // A unique creationNonce distinguishes two real clicks without weakening
+      // the canonical idempotent command receipt.
+      const receipt=await command('project_quick_create',{creationNonce:crypto.randomUUID()});
+      if(receipt.status!=='succeeded'||!receipt.result?.projectId)
+        throw Error('forge_quick_project_unconfirmed');
+      if(projectId!==previous){await refreshProjects();return;}
+      projectId=receipt.result.projectId;
+      orchestratorId=receipt.result.orchestratorId;
+      clearProjectPreflight();
+      $('projectSetup').open=false;$('forgeProjectAdvanced').open=false;
+      await refreshProjects();await refreshOrchestrators();
+      await showCoordinator();
+      $('coordinatorPrompt').focus();
+      status('Novo projeto. Escreva sua primeira mensagem ao Forjador.');
+    }catch{
+      status('Não foi possível confirmar o novo projeto. Verifique a lista antes de tentar de novo.');
+      await refreshProjects().catch(()=>{});
+    }finally{
+      quickProjectCreating=false;button.disabled=false;
+    }
+  }
+  $('quickNewProject').addEventListener('click',()=>void createBlankProject());
   $('renameProjectButton').addEventListener('click',()=>{
     if(!projectId)return;
     $('renameProjectInput').value=projectsCache.find(item=>item.id===projectId)?.name||'';
@@ -1675,6 +1705,14 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
             :receipt.status==='uncertain'
               ?'O resultado do administrador está incerto. Verifique o histórico; não vou repetir o pedido.'
               :'A solicitação não foi concluída. O pedido foi salvo sem executar o GPT.');
+      }
+      // Auto-label only a still-untitled project after a persisted first turn.
+      // User-selected names always win; this never calls a model or GPT.
+      if(receipt.status==='succeeded'||receipt.status==='failed'){
+        try{
+          await command('project_auto_title',{projectId:p});
+          if(p===projectId)await refreshProjects();
+        }catch{/* title is optional and must never block the conversation */}
       }
       await renderCoordinator();
     }).finally(()=>{coordinatorSubmitting=false;syncCoordinatorActions();});

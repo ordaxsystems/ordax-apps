@@ -12,6 +12,7 @@ import {classifyExistingSiteChange} from './natural-site-intent.mjs';
 import {latestSiteWork} from './site-work-context.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
 import {forgeProjectContext} from './forge-executor-context.mjs';
+import {UNTITLED_FORGE_PROJECT,suggestForgeProjectTitle} from './project-auto-title.mjs';
 import {deleteProjectRecords} from './project-deletion.mjs';
 import {ProjectRepository} from './project-repository.mjs';
 import {workExecutionSummary} from './work-execution-summary.mjs';
@@ -391,7 +392,7 @@ export class OrchestratorService {
       const reserved=this.reserve(context,operation,input);
       if(reserved.existing)return reserved.existing;
       const result=operation==='proposal_review'?this.reviewProposal(context,input):this.mutate(operation,input);
-      if(['project_create','mission_create'].includes(operation))this.db.prepare('UPDATE lab_command_receipts SET project_id=? WHERE id=?')
+      if(['project_create','project_quick_create','mission_create'].includes(operation))this.db.prepare('UPDATE lab_command_receipts SET project_id=? WHERE id=?')
         .run(result.projectId,reserved.commandId);
       return this.finish(reserved.commandId,result);
     });
@@ -833,6 +834,37 @@ export class OrchestratorService {
     const now=this.store.now();
     if(operation==='project_create') {
       return {projectId:this.createProjectRecord(input.name,input.objective||'',input.repositoryUrl,now)};
+    }
+    if(operation==='project_quick_create') {
+      // Unlike mission_create, no work/draft or speculative user task exists.
+      const projectId=this.createProjectRecord(UNTITLED_FORGE_PROJECT,'',null,now);
+      const orchestratorId='orchestrator_'+randomUUID();
+      const chat=this.store.createTask('Forjador');
+      this.db.prepare('INSERT INTO lab_orchestrators VALUES(?,?,?,?,?,?,?)')
+        .run(orchestratorId,projectId,'Forjador',
+          'Conversa de projeto. Entender o pedido do usuário e coordenar apenas ações disponíveis e autorizadas.',
+          'ready',chat.id,now);
+      this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)')
+        .run(chat.id,projectId,orchestratorId,'orchestrator');
+      return {projectId,projectName:UNTITLED_FORGE_PROJECT,
+        orchestratorId,chatTaskId:chat.id,workCreated:0,providerMessagesSent:0};
+    }
+    if(operation==='project_auto_title') {
+      const row=this.db.prepare(`SELECT p.name,o.chat_task_id AS chatTaskId FROM lab_projects p
+        JOIN lab_orchestrators o ON o.project_id=p.id
+        WHERE p.id=? AND p.workspace_session_id=? ORDER BY o.created_at,o.id LIMIT 1`)
+        .get(input.projectId,this.store.getWorkspaceSession().id);
+      if(!row)throw Error('orchestrator_project_unavailable');
+      if(row.name!==UNTITLED_FORGE_PROJECT)
+        return {projectId:input.projectId,name:row.name,changed:false};
+      const first=this.db.prepare(`SELECT content FROM messages WHERE task_id=? AND role='user'
+        ORDER BY created_at,id LIMIT 1`).get(row.chatTaskId);
+      if(!first)return {projectId:input.projectId,name:row.name,changed:false};
+      const title=suggestForgeProjectTitle(first.content);
+      if(title===UNTITLED_FORGE_PROJECT)return {projectId:input.projectId,name:row.name,changed:false};
+      const changed=this.db.prepare('UPDATE lab_projects SET name=? WHERE id=? AND name=?')
+        .run(title,input.projectId,UNTITLED_FORGE_PROJECT).changes;
+      return {projectId:input.projectId,name:title,changed:changed===1};
     }
     if(operation==='mission_create') {
       const projectName=input.name||missionProjectName(input.mission);

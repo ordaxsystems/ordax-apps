@@ -579,7 +579,7 @@ test('project hub exposes creation and switching before the administrative navig
   assert.match(html,/<section id="projectSwitcher" class="project-chooser"[^>]*hidden>/);
   assert.match(orchestration,/projectSwitcher'\)\.hidden=otherProjects\.length===0/);
   assert.match(orchestration,/projects\.filter\(project=>project\.id!==projectId\)/);
-  assert.match(orchestration,/quickNewProject'\)\.addEventListener\('click',openNewProjectForm\)/);
+  assert.match(orchestration,/quickNewProject'\)\.addEventListener\('click',\(\)=>void createBlankProject\(\)\)/);
   assert.match(orchestration,/addProject'\)\.addEventListener\('click',openNewProjectForm\)/);
   assert.match(css,/body\.orchestrator-focus #quickNewProject/);
   assert.match(css,/body\.orchestrator-focus \.project-chooser/);
