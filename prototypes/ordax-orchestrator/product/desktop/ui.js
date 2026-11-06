@@ -2024,6 +2024,7 @@ const mcpStatusLabels=['forjadorMcpStatus','settingsMcpState']
   .map(id=>document.getElementById(id)).filter(Boolean);
 const mcpStatusText=Object.freeze({
   selection_visible:'OrdaX MCP marcado no compositor do GPT. Ainda não há recibo de execução; a seleção precisa ser verificada a cada mensagem.',
+  mention_requested:'Forjador incluiu @ordax-mcp no envio ao GPT. A menção não confirma autorização do dispositivo nem execução de ferramentas.',
   name_visible_unverified:'OrdaX MCP aparece no compositor, mas a seleção efetiva não foi confirmada. Nenhuma ação MCP comprovada.',
   not_observed:'OrdaX MCP não foi observado na mensagem atual do GPT. Selecione o plugin no ChatGPT antes do envio; não basta escrever seu nome no prompt.',
   unavailable:'Não foi possível verificar a seleção MCP nesta sessão. Nenhum envio ou permissão foi criado.'

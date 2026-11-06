@@ -13,6 +13,7 @@ import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
 import { testGroqApiKey } from '../src/groq-key-health.mjs';
 import { createLocalGroqCredential } from '../src/local-supervisor-credential.mjs';
 import { createOrchestratorKernel } from '../src/orchestrator-kernel.mjs';
+import {withForjadorMcpMention,mentionWasRequested,FORJADOR_MCP_MENTION} from '../src/provider-mcp-mention.mjs';
 import { createProviderAwareTaskOpener, createTaskUiHandlers } from '../src/task-ui-handlers.mjs';
 import { ORCHESTRATOR_TOOLS } from '../src/orchestrator-contract.mjs';
 import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,resolveOrchestratorRuntimeTransport,openOrchestratorRuntimeStreams } from '../src/orchestrator-runtime-bridge.mjs';
@@ -310,7 +311,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   if (!task) throw new Error('task_not_found');
 
   const conversationPlan = planProviderConversation(task, {
-    forceNew:newSession,nextPromptBytes:Buffer.byteLength(String(prompt||'').trim(),'utf8')
+    forceNew:newSession,nextPromptBytes:Buffer.byteLength(withForjadorMcpMention(String(prompt||'').trim(),{authorSource}),'utf8')
   });
   const needsContinuation = Boolean(conversationPlan.newSession && task.has_messages);
   const checkpointVersion = task.checkpoint_version;
@@ -330,7 +331,8 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       checkpointVersion:handoffSnapshot.manifest.checkpointVersion,
       byteLength:handoffSnapshot.manifest.byteLength
     });
-    const boundedPromptChars=16000-estimatedNotice.length;
+    const boundedPromptChars=16000-estimatedNotice.length-
+      (authorSource==='orchestrator'?FORJADOR_MCP_MENTION.length+2:0);
     if(boundedPromptChars<1024)throw new Error('task_handoff_prompt_budget_exhausted');
     continuationPacket=store.buildContinuationPacket(taskId,prompt,{maxChars:boundedPromptChars});
     assertContinuationContextReady(continuationPacket);
@@ -344,7 +346,11 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       byteLength:handoffSnapshot.manifest.byteLength
     });
   }
-  const providerPrompt = (continuationPacket?.prompt || prompt)+contextAttachmentNotice;
+  // The Forjador's GPT work turns request the already-installed OrdaX MCP.
+  // Mentioning an app does not grant access or prove a tool was executed.
+  const providerPrompt = withForjadorMcpMention(
+    (continuationPacket?.prompt || prompt)+contextAttachmentNotice,{authorSource}
+  );
   if(contextManifest&&contextAttachmentNotice){
     if(providerPrompt.length>16000)throw new Error('task_handoff_prompt_budget_exceeded');
     contextManifest={...contextManifest,maxChars:16000,promptChars:providerPrompt.length,promptSha256:providerPromptDigest(providerPrompt)};
@@ -407,11 +413,13 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       },
       onMcpSelectionObserved:selection=>{
         if(providerViews.runForWorker(runWorker)!==runContext)return;
-        const state=['selection_visible','name_visible_unverified','not_observed','unavailable']
+        const selectedState=['selection_visible','name_visible_unverified','not_observed','unavailable']
           .includes(selection?.state)?selection.state:'unavailable';
+        const mentionRequested=mentionWasRequested(providerPrompt);
+        const state=selectedState==='not_observed'&&mentionRequested?'mention_requested':selectedState;
         try {store.event(taskId,'provider.mcp.selection_observed',{
-          run_id:runId,state,selection_observed:state==='selection_visible',
-          invocation_verified:false
+          run_id:runId,state,mention_requested:mentionRequested,
+          selection_observed:selectedState==='selection_visible',invocation_verified:false
         });}catch{/* diagnostic cannot affect delivery */}
         emitRendererEvent('ordax:provider:mcp-observed',{state,taskId,runId});
       },

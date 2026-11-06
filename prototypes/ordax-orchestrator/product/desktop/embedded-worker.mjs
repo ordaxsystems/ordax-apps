@@ -957,7 +957,7 @@ export class EmbeddedChatWorker {
     })()`);
   }
 
-  async #setComposerAndSend(prompt,{onSubmissionIntent=null}={}) {
+  async #setComposerAndSend(prompt,{onSubmissionIntent=null,onMcpSelectionObserved=null}={}) {
     const wc = this.view.webContents;
     const initial = await this.#waitForComposer();
     if (initial.text.trim()) throw new Error('chatgpt_draft_present');
@@ -991,6 +991,13 @@ export class EmbeddedChatWorker {
       await sleep(80);
     }
     if (!recognized) throw new Error('composer_input_not_recognized');
+    // Observe the plugin marker AFTER the exact payload is in the editor.
+    // A typed @ mention alone is never considered a tool execution receipt.
+    const selection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true});
+    if(this.streamContext)this.streamContext.mcpSelectionState=selection.state;
+    if(typeof onMcpSelectionObserved==='function'){
+      try{await onMcpSelectionObserved(selection);}catch{/* optional observation */}
+    }
 
     // Wait until React renders a usable submit control before attempting
     // exactly one standards-based form submission. No fallback clicks.
@@ -1443,17 +1450,9 @@ export class EmbeddedChatWorker {
       const promptText = String(prompt || '').trim();
       this.streamContext = { beforeCount, baseline, promptText, beforeImageSources:new Set(beforeImages), currentAssistantMessageId:null, lastSignature:'', firstActivityAt:null, firstDeltaAt:null, firstObserver:null, fastFirstDeltaAt:null, betaFirstDeltaAt:null, submitAttemptAt:null, providerRequestSeenAt:null, submittedAt:null, networkFirstByteAt:null, fastSeen:false, betaSeen:false, fastDelivered:false, fastSuppressed:false, fastSuppressionReason:null, lastDeliveredText:'', lastDeliveredSource:null, prepareStartedAt, healthCompletedAt, draftCheckedAt, conversationReadyAt, observerReadyAt, baselineReadyAt };
 
-      // One read-only MCP selection observation per GPT message, AFTER the
-      // target conversation has been chosen and BEFORE the submit attempt.
-      // Never assert that a plugin executed from a selected UI marker.
-      const selection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true});
-      this.streamContext.mcpSelectionState=selection.state;
-      if(typeof onMcpSelectionObserved==='function') {
-        try { await onMcpSelectionObserved(selection); }catch{/* optional observation */}
-      }
       if(contextAttachment)await this.#attachContextFile(contextAttachment,onContextAttachmentObserved);
       this.#setStage('submit');
-      await this.#setComposerAndSend(promptText,{onSubmissionIntent});
+      await this.#setComposerAndSend(promptText,{onSubmissionIntent,onMcpSelectionObserved});
       if (!this.streamContext.submittedAt) this.streamContext.submittedAt = Date.now();
 
       // New chats may need time to acquire a canonical permalink. Existing

@@ -31,9 +31,15 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   assert.match(preload,/ordax:provider:mcp-selection/);
   assert.match(worker,/classifyProviderMcpSelection/);
   assert.match(worker,/inspectMcpSelectionReadOnly\(\{allowDuringRun:true\}\)/);
-  assert.ok(worker.indexOf('inspectMcpSelectionReadOnly({allowDuringRun:true})')<worker.indexOf('await this.#setComposerAndSend(promptText'));
+  const selectedAt=worker.indexOf('const selection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true})');
+  const typedAt=worker.indexOf("if (!recognized) throw new Error('composer_input_not_recognized')");
+  const submittedAt=worker.indexOf('await submitExactlyOnce({');
+  assert.ok(typedAt>=0&&typedAt<selectedAt&&selectedAt<submittedAt);
   assert.match(main,/provider\.mcp\.selection_observed/);
   assert.match(main,/invocation_verified:false/);
   assert.match(preload,/onProviderMcpObserved/);
-  assert.match(html,/Instruções de texto não ativam um plugin/);
+  assert.match(html,/A menção não substitui seleção do dispositivo/);
+  assert.match(ui,/mention_requested/);
+  assert.match(main,/withForjadorMcpMention/);
+  assert.match(main,/mention_requested:mentionRequested/);
 });

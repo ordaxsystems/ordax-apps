@@ -414,7 +414,7 @@ test('embedded ChatGPT surface is sandboxed and navigation-scoped', () => {
 });
 
 test('ChatGPT text insertion focuses and verifies the embedded composer before dispatch',()=>{
-  const start=worker.indexOf('  async #setComposerAndSend(prompt,{onSubmissionIntent=null}={}) {');
+  const start=worker.indexOf('  async #setComposerAndSend(prompt,{onSubmissionIntent=null,onMcpSelectionObserved=null}={}) {');
   const end=worker.indexOf('    // Wait until React renders a usable submit control',start);
   const preparation=worker.slice(start,end);
   assert.ok(start>=0&&end>start);
