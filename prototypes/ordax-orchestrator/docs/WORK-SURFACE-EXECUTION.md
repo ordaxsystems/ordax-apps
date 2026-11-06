@@ -1,4 +1,6 @@
-# ORCHESTRATOR — MISSÃO CANÔNICA: WORK SURFACE E PREVIEW
+# ORCHESTRATOR — missão de Work Surface e Preview (evidência histórica)
+
+> **PRIORIDADE DE PRODUTO ATUALIZADA — 2026-11-06:** resultados de preview e testes descritos aqui conservam sua proveniência, mas qualquer instrução de Groq como coordenador obrigatório ou pasta isolada como destino final foi substituída pelo [plano único Forge GPT-first](FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md). Não reabrir PRs antigas nem confundir previsão com efeito verificado.
 
 > Estado: **P1.3.8 integrada e homologada; P1.3.9 candidato — controles locais no navegador isolado** · 2026-11-05 · Owner: `ordaxsystems/ordax-apps` · SSOT: código em `main` + esta missão.
 > Continuidade: consultar `main`, CI e o manifesto `runtime-build.json` da instalação canônica no DESKTOP-4UFL03B. PRs #448 e #453–#461 já integradas; `main` e a instalação Windows observadas em `b4053f31` em 05/11/2026. As evidências anteriores abaixo são históricas, não pendências de merge. **Não recriar branch/PR antiga; executar lacuna real, testar proporcionalmente e integrar.**

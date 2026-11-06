@@ -1,7 +1,100 @@
 # Forge GPT-first — execução canônica e Administrador de Projeto
 
 Status: **implementação local Windows**, não integrada ao remoto. Owner único: `ordaxsystems/ordax-apps`, `prototypes/ordax-orchestrator`.
-Atualizado: 2026-11-06. Referência: `ORCHESTRATOR-CANONICAL-PRODUCT.md` e código, que têm precedência sobre propostas históricas.
+Atualizado: 2026-11-06. **Precedência para direção Forge V3: este plano único > documentos históricos anteriores.** Para afirmações de entrega, código + testes + prova física prevalecem. `ORCHESTRATOR-CANONICAL-PRODUCT.md` permanece apenas como registro histórico do desenho de 01/11.
+
+## Decisão arquitetural definitiva — Forge Windows, projetos e MCP (2026-11-06)
+
+**Este é o plano normativo único do Forge V3.** Substitui as antigas direções
+"uma instância por projeto", "Groq obrigatória como Administrador Geral",
+"somente o Runtime externo pode ler arquivos locais", "workspace privado como
+destino final" e "um MCP por projeto". Os documentos anteriores são registros
+históricos, não instruções de implementação. A realidade de cada funcionalidade
+é comprovada pelo código, testes e execução física — nunca apenas por este plano.
+
+### Instalação, dados e pastas
+
+- **Instalação final pretendida:** uma instalação Windows por usuário em
+  `%LOCALAPPDATA%\Programs\OrdaX Forge` (ou Program Files por instalação
+  administrativa). A instância DEV atual é executada a partir do checkout;
+  **não alegar que o instalador final já foi entregue**.
+- **Um banco SQLite existente:** Store, projetos, tarefas, memória, Runs,
+  recibos e vínculo da pasta. O perfil atual em
+  `%LOCALAPPDATA%\OrdaX\OrchestratorLab` não será renomeado nem copiado
+  antes de migração homologada. Nenhum banco paralelo.
+- **Arquivos reais dos projetos:** pasta padrão sob o diretório Documentos
+  informado pelo Windows (Electron `app.getPath('documents')`), em
+  `Documentos\Forge\<NomeDoProjeto>`. Nome seguro e colisão resolvida
+  com identificador opaco; usuário pode escolher uma pasta existente por
+  `dialog.showOpenDialog` nativo. Não depender de `C:\Users\<nome>`.
+- **Uma única raiz física por projeto:** a tabela
+  `forge_local_project_roots` vive no mesmo SQLite, vincula o identificador
+  estável do projeto a uma pasta real e sua identidade física (device/inode),
+  recusando pastas sobrepostas ou substituídas por outra no mesmo caminho.
+  Renomear título ou trocar conversa não muda a raiz.
+  O GPT **não seleciona caminhos, pastas, grants nem IDs de projeto**.
+- **Compatibilidade sem duplicação:** pastas privadas antigas são somente
+  leitura no app Windows após este corte. Se contiverem arquivos, a nova
+  vinculação é bloqueada com `forge_workspace_migration_required` até uma
+  migração explícita e validada; não copiar, apagar, sobrescrever nem
+  promover arquivos históricos silenciosamente.
+- **Exclusão de projeto:** retira vínculo e registros autorizados; conserva
+  a pasta real e o conteúdo do usuário. Pasta movida, ausente, trocada por
+  reparse point ou raiz fora do grant = falha fechada.
+- **Limites proporcionais atuais:** ferramentas UTF-8 relativas, 64 KiB por
+  arquivo, hash SHA-256 para substituir, recibo idempotente e releitura.
+  Binários, grandes arquivos, terminal, Git e testes reais requerem
+  capacidades tipadas próprias, não acesso shell genérico improvisado.
+
+### Produto e interfaces
+
+- **Um aplicativo Forge e um Runtime de arquivos interno:** reutilizar o
+  broker, o serviço e as políticas presentes. O OrdaX Runtime permanece
+  separado e **opcional** para controlar outros dispositivos/sistema.
+- **Um MCP Forge multiprojeto:** um servidor instalado no Forge, sessões
+  autenticadas e escopadas por projeto. Atualmente o listener local em
+  `127.0.0.1` permite **um projeto por ativação**; multiplexação de sessões
+  independentes no mesmo listener e ponte HTTPS segura ainda são pendentes.
+  Não criar processos MCP nem URLs separados para cada projeto.
+- **Autodescoberta:** `orchestrator_forge_discover`, recursos MCP
+  `forge://app/guide` e `forge://project/current` anunciam regras,
+  capacidades, pasta vinculada (sem vazar o caminho físico), memória, limites
+  e provas disponíveis. O GPT recebe o projeto ativo pela sessão, sem
+  comando técnico ou prompt escrito pelo usuário.
+- **Fluxo GPT-first:** usuário solicita o resultado em linguagem natural;
+  Forjador organiza o projeto; GPT produz trabalho; ferramentas MCP/Runtime
+  executam somente no workspace autorizado; Forge verifica bytes/recibos.
+  Groq pode analisar opcionalmente; **não** cria autoridade, não faz
+  roteamento obrigatório nem certifica sucesso.
+- **Segurança:** cliente MCP não pode escolher raiz por argumentos; a
+  interface Windows exige usuário local confiável. Bloquear caminhos
+  absolutos de modelo, traversal, symlink/junction, sobreposição entre
+  projetos, pastas do sistema, efeitos externos implícitos e reenvio
+  de operações incertas. Status de ChatGPT na nuvem e publicação ficam
+  `não verificados` até prova física.
+
+### Ordem executiva e gates reais
+
+1. **CONCLUÍDO NO CÓDIGO:** guia canônico GPT-first, descoberta MCP e
+   ferramentas privadas existentes, reaproveitando SQLite/Run/recibos.
+2. **IMPLEMENTADO NO CHECKOUT WINDOWS; E2E FÍSICO PENDENTE:** tabela única
+   de workspace real, criação padrão após novo projeto no IPC nativo,
+   seletor nativo para projeto existente, broker ligado à raiz única,
+   isolamento e pasta antiga sem novas escritas.
+3. **PENDENTE:** reconciliação assistida dos antigos arquivos privados
+   sem sobrescrever o workspace do usuário; ampliar ações tipadas para
+   arquivos binários, edições robustas, execução/testes e preview real.
+4. **PENDENTE:** multiplexação segura de sessões/projetos em um único
+   servidor MCP e uma ponte remota HTTPS com autenticação/consentimento.
+   Não supor disponibilidade de escrita no GPT Web sem homologação.
+5. **PENDENTE:** prova física no Windows/cliente GPT real, pacote oficial,
+   reconciliação do trabalho paralelo, integração dos gates aplicáveis,
+   push/merge apenas após autorização para operações remotas.
+
+**Critérios de saída:** pasta escrita e lida fisicamente, isolamento entre
+projetos, manutenção do histórico após restart, sem duplicidade entre
+Documents e AppData, revogação por remoção de vínculo, arquivos do usuário
+preservados na exclusão, e nenhuma alegação de efeito sem prova independente.
 
 ## Contrato de produto
 
@@ -18,7 +111,7 @@ Atualizado: 2026-11-06. Referência: `ORCHESTRATOR-CANONICAL-PRODUCT.md` e códi
 1. **GPT-first na conversa Forjador — IMPLEMENTADO NO CÓDIGO WINDOWS; PROVA GPT WEB REAL PENDENTE:** nova operação canônica de envio ao GPT no chat do Forjador, reaproveitando Task/Run/ledger e proteção contra envio incerto. Manter a rota Groq antiga apenas para análises avançadas e compatibilidade; não chamar Groq no chat comum. Testar ausência de chamadas Groq e resposta GPT gravada uma só vez.
 2. **Memória factual e contexto de projeto — LEITURA MCP IMPLEMENTADA; CICLO ADMINISTRADOR PENDENTE:** leitura escopada do histórico, de trabalho, verificações e pendências. Não varrer disco nem criar tabela paralela de fatos; registrar a projeção como ferramenta de leitura MCP, com limites claros daquilo que foi comprovado.
 3. **Memória inteligente e Administrador — PROTOCOLO LOCAL IMPLEMENTADO, AGENTE AINDA NÃO ATIVO:** `orchestrator_project_administrator_snapshot` compõe leitura bounded de frentes, Runs, comandos não resolvidos e memória do SQLite canônico; `orchestrator_project_memory_propose` registra sugestões do GPT com `sourceMessageId` e citação literal de uma mensagem `assistant` persistida no projeto. Permanece `pending` para o review já existente; **sem aprovação automática, sem escrita de arquivos e sem chamada de modelo**. Próximas ações: ligar uma conversa GPT Administrador quando houver demanda/evento real e expor inspeção na aba Execução, sem criar serviço, banco ou agente concorrente.
-4. **Workspace isolado e MCP Forge standalone — TRANSPORTE LOCAL IMPLEMENTADO; REMOTO PENDENTE:** `project_files_status`, `project_files_list`, `project_file_read`, `project_file_write` no MCP do App, com raiz privada por projeto materializada na primeira escrita, caminhos relativos, SHA-256 obrigatório para substituir arquivo, recibos duráveis e releitura após gravação. Não oferece acesso a pasta externa, shell ou arquivos de outros projetos; o transporte MCP HTTP local só abre sob autorização explícita nas Configurações, aceita token efêmero por 30 minutos, limita a sessão a um projeto e bloqueia origem de navegador; faltam seleção externa autorizada, um transporte remoto seguro e prova direta no GPT Web.
+4. **Workspace real por projeto e MCP Forge — CÓDIGO WINDOWS IMPLEMENTADO, E2E FÍSICO PENDENTE:** novo projeto recebe pasta `Documentos/Forge/<nome>` através do IPC nativo. Projetos existentes podem vincular uma pasta pelo seletor Windows. `forge_local_project_roots` guarda o vínculo único no SQLite atual; o broker de arquivos usa esta raiz e impede escrita em pasta privada antiga não vinculada. Caminhos relativos, SHA-256, recibos e releitura continuam obrigatórios. O transporte MCP HTTP segue local e limitado a um projeto por ativação, com token efêmero e consentimento. Multiplexação e ponte GPT Web remota permanecem pendentes.
 5. **Handoff e múltiplas sessões GPT — CONTEXTO INICIAL LOCAL INTEGRADO:** `orchestrator_project_handoff` oferece um pacote limitado de leitura MCP; em novas conversas de trabalho, `forgeFreshConversationContext` injeta uma introdução curta com decisões editoriais aceitas do mesmo projeto no primeiro envio GPT, sem Groq e sem segunda base de dados. Conversas existentes continuam usando o handoff de Task, anexos e rotação já implementados. Ainda faltam prova real da transferência entre sessões no Windows e conexão do broker MCP ao GPT Web.
 6. **Homologação física e integração remota:** verificar no Windows conversas comuns, criação/continuidade de site, memória, resumo e arquivos; atualizar uma única instalação com pacote oficial validado; depois reconciliar a PR existente e integrar com gates verdes. Não publicar ou fazer push nesta fase local sem solicitação posterior.
 
@@ -41,5 +134,6 @@ Atualizado: 2026-11-06. Referência: `ORCHESTRATOR-CANONICAL-PRODUCT.md` e códi
 - [x] Broker UTF-8 app-private conectado ao catálogo MCP no Windows: projeto isolado, caminhos relativos, SHA-256 na substituição e releitura física com recibos SQLite. Sem grants de pasta externa.
 - [x] Endpoint MCP HTTP local por projeto, desligado por padrão, token aleatório não persistido, `127.0.0.1` apenas, expiração em 30 minutos, autenticação, escopo explícito e sem operações destrutivas. Configuração de ativar/desativar adicionada ao Electron; testes direcionados Windows aprovados (79/79).
 - [x] Descoberta MCP declarativa do aplicativo (`orchestrator_forge_discover`), recursos `forge://app/guide` e `forge://project/current`, regras canônicas compartilhadas com o contexto do projeto, projeção de capacidades do SQLite e broker privado, e binding automático do `projectId` na sessão autorizada. O cliente consulta o contrato sem exigir comandos, caminhos ou prompts técnicos do usuário; não presume pastas externas, deploy, grants ou resultados não comprovados.
-- [ ] Conexão remota segura entre GPT Web e Forge, seleção autorizada de pastas externas e prova física da ferramenta invocada pelo GPT real. O endpoint de loopback sozinho não alcança o GPT na nuvem.
+- [x] Binding físico de workspace Windows por projeto no mesmo Store/SQLite: `Documentos/Forge` pelo Windows para novos projetos, seletor nativo para projetos existentes, isolamento entre projetos/raiz, bloqueio de sobreposição, leitura apenas para pasta privada antiga e não remoção de arquivos do usuário ao excluir metadados. **Aceites físicos da interface e instalação ainda pendentes.**
+- [ ] Conexão remota segura entre GPT Web e Forge, multiplexação de projetos no MCP e prova física da ferramenta invocada pelo GPT real. O endpoint de loopback sozinho não alcança o GPT na nuvem.
 - [ ] Prova física ponta a ponta, atualização do pacote e merge remoto. Alterações da etapa Administrador permanecem **apenas no checkout Windows**, sem push.

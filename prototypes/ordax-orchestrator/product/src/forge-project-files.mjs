@@ -34,13 +34,29 @@ function existingFile(file) {
 const missing=error=>error?.code==='ENOENT';
 
 export class ForgeProjectFiles {
-  constructor({root}={}) {
+  constructor({root,workspaceLookup=null,requireOwnerBinding=false}={}) {
     if(typeof root!=='string'||!path.isAbsolute(root))throw Error('forge_file_root_invalid');
+    if(workspaceLookup!==null&&typeof workspaceLookup!=='function')
+      throw Error('forge_file_workspace_lookup_invalid');
     this.root=path.resolve(root);
+    this.workspaceLookup=workspaceLookup;
+    this.requireOwnerBinding=requireOwnerBinding===true;
+  }
+  boundRoot(projectId) {
+    if(!PROJECT.test(projectId))throw Error('forge_file_project_invalid');
+    const folder=this.workspaceLookup?.(projectId)||null;
+    if(folder===null)return null;
+    if(typeof folder!=='string'||!path.isAbsolute(folder))throw Error('forge_file_root_invalid');
+    const resolved=path.resolve(folder);
+    checkedDirectory(resolved);
+    if(!compare(fs.realpathSync.native(resolved),resolved))throw Error('forge_file_reparse_denied');
+    return resolved;
   }
   // App-owned, non-shared root; project IDs are opaque, never prompts-as-paths.
   projectRoot(projectId,{create=false}={}) {
     if(!PROJECT.test(projectId))throw Error('forge_file_project_invalid');
+    const ownerBound=this.boundRoot(projectId);
+    if(ownerBound)return ownerBound;
     if(create)fs.mkdirSync(this.root,{recursive:true});
     try{checkedDirectory(this.root);}catch(e){if(missing(e)&&!create)return null;throw e;}
     if(!compare(fs.realpathSync(this.root),this.root))throw Error('forge_file_reparse_denied');
@@ -69,14 +85,41 @@ export class ForgeProjectFiles {
     return {root,target,parts};
   }
   status(projectId) {
+    let configured;
+    try{configured=this.workspaceLookup?.(projectId)||null;}
+    catch(error){
+      if(error?.message!=='forge_workspace_missing_or_moved')throw error;
+      return {projectId,mode:'forge_project_workspace',exists:false,
+        rootKind:'forge_owner_bound_folder',externalFolderAuthorized:false,
+        verified:false,reason:'workspace_missing_or_moved',maxFileBytes:MAX_BYTES,
+        readAvailable:false,writeAvailable:false};
+    }
+    if(configured){
+      try{
+        const root=this.boundRoot(projectId);
+        return {projectId,mode:'forge_project_workspace',exists:Boolean(root),
+          rootKind:'forge_owner_bound_folder',externalFolderAuthorized:true,
+          verified:true,maxFileBytes:MAX_BYTES,readAvailable:true,writeAvailable:true};
+      }catch{
+        return {projectId,mode:'forge_project_workspace',exists:false,
+          rootKind:'forge_owner_bound_folder',externalFolderAuthorized:true,
+          verified:false,reason:'workspace_missing_or_moved',maxFileBytes:MAX_BYTES,
+          readAvailable:false,writeAvailable:false};
+      }
+    }
     const root=this.projectRoot(projectId);
-    return {projectId,mode:'app_isolated_workspace',exists:Boolean(root),
-      rootKind:'forge_app_private',externalFolderAuthorized:false,
-      maxFileBytes:MAX_BYTES,readAvailable:true,writeAvailable:true};
+    return {projectId,
+      mode:this.requireOwnerBinding?'legacy_private_read_only':'app_isolated_workspace',
+      exists:Boolean(root),rootKind:'forge_app_private',externalFolderAuthorized:false,
+      maxFileBytes:MAX_BYTES,readAvailable:this.requireOwnerBinding?Boolean(root):true,
+      writeAvailable:!this.requireOwnerBinding};
   }
   list(projectId,directory='') {
-    const checked=this.resolve(projectId,directory,{allowEmpty:true});
-    if(!checked.root)return {projectId,directory,exists:false,entries:[],truncated:false};
+    const empty=()=>({projectId,directory,exists:false,entries:[],truncated:false});
+    let checked;
+    try{checked=this.resolve(projectId,directory,{allowEmpty:true});}
+    catch(e){if(missing(e))return empty();throw e;}
+    if(!checked.root)return empty();
     const dir=checked.target;
     try{checkedDirectory(dir);}catch(e){if(missing(e))return {projectId,directory,exists:false,entries:[],truncated:false};throw e;}
     if(!compare(fs.realpathSync(dir),dir))throw Error('forge_file_reparse_denied');
@@ -90,7 +133,9 @@ export class ForgeProjectFiles {
     return {projectId,directory,exists:true,entries,truncated:names.length>entries.length};
   }
   read(projectId,relative) {
-    const {target}=this.resolve(projectId,relative);
+    let target;
+    try{({target}=this.resolve(projectId,relative));}
+    catch(e){if(missing(e))throw Error('forge_file_not_found');throw e;}
     if(!target)throw Error('forge_file_not_found');
     try{existingFile(target);}catch(e){if(missing(e))throw Error('forge_file_not_found');throw e;}
     if(!compare(fs.realpathSync(target),target))throw Error('forge_file_reparse_denied');
@@ -107,6 +152,8 @@ export class ForgeProjectFiles {
     }finally{fs.closeSync(fd);}
   }
   write(projectId,relative,content,expectedSha256=null) {
+    if(this.requireOwnerBinding&&!this.boundRoot(projectId))
+      throw Error('forge_workspace_binding_required');
     if(typeof content!=='string'||content.includes(String.fromCharCode(0)))throw Error('forge_file_content_invalid');
     const bytes=Buffer.from(content,'utf8');
     if(bytes.length>MAX_BYTES)throw Error('forge_file_size_limit');
@@ -141,7 +188,7 @@ export class ForgeProjectFiles {
       if(proof.sha256!==sha256(bytes))throw Error('forge_file_readback_mismatch');
       return {projectId,path:relative,bytes:proof.bytes,sha256:proof.sha256,
         created:!exists,verified:true,verification:'sha256_readback',
-        source:'forge_app_private_workspace'};
+        source:this.boundRoot(projectId)?'forge_owner_bound_workspace':'forge_app_private_workspace'};
     }finally{if(!created)try{fs.unlinkSync(temp);}catch{}}
   }
 }

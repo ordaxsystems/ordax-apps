@@ -1,4 +1,6 @@
-# Runtime Workspace Port v1 — consumer contract and production gate (M1)
+# Runtime Workspace Port v1 — contrato opcional do OrdaX Runtime
+
+> **ESCOPO ATUAL 2026-11-06:** este documento registra o contrato histórico de integração com o OrdaX Runtime/Platform para dispositivos externos. **Não é pré-requisito para arquivos locais do Forge no Windows.** O workspace próprio e o MCP Forge seguem [um único plano atual](FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md); dados Runtime/Platform abaixo são snapshots históricos, não autorização vigente.
 
 **Baseline técnico verificado em 24/10/2026; atualização de governança em 26/10/2026:** Runtime `main` at `7f7963f11e1892b692c6f00662a559717a6d7dfd` contains the read-only `ProjectWorkspacePort`, canonical local-project registry binding, in-memory resource-selection broker, native Windows folder picker, Owner scope resolver, two-phase issuance client and Device proof adapter. Runtime PR [#206](https://github.com/ordaxsystems/ordax-runtime/pull/206) is merged, but these pieces remain **source-level seams**: the picker, issuance client and proof callback are not composed into an authenticated Owner flow. Runtime PR [#205](https://github.com/ordaxsystems/ordax-runtime/pull/205) is closed because it depended on the incompatible single-phase Platform #274 contract.
 

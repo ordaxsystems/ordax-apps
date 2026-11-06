@@ -635,9 +635,18 @@
             <div class="app-settings-card"><span class="app-settings-eyebrow">FERRAMENTAS DO GPT</span><h3>OrdaX MCP · conexão de teste</h3><p>O Forjador envia mensagens comuns ao GPT Web; Groq é opcional para análise. O marcador @ordax-mcp pode ser solicitado nas tarefas enviadas ao GPT Web. O plugin precisa estar disponível na conta; a seleção Owner do dispositivo continua obrigatória. A verificação não envia mensagens nem cria arquivos.</p><button id="settingsMcpCheck" type="button" class="mini-secondary">Verificar seleção no ChatGPT</button><p id="settingsMcpState" class="settings-connection-state" role="status" aria-live="polite">Seleção do plugin não verificada.</p><p class="diagnostics-hint">O marcador visual do plugin não comprova uma ação. Arquivos e comandos só contam como feitos quando houver recibo verificável. O MCP Forge local abaixo é separado do OrdaX MCP e ainda não está conectado ao GPT Web.</p></div>
             <div id="forgeLocalMcpPanel" class="app-settings-card">
               <span class="app-settings-eyebrow">FORGE MCP · LOCAL</span><h3>Conexão do projeto neste computador</h3>
-              <p>Ativação manual, válida por 30 minutos e restrita a 127.0.0.1. Dá acesso apenas aos arquivos privados do projeto selecionado. Não conecta automaticamente o GPT Web nem concede acesso a outras pastas.</p>
+              <p>Ativação manual, válida por 30 minutos e restrita a 127.0.0.1. Dá acesso somente ao workspace autorizado do projeto selecionado (pasta de Documentos ou pasta existente, quando vinculada). Não conecta automaticamente ao GPT Web nem autoriza outras pastas.</p>
               <label for="forgeLocalMcpProject">Projeto autorizado</label>
               <select id="forgeLocalMcpProject" aria-label="Projeto que poderá ser acessado pelo cliente MCP local"></select>
+              <div id="forgeWorkspacePanel" class="app-settings-card">
+                <span class="app-settings-eyebrow">PASTA DO PROJETO</span>
+                <p>A pasta padrão é Documentos/Forge/NomeDoProjeto. O Forge guarda um único vínculo no SQLite, sem cópias do código. Projetos existentes podem escolher outra pasta.</p>
+                <p id="forgeWorkspaceState" class="settings-connection-state" role="status" aria-live="polite">Selecione um projeto para verificar a pasta.</p>
+                <div class="settings-connection-actions">
+                  <button id="forgeWorkspaceCreate" type="button" class="mini-secondary">Criar pasta padrão</button>
+                  <button id="forgeWorkspaceChoose" type="button" class="mini-secondary">Escolher pasta existente</button>
+                </div>
+              </div>
               <div class="settings-connection-actions">
                 <button id="forgeLocalMcpStart" type="button" class="mini-secondary">Ativar MCP local</button>
                 <button id="forgeLocalMcpStop" type="button" class="mini-secondary">Desativar</button>
@@ -682,5 +691,6 @@
   <script src="./host-browser-bridge.js"></script>
   <script type="module" src="./ui.js"></script>
   <script type="module" src="./forge-local-mcp-ui.js"></script>
+  <script type="module" src="./forge-workspace-ui.js"></script>
 </body>
 </html>

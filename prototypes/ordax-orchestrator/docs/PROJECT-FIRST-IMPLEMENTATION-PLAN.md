@@ -1,4 +1,4 @@
-> **PLANO HISTÓRICO RECONCILIADO — 2026-11-01:** a prioridade de produto e a sequência de gates atuais estão no [Contrato canônico de Orchestrator autônomo de instância única](ORCHESTRATOR-CANONICAL-PRODUCT.md), seção 7. O roteiro M0–M7/R0 abaixo permanece como material técnico de migração, evidências e dependências, **não** como ordem mandatória de retomar a UX multi-projeto ou tornar GPT o administrador. Implementação efetiva de automação é posterior a grants e E2E verificados.
+> **REFERÊNCIA HISTÓRICA — substituída na direção do produto em 2026-11-06.** A única arquitetura e sequência executiva vigentes estão em [Forge GPT-first — plano canônico](FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md). Dados de PR/CI/E2E abaixo são evidências datadas; NÃO reativar Groq obrigatória, instância por projeto, caminhos privados como destino final ou dependência Runtime externo para arquivos locais. O código e as provas atuais determinam o que já funciona.
 
 # Plano de execução — OrdaX Orchestrator Project-First
 

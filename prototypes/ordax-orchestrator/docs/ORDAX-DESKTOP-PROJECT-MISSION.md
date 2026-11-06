@@ -1,4 +1,6 @@
-# OrdaX — missão canônica para o Orquestrador
+# OrdaX — modelo histórico de missão do Orquestrador
+
+> **REFERÊNCIA HISTÓRICA — substituída na direção do produto em 2026-11-06.** A única arquitetura e sequência executiva vigentes estão em [Forge GPT-first — plano canônico](FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md). Dados de PR/CI/E2E abaixo são evidências datadas; NÃO reativar Groq obrigatória, instância por projeto, caminhos privados como destino final ou dependência Runtime externo para arquivos locais. O código e as provas atuais determinam o que já funciona.
 
 > Estado: configuração-fonte versionada; **não** constitui autorização para execução, projeto criado no SQLite ou conexão Runtime pronta. Deve ser importada pelo mecanismo `mission_create` do próprio `ordax.orchestrator/1`, com recibo verificável; sem escrita SQL avulsa.
 

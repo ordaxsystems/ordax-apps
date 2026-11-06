@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld('ordax', {
   forgeLocalMcpStatus: () => ipcRenderer.invoke('ordax:forge:local-mcp:status'),
   forgeLocalMcpStart: projectId => ipcRenderer.invoke('ordax:forge:local-mcp:start',projectId),
   forgeLocalMcpStop: () => ipcRenderer.invoke('ordax:forge:local-mcp:stop'),
+  forgeWorkspaceStatus: projectId => ipcRenderer.invoke('ordax:forge:workspace:status',projectId),
+  forgeWorkspaceCreate: projectId => ipcRenderer.invoke('ordax:forge:workspace:create',projectId),
+  forgeWorkspaceChoose: projectId => ipcRenderer.invoke('ordax:forge:workspace:choose',projectId),
   onOrchestratorChanged: callback => {
     const listener=()=>callback();
     ipcRenderer.on('ordax:orchestrator:changed',listener);

@@ -1,8 +1,10 @@
-# OrdaX Orchestrator — Contrato de produto e arquitetura canônica
+# OrdaX Orchestrator — contrato de produto histórico (2026-11-01)
 
-**Decisão do proprietário:** 2026-11-01. **Estado:** direção aprovada; implantação e testes reais pendentes de gates. **Owner do produto:** `ordaxsystems/ordax-apps/prototypes/ordax-orchestrator`.
+> **REFERÊNCIA HISTÓRICA — substituída na direção do produto em 2026-11-06.** A única arquitetura e sequência executiva vigentes estão em [Forge GPT-first — plano canônico](FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md). Dados de PR/CI/E2E abaixo são evidências datadas; NÃO reativar Groq obrigatória, instância por projeto, caminhos privados como destino final ou dependência Runtime externo para arquivos locais. O código e as provas atuais determinam o que já funciona.
 
-> **SSOT de direção do Orchestrator:** este documento prevalece sobre descrições anteriores de "vários projetos por aplicativo", "Groq opcional", "conversa principal enviada ao GPT Web", "autonomia já disponível" ou "24 h certificado". A documentação histórica continua válida **somente como evidência de implementação e de gates na data observada**. O código/contratos, permissões, CI e evidências físicas prevalecem para dizer o que funciona hoje; este texto não transforma intenção em capacidade entregue.
+**Decisão histórica de 2026-11-01, substituída pelo plano Forge V3 de 2026-11-06.** **Owner do produto:** `ordaxsystems/ordax-apps/prototypes/ordax-orchestrator`.
+
+> **NÃO É MAIS SSOT DE PRODUTO.** Esta versão histórica definia Groq central e uma instância por projeto. O plano Forge GPT-first atual a substituiu. O documento permanece somente para rastrear decisões, testes e gates observados em sua data; o código/contratos e as evidências físicas prevalecem para o estado entregue.
 
 > **Missão executiva em andamento — Work Surface / P1.3:** [WORK-SURFACE-EXECUTION.md](./WORK-SURFACE-EXECUTION.md) contém os critérios de aceite e a próxima etapa funcional. A PR #448 já integrou P1.1/P1.2 à `main` (`7202eef2`) e a versão foi homologada no Windows; o trabalho atual P1.3 evolui o histórico multi-etapa dentro do ledger canônico. A execução autônoma geral e a validação independente de efeitos externos **ainda não estão certificadas**.
 

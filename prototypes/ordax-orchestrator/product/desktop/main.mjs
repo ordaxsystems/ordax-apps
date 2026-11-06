@@ -25,6 +25,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { Store, MESSAGE_PAGE_SIZE } from '../src/store.mjs';
 import {ForgeProjectFiles} from '../src/forge-project-files.mjs';
+import {ForgeLocalWorkspaces} from '../src/forge-local-workspaces.mjs';
 import {forgeFreshConversationContext} from '../src/forge-fresh-conversation-context.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {createForgeLoopbackMcp} from '../src/forge-loopback-mcp.mjs';
@@ -109,7 +110,19 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const store = new Store(path.join(dataRoot, 'ordax-orchestrator-lab.sqlite'));
-const forgeProjectFiles=new ForgeProjectFiles({root:path.join(dataRoot,'project-files')});
+// Canonical project path lives in the existing SQLite, not another store.
+// Real user workspaces use the Windows-known Documents directory; existing
+// app-private files remain untouched until explicitly reconciled.
+const forgeLocalWorkspaces=new ForgeLocalWorkspaces({
+  store,documentsDirectory:app.getPath('documents'),
+  legacyRoot:path.join(dataRoot,'project-files'),
+  forbiddenRoots:[userRoot,path.dirname(process.execPath),process.env.SystemRoot,
+    process.env.ProgramFiles,process.env.ProgramData,process.env['ProgramFiles(x86)']]
+    .filter(value=>typeof value==='string'&&path.isAbsolute(value))
+});
+const forgeProjectFiles=new ForgeProjectFiles({root:path.join(dataRoot,'project-files'),
+  workspaceLookup:projectId=>forgeLocalWorkspaces.rootForProject(projectId),
+  requireOwnerBinding:true});
 
 const stagedLab=process.argv.includes('--ordax-lab-staged-approved');
 const backgroundSupported=process.platform==='win32'&&app.isPackaged&&!hostBrowserMode&&!stagedLab;
@@ -1260,6 +1273,38 @@ function withDeletedProjectAssetCleanup(receipt,scope){
     filesPending:scope.assetPaths.length,entriesRemaining:scope.taskIds.length};}
   return {...receipt,result:{...receipt.result,localAssetCleanup}};
 }
+// Local folder authority is created only by the trusted Windows owner UI.
+// Model-provided paths, MCP calls and a stored GitHub URL cannot create grants.
+registerUiHandler('ordax:forge:workspace:status',(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_workspace_native_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'project_files_status',projectId);
+  return forgeLocalWorkspaces.status(projectId);
+});
+registerUiHandler('ordax:forge:workspace:create',(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_workspace_native_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
+  return forgeLocalWorkspaces.createDefault(projectId);
+});
+registerUiHandler('ordax:forge:workspace:choose',async(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_workspace_native_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
+  const current=forgeLocalWorkspaces.status(projectId);
+  if(current.configured)throw Error('forge_workspace_already_bound');
+  const chosen=await dialog.showOpenDialog(win,{
+    title:'Selecionar a pasta oficial deste projeto Forge',
+    defaultPath:app.getPath('documents'),
+    properties:['openDirectory'],
+    buttonLabel:'Vincular esta pasta'
+  });
+  if(chosen.canceled||chosen.filePaths.length!==1)return {cancelled:true};
+  // Local authorized UI can select a directory, but cannot add authority
+  // to another project or mutate the root after a prior successful grant.
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
+  return forgeLocalWorkspaces.bindSelected(projectId,chosen.filePaths[0]);
+});
 // Local MCP is explicitly enabled only from the trusted Electron settings UI.
 // Activation returns a one-time bearer token; status never returns it.
 registerUiHandler('ordax:forge:local-mcp:status',event=>{
@@ -1273,7 +1318,7 @@ registerUiHandler('ordax:forge:local-mcp:start',async(event,projectId)=>{
   orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
   if(!await confirmInActiveUi({title:'Habilitar MCP Forge local',
     message:'Autorizar um cliente MCP instalado neste Windows para este projeto?',
-    detail:'Conexão exclusiva a 127.0.0.1, chave temporária, expira em 30 minutos. Permite leitura e escrita dentro da pasta privada deste projeto; não concede acesso a outras pastas, não publica a conexão na internet e não a conecta automaticamente ao GPT Web.',
+    detail:'Conexão exclusiva a 127.0.0.1, chave temporária, expira em 30 minutos. Permite leitura e escrita somente no workspace atual deste projeto, quando vinculado e verificado. Não concede acesso a outras pastas, não publica na internet e não conecta automaticamente ao GPT Web.',
     approveLabel:'Habilitar por 30 minutos'}))return {running:false,declined:true};
   return forgeLocalMcp.start(projectId);
 });
@@ -1286,7 +1331,18 @@ registerUiHandler('ordax:orchestrator:invoke',async(event,payload)=>{
   requireTrustedSupervisorRenderer(event);
   const scope=payload?.operation==='project_delete'?projectAssetCleanupScope(payload?.input?.projectId):null;
   const receipt=await orchestratorService.invoke(localOrchestratorContext,payload?.operation,payload?.input??{});
-  const result=withDeletedProjectAssetCleanup(receipt,scope);
+  let result=withDeletedProjectAssetCleanup(receipt,scope);
+  // New projects receive a real workspace at the Windows Documents known
+  // folder. The DB project survives a filesystem failure, but the UI must
+  // report the failure, never claim a workspace that was not verified.
+  if(['project_create','project_quick_create','mission_create'].includes(payload?.operation)&&
+      receipt?.status==='succeeded'&&typeof receipt?.result?.projectId==='string'){
+    let workspaceSetup;
+    try{workspaceSetup=forgeLocalWorkspaces.createDefault(receipt.result.projectId);}
+    catch(error){workspaceSetup={configured:false,blocked:true,
+      reason:String(error?.message||'forge_workspace_creation_failed').slice(0,120)};}
+    result={...result,result:{...result.result,workspaceSetup}};
+  }
   if(ORCHESTRATOR_TOOLS.some(t=>t.operation===payload?.operation&&!t.readOnly)&&win&&!win.isDestroyed())
     emitRendererEvent('ordax:orchestrator:changed');
   return result;

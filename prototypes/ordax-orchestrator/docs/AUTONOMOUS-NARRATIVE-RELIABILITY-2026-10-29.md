@@ -1,4 +1,6 @@
-# OrdaX Orchestrator — avaliações narrativas e diagnóstico baseado em evidências
+# OrdaX Orchestrator — avaliação histórica de narrativas e evidências
+
+> **REFERÊNCIA HISTÓRICA — substituída na direção do produto em 2026-11-06.** A única arquitetura e sequência executiva vigentes estão em [Forge GPT-first — plano canônico](FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md). Dados de PR/CI/E2E abaixo são evidências datadas; NÃO reativar Groq obrigatória, instância por projeto, caminhos privados como destino final ou dependência Runtime externo para arquivos locais. O código e as provas atuais determinam o que já funciona.
 
 ## Decisão canônica (29/10/2026)
 

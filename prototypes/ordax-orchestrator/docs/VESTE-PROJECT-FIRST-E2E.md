@@ -1,4 +1,6 @@
-# VESTE — roteiro E2E da arquitetura Project-First
+# VESTE — roteiro histórico de E2E Project-First
+
+> **REFERÊNCIA HISTÓRICA — substituída na direção do produto em 2026-11-06.** A única arquitetura e sequência executiva vigentes estão em [Forge GPT-first — plano canônico](FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md). Dados de PR/CI/E2E abaixo são evidências datadas; NÃO reativar Groq obrigatória, instância por projeto, caminhos privados como destino final ou dependência Runtime externo para arquivos locais. O código e as provas atuais determinam o que já funciona.
 
 **Tipo:** gate de aceitação futuro, ainda **não comprovado**. **Owner:** Orchestrator Lab + Runtime/Platform por seus contratos. **Cenário:** loja de roupas demonstrativa VESTE, offline/local, sem pagamento real, dados fictícios.
 
