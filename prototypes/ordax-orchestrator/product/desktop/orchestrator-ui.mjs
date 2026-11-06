@@ -156,6 +156,15 @@ export function describeWorkspaceConnection(state) {
 
 export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onSelectRightPane,onOpenAppSettings,onNavigationChange,onArtifactPreviewTask}) {
   const $=id=>document.getElementById(id);
+  // One real tools menu, not three permanent engineering panels above chat.
+  // Relocate the existing nodes so their IDs, listeners and real capabilities
+  // remain canonical and available on demand.
+  const advancedContent=$('forgeCoordinatorAdvancedContent');
+  for(const id of ['projectPulseDisclosure','orchestrationCapabilitySummary',
+      'forjadorGroqInspector','orchestrationIntegrations']){
+    const node=$(id);
+    if(advancedContent&&node)advancedContent.append(node);
+  }
   let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
   let projectRefreshGeneration=0,orchestratorRefreshGeneration=0,autonomousRefreshGeneration=0;
   let workspaceInspectionGeneration=0,workspacePortAvailable=false;
@@ -275,12 +284,14 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     coordinatorDraftRevision=0;
     pendingCoordinatorDraft=null;
     $('coordinatorPrompt').value='';
+    fitCoordinatorComposer();
     setCoordinatorDraftState('');
     if(!taskId)return;
     const draft=await readCoordinatorDraft(taskId);
     if(!isCurrent()||generation!==coordinatorDraftGeneration||taskId!==chatTaskId)return;
     coordinatorDraftRevision=Number(draft.draft_revision||0);
     $('coordinatorPrompt').value=draft.draft||'';
+    fitCoordinatorComposer();
     setCoordinatorDraftState(draft.draft?'Rascunho local preservado nesta conversa':'');
   }
   async function prepareCoordinatorDraft(taskId) {
@@ -303,7 +314,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(chatTaskId===taskId&&coordinatorDraftTaskId===taskId) {
       coordinatorDraftRevision=draft.draft_revision;
       pendingCoordinatorDraft=null;
-      if($('coordinatorPrompt').value===raw)$('coordinatorPrompt').value='';
+      if($('coordinatorPrompt').value===raw){$('coordinatorPrompt').value='';fitCoordinatorComposer();}
       setCoordinatorDraftState('Mensagem registrada no histórico; rascunho removido.');
     }
     return true;
@@ -876,12 +887,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('coordinatorNavProvider').textContent='Conversa do projeto';
     $('coordinatorRouteLabel').textContent='FORJADOR';
     $('coordinatorApiSettings').textContent='Ajustes';
-    $('coordinatorPrompt').placeholder='O que você quer criar?';
+    $('coordinatorPrompt').placeholder='Descreva o que você quer criar ou mudar…';
     $('coordinatorSend').textContent='Enviar';
     $('coordinatorSend').setAttribute('aria-label','Enviar mensagem');
     $('orchestrationConnection').textContent=coordinatorAvailable
-      ?'Descreva seu pedido normalmente. O OrdaX cuida das etapas disponíveis.'
-      :'Assistente indisponível. Verifique as conexões em Ajustes para continuar.';
+      ?'Conexão pronta.'
+      :'Forjador indisponível. Verifique a conexão em Ajustes.';
+    if($('coordinatorTransport'))$('coordinatorTransport').hidden=coordinatorAvailable;
     syncCapabilitySummary();
     syncCoordinatorActions();
   }
@@ -1166,8 +1178,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('openHistory').disabled=!p||!selected;
     $('openEvidence').disabled=!p||!selected;
     $('orchestratorMission').textContent=selected
-      ?selected.name+' · '+selected.mission
-      :'Configure o Administrador Geral deste projeto.';
+      ?'Crie e continue seu trabalho em uma conversa.'
+      :'Selecione um projeto para começar.';
+    $('orchestratorMission').title=selected?.mission||'';
     $('orchestratorTitle').textContent='Conversa';
     syncCoordinatorActions();
     renderOrchestratorNavigation();
@@ -1317,17 +1330,36 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       box.append(note);
     }
     if(page.messages.length===0) {
-      const empty=document.createElement('div');empty.className='coordinator-empty';
-      const title=document.createElement('strong');title.textContent='Como posso ajudar?';
+      const empty=document.createElement('div');empty.className='coordinator-empty forge-welcome';
+      const mark=document.createElement('span');mark.className='forge-welcome-mark';
+      mark.textContent='◇';mark.setAttribute('aria-hidden','true');
+      const title=document.createElement('strong');title.textContent='O que vamos criar hoje?';
       const copy=document.createElement('p');
-      copy.textContent='Descreva o que deseja criar, mudar ou entender. Basta escrever normalmente.';
-      const settings=document.createElement('button');settings.type='button';settings.className='mini-secondary';settings.textContent='Ajustes';
-      settings.addEventListener('click',()=>$('coordinatorApiSettings').click());
-      empty.append(title,copy,settings);box.append(empty);
+      copy.textContent='Conte sua ideia ao Forjador ou comece com uma sugestão.';
+      const choices=document.createElement('div');choices.className='forge-welcome-choices';
+      for(const [label,suggestion] of [
+        ['Criar um site','Crie um site para minha ideia.'],
+        ['Desenvolver um app','Quero desenvolver um aplicativo.'],
+        ['Planejar um projeto','Ajude-me a planejar um novo projeto.']
+      ]){
+        const button=document.createElement('button');
+        button.type='button';button.className='forge-welcome-choice';
+        button.textContent=label;
+        button.addEventListener('click',()=>{
+          const input=$('coordinatorPrompt');
+          if(input.disabled)return;
+          input.value=suggestion;
+          input.dispatchEvent(new Event('input',{bubbles:true}));
+          input.focus();
+        });
+        choices.append(button);
+      }
+      empty.append(mark,title,copy,choices);box.append(empty);
     }
     for(const message of page.messages) {
       const article=document.createElement('article');article.className='coordinator-message';
-      const role=document.createElement('strong');role.textContent=message.role==='user'?'Você':'OrdaX';
+      article.dataset.role=message.role==='user'?'user':'assistant';
+      const role=document.createElement('strong');role.textContent=message.role==='user'?'Você':'Forjador';
       const text=document.createElement('p');text.textContent=message.content;
       article.append(role,text);box.append(article);
     }
@@ -1876,7 +1908,15 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       }catch{error();}
     }finally{analysisBusy=false;coordinatorSubmitting=false;syncCoordinatorActions();}
   });
-  $('coordinatorPrompt').addEventListener('input',stageCoordinatorDraft);
+  function fitCoordinatorComposer(){
+    const input=$('coordinatorPrompt');
+    input.style.height='auto';
+    input.style.height=Math.min(input.scrollHeight,164)+'px';
+  }
+  $('coordinatorPrompt').addEventListener('input',()=>{
+    fitCoordinatorComposer();
+    stageCoordinatorDraft();
+  });
   $('coordinatorPrompt').addEventListener('blur',()=>{void flushCoordinatorDraft().catch(()=>{});});
   $('newScopedWorkForm').addEventListener('submit',event=>{
     event.preventDefault();void formAction(event.currentTarget,async()=>{

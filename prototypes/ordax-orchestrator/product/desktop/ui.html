@@ -152,12 +152,13 @@
         <header class="coordinator-head">
           <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><span class="route-kicker" id="coordinatorRouteLabel">FORJADOR</span><h2 id="orchestratorTitle">Conversa</h2><p id="orchestratorMission"></p></div></div>
           <div class="coordinator-head-actions">
+            <details id="forgeCoordinatorAdvanced" class="forge-coordinator-advanced"><summary aria-label="Ferramentas e diagnóstico" title="Ferramentas e diagnóstico">⋯</summary><div id="forgeCoordinatorAdvancedContent" class="forge-coordinator-advanced-content"></div></details>
             <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Sessões GPT</button>
             <button id="pauseOrchestrator" class="ghost-button" type="button" disabled>Pausar</button>
             <button id="coordinatorApiSettings" class="ghost-button" type="button" aria-label="Abrir configurações de modelos" title="Configurar modelos conectados">Ajustes</button>
           </div>
         </header>
-        <div class="coordinator-transport" role="status" aria-live="polite">
+        <div id="coordinatorTransport" class="coordinator-transport" role="status" aria-live="polite">
           <span class="transport-symbol" aria-hidden="true">●</span>
           <span id="orchestrationConnection" class="orchestration-connection">Converse normalmente. O OrdaX organiza as tarefas com os serviços conectados.</span>
         </div>
@@ -253,10 +254,10 @@
         <div id="coordinatorProposals" class="coordinator-proposals" aria-label="Propostas para revisão"></div>
         <form id="coordinatorComposer">
           <label class="sr-only" for="coordinatorPrompt">Mensagem ao Forjador</label>
-          <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="O que você quer criar?" aria-describedby="orchestrationConnection" required></textarea>
+          <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="Descreva o que você quer criar ou mudar…" aria-describedby="orchestrationConnection" title="Enter para enviar; Shift+Enter para nova linha" required></textarea>
           <button id="coordinatorSend" class="send-button coordinator-send" type="submit" aria-label="Enviar mensagem" disabled>Enviar</button>
         </form>
-        <small class="coordinator-route-note">Converse com o Forjador. Ele coordena as ferramentas autorizadas; resultados só aparecem como concluídos após verificação. Enter envia · Shift+Enter quebra linha.</small>
+        <small class="coordinator-route-note">Enter envia · Shift+Enter quebra linha</small>
         <small id="coordinatorDraftState" class="coordinator-draft-state" role="status" aria-live="polite"></small>
       </section>
       <p id="orchestrationNotice" class="orchestration-notice" role="status" aria-live="polite"></p>

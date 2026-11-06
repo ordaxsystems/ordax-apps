@@ -1165,3 +1165,175 @@ body.orchestrator-focus.orchestrator-rail-open #contextRail #contextPanel:not([h
  body.orchestrator-focus .workspace-modes{position:static;box-shadow:none;overflow:visible;margin:5px 0 10px;padding:0}
  body.orchestrator-focus .chat-column{padding-bottom:0}
 }
+
+
+/* Forge V2.1 — focus the central column on the Forjador conversation.
+   All existing diagnostic and mission controls are retained in ONE menu. */
+body.orchestrator-focus .coordinator-head{
+  position:relative;z-index:8;min-height:78px;
+  padding:15px clamp(18px,2vw,32px);
+  background:#171616;border-bottom:1px solid #302b29;
+}
+body.orchestrator-focus .coordinator-identity{gap:12px}
+body.orchestrator-focus .coordinator-avatar{
+  width:40px;height:40px;border-radius:13px;
+  border:1px solid #634a42;background:#292220;
+  color:#efae90;font-size:22px;box-shadow:none
+}
+body.orchestrator-focus .coordinator-title h2{
+  font-size:19px;font-weight:720;letter-spacing:-.035em;line-height:1.25
+}
+body.orchestrator-focus .coordinator-title .route-kicker{
+  color:#bb9280;font-size:9px;letter-spacing:.12em;margin-bottom:3px
+}
+body.orchestrator-focus .coordinator-title p{
+  margin-top:4px;font-size:11px;line-height:1.3;color:#9c9693;
+  max-width:330px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+body.orchestrator-focus .coordinator-head-actions{gap:9px}
+body.orchestrator-focus .coordinator-head-actions #pauseOrchestrator{
+  background:transparent;color:#b2a7a0;border:1px solid #3c3633;
+  border-radius:9px;min-height:32px;padding:6px 10px
+}
+body.orchestrator-focus .coordinator-head-actions #pauseOrchestrator:disabled{display:none}
+body.orchestrator-focus .forge-coordinator-advanced{
+  position:relative;flex:none;z-index:50
+}
+body.orchestrator-focus .forge-coordinator-advanced>summary{
+  display:grid;place-items:center;list-style:none;cursor:pointer;
+  width:36px;height:34px;padding:0;border-radius:9px;
+  border:1px solid #3b3330;background:#242020;color:#d2c0b6;
+  font-size:24px;line-height:1
+}
+body.orchestrator-focus .forge-coordinator-advanced>summary::-webkit-details-marker{display:none}
+body.orchestrator-focus .forge-coordinator-advanced>summary:hover,
+body.orchestrator-focus .forge-coordinator-advanced[open]>summary{
+  border-color:#987260;background:#342923;color:#ffe1cf
+}
+body.orchestrator-focus .forge-coordinator-advanced>summary:focus-visible{
+  outline:2px solid #d5a185;outline-offset:2px
+}
+body.orchestrator-focus .forge-coordinator-advanced-content{
+  position:absolute;right:0;top:calc(100% + 10px);
+  box-sizing:border-box;width:min(490px,calc(100vw - 44px));
+  max-height:min(66dvh,590px);overflow:auto;
+  border:1px solid #56453f;border-radius:14px;
+  background:#201c1b;box-shadow:0 25px 70px rgba(0,0,0,.6);
+  padding:8px;display:flex;flex-direction:column;gap:3px
+}
+body.orchestrator-focus .forge-coordinator-advanced:not([open])>.forge-coordinator-advanced-content{display:none}
+body.orchestrator-focus .forge-coordinator-advanced-content>details{
+  background:#241f1d;border:1px solid #38312d;border-radius:9px;
+  overflow:visible
+}
+body.orchestrator-focus .forge-coordinator-advanced-content>details>summary{
+  border:0;color:#cec0b9;background:transparent;padding:10px 12px;
+  font-size:11px;cursor:pointer
+}
+body.orchestrator-focus .forge-coordinator-advanced-content>details[open]>summary{border-bottom:1px solid #38312d}
+body.orchestrator-focus .forge-coordinator-advanced-content .project-pulse{
+  max-height:230px;overflow:auto
+}
+body.orchestrator-focus .forge-coordinator-advanced-content #orchestrationCapabilitySummary{
+  padding:9px;gap:5px
+}
+body.orchestrator-focus .orchestration-panel>.command-advanced,
+body.orchestrator-focus .orchestration-panel>#orchestrationIntegrations,
+body.orchestrator-focus .orchestration-panel>#orchestrationCapabilitySummary{display:none!important}
+body.orchestrator-focus #coordinatorTransport[hidden]{display:none!important}
+body.orchestrator-focus #coordinatorTransport{
+  min-height:0;padding:9px 20px;background:#2a201b;
+  border-bottom:1px solid #6d4430;color:#e7b8a1
+}
+body.orchestrator-focus #coordinatorTransport .orchestration-connection{
+  color:#e7b8a1;font-size:11px
+}
+body.orchestrator-focus .coordinator-messages{
+  flex:1;min-height:0;padding:25px clamp(18px,3.4vw,42px);
+  background:#151515;gap:18px;scrollbar-width:thin
+}
+body.orchestrator-focus .coordinator-empty.forge-welcome{
+  box-sizing:border-box;width:min(100%,580px);margin:auto;
+  padding:34px clamp(18px,3vw,38px) 35px;
+  border:1px solid #40332d;border-radius:20px;
+  background:linear-gradient(160deg,#24201e,#1b1918 70%);
+  box-shadow:0 18px 42px rgba(0,0,0,.13)
+}
+.forge-welcome-mark{
+  display:grid;place-items:center;width:58px;height:58px;
+  margin:0 auto 21px;border-radius:17px;
+  background:#322723;border:1px solid #61483b;
+  color:#f0ae90;font-size:30px
+}
+body.orchestrator-focus .coordinator-empty.forge-welcome strong{
+  font-size:24px;line-height:1.2;letter-spacing:-.035em;
+  color:#f2e9e2;font-weight:720
+}
+body.orchestrator-focus .coordinator-empty.forge-welcome p{
+  max-width:390px;margin:11px auto 24px;font-size:13px;
+  color:#b9aaa2;line-height:1.55
+}
+.forge-welcome-choices{display:flex;flex-wrap:wrap;justify-content:center;gap:9px}
+body.orchestrator-focus .forge-welcome-choice{
+  width:auto;min-height:40px;padding:9px 13px;
+  background:#2c2724;color:#e5d7cf;border:1px solid #51423a;
+  border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;
+  transition:background .15s,border-color .15s
+}
+body.orchestrator-focus .forge-welcome-choice:hover{
+  background:#433129;color:#fff0e8;border-color:#ad7b64
+}
+body.orchestrator-focus .forge-welcome-choice:focus-visible{
+  outline:2px solid #d3a48a;outline-offset:2px
+}
+body.orchestrator-focus .coordinator-message{
+  box-sizing:border-box;max-width:730px;padding:16px 19px;
+  box-shadow:none;border-radius:13px
+}
+body.orchestrator-focus .coordinator-message[data-role="user"]{
+  align-self:flex-end;width:fit-content;max-width:min(85%,630px);
+  background:#322824;border-color:#674638
+}
+body.orchestrator-focus .coordinator-message[data-role="assistant"]{
+  align-self:flex-start;width:min(100%,730px);
+  background:#211f1e;border-color:#35302e
+}
+body.orchestrator-focus .coordinator-message strong{
+  color:#d3aa94;font-size:11px;margin-bottom:7px
+}
+body.orchestrator-focus .coordinator-message p{
+  color:#f0e8e2;font-size:13px;line-height:1.65
+}
+body.orchestrator-focus #coordinatorComposer{
+  box-sizing:border-box;width:min(calc(100% - 40px),790px);
+  display:grid;grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;gap:14px;min-height:66px;
+  margin:10px auto 15px;padding:11px 12px 11px 20px;
+  background:#27211f;border:1px solid #765142;border-radius:18px;
+  box-shadow:0 10px 32px rgba(0,0,0,.27)
+}
+body.orchestrator-focus #coordinatorComposer:focus-within{
+  border-color:#cf9a7d;box-shadow:0 0 0 2px rgba(218,152,115,.13),0 10px 32px rgba(0,0,0,.27)
+}
+body.orchestrator-focus #coordinatorComposer textarea{
+  width:100%;min-width:0;min-height:32px;max-height:164px;
+  padding:5px 0;resize:none;overflow:auto;
+  font-size:14px;line-height:1.55;color:#f5eae4
+}
+body.orchestrator-focus #coordinatorComposer textarea::placeholder{color:#b9a9a0}
+body.orchestrator-focus #coordinatorComposer .coordinator-send{
+  min-width:94px;min-height:44px;border-radius:12px;
+  padding:10px 18px;background:#e8ad90;color:#2d1e17;
+  font-size:12px;font-weight:780;box-shadow:none
+}
+body.orchestrator-focus #coordinatorComposer .coordinator-send:hover:not(:disabled){background:#f1c0a6}
+body.orchestrator-focus .coordinator-route-note{display:none!important}
+body.orchestrator-focus #coordinatorDraftState{font-size:10px;margin:0 auto 8px;color:#ac9c92}
+body.orchestrator-focus #coordinatorDraftState:empty{display:none}
+body.orchestrator-focus #coordinatorProposals:empty{display:none}
+@media(max-width:820px){
+  body.orchestrator-focus .coordinator-empty.forge-welcome{padding:23px 17px}
+  body.orchestrator-focus .coordinator-empty.forge-welcome strong{font-size:19px}
+  body.orchestrator-focus .forge-welcome-choice{min-height:38px;font-size:11px}
+  body.orchestrator-focus #coordinatorComposer{width:calc(100% - 26px)}
+}
