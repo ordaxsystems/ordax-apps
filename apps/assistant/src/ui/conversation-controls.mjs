@@ -435,10 +435,12 @@ export function mountAssistantConversationControls(
     if (snapshot.lastError || view.state === "failed") {
       const discarded = snapshot.lastError === "response-discarded";
       const timedOut = snapshot.lastError === "response-timeout";
+      const disconnected = snapshot.lastError === "provider-unavailable";
       const notice = node(documentObject, "p",
         discarded ? "ordax-assistant-notice" : "ordax-assistant-error",
         t(discarded ? "assistant.notice.discarded"
-          : timedOut ? "assistant.error.timeout" : "assistant.error.response"));
+          : timedOut ? "assistant.error.timeout"
+          : disconnected ? "assistant.error.provider" : "assistant.error.response"));
       notice.setAttribute("role", discarded ? "status" : "alert");
       slot.append(notice);
     }
@@ -458,9 +460,10 @@ export function mountAssistantConversationControls(
     const clear = node(documentObject, "button", "ordax-assistant-clear", t("assistant.action.clear"));
     clear.type = "button";
     clear.dataset.assistantClear = "";
-    clear.disabled = snapshot.state === "busy" || view.history.length === 0;
+    clear.disabled = snapshot.state === "busy" || (view.history.length === 0 && !snapshot.lastError);
     const send = node(documentObject, "button", "ordax-assistant-send",
-      snapshot.state === "busy" ? t("assistant.action.sending") : t("assistant.action.send"));
+      snapshot.state === "busy" ? t("assistant.action.sending")
+        : snapshot.lastError && draft.trim() ? t("assistant.action.retry") : t("assistant.action.send"));
     send.type = "button";
     send.dataset.assistantSend = "";
     send.disabled = !canSubmitAssistantDraft(snapshot, draft);
@@ -529,13 +532,25 @@ export function mountAssistantConversationControls(
   };
 
   const submit = () => {
-    const submission = beginAssistantSubmission(conversation, draft);
+    const submittedDraft = draft;
+    const submission = beginAssistantSubmission(conversation, submittedDraft);
     if (submission.pending === null) return;
-    if (submission.accepted) {
-      draft = "";
+    const submittedScope = conversation.getSnapshot().scopeRevision;
+    if (submission.accepted) render();
+    // The draft remains visible (disabled) while inference is pending and
+    // survives failed/uncertain requests. Only a verified success consumes it.
+    // A late result never restores or clears text in a different Account,
+    // Space or Profile; the conversation owns that monotonic scope revision.
+    void submission.pending.then(() => {
+      if (destroyed) return;
+      if (conversation.getSnapshot().scopeRevision !== submittedScope) return;
+      if (submission.accepted && draft === submittedDraft) draft = "";
       render();
-    }
-    void submission.pending.catch(() => render());
+    }, () => {
+      if (destroyed) return;
+      if (conversation.getSnapshot().scopeRevision !== submittedScope) return;
+      render(); // Explicit user action is required to resend an uncertain turn.
+    });
   };
 
   const submitRecordedWork = () => {
