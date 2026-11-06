@@ -91,3 +91,27 @@ test("Assistant clears unsent input only when canonical Account/Space/Profile sc
   assert.match(render, /textarea\.value = draft/);
   assert.doesNotMatch(controls, /localStorage|sessionStorage|document\.cookie/);
 });
+
+test("Aura keeps the submitted draft through uncertainty and requires explicit resend in the original scope", () => {
+  const controls = readFileSync(new URL("../src/ui/conversation-controls.mjs", import.meta.url), "utf8");
+  const conversation = readFileSync(new URL("../src/conversation.mjs", import.meta.url), "utf8");
+  const messages = readFileSync(new URL("../src/i18n/messages.mjs", import.meta.url), "utf8");
+  const submit = controls.slice(controls.indexOf("  const submit = () => {"), controls.indexOf("  const submitRecordedWork = () => {"));
+  assert.match(submit, /const submittedDraft = draft/);
+  assert.match(submit, /const submission = beginAssistantSubmission\(conversation, submittedDraft\)/);
+  assert.match(submit, /const submittedScope = conversation\.getSnapshot\(\)\.scopeRevision/);
+  assert.match(submit, /submission\.pending\.then\(\(\) =>/);
+  assert.match(submit, /conversation\.getSnapshot\(\)\.scopeRevision !== submittedScope/g);
+  assert.match(submit, /if \(submission\.accepted && draft === submittedDraft\) draft = ""/);
+  assert.doesNotMatch(submit, /if \(submission\.accepted\)\s*\{\s*draft = ""/);
+  assert.doesNotMatch(submit, /setTimeout|\.send\(|\.retry\(|localStorage|sessionStorage/);
+  assert.match(controls, /snapshot\.lastError && draft\.trim\(\) \? t\("assistant\.action\.retry"\)/);
+  assert.match(controls, /disconnected \? "assistant\.error\.provider"/);
+  assert.match(controls, /assistant\.notice\.discarded/);
+  assert.match(conversation, /messages = Object\.freeze\(messages\.filter\(\(message\) => message\.id !== submittedMessage\.id\)\)/);
+  assert.match(conversation, /lastError = timedOut \? "response-timeout"/);
+  assert.match(conversation, /state === "unavailable" \? "provider-unavailable" : "response-failed"/);
+  for (const key of ["assistant.error.response", "assistant.error.timeout", "assistant.error.provider", "assistant.notice.discarded", "assistant.action.retry"]) {
+    assert.ok(messages.split(`"${key}":`).length === 3, `${key} must be localized for both locales`);
+  }
+});
