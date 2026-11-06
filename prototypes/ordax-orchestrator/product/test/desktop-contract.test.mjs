@@ -177,7 +177,7 @@ test('empty project state promises persistence without claiming autonomous execu
   assert.match(ui,/document\.querySelector\('\[data-start-project\]'\)/);
   assert.doesNotMatch(ui,/querySelector\('\[data-create-task\]'\)/);
 
-  assert.match(uiHtml,/Cada campo identifica o seu destino/);
+  assert.match(uiHtml,/Converse normalmente com o Forjador|converse normalmente com o Forjador/);
   assert.doesNotMatch(uiHtml,/continuar amanhã|gerencia automaticamente as conversas internas/);
 });
 
@@ -1165,7 +1165,7 @@ test('Groq and ChatGPT workspaces have distinct visible destinations and fail-cl
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   assert.match(uiHtml,/id="openOrchestrator"/);
   assert.match(uiHtml,/id="openWorks"/);
-  assert.match(uiHtml,/FORJADOR · GROQ/);
+  assert.match(uiHtml,/id="coordinatorRouteLabel">FORJADOR</);
   assert.match(uiHtml,/CONVERSA DE TRABALHO · CHATGPT WEB/);
   assert.match(uiHtml,/id="coordinatorComposer"/);
   assert.match(uiHtml,/id="composer"/);
@@ -1173,7 +1173,7 @@ test('Groq and ChatGPT workspaces have distinct visible destinations and fail-cl
   assert.match(uiHtml,/Enviar ao GPT/);
   assert.match(ui,/setWorkspaceRoute\('coordinator'\)/);
   assert.match(ui,/setWorkspaceRoute\('gpt'\)/);
-  assert.match(ui,/flushDraft\(\);await selectRightPane\('context'\)/);
+  assert.match(ui,/flushDraft\(\);await selectRightPane\('execution'\)/);
   assert.match(ui,/await selectRightPane\('provider'\)/);
   assert.match(orchestratorUi,/orchestratorChatAvailable=coordinatorAvailable/);
   assert.doesNotMatch(orchestratorUi,/orchestratorChatAvailable=gptWebTransportAvailable/);

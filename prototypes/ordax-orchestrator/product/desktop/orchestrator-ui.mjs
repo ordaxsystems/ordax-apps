@@ -853,7 +853,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     nodeHost=state.executionSurface==='node_host';
     $('orchestratorWorkRail').setAttribute('aria-label',nodeHost?'Frentes de trabalho do projeto':'Conversas do projeto no GPT');
     $('workRailTitle').textContent=nodeHost?'Frentes de trabalho':'Conversas no GPT';
-    $('coordinatorRailToggle').textContent=nodeHost?'Frentes':'Frentes GPT';
+    $('coordinatorRailToggle').textContent='Sessões GPT';
     $('newScopedWorkButton').textContent=nodeHost?'＋ Nova frente':'＋ Nova conversa no GPT';
     $('newScopedWorkDetails').querySelector('summary').textContent=nodeHost?'Configurar título da frente':'Configurar nome da conversa';
     $('newScopedWorkForm').querySelector('button[type="submit"]').textContent=nodeHost?'Criar frente e abrir rascunho':'Criar e abrir conversa';
@@ -885,6 +885,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   $('coordinatorApiSettings').addEventListener('click',()=>onOpenAppSettings?.('providers'));
   function openNewProjectForm(){
+    $('forgeProjectAdvanced').open=true;
     const form=$('projectSetup');
     form.open=true;
     // The same canonical form serves the desktop shortcut and compact header.
@@ -897,16 +898,19 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   $('renameProjectButton').addEventListener('click',()=>{
     if(!projectId)return;
     $('renameProjectInput').value=projectsCache.find(item=>item.id===projectId)?.name||'';
+    $('forgeProjectAdvanced').open=true;
     $('projectRenameSetup').open=true;$('renameProjectInput').focus();
   });
   $('deleteProjectButton').addEventListener('click',()=>{
     if(!projectId)return;
     $('projectDeleteName').value='';
+    $('forgeProjectAdvanced').open=true;
     $('projectDeleteSetup').open=true;
     $('projectDeleteName').focus();
   });
   $('addOrchestrator').addEventListener('click',()=>{
     if(!projectId){status('Selecione ou crie um projeto antes de adicionar um orquestrador.');return;}
+    $('forgeProjectAdvanced').open=true;
     $('orchestratorSetup').open=true;$('orchestratorName').focus();
   });
   $('newScopedWorkButton').addEventListener('click',()=>{
@@ -914,7 +918,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   });
   let workRailReturnFocus=$('coordinatorRailToggle');
   const setWorkRailOpen=open=>{
-    const ready=open?(onSelectRightPane?.('context').catch(()=>{})??Promise.resolve()):Promise.resolve();
+    const ready=onSelectRightPane?.(open?'context':'execution').catch(()=>{})??Promise.resolve();
     document.body.classList.toggle('orchestrator-rail-open',open);
     $('contextRail').classList.toggle('open',open);
     $('coordinatorRailToggle').setAttribute('aria-expanded',String(open));

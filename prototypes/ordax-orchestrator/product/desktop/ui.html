@@ -21,15 +21,15 @@
       <section class="project-hub" aria-label="Gerenciar e alternar projetos">
         <div class="project-hub-heading">
           <strong>Projetos</strong>
-          <button id="quickNewProject" type="button" aria-controls="projectSetup" aria-label="Criar novo projeto">+ Novo projeto</button>
+          <button id="quickNewProject" type="button" aria-controls="projectSetup" aria-label="Criar novo projeto">＋ Novo</button>
         </div>
         <section class="project-identity" aria-label="Projeto selecionado">
-          <span class="project-identity-kicker">PROJETO ATIVO</span>
+          <span class="project-identity-kicker">EM FOCO</span>
           <strong id="activeProjectName">Nenhum projeto selecionado</strong>
           <small id="activeProjectDetail">Crie um projeto para começar</small>
         </section>
         <section id="projectSwitcher" class="project-chooser" aria-label="Alternar para outro projeto" hidden>
-          <span class="project-chooser-label">Alternar projeto</span>
+          <span class="project-chooser-label">PROJETOS RECENTES</span>
           <div id="projectNavList" class="nav-item-list" aria-label="Outros projetos disponíveis"></div>
         </section>
       </section>
@@ -56,6 +56,7 @@
         </button>
       </nav>
       <section class="orchestration-navigation" aria-label="Configuração do projeto e administração">
+        <details id="forgeProjectAdvanced" class="forge-project-advanced"><summary>Gerenciar projeto</summary>
         <div class="nav-section-heading"><span>Configuração do projeto</span><div class="nav-heading-actions"><button id="renameProjectButton" class="nav-add" type="button" aria-label="Renomear projeto" disabled>✎</button><button id="deleteProjectButton" class="nav-add" type="button" aria-label="Excluir projeto" disabled>×</button><button id="addProject" class="nav-add" type="button" aria-label="Conectar projeto">+</button></div></div>
 
         <select id="projectSelect" class="native-state-control" aria-label="Selecionar projeto ativo" title="Projeto ativo"><option value="">Conversas sem projeto</option></select>
@@ -94,6 +95,7 @@
             <label for="missionInput">Missão e instruções</label><textarea id="missionInput" maxlength="4000" rows="3" required></textarea>
             <button type="submit">Criar orquestrador</button>
           </form>
+        </details>
         </details>
       </section>
       <button id="newTask" class="primary new-task">＋ Nova conversa GPT</button>
@@ -148,9 +150,9 @@
     <section class="chat-column">
       <section id="orchestrationPanel" class="orchestration-panel" hidden aria-label="Conversa com o orquestrador">
         <header class="coordinator-head">
-          <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><span class="route-kicker" id="coordinatorRouteLabel">FORJADOR · GROQ</span><h2 id="orchestratorTitle">Conversa</h2><p id="orchestratorMission"></p></div></div>
+          <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><span class="route-kicker" id="coordinatorRouteLabel">FORJADOR</span><h2 id="orchestratorTitle">Conversa</h2><p id="orchestratorMission"></p></div></div>
           <div class="coordinator-head-actions">
-            <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Frentes</button>
+            <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Sessões GPT</button>
             <button id="pauseOrchestrator" class="ghost-button" type="button" disabled>Pausar</button>
             <button id="coordinatorApiSettings" class="ghost-button" type="button" aria-label="Abrir configurações de modelos" title="Configurar modelos conectados">Ajustes</button>
           </div>
@@ -250,11 +252,11 @@
         </div>
         <div id="coordinatorProposals" class="coordinator-proposals" aria-label="Propostas para revisão"></div>
         <form id="coordinatorComposer">
-          <label class="sr-only" for="coordinatorPrompt">Mensagem ao orquestrador</label>
+          <label class="sr-only" for="coordinatorPrompt">Mensagem ao Forjador</label>
           <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="O que você quer criar?" aria-describedby="orchestrationConnection" required></textarea>
           <button id="coordinatorSend" class="send-button coordinator-send" type="submit" aria-label="Enviar mensagem" disabled>Enviar</button>
         </form>
-        <small class="coordinator-route-note">Ao pedir uma criação, você autoriza o OrdaX a usar os serviços conectados para essa tarefa, respeitando os limites da sessão. Ctrl+Enter envia · Shift+Enter cria nova linha.</small>
+        <small class="coordinator-route-note">Converse com o Forjador. Ele coordena as ferramentas autorizadas; resultados só aparecem como concluídos após verificação. Enter envia · Shift+Enter quebra linha.</small>
         <small id="coordinatorDraftState" class="coordinator-draft-state" role="status" aria-live="polite"></small>
       </section>
       <p id="orchestrationNotice" class="orchestration-notice" role="status" aria-live="polite"></p>
@@ -330,16 +332,18 @@
       <section id="empty" class="empty">
         <div class="empty-mark">O</div>
         <h2>Seu projeto começa no Forge.</h2>
-        <p>Crie uma missão, converse com o Forge na área Groq e abra frentes de execução no ChatGPT Web quando precisar. Cada campo identifica o seu destino.</p>
+        <p>Crie ou selecione um projeto à esquerda. Depois, converse normalmente com o Forjador; a execução e os resultados aparecem à direita.</p>
         <button class="primary empty-create" type="button" data-start-project>Começar pelo Forge</button>
       </section>
     </section>
 
     <aside id="contextRail" class="context-rail">
       <nav id="rightPaneTabs" class="right-pane-tabs" aria-label="Painel de trabalho" role="tablist">
-        <button id="providerPaneTab" class="right-pane-tab active" type="button" role="tab" aria-selected="true" aria-controls="providerPanel" data-pane="provider">ChatGPT</button>
+        <button id="executionPaneTab" class="right-pane-tab active" type="button" role="tab" aria-selected="true" aria-controls="executionOverview" data-pane="execution">Execução</button>
         <button id="previewPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="previewPanel" data-pane="preview">Preview</button>
-        <button id="contextPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="contextPanel" data-pane="context">Projeto</button>
+        <button id="filesPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="filesPanel" data-pane="files">Arquivos</button>
+        <button id="providerPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="providerPanel" data-pane="provider">GPT Web</button>
+        <button id="contextPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="contextPanel" data-pane="context" hidden>Frentes</button>
       </nav>
       <section id="providerPanel" class="right-pane-panel provider-panel" role="tabpanel" aria-labelledby="providerPaneTab">
         <div class="provider-toolbar" aria-label="Navegação do ChatGPT">
@@ -357,9 +361,9 @@
         </div>
       </section>
       <section id="previewPanel" class="right-pane-panel preview-panel" role="tabpanel" aria-labelledby="previewPaneTab" hidden>
-        <div class="preview-state-card"><span class="eyebrow">Preview do projeto</span><h3>Runtime ainda não forneceu uma visualização</h3><p>Quando houver um preview autorizado do workspace pelo Runtime, ele aparecerá aqui. Esta tela não cria servidor nem simula arquivos.</p><span id="previewRuntimeState" class="preview-runtime-state">Aguardando conexão do Runtime</span></div>
+        <div class="preview-state-card"><span class="eyebrow">Preview do projeto</span><h3>O resultado aparecerá aqui</h3><p>A prévia exibe somente HTML realmente recebido e verificado pelo Forge. Nenhum site fictício é mostrado.</p><span id="previewRuntimeState" class="preview-runtime-state">Aguardando conexão do Runtime</span></div>
       </section>
-      <section id="executionOverview" class="execution-overview" aria-label="Estado real dos Runs e evidências do projeto" hidden>
+      <section id="executionOverview" class="execution-overview right-pane-panel" role="tabpanel" aria-labelledby="executionPaneTab" aria-label="Estado real dos Runs e evidências do projeto">
         <section id="workSurfacePreview" class="work-surface-preview" aria-label="Prévia visual do resultado" hidden>
           <header class="work-surface-heading"><div><span class="eyebrow">RESULTADO DO PROJETO</span><strong id="workSurfaceFilename">index.html</strong></div><span id="workSurfaceProof">HTML verificado</span><button id="workSurfaceModeToggle" type="button" title="Alternar prévia interativa e visual">Somente visual</button></header>
           <div id="workSurfaceVersionBar" class="work-surface-version-bar" hidden>
@@ -390,6 +394,11 @@
           <ol id="executionActivity" class="execution-activity"><li>Sem atividade confirmada para esta missão.</li></ol>
         </section>
         <details class="execution-monitor-details"><summary>Limites e evidências</summary><p>Os dados vêm do projeto local, dos Runs GPT e das decisões Groq registradas. Uma resposta GPT não comprova alterações, testes ou publicação. Nada é marcado como validado sem evidência externa.</p></details>
+      </section>
+      <section id="filesPanel" class="right-pane-panel forge-files-panel" role="tabpanel" aria-labelledby="filesPaneTab" hidden>
+        <div class="forge-files-heading"><span class="eyebrow">WORKSPACE DO PROJETO</span><h2 id="forgeFilesProjectName">Arquivos</h2><button id="forgeFilesRefresh" class="mini-secondary" type="button" aria-label="Atualizar estado do workspace">↻ Atualizar</button></div>
+        <div class="forge-files-empty" role="status" aria-live="polite"><span aria-hidden="true">▤</span><strong id="forgeFilesStateTitle">Sem pasta vinculada</strong><p id="forgeFilesState">Os arquivos aparecerão quando o Forge tiver um workspace real autorizado. Nenhuma pasta foi criada por esta tela.</p></div>
+        <button id="forgeFilesConnections" class="mini-secondary" type="button">Ver conexões</button>
       </section>
       <div id="contextPanel" class="right-pane-panel context-panel" role="tabpanel" aria-labelledby="contextPaneTab" hidden>
       <section id="orchestratorWorkRail" class="orchestrator-work-rail" hidden aria-label="Conversas do projeto no GPT">

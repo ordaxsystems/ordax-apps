@@ -26,7 +26,7 @@ const runReviewAttempted = new Set();
 let pendingReplyRecovery=null;
 let workspace = null;
 let workspaceNavigationWrite=Promise.resolve();
-let activeRightPane='provider';
+let activeRightPane='execution';
 let hostChatGPTPlan={connected:false,authorized:false,secureStorageAvailable:false,email:null};
 let providerBoundsRaf=0;
 const settingsDialog=document.getElementById('appSettingsDialog');
@@ -70,6 +70,7 @@ document.getElementById('settingsOpenChatGptLogin')?.addEventListener('click',()
 document.getElementById('settingsOpenProject')?.addEventListener('click',async()=>{
   settingsDialog?.close();
   if(!orchestrationUi?.getProjectId?.()) {
+    document.getElementById('forgeProjectAdvanced').open=true;
     document.getElementById('projectSetup').open=true;
     document.getElementById('projectName').focus();
     return;
@@ -90,9 +91,9 @@ function queueWorkSurfaceBounds(){
     workSurfaceBoundsRaf=0;
     if(typeof window.ordax.setInteractivePreviewBounds!=='function')return;
     const frame=$('#workSurfaceFrame');
-    const rail=$('#executionOverview');
+    const rail=$('#previewPanel');
     const active=workSurfaceInteractiveActive&&
-      !$('#workSurfacePreview').hidden&&
+      !$('#workSurfacePreview').hidden&&activeRightPane==='preview'&&
       document.body.classList.contains('orchestrator-focus')&&
       !document.body.classList.contains('orchestrator-rail-open');
     const a=frame.getBoundingClientRect(),b=rail.getBoundingClientRect();
@@ -150,6 +151,8 @@ function clearWorkSurfacePreview(){
   $('#workSurfaceModeToggle').textContent='Interativo';
   queueWorkSurfaceBounds();
   $('#workSurfaceStatus').textContent='Nenhum HTML verificado disponível neste projeto.';
+  const placeholder=$('#previewPanel .preview-state-card');
+  if(placeholder)placeholder.hidden=false;
 }
 async function refreshVerifiedWorkSurface(taskId){
   const epoch=++workSurfacePreviewEpoch;
@@ -220,6 +223,8 @@ async function refreshVerifiedWorkSurface(taskId){
         ?'Versão atual verificada. Prévia visual segura; JavaScript e rede desativados. Não publicado.'
         :'Última versão verificada. A alteração mais recente ainda não possui novo arquivo comprovado.';
     $('#workSurfacePreview').hidden=false;
+    const placeholder=$('#previewPanel .preview-state-card');
+    if(placeholder)placeholder.hidden=true;
     document.body.classList.add('work-surface-active');
     workSurfacePreviewTaskId=taskId;
     const frame=$('#workSurfaceFrame');
@@ -297,7 +302,16 @@ $('#workSurfaceModeToggle').addEventListener('click',async()=>{
     await refreshVerifiedWorkSurface(taskId);
   }
 });
-const rightPaneDefinitions=[['provider','providerPaneTab','providerPanel'],['preview','previewPaneTab','previewPanel'],['context','contextPaneTab','contextPanel']];
+// The Forjador remains the principal chat; the right rail is a tabbed workspace.
+// Move the single verified preview (not a clone) to its own tab.
+$('#previewPanel').prepend($('#workSurfacePreview'));
+const rightPaneDefinitions=[
+  ['execution','executionPaneTab','executionOverview'],
+  ['preview','previewPaneTab','previewPanel'],
+  ['files','filesPaneTab','filesPanel'],
+  ['provider','providerPaneTab','providerPanel'],
+  ['context','contextPaneTab','contextPanel']
+];
 function setWorkspaceRoute(route) {
   document.body.dataset.workspaceRoute=route;
   queueWorkSurfaceBounds();
@@ -379,7 +393,46 @@ async function selectRightPane(name) {
   document.documentElement.dataset.ordaxRightPane=name;
   if(window.matchMedia('(max-width:1024px)').matches)$('#contextRail').classList.add('open');
   queueProviderBounds();
+  queueWorkSurfaceBounds();
+  if(name==='files')void refreshForgeFilesPanel();
 }
+let forgeFilesInspectionGeneration=0;
+async function refreshForgeFilesPanel(){
+  const generation=++forgeFilesInspectionGeneration;
+  const projectId=orchestrationUi?.getProjectId?.()||null;
+  const title=$('#forgeFilesProjectName');
+  const state=$('#forgeFilesState');
+  const stateTitle=$('#forgeFilesStateTitle');
+  title.textContent=projectId
+    ?($('#activeProjectName')?.textContent||'Arquivos do projeto')
+    :'Arquivos';
+  if(!projectId){
+    stateTitle.textContent='Selecione um projeto';
+    state.textContent='Crie ou abra um projeto pela coluna esquerda. Nenhuma pasta é criada automaticamente nesta etapa do frontend.';
+    return;
+  }
+  stateTitle.textContent='Verificando workspace…';
+  state.textContent='Consultando somente o vínculo autorizado deste projeto.';
+  try{
+    const response=await window.ordax.orchestratorInvoke('workspace_status',{projectId});
+    if(generation!==forgeFilesInspectionGeneration||projectId!==orchestrationUi?.getProjectId?.())return;
+    const snapshot=response?.result?.workspace||response?.result||response;
+    const bindings=Array.isArray(snapshot?.bindings)?snapshot.bindings:[];
+    if(snapshot?.available===true&&bindings.length>0){
+      stateTitle.textContent='Workspace registrado';
+      state.textContent=bindings.length+' vínculo(s) encontrado(s). A leitura e edição de arquivos ainda exigem ferramentas e permissões verificadas; nenhum conteúdo foi carregado.';
+    }else{
+      stateTitle.textContent='Sem pasta autorizada';
+      state.textContent='O projeto existe no Forge, mas ainda não há workspace acessível. A próxima etapa integrará a criação e abertura de pastas reais.';
+    }
+  }catch{
+    if(generation!==forgeFilesInspectionGeneration)return;
+    stateTitle.textContent='Workspace não verificado';
+    state.textContent='Não foi possível consultar a conexão do projeto. Nenhum arquivo foi lido ou alterado.';
+  }
+}
+$('#forgeFilesRefresh').addEventListener('click',()=>void refreshForgeFilesPanel());
+$('#forgeFilesConnections').addEventListener('click',()=>openAppSettings('connections'));
 function persistWorkspaceNavigation({view,taskId=null,projectId,orchestratorId}={}) {
   if(typeof window.ordax.setWorkspaceNavigation!=='function')return Promise.reject(new Error('workspace_navigation_unavailable'));
   const navigation={
@@ -393,7 +446,7 @@ function persistWorkspaceNavigation({view,taskId=null,projectId,orchestratorId}=
 }
 // Provider WebContentsView and the OrdaX workspace remain side by side.
 async function showProviderPane(visible) {
-  return selectRightPane(visible?'provider':'context');
+  return selectRightPane(visible?'provider':'execution');
 }
 const providerViewportObserver=typeof ResizeObserver==='function'?new ResizeObserver(queueProviderBounds):null;
 providerViewportObserver?.observe($('#providerViewport'));
@@ -1326,7 +1379,7 @@ $('#scanMemoryCandidates').addEventListener('click', async () => {
   }
 });
 $('#toggleContext').addEventListener('click',()=>setContextOpen(!$('#contextRail').classList.contains('open')));
-$('#closeContext').addEventListener('click',()=>void selectRightPane('provider'));
+$('#closeContext').addEventListener('click',()=>void selectRightPane('execution'));
 window.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
   if (!$('#renameTaskForm').classList.contains('hidden')) { toggleTaskRename(false); return; }
@@ -1536,7 +1589,7 @@ document.querySelectorAll('.right-pane-tab').forEach(tab=>tab.addEventListener('
   void selectRightPane(tab.dataset.pane).catch(error=>{$('#providerDetail').textContent=friendlyError(error);});
 }));
 $('#providerPaneLogin').addEventListener('click',()=>$('#login').click());
-$('#providerClose').addEventListener('click',()=>void selectRightPane('context'));
+$('#providerClose').addEventListener('click',()=>void selectRightPane('execution'));
 const providerAction=async(button,action)=>{
   if(button.disabled)return;
   button.disabled=true;
@@ -1668,7 +1721,7 @@ window.ordax.onTaskReconciled(async payload=>{
   } catch {}
 });
 
-await selectRightPane('provider');
+await selectRightPane('execution');
 syncComposerAvailability(); // no send until session observed
 workspace = await window.ordax.workspace();
 orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRightPane,onOpenAppSettings:openAppSettings,
@@ -1678,6 +1731,7 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
   },
   onScopeChange:async ids=>{
     clearWorkSurfacePreview();
+    void refreshForgeFilesPanel();
     scopedTaskIds=ids;
     if(currentTaskId && (ids?!ids.has(currentTaskId):allTasks.find(t=>t.id===currentTaskId)?.lab_binding)) {
       flushDraft();currentTaskId=null;currentTask=null;navigationEpoch++;
@@ -1696,9 +1750,8 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
     document.body.classList.add('orchestrator-focus');
     setWorkspaceRoute('coordinator');
     $('#orchestratorWorkRail').hidden=false;
-    // The admin channel hides the GPT browser; the right pane displays
-    // the existing project's observed execution, never a second chat input.
-    flushDraft();await selectRightPane('context');
+    // The Forjador is the main chat; execution is the initial right tab.
+    flushDraft();await selectRightPane('execution');
     // Responsive views must not open the operation rail over the admin chat.
     if(window.matchMedia('(max-width:1024px)').matches)
       $('#contextRail').classList.remove('open');
@@ -1708,6 +1761,7 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
 });
 const savedNavigation=workspace?.metadata?.navigation;
 await orchestrationUi.start({restoreNavigation:savedNavigation});
+void refreshForgeFilesPanel();
 await loadTasks();
 // Executor conversations are inspectable through Missões, not a startup
 // destination. Do not open a previously selected GPT Task or re-run its
