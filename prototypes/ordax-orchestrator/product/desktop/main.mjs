@@ -24,6 +24,7 @@ import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { Store, MESSAGE_PAGE_SIZE } from '../src/store.mjs';
+import {forgeFreshConversationContext} from '../src/forge-fresh-conversation-context.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
 import {IsolatedInteractiveHtmlPreview} from './isolated-interactive-preview.mjs';
@@ -348,8 +349,12 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   }
   // The Forjador's GPT work turns request the already-installed OrdaX MCP.
   // Mentioning an app does not grant access or prove a tool was executed.
+  // A fresh Task chat inherits approved editorial context of its project.
+  // Established Task segments keep their existing checkpoint/handoff path.
+  const projectContext=!task.has_messages
+    ?forgeFreshConversationContext(store,taskId):null;
   const providerPrompt = withForjadorMcpMention(
-    (continuationPacket?.prompt || prompt)+contextAttachmentNotice,{authorSource}
+    (projectContext?.text||'')+(continuationPacket?.prompt || prompt)+contextAttachmentNotice,{authorSource}
   );
   if(contextManifest&&contextAttachmentNotice){
     if(providerPrompt.length>16000)throw new Error('task_handoff_prompt_budget_exceeded');
