@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('ordax', {
   forgeWorkspaceStatus: projectId => ipcRenderer.invoke('ordax:forge:workspace:status',projectId),
   forgeWorkspaceCreate: projectId => ipcRenderer.invoke('ordax:forge:workspace:create',projectId),
   forgeWorkspaceChoose: projectId => ipcRenderer.invoke('ordax:forge:workspace:choose',projectId),
+  forgeWorkspaceMigrate: projectId => ipcRenderer.invoke('ordax:forge:workspace:migrate',projectId),
   onOrchestratorChanged: callback => {
     const listener=()=>callback();
     ipcRenderer.on('ordax:orchestrator:changed',listener);

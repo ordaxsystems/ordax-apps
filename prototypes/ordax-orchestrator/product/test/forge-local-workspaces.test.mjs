@@ -125,3 +125,54 @@ test('historical private files block silent rebinding; deleting project metadata
   ).get(modern).n,0);
   assert.equal(f.files.read(old,'kept.txt').content,'historical');
 });
+
+test('owner-confirmed migration physically moves a legacy tree once and preserves SQLite project identity',async t=>{
+  const f=fixture(t);
+  const id=await f.project('Legado Café');
+  const old=path.join(f.privateRoot,id);
+  fs.mkdirSync(path.join(old,'src'),{recursive:true});
+  fs.writeFileSync(path.join(old,'src','index.html'),'<h1>Antes</h1>');
+  fs.mkdirSync(path.join(old,'empty'),{recursive:true});
+  const original=f.roots.status(id);
+  assert.equal(original.legacyMigrationRequired,true);
+  assert.equal(f.files.status(id).writeAvailable,false);
+  const result=f.roots.migrateLegacy(id);
+  assert.equal(result.migrated,true);
+  assert.equal(result.filesMoved,1);
+  assert.equal(result.sourceRemoved,true);
+  assert.equal(result.verified,true);
+  assert.equal(fs.existsSync(old),false);
+  assert.equal(fs.readFileSync(path.join(result.path,'src','index.html'),'utf8'),'<h1>Antes</h1>');
+  assert.equal(fs.statSync(path.join(result.path,'empty')).isDirectory(),true);
+  assert.equal(f.files.read(id,'src/index.html').content,'<h1>Antes</h1>');
+  const updated=f.files.write(id,'src/index.html','<h1>Depois</h1>',
+    f.files.read(id,'src/index.html').sha256);
+  assert.equal(updated.source,'forge_owner_bound_workspace');
+  assert.equal(fs.readFileSync(path.join(result.path,'src','index.html'),'utf8'),'<h1>Depois</h1>');
+  assert.equal(f.roots.status(id).path,result.path);
+  const reload=new ForgeLocalWorkspaces({store:f.store,
+    documentsDirectory:path.join(f.temp,'Documents'),legacyRoot:f.privateRoot});
+  assert.equal(reload.status(id).verified,true);
+  assert.throws(()=>f.roots.migrateLegacy(id),/already_bound/);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_projects WHERE id=?').get(id).n,1);
+});
+
+test('migration refuses active work and existing destinations, retaining old files until safe',async t=>{
+  const f=fixture(t);
+  const id=await f.project('Existing');
+  const old=path.join(f.privateRoot,id);
+  fs.mkdirSync(old,{recursive:true});
+  fs.writeFileSync(path.join(old,'file.txt'),'original');
+  const defaultFolder=path.join(f.temp,'Documents','Forge','Existing');
+  fs.mkdirSync(defaultFolder,{recursive:true});
+  fs.writeFileSync(path.join(defaultFolder,'do-not-touch.txt'),'human file');
+  f.store.db.prepare('UPDATE lab_projects SET observation_requested=1 WHERE id=?').run(id);
+  assert.throws(()=>f.roots.migrateLegacy(id),/observation_active/);
+  assert.equal(fs.readFileSync(path.join(old,'file.txt'),'utf8'),'original');
+  f.store.db.prepare('UPDATE lab_projects SET observation_requested=0 WHERE id=?').run(id);
+  const moved=f.roots.migrateLegacy(id);
+  assert.notEqual(moved.path,defaultFolder);
+  assert.equal(fs.readFileSync(path.join(defaultFolder,'do-not-touch.txt'),'utf8'),'human file');
+  assert.equal(fs.readFileSync(path.join(moved.path,'file.txt'),'utf8'),'original');
+  assert.equal(fs.existsSync(old),false);
+});

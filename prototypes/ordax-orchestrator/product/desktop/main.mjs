@@ -1305,6 +1305,23 @@ registerUiHandler('ordax:forge:workspace:choose',async(event,projectId)=>{
   orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
   return forgeLocalWorkspaces.bindSelected(projectId,chosen.filePaths[0]);
 });
+registerUiHandler('ordax:forge:workspace:migrate',async(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_workspace_native_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
+  const status=forgeLocalWorkspaces.status(projectId);
+  if(status.configured||!status.legacyMigrationRequired)
+    throw Error('forge_workspace_migration_not_applicable');
+  const accepted=await confirmInActiveUi({
+    title:'Migrar arquivos antigos do Forge',
+    message:'Mover os arquivos privados anteriores para a pasta oficial deste projeto?',
+    detail:'Os arquivos serão MOVIMENTADOS (não copiados) para Documentos/Forge. O Forge verifica SHA-256 e vincula a pasta ao projeto existente no mesmo SQLite. A operação não altera conversas, credenciais ou outros projetos. Se a pasta estiver em outro disco ou a verificação falhar, o movimento será bloqueado ou revertido.',
+    approveLabel:'Migrar arquivos'
+  });
+  if(!accepted)return {cancelled:true};
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
+  return forgeLocalWorkspaces.migrateLegacy(projectId);
+});
 // Local MCP is explicitly enabled only from the trusted Electron settings UI.
 // Activation returns a one-time bearer token; status never returns it.
 registerUiHandler('ordax:forge:local-mcp:status',event=>{

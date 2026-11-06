@@ -37,7 +37,10 @@ históricos, não instruções de implementação. A realidade de cada funcional
   leitura no app Windows após este corte. Se contiverem arquivos, a nova
   vinculação é bloqueada com `forge_workspace_migration_required` até uma
   migração explícita e validada; não copiar, apagar, sobrescrever nem
-  promover arquivos históricos silenciosamente.
+  promover arquivos históricos silenciosamente. O botão "Migrar arquivos
+  antigos" exige confirmação nativa, move a pasta por rename atômico no
+  mesmo disco e confere hashes SHA-256 antes de vincular o SQLite. Discos
+  distintos permanecem bloqueados até um transporte seguro validado.
 - **Exclusão de projeto:** retira vínculo e registros autorizados; conserva
   a pasta real e o conteúdo do usuário. Pasta movida, ausente, trocada por
   reparse point ou raiz fora do grant = falha fechada.
@@ -81,9 +84,11 @@ históricos, não instruções de implementação. A realidade de cada funcional
    de workspace real, criação padrão após novo projeto no IPC nativo,
    seletor nativo para projeto existente, broker ligado à raiz única,
    isolamento e pasta antiga sem novas escritas.
-3. **PENDENTE:** reconciliação assistida dos antigos arquivos privados
-   sem sobrescrever o workspace do usuário; ampliar ações tipadas para
-   arquivos binários, edições robustas, execução/testes e preview real.
+3. **MIGRAÇÃO NO WINDOWS IMPLEMENTADA; PROVA FÍSICA DO DIÁLOGO PENDENTE:**
+   o Owner pode mover a pasta privada anterior para Documentos/Forge, com
+   confirmação, SHA-256, rollback em falha e nenhuma cópia duplicada no
+   mesmo disco; migração entre volumes ainda bloqueada (EXDEV). Continuam
+   pendentes arquivos binários, edições robustas, execução/testes e preview real.
 4. **PENDENTE:** multiplexação segura de sessões/projetos em um único
    servidor MCP e uma ponte remota HTTPS com autenticação/consentimento.
    Não supor disponibilidade de escrita no GPT Web sem homologação.
@@ -135,5 +140,6 @@ preservados na exclusão, e nenhuma alegação de efeito sem prova independente.
 - [x] Endpoint MCP HTTP local por projeto, desligado por padrão, token aleatório não persistido, `127.0.0.1` apenas, expiração em 30 minutos, autenticação, escopo explícito e sem operações destrutivas. Configuração de ativar/desativar adicionada ao Electron; testes direcionados Windows aprovados (79/79).
 - [x] Descoberta MCP declarativa do aplicativo (`orchestrator_forge_discover`), recursos `forge://app/guide` e `forge://project/current`, regras canônicas compartilhadas com o contexto do projeto, projeção de capacidades do SQLite e broker privado, e binding automático do `projectId` na sessão autorizada. O cliente consulta o contrato sem exigir comandos, caminhos ou prompts técnicos do usuário; não presume pastas externas, deploy, grants ou resultados não comprovados.
 - [x] Binding físico de workspace Windows por projeto no mesmo Store/SQLite: `Documentos/Forge` pelo Windows para novos projetos, seletor nativo para projetos existentes, isolamento entre projetos/raiz, bloqueio de sobreposição, leitura apenas para pasta privada antiga e não remoção de arquivos do usuário ao excluir metadados. **Aceites físicos da interface e instalação ainda pendentes.**
+- [x] Migração explícita de diretório privado antigo no mesmo volume via botão nativo, sem cópia duplicada: verificação de árvore e SHA-256, bloqueio com Run/observação ativa, isolamento do projeto, preservação dos demais diretórios e rollback em falha. Cross-volume não suportado nesta etapa; não prometer movimento automático entre discos.
 - [ ] Conexão remota segura entre GPT Web e Forge, multiplexação de projetos no MCP e prova física da ferramenta invocada pelo GPT real. O endpoint de loopback sozinho não alcança o GPT na nuvem.
 - [ ] Prova física ponta a ponta, atualização do pacote e merge remoto. Alterações da etapa Administrador permanecem **apenas no checkout Windows**, sem push.

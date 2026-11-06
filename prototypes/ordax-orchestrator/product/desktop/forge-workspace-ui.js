@@ -4,13 +4,18 @@ const selector=el('forgeLocalMcpProject');
 const state=el('forgeWorkspaceState');
 const create=el('forgeWorkspaceCreate');
 const choose=el('forgeWorkspaceChoose');
+const migrate=el('forgeWorkspaceMigrate');
 const api=window.ordax;
-const available=['forgeWorkspaceStatus','forgeWorkspaceCreate','forgeWorkspaceChoose']
+const available=['forgeWorkspaceStatus','forgeWorkspaceCreate','forgeWorkspaceChoose','forgeWorkspaceMigrate']
   .every(name=>typeof api?.[name]==='function');
 let busy=false;
 let requested=0;
 function display(value){if(state)state.textContent=value;}
-function controls(enabled){if(create)create.disabled=!enabled;if(choose)choose.disabled=!enabled;}
+function controls(enabled){
+  if(create)create.disabled=!enabled;
+  if(choose)choose.disabled=!enabled;
+  if(migrate){migrate.disabled=true;migrate.hidden=true;}
+}
 async function refresh(){
   const current=selector?.value;
   const revision=++requested;
@@ -32,6 +37,13 @@ async function refresh(){
       display('Pasta indisponível ou movida: '+status.path+
         '. Acesso a arquivos bloqueado até reparo verificado.');
       controls(false);
+    }else if(status.legacyMigrationRequired){
+      display('Existem arquivos antigos neste projeto. Para evitar duas pastas de trabalho, mova-os para Documentos/Forge com confirmação e verificação.');
+      controls(false);
+      if(migrate){migrate.hidden=false;migrate.disabled=false;}
+    }else if(status.legacyWorkspaceBlocked){
+      display('Pasta privada antiga inacessível ou não confiável. Vinculação bloqueada até inspeção local.');
+      controls(false);
     }else{
       display('Sem pasta vinculada. Padrão: '+status.defaultParent+
         '. Os arquivos privados anteriores não serão apagados nem copiados automaticamente.');
@@ -50,8 +62,11 @@ async function action(which){
   try{
     const answer=which==='default'
       ?await api.forgeWorkspaceCreate(projectId)
-      :await api.forgeWorkspaceChoose(projectId);
+      :which==='migrate'?await api.forgeWorkspaceMigrate(projectId)
+        :await api.forgeWorkspaceChoose(projectId);
     if(answer?.cancelled)display('Seleção cancelada; nenhuma pasta foi vinculada.');
+    else if(answer?.migrated&&answer?.verified)
+      display('Migração verificada: '+answer.filesMoved+' arquivo(s), '+answer.bytesMoved+' bytes movidos. Nova pasta: '+answer.path);
     else if(answer?.configured&&answer?.verified)
       display('Pasta vinculada: '+answer.path);
   }catch(error){
@@ -60,6 +75,7 @@ async function action(which){
 }
 create?.addEventListener('click',()=>{void action('default');});
 choose?.addEventListener('click',()=>{void action('selected');});
+migrate?.addEventListener('click',()=>{void action('migrate');});
 selector?.addEventListener('change',()=>{void refresh();});
 el('settingsTabConnections')?.addEventListener('click',()=>{void refresh();});
 el('openAppSettings')?.addEventListener('click',()=>{void refresh();});
