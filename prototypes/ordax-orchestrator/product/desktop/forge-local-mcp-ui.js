@@ -37,18 +37,23 @@ async function refreshMcp(){
     const status=await api.forgeLocalMcpStatus();
     const scopes=Array.isArray(status.scopes)?status.scopes:(status.scope?[status.scope]:[]);
     const selected=scopes.includes(mcpProject?.value);
+    const trusted=Array.isArray(status.trustedProjects)?status.trustedProjects:[];
+    const approved=trusted.includes(mcpProject?.value);
     if(mcpStart){
       mcpStart.disabled=mcpBusy||!mcpProject?.value||selected;
-      mcpStart.textContent=status.running?'Autorizar outro projeto':'Ativar MCP local';
+      mcpStart.textContent=status.running
+        ?(approved?'Conectar projeto confiável':'Autorizar outro projeto')
+        :(approved?'Reativar projeto confiável':'Ativar MCP local');
     }
-    if(mcpRevoke)mcpRevoke.disabled=mcpBusy||!selected;
+    if(mcpRevoke)mcpRevoke.disabled=mcpBusy||(!selected&&!approved);
     if(mcpStop)mcpStop.disabled=mcpBusy||!status.running;
     if(mcpProject)mcpProject.disabled=mcpBusy;
     if(status.running){
       setState('MCP local ativo para '+scopes.length+' projeto(s), com tokens e sessões independentes. Cada autorização permanece ativa até revogação ou fechamento do Forge. A chave fica somente na memória. Não conectado ao GPT Web.');
     }else{
       hideSecret();
-      setState('MCP local desativado. Nenhuma porta MCP aberta pelo Forge.');
+      setState('MCP local desativado. Nenhuma porta MCP aberta pelo Forge. '+
+        trusted.length+' projeto(s) com confiança salva no SQLite; as chaves não são persistidas.');
     }
   }catch{
     hideSecret();

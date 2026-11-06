@@ -61,13 +61,21 @@ históricos, não instruções de implementação. A realidade de cada funcional
   revogação encerra apenas sessões do projeto revogado. `status` não revela
   tokens. A ponte HTTPS remota com consentimento ainda está pendente.
   Não criar processos MCP nem URLs separados para cada projeto.
-  **Continuidade atual:** a concessão não tem limite fixo de tempo, mas
-  permanece somente na memória durante a execução do Forge. Após encerrar
-  o processo/reiniciar o Windows, o cliente deve receber uma nova conexão
-  e um token temporário novo; não alegar consentimento ou reconexão
-  persistentes. **Próxima evolução:** consentimento durável no SQLite e
-  credenciais protegidas pelo Windows/fluxo de renovação do cliente, com
-  revogação efetiva e sem armazenar bearer em texto puro.
+  **Continuidade atual:** a confiança autorizada pelo Owner é registrada
+  por projeto na tabela `forge_mcp_owner_approvals` do SQLite existente,
+  sem guardar segredos. Na próxima ativação do mesmo projeto, o Forge
+  reconhece essa confiança sem repetir o diálogo; revogar remove o registro
+  e invalida seu acesso. Os tokens MCP continuam exclusivos e SOMENTE em
+  memória, sem expiração de 30 minutos: duram até revogar, desativar ou
+  encerrar o processo. Desativar todos fecha a porta, mas conserva as
+  aprovações para futura reativação. Cada aprovação guarda um hash SHA-256
+  da identidade do workspace, não seu caminho ou credencial: mudar a pasta
+  verificada invalida a confiança anterior e exige nova aprovação Owner.
+  **Limite ainda existente:** após reiniciar o Forge/Windows, endpoint e
+  chave do cliente local mudam e o cliente precisa reconectar. Para eliminar
+  essa última intervenção, será preciso integrar um fluxo seguro de renovação
+  de credenciais protegido pelo Windows ou OAuth, sem gravar bearer puro no
+  SQLite e sem abrir porta remota implicitamente.
 - **Autodescoberta:** `orchestrator_forge_discover`, recursos MCP
   `forge://app/guide` e `forge://project/current` anunciam regras,
   capacidades, pasta vinculada (sem vazar o caminho físico), memória, limites
@@ -115,7 +123,13 @@ históricos, não instruções de implementação. A realidade de cada funcional
    retornou -32602. Revogar pela UI invalidou somente o token selecionado
    (HTTP 401), preservando o outro (HTTP 200); Desativar todos fechou o
    servidor. As chaves não foram persistidas, publicadas ou copiadas para
-   documentação. **PENDENTE:** ponte HTTPS autenticada/consentida para GPT
+   documentação. **Continuidade homologada em perfil descartável `31075`:**
+   primeira confiança concedida no diálogo nativo; depois de desativar,
+   reativação sem novo diálogo com token diferente; após encerrar e iniciar
+   outra vez o Electron usando o mesmo SQLite, a confiança foi restaurada,
+   gerou novo token sem repetir o diálogo e foi revogada de forma durável.
+   Nenhuma chave foi gravada na tabela. **PENDENTE:** reconexão automática
+   do cliente após reinício e ponte HTTPS autenticada/consentida para GPT
    Web; não presumir suporte a escrita sem prova externa.
 5. **PROVAS WINDOWS REAIS (sem uso do perfil operacional):** interfaces
    MCP e arquivos, autorizações, criação/leitura/escrita e revogação foram
