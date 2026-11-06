@@ -28,7 +28,7 @@ test('Forge exposes project context without granting filesystem access or inferr
   assert.equal(result.workspace.projectFolderCreated,false);
   assert.equal(result.project.remoteRepositoryAccessVerified,false);
   assert.equal(result.protocol.version,FORGE_EXECUTOR_PROTOCOL.version);
-  assert.equal(result.limitations.physicalFileAccess,'requires_project_scoped_runtime_grant_and_file_tools');
+  assert.equal(result.limitations.physicalFileAccess,'requires_verified_project_binding_and_typed_file_tools');
   assert.equal(JSON.stringify(result).includes('C:\\Users\\'),false);
   await assert.rejects(service.invoke(context,'project_context',{projectId:'project_fake'}),
     /orchestrator_project_unavailable|orchestrator_access_denied/);
