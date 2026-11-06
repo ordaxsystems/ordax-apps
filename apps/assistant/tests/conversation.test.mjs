@@ -751,7 +751,8 @@ test("Aura distinguishes an unavailable Intelligence port and recovers only afte
   const intelligence = intelligencePort();
   intelligence.respond = (request) => {
     intelligence.requests.push(request);
-    intelligence.setState("unavailable");
+    // "degraded" is the canonical Intelligence port's unavailable state.
+    intelligence.setState("degraded");
     return Promise.reject(new Error("provider disconnected"));
   };
   const conversation = createAssistantConversationRuntime({ intelligencePort: intelligence });
