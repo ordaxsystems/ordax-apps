@@ -102,17 +102,27 @@ test('loopback MCP requires explicit token and keeps tools inside one project',a
   await assert.rejects(fetch(endpoint),/fetch failed|ECONNREFUSED/);
 });
 
-test('local MCP token expires and a project can be revoked mid-session',async t=>{
+test('local MCP remains usable beyond 30 minutes until explicit revocation or Forge shutdown',async t=>{
   const f=fixture(t);
-  const a=await f.makeProject('transport_expire');
+  const a=await f.makeProject('transport_continuity');
   const ready=await f.transport.start(a);
   const init=await rpc(ready.endpoint,ready.token,null,initialize);
   await rpc(ready.endpoint,ready.token,init.session,notify);
   f.advance(31*60_000);
-  const expired=await rpc(ready.endpoint,ready.token,init.session,
-    call(2,'project_files_status',{projectId:a}));
-  assert.equal(expired.status,503);
+  let alive=await rpc(ready.endpoint,ready.token,init.session,
+    call(2,'project_files_status',{}));
+  assert.equal(alive.status,200);
+  f.advance(100*24*60*60_000);
+  alive=await rpc(ready.endpoint,ready.token,init.session,
+    call(3,'project_files_status',{}));
+  assert.equal(alive.status,200);
+  assert.equal(f.transport.status().running,true);
+  assert.equal(f.transport.status().expiresAt,null);
+  assert.equal(f.transport.status().tokenPersisted,false);
+  assert.equal(f.transport.status().authorizationLifetime,'until_revoke_or_forge_exit');
+  await f.transport.revokeProject(a);
   assert.equal(f.transport.status().running,false);
+  await assert.rejects(fetch(ready.endpoint),/fetch failed|ECONNREFUSED/);
 });
 
 test('Forge MCP discovers its own rules, authorized project and live state without a prompt or projectId argument',async t=>{

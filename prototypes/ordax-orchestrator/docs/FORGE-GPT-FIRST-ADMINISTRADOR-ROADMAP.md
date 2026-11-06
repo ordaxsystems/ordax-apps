@@ -57,10 +57,17 @@ históricos, não instruções de implementação. A realidade de cada funcional
 - **Um MCP Forge multiprojeto:** um único listener `127.0.0.1` com até
   oito projetos autorizados por ações Owner independentes, tokens efêmeros
   exclusivos por projeto e sessões MCP ligadas à identidade do token. Cada
-  concessão expira após 30 minutos, sem renovar a validade das anteriores;
+  concessão permanece ativa até revogação explícita ou fechamento do Forge;
   revogação encerra apenas sessões do projeto revogado. `status` não revela
   tokens. A ponte HTTPS remota com consentimento ainda está pendente.
   Não criar processos MCP nem URLs separados para cada projeto.
+  **Continuidade atual:** a concessão não tem limite fixo de tempo, mas
+  permanece somente na memória durante a execução do Forge. Após encerrar
+  o processo/reiniciar o Windows, o cliente deve receber uma nova conexão
+  e um token temporário novo; não alegar consentimento ou reconexão
+  persistentes. **Próxima evolução:** consentimento durável no SQLite e
+  credenciais protegidas pelo Windows/fluxo de renovação do cliente, com
+  revogação efetiva e sem armazenar bearer em texto puro.
 - **Autodescoberta:** `orchestrator_forge_discover`, recursos MCP
   `forge://app/guide` e `forge://project/current` anunciam regras,
   capacidades, pasta vinculada (sem vazar o caminho físico), memória, limites
@@ -159,7 +166,7 @@ preservados na exclusão, e nenhuma alegação de efeito sem prova independente.
 - [x] Contexto inicial de cada nova conversa GPT ligado ao SQLite do projeto; injeta apenas notas aceitas com origem, tamanho limitado e sem reenviar mensagem/modelo. Testes de escopo entre projetos aprovados. **Ainda não é homologação física da nova sessão.**
 - [ ] Ativação e ciclo GPT Administrador sob demanda, com transição real entre conversas e leitura do workspace real. **Não alegar que o Administrador já está rodando.**
 - [x] Broker UTF-8 app-private conectado ao catálogo MCP no Windows: projeto isolado, caminhos relativos, SHA-256 na substituição e releitura física com recibos SQLite. Sem grants de pasta externa.
-- [x] Endpoint MCP HTTP local por projeto, desligado por padrão, token aleatório não persistido, `127.0.0.1` apenas, expiração em 30 minutos, autenticação, escopo explícito e sem operações destrutivas. Configuração de ativar/desativar adicionada ao Electron; testes direcionados Windows aprovados (79/79).
+- [x] Endpoint MCP HTTP local por projeto, desligado por padrão, token aleatório não persistido, `127.0.0.1` apenas, autorização por sessão do aplicativo (sem prazo fixo), autenticação, escopo explícito e sem operações destrutivas. Configuração de ativar/desativar adicionada ao Electron; testes direcionados Windows aprovados (79/79).
 - [x] Descoberta MCP declarativa do aplicativo (`orchestrator_forge_discover`), recursos `forge://app/guide` e `forge://project/current`, regras canônicas compartilhadas com o contexto do projeto, projeção de capacidades do SQLite e broker privado, e binding automático do `projectId` na sessão autorizada. O cliente consulta o contrato sem exigir comandos, caminhos ou prompts técnicos do usuário; não presume pastas externas, deploy, grants ou resultados não comprovados.
 - [x] Binding físico de workspace Windows por projeto no mesmo Store/SQLite: `Documentos/Forge` pelo Windows para novos projetos, seletor nativo para projetos existentes, isolamento entre projetos/raiz, bloqueio de sobreposição, leitura apenas para pasta privada antiga e não remoção de arquivos do usuário ao excluir metadados. **Aceites físicos da interface e instalação ainda pendentes.**
 - [x] Migração explícita de diretório privado antigo no mesmo volume via botão nativo, sem cópia duplicada: verificação de árvore e SHA-256, bloqueio com Run/observação ativa, isolamento do projeto, preservação dos demais diretórios e rollback em falha. Cross-volume não suportado nesta etapa; não prometer movimento automático entre discos.

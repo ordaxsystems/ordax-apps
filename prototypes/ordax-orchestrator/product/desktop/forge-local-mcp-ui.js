@@ -45,7 +45,7 @@ async function refreshMcp(){
     if(mcpStop)mcpStop.disabled=mcpBusy||!status.running;
     if(mcpProject)mcpProject.disabled=mcpBusy;
     if(status.running){
-      setState('MCP local ativo para '+scopes.length+' projeto(s), com tokens e sessões independentes. Cada autorização expira individualmente em 30 minutos. Não conectado ao GPT Web.');
+      setState('MCP local ativo para '+scopes.length+' projeto(s), com tokens e sessões independentes. Cada autorização permanece ativa até revogação ou fechamento do Forge. A chave fica somente na memória. Não conectado ao GPT Web.');
     }else{
       hideSecret();
       setState('MCP local desativado. Nenhuma porta MCP aberta pelo Forge.');

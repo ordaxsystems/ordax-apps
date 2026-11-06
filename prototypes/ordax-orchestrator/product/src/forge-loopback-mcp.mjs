@@ -9,7 +9,8 @@ const MAX_REQUEST_BYTES=180_000;
 const MAX_RESPONSE_BYTES=450_000;
 const ID=/^project_[a-zA-Z0-9-]{1,100}$/;
 const SESSION=/^[0-9a-f-]{36}$/;
-const DEADLINE_MS=30*60_000;
+// Owner approval lives for the running Forge process, not a fixed 30-minute
+// wall clock. Credentials remain RAM-only, scoped and revoked on stop/exit.
 
 function constantMatch(candidate,expected){
   if(typeof candidate!=='string'||candidate.length>512)return false;
@@ -45,7 +46,7 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.no
   let server=null,port=null;
   const sessions=new Map(),grants=new Map();
   const bound=()=>server?.listening===true;
-  const valid=grant=>grant&&clock()-grant.startedAt<DEADLINE_MS;
+  const valid=grant=>Boolean(grant)&&grants.get(grant.projectId)===grant;
   const authorizedGrants=()=>[...grants.values()].filter(valid);
   const active=()=>bound()&&authorizedGrants().length>0;
   const status=()=>{
@@ -53,16 +54,17 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.no
     return {running:current.length>0,transport:'http_streamable_local',
       scope:current[0]?.projectId??null,scopes:current.map(grant=>grant.projectId),
       grants:current.map(grant=>({projectId:grant.projectId,
-        expiresAt:new Date(grant.startedAt+DEADLINE_MS).toISOString()})),
+        authorizedAt:new Date(grant.startedAt).toISOString(),
+        authorizationLifetime:'until_revoke_or_forge_exit'})),
       loopbackOnly:true,tokenPersisted:false,remoteChatGptConnected:false,
       endpoint:current.length?'http://127.0.0.1:'+port+'/mcp':null,
-      expiresAt:current.length?new Date(Math.min(...current.map(grant=>grant.startedAt))+DEADLINE_MS).toISOString():null,
+      expiresAt:null,authorizationLifetime:'until_revoke_or_forge_exit',
       sessions:[...sessions.values()].filter(entry=>valid(entry.grant)).length};
   };
 
   async function onRequest(req,res){
     try{
-      if(!active())return json(res,503,{error:'forge_mcp_disabled_or_expired'});
+      if(!active())return json(res,503,{error:'forge_mcp_disabled'});
       if(req.url!=='/mcp'||!['POST','DELETE','GET'].includes(req.method))
         return json(res,404,{error:'forge_mcp_route_unavailable'});
       // No browser origins: prevents web pages from using local owner powers.
@@ -164,8 +166,8 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.no
         throw Error('forge_mcp_project_not_authorized');
       if(valid(grants.get(requestedProjectId)))throw Error('forge_mcp_project_already_granted');
       if(authorizedGrants().length>=8)throw Error('forge_mcp_project_limit');
-      // Re-authorizing an expired project rotates its token and invalidates
-      // previous sessions. Every new project requires independent Owner consent.
+      // Every new project requires independent Owner consent. Revoked project
+      // tokens cannot be reused, even when the same project is authorized again.
       for(const [id,entry] of sessions)
         if(entry.grant.projectId===requestedProjectId)sessions.delete(id);
       const grant={projectId:requestedProjectId,

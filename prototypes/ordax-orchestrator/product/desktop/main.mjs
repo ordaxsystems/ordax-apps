@@ -1345,8 +1345,8 @@ registerUiHandler('ordax:forge:local-mcp:start',async(event,projectId)=>{
   orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
   if(!await confirmInActiveUi({title:'Habilitar MCP Forge local',
     message:'Autorizar um cliente MCP instalado neste Windows para este projeto?',
-    detail:'Conexão exclusiva a 127.0.0.1, chave temporária, expira em 30 minutos. Permite leitura e escrita somente no workspace atual deste projeto, quando vinculado e verificado. Não concede acesso a outras pastas, não publica na internet e não conecta automaticamente ao GPT Web.',
-    approveLabel:'Habilitar por 30 minutos'}))return {running:false,declined:true};
+    detail:'Conexão exclusiva a 127.0.0.1, chave temporária, vale até revogar ou fechar o Forge; a chave permanece somente na memória. Permite leitura e escrita somente no workspace atual deste projeto, quando vinculado e verificado. Não concede acesso a outras pastas, não publica na internet e não conecta automaticamente ao GPT Web.',
+    approveLabel:'Habilitar nesta sessão'}))return {running:false,declined:true};
   return forgeLocalMcp.start(projectId);
 });
 // One loopback endpoint can host multiple owner-authorized projects, but
@@ -1358,7 +1358,7 @@ registerUiHandler('ordax:forge:local-mcp:add',async(event,projectId)=>{
   if(!forgeLocalMcp.status().running)throw Error('forge_mcp_not_active');
   if(!await confirmInActiveUi({title:'Autorizar projeto no MCP Forge',
     message:'Permitir uma conexão MCP independente para este outro projeto?',
-    detail:'O servidor local permanece na mesma porta. Este projeto terá token e sessões exclusivos por 30 minutos. A autorização não inclui outros projetos, não publica na internet e não conecta automaticamente ao GPT Web.',
+    detail:'O servidor local permanece na mesma porta. Este projeto terá token e sessões exclusivos até revogação ou fechamento do Forge. A autorização não inclui outros projetos, não publica na internet e não conecta automaticamente ao GPT Web.',
     approveLabel:'Autorizar este projeto'}))return {declined:true};
   orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
   return forgeLocalMcp.addProject(projectId);

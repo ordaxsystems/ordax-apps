@@ -102,17 +102,24 @@ test('one MCP localhost listener serves independently authorized projects withou
   assert.equal(stopped.running,false);
 });
 
-test('independent 30-minute project grant expiry never extends previous tokens',async t=>{
+test('independent project grants survive elapsed time but never survive revocation or process stop',async t=>{
   const f=fixture(t),a=await f.project('early'),b=await f.project('later');
   const first=await f.transport.start(a);
   f.advance(25*60_000);
   const second=f.transport.addProject(b);
   f.advance(6*60_000);
-  assert.deepEqual(f.transport.status().scopes,[b]);
+  assert.deepEqual(f.transport.status().scopes,[a,b]);
+  assert.equal((await request(first.endpoint,first.token,null,initialize)).status,200);
+  assert.equal((await request(second.endpoint,second.token,null,initialize)).status,200);
+  f.advance(180*24*60*60_000);
   assert.equal(f.transport.status().running,true);
+  assert.equal((await request(first.endpoint,first.token,null,initialize)).status,200);
+  assert.equal((await request(second.endpoint,second.token,null,initialize)).status,200);
+  const removed=await f.transport.revokeProject(a);
+  assert.deepEqual(removed.scopes,[b]);
   assert.equal((await request(first.endpoint,first.token,null,initialize)).status,401);
   assert.equal((await request(second.endpoint,second.token,null,initialize)).status,200);
-  f.advance(25*60_000);
+  await f.transport.stop();
   assert.equal(f.transport.status().running,false);
-  assert.equal((await request(second.endpoint,second.token,null,initialize)).status,503);
+  await assert.rejects(fetch(second.endpoint),/fetch failed|ECONNREFUSED/);
 });
