@@ -71,11 +71,27 @@ históricos, não instruções de implementação. A realidade de cada funcional
   aprovações para futura reativação. Cada aprovação guarda um hash SHA-256
   da identidade do workspace, não seu caminho ou credencial: mudar a pasta
   verificada invalida a confiança anterior e exige nova aprovação Owner.
-  **Limite ainda existente:** após reiniciar o Forge/Windows, endpoint e
-  chave do cliente local mudam e o cliente precisa reconectar. Para eliminar
-  essa última intervenção, será preciso integrar um fluxo seguro de renovação
-  de credenciais protegido pelo Windows ou OAuth, sem gravar bearer puro no
-  SQLite e sem abrir porta remota implicitamente.
+  **Reconexão segura opcional implementada no checkout (prova física pendente):**
+  o Owner pode habilitar por projeto **Manter conectado após reinício** via
+  confirmação nativa. Electron `safeStorage`/DPAPI cifra o bearer no SQLite
+  canônico `forge_mcp_secure_resume` e grava a porta loopback; o servidor
+  pode reabrir na mesma porta e com a credencial cifrada após reiniciar o
+  Forge. Não há segundo instalador/servidor MCP: permanece um listener dentro
+  do app. O modo é **desligado por padrão**, exige consentimento explícito,
+  proteção Windows disponível, identidade verificada da pasta e mesma sessão
+  Owner. Porta ocupada, cifra inválida e troca de pasta causam bloqueio
+  fail-closed. **Desativar todos** também desativa a reconexão no próximo
+  boot. Revogar confiança exclui as credenciais cifradas em cascata.
+  Sem opt-in, a autorização persiste mas o token continua somente em RAM.
+  Mesmo com o modo opcional, a instalação/configuração física de um cliente
+  MCP que reutilize o endereço/credencial ainda precisa de E2E.
+  **Transporte com GPT Web:** priorizar o Secure MCP Tunnel oficial da OpenAI
+  em vez de expor uma URL HTTPS pública; requer tunnel_id, runtime key, app
+  de conexão autorizado e validação real de permissões do plano/workspace.
+  Não foi instalado/conectado nesta etapa e não deve receber tokens em logs
+  ou parâmetros de linha de comando.
+  Fontes: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
+  e https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt.
 - **Autodescoberta:** `orchestrator_forge_discover`, recursos MCP
   `forge://app/guide` e `forge://project/current` anunciam regras,
   capacidades, pasta vinculada (sem vazar o caminho físico), memória, limites

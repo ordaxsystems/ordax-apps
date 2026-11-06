@@ -9,6 +9,7 @@ const MAX_REQUEST_BYTES=180_000;
 const MAX_RESPONSE_BYTES=450_000;
 const ID=/^project_[a-zA-Z0-9-]{1,100}$/;
 const SESSION=/^[0-9a-f-]{36}$/;
+const TOKEN=/^[A-Za-z0-9_-]{40,128}$/;
 // Owner approval lives for the running Forge process, not a fixed 30-minute
 // wall clock. Credentials remain RAM-only, scoped and revoked on stop/exit.
 
@@ -129,15 +130,20 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.no
   }
   return Object.freeze({
     status,
-    async start(requestedProjectId){
+    // Restored credentials are allowed only on the trusted Electron owner path.
+    async start(requestedProjectId,{listenPort=0,resumeToken=null}={}){
       if(!ID.test(requestedProjectId)||!authorizeProject(requestedProjectId))
         throw Error('forge_mcp_project_not_authorized');
       if(bound()){
         if(active())throw Error('forge_mcp_already_active');
         await this.stop();
       }
+      if(!Number.isInteger(listenPort)||listenPort<0||listenPort>65535||
+          (listenPort>0&&listenPort<1024)||
+          (resumeToken!==null&&(typeof resumeToken!=='string'||!TOKEN.test(resumeToken))))
+        throw Error('forge_mcp_resume_connection_invalid');
       const grant={projectId:requestedProjectId,
-        token:randomBytes(32).toString('base64url'),startedAt:clock()};
+        token:resumeToken??randomBytes(32).toString('base64url'),startedAt:clock()};
       grants.clear();grants.set(requestedProjectId,grant);
       sessions.clear();
       server=http.createServer((req,res)=>{void onRequest(req,res);});
@@ -147,7 +153,7 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.no
       try{
         await new Promise((resolve,reject)=>{
           server.once('error',reject);
-          server.listen(0,'127.0.0.1',()=>{
+          server.listen(listenPort,'127.0.0.1',()=>{
             server.off('error',reject);
             resolve();
           });
@@ -160,20 +166,28 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.no
         throw error;
       }
     },
-    addProject(requestedProjectId){
+    addProject(requestedProjectId,{resumeToken=null}={}){
       if(!active())throw Error('forge_mcp_not_active');
       if(!ID.test(requestedProjectId)||!authorizeProject(requestedProjectId))
         throw Error('forge_mcp_project_not_authorized');
       if(valid(grants.get(requestedProjectId)))throw Error('forge_mcp_project_already_granted');
       if(authorizedGrants().length>=8)throw Error('forge_mcp_project_limit');
-      // Every new project requires independent Owner consent. Revoked project
-      // tokens cannot be reused, even when the same project is authorized again.
+      // Every new project requires independent Owner consent. Revoked tokens
+      // cannot be reused, even when the same project is authorized again.
+      if(resumeToken!==null&&(typeof resumeToken!=='string'||!TOKEN.test(resumeToken)))
+        throw Error('forge_mcp_resume_connection_invalid');
       for(const [id,entry] of sessions)
         if(entry.grant.projectId===requestedProjectId)sessions.delete(id);
       const grant={projectId:requestedProjectId,
-        token:randomBytes(32).toString('base64url'),startedAt:clock()};
+        token:resumeToken??randomBytes(32).toString('base64url'),startedAt:clock()};
       grants.set(requestedProjectId,grant);
       return {...status(),token:grant.token,projectId:grant.projectId};
+    },
+    // Not exposed through IPC or status; Main uses this to seal credentials.
+    localGrant(requestedProjectId){
+      const grant=grants.get(requestedProjectId);
+      if(!bound()||!grant)return null;
+      return {projectId:grant.projectId,token:grant.token,port};
     },
     async revokeProject(requestedProjectId){
       if(!grants.delete(requestedProjectId))throw Error('forge_mcp_project_not_granted');

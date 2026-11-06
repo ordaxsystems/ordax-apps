@@ -4,6 +4,7 @@ const localMcpElement=id=>document.getElementById(id);
 const mcpStart=localMcpElement('forgeLocalMcpStart');
 const mcpStop=localMcpElement('forgeLocalMcpStop');
 const mcpRevoke=localMcpElement('forgeLocalMcpRevoke');
+const mcpResume=localMcpElement('forgeLocalMcpResume');
 const mcpProject=localMcpElement('forgeLocalMcpProject');
 const mcpState=localMcpElement('forgeLocalMcpState');
 const mcpCredentials=localMcpElement('forgeLocalMcpCredentials');
@@ -15,6 +16,8 @@ const usable=typeof api?.forgeLocalMcpStatus==='function'&&
   typeof api?.forgeLocalMcpStart==='function'&&
   typeof api?.forgeLocalMcpAdd==='function'&&
   typeof api?.forgeLocalMcpRevoke==='function'&&
+  typeof api?.forgeLocalMcpResumeEnable==='function'&&
+  typeof api?.forgeLocalMcpResumeDisable==='function'&&
   typeof api?.forgeLocalMcpStop==='function';
 
 function hideSecret(){
@@ -31,6 +34,7 @@ async function refreshMcp(){
     if(mcpStart)mcpStart.disabled=true;
     if(mcpStop)mcpStop.disabled=true;
     if(mcpRevoke)mcpRevoke.disabled=true;
+    if(mcpResume)mcpResume.disabled=true;
     return;
   }
   try{
@@ -39,6 +43,8 @@ async function refreshMcp(){
     const selected=scopes.includes(mcpProject?.value);
     const trusted=Array.isArray(status.trustedProjects)?status.trustedProjects:[];
     const approved=trusted.includes(mcpProject?.value);
+    const autoResume=Array.isArray(status.autoResumeProjects)
+      ?status.autoResumeProjects.includes(mcpProject?.value):false;
     if(mcpStart){
       mcpStart.disabled=mcpBusy||!mcpProject?.value||selected;
       mcpStart.textContent=status.running
@@ -46,10 +52,17 @@ async function refreshMcp(){
         :(approved?'Reativar projeto confiável':'Ativar MCP local');
     }
     if(mcpRevoke)mcpRevoke.disabled=mcpBusy||(!selected&&!approved);
+    if(mcpResume){
+      mcpResume.textContent=autoResume?'Desativar reconexão automática':'Manter conectado após reinício';
+      mcpResume.disabled=mcpBusy||(!autoResume&&(!selected||!status.autoResumeAvailable));
+    }
     if(mcpStop)mcpStop.disabled=mcpBusy||!status.running;
     if(mcpProject)mcpProject.disabled=mcpBusy;
     if(status.running){
-      setState('MCP local ativo para '+scopes.length+' projeto(s), com tokens e sessões independentes. Cada autorização permanece ativa até revogação ou fechamento do Forge. A chave fica somente na memória. Não conectado ao GPT Web.');
+      setState('MCP local ativo para '+scopes.length+' projeto(s). '+
+        (status.autoResumeBlocked?'Reconexão bloqueada; confira a porta e autorizações. ':'')+
+        'Reconexão após reinício é opcional e protegida pelo Windows. '+
+        'Não conectado ao GPT Web.');
     }else{
       hideSecret();
       setState('MCP local desativado. Nenhuma porta MCP aberta pelo Forge. '+
@@ -61,6 +74,7 @@ async function refreshMcp(){
     if(mcpStart)mcpStart.disabled=true;
     if(mcpStop)mcpStop.disabled=true;
     if(mcpRevoke)mcpRevoke.disabled=true;
+    if(mcpResume)mcpResume.disabled=true;
   }
 }
 async function loadProjects(){
@@ -110,6 +124,18 @@ mcpRevoke?.addEventListener('click',async()=>{
   mcpBusy=true;mcpRevoke.disabled=true;
   try{await api.forgeLocalMcpRevoke(mcpProject.value);hideSecret();}
   catch{setState('Não foi possível revogar a autorização deste projeto.');}
+  finally{mcpBusy=false;await refreshMcp();}
+});
+mcpResume?.addEventListener('click',async()=>{
+  if(mcpBusy||!usable||!mcpProject?.value)return;
+  mcpBusy=true;mcpResume.disabled=true;
+  try{
+    const info=await api.forgeLocalMcpStatus();
+    const isEnabled=Array.isArray(info.autoResumeProjects)&&
+      info.autoResumeProjects.includes(mcpProject.value);
+    if(isEnabled)await api.forgeLocalMcpResumeDisable(mcpProject.value);
+    else await api.forgeLocalMcpResumeEnable(mcpProject.value);
+  }catch{setState('Reconexão segura não disponível neste perfil Windows.');}
   finally{mcpBusy=false;await refreshMcp();}
 });
 mcpProject?.addEventListener('change',()=>{hideSecret();void refreshMcp();});

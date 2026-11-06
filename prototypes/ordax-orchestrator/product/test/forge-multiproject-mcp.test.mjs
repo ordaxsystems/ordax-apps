@@ -102,6 +102,30 @@ test('one MCP localhost listener serves independently authorized projects withou
   assert.equal(stopped.running,false);
 });
 
+
+test('opt-in credentials can restore the same local MCP address after process restart',async t=>{
+  const f=fixture(t),a=await f.project('secure-reconnect');
+  const token='A'.repeat(43);
+  const started=await f.transport.start(a,{resumeToken:token});
+  assert.equal(started.token,token);
+  const port=Number(new URL(started.endpoint).port);
+  assert.ok(port>=1024);
+  const first=await request(started.endpoint,token,null,initialize);
+  assert.equal(first.status,200);
+  await f.transport.stop();
+  assert.equal(f.transport.status().running,false);
+  const restored=await f.transport.start(a,{listenPort:port,resumeToken:token});
+  assert.equal(restored.endpoint,started.endpoint);
+  assert.equal(restored.token,token);
+  const renewed=await request(restored.endpoint,token,null,initialize);
+  assert.equal(renewed.status,200);
+  assert.notEqual(renewed.session,first.session);
+  assert.equal((await request(restored.endpoint,'wrong',null,initialize)).status,401);
+  assert.throws(()=>f.transport.addProject(a,{resumeToken:'invalid'}),/already_granted/);
+  await f.transport.stop();
+  await assert.rejects(fetch(restored.endpoint),/fetch failed|ECONNREFUSED/);
+});
+
 test('independent project grants survive elapsed time but never survive revocation or process stop',async t=>{
   const f=fixture(t),a=await f.project('early'),b=await f.project('later');
   const first=await f.transport.start(a);

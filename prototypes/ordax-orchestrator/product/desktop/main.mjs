@@ -30,6 +30,7 @@ import {forgeFreshConversationContext} from '../src/forge-fresh-conversation-con
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {createForgeLoopbackMcp} from '../src/forge-loopback-mcp.mjs';
 import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
+import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
 import {IsolatedInteractiveHtmlPreview} from './isolated-interactive-preview.mjs';
@@ -1243,6 +1244,9 @@ const forgeMcpTrusted=new ForgeMcpOwnerTrust({store,
     return 'owner-bound:'+binding.root+':'+binding.identity;
   }
 });
+const forgeMcpResume=new ForgeMcpSecureResume({store,ownerTrust:forgeMcpTrusted,
+  secureStorage:safeStorage});
+let forgeMcpResumeError=null;
 const forgeLocalMcp=createForgeLoopbackMcp({
   createMcp:({projectId,allowedOperations})=>createOrchestratorMcp({
     service:orchestratorService,getContext:()=>localOrchestratorContext,
@@ -1349,7 +1353,10 @@ registerUiHandler('ordax:forge:workspace:migrate',async(event,projectId)=>{
 registerUiHandler('ordax:forge:local-mcp:status',event=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
-  return {...forgeLocalMcp.status(),trustedProjects:forgeMcpTrusted.trustedProjects()};
+  return {...forgeLocalMcp.status(),trustedProjects:forgeMcpTrusted.trustedProjects(),
+    autoResumeProjects:forgeMcpResume.enabledProjects(),
+    autoResumeAvailable:forgeMcpResume.supported(),
+    autoResumeBlocked:forgeMcpResumeError};
 });
 registerUiHandler('ordax:forge:local-mcp:start',async(event,projectId)=>{
   requireTrustedSupervisorRenderer(event);
@@ -1362,7 +1369,11 @@ registerUiHandler('ordax:forge:local-mcp:start',async(event,projectId)=>{
     approveLabel:'Confiar e habilitar'}))return {running:false,declined:true};
   const previouslyTrusted=forgeMcpTrusted.isTrusted(projectId);
   if(!previouslyTrusted)forgeMcpTrusted.trust(projectId);
-  try{return {...await forgeLocalMcp.start(projectId),trusted:true};}
+  try{
+    const saved=forgeMcpResume.recover().find(grant=>grant.projectId===projectId);
+    return {...await forgeLocalMcp.start(projectId,saved
+      ?{listenPort:saved.port,resumeToken:saved.token}:{}),trusted:true};
+  }
   catch(error){if(!previouslyTrusted)forgeMcpTrusted.revoke(projectId);throw error;}
 });
 // One loopback endpoint can host multiple owner-authorized projects, but
@@ -1380,7 +1391,11 @@ registerUiHandler('ordax:forge:local-mcp:add',async(event,projectId)=>{
   orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
   const previouslyTrusted=forgeMcpTrusted.isTrusted(projectId);
   if(!previouslyTrusted)forgeMcpTrusted.trust(projectId);
-  try{return {...forgeLocalMcp.addProject(projectId),trusted:true};}
+  try{
+    const saved=forgeMcpResume.recover().find(grant=>grant.projectId===projectId);
+    return {...forgeLocalMcp.addProject(projectId,saved?.port===forgeLocalMcp.localGrant(
+      forgeLocalMcp.status().scope)?.port?{resumeToken:saved.token}:{}),trusted:true};
+  }
   catch(error){if(!previouslyTrusted)forgeMcpTrusted.revoke(projectId);throw error;}
 });
 registerUiHandler('ordax:forge:local-mcp:revoke',async(event,projectId)=>{
@@ -1393,9 +1408,39 @@ registerUiHandler('ordax:forge:local-mcp:revoke',async(event,projectId)=>{
   return {...forgeLocalMcp.status(),...forgotten,
     trustedProjects:forgeMcpTrusted.trustedProjects()};
 });
+registerUiHandler('ordax:forge:local-mcp:resume-enable',async(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
+  if(!forgeMcpTrusted.isTrusted(projectId))throw Error('forge_mcp_resume_trust_required');
+  if(!forgeMcpResume.supported())throw Error('forge_mcp_resume_windows_protection_unavailable');
+  const grant=forgeLocalMcp.localGrant(projectId);
+  if(!grant)throw Error('forge_mcp_resume_active_grant_required');
+  const approved=await confirmInActiveUi({
+    title:'Manter MCP Forge conectado após reiniciar',
+    message:'Reconectar automaticamente este projeto quando o Forge iniciar?',
+    detail:'Esta opção mantém um token exclusivo do projeto cifrado pelo Windows no SQLite do Forge. O token não é gravado em texto puro. O Forge poderá abrir a conexão local e dar acesso ao workspace autorizado após reiniciar, até você desativar a reconexão ou revogar a confiança. Nunca publica o MCP na internet. Se a pasta mudar, o acesso será bloqueado.',
+    approveLabel:'Habilitar reconexão segura'
+  });
+  if(!approved)return {declined:true};
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
+  if(!forgeMcpTrusted.isTrusted(projectId))throw Error('forge_mcp_resume_trust_revoked');
+  const current=forgeLocalMcp.localGrant(projectId);
+  if(!current||current.token!==grant.token||current.port!==grant.port)
+    throw Error('forge_mcp_resume_grant_rotated');
+  return {...forgeMcpResume.enable(current),
+    autoResumeProjects:forgeMcpResume.enabledProjects()};
+});
+registerUiHandler('ordax:forge:local-mcp:resume-disable',(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
+  return {...forgeMcpResume.disable(projectId),
+    autoResumeProjects:forgeMcpResume.enabledProjects()};
+});
 registerUiHandler('ordax:forge:local-mcp:stop',async event=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
+  forgeMcpResume.disableAll(); // Desativar todos must remain off after restart.
   return forgeLocalMcp.stop();
 });
 registerUiHandler('ordax:orchestrator:invoke',async(event,payload)=>{
@@ -1633,6 +1678,23 @@ app.whenReady().then(async () => {
     }
   });
 
+  // Opt-in only: restart the same in-app MCP listener from Windows-sealed
+  // project credentials. Fail closed if any binding or loopback port is invalid.
+  if(!hostBrowserMode){
+    const saved=forgeMcpResume.recover();
+    if(saved.length){
+      try{
+        await forgeLocalMcp.start(saved[0].projectId,
+          {listenPort:saved[0].port,resumeToken:saved[0].token});
+        for(const grant of saved.slice(1))
+          forgeLocalMcp.addProject(grant.projectId,{resumeToken:grant.token});
+        forgeMcpResumeError=null;
+      }catch{
+        forgeMcpResumeError='forge_mcp_resume_port_or_authority_unavailable';
+        await forgeLocalMcp.stop();
+      }
+    }
+  }
   await createWindow();
   if(backgroundOptedIn){
     const trayReady=await ensureBackgroundTray();

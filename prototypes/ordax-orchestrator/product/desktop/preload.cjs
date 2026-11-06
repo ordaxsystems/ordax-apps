@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('ordax', {
   forgeLocalMcpStart: projectId => ipcRenderer.invoke('ordax:forge:local-mcp:start',projectId),
   forgeLocalMcpAdd: projectId => ipcRenderer.invoke('ordax:forge:local-mcp:add',projectId),
   forgeLocalMcpRevoke: projectId => ipcRenderer.invoke('ordax:forge:local-mcp:revoke',projectId),
+  forgeLocalMcpResumeEnable: projectId => ipcRenderer.invoke('ordax:forge:local-mcp:resume-enable',projectId),
+  forgeLocalMcpResumeDisable: projectId => ipcRenderer.invoke('ordax:forge:local-mcp:resume-disable',projectId),
   forgeLocalMcpStop: () => ipcRenderer.invoke('ordax:forge:local-mcp:stop'),
   forgeWorkspaceStatus: projectId => ipcRenderer.invoke('ordax:forge:workspace:status',projectId),
   forgeWorkspaceCreate: projectId => ipcRenderer.invoke('ordax:forge:workspace:create',projectId),
