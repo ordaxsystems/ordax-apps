@@ -140,7 +140,7 @@ test('physical frontend monitor describes registered execution, not fictitious a
     assert.throws(()=>describeExecutionMonitor(invalid),/invalid_execution_monitor_counts/);
   assert.match(uiHtml,/id="executionOverviewTitle"/);
   assert.match(uiHtml,/id="executionOverviewDescription"/);
-  assert.match(uiHtml,new RegExp('Assistente '+PRODUCT_SHORT_NAME));
+  assert.match(uiHtml,/Forjador/);
   assert.match(uiHtml,/Tarefas e resultados/);
   const renderer=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.match(renderer,/\$\('executionOverviewTitle'\)\.textContent=overview\.title/);
@@ -1165,7 +1165,7 @@ test('Groq and ChatGPT workspaces have distinct visible destinations and fail-cl
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   assert.match(uiHtml,/id="openOrchestrator"/);
   assert.match(uiHtml,/id="openWorks"/);
-  assert.match(uiHtml,/ASSISTENTE ORDAX/);
+  assert.match(uiHtml,/FORJADOR · GROQ/);
   assert.match(uiHtml,/CONVERSA DE TRABALHO · CHATGPT WEB/);
   assert.match(uiHtml,/id="coordinatorComposer"/);
   assert.match(uiHtml,/id="composer"/);
