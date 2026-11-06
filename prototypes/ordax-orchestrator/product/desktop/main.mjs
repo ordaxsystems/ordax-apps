@@ -25,7 +25,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { Store, MESSAGE_PAGE_SIZE } from '../src/store.mjs';
 import {ForgeProjectFiles} from '../src/forge-project-files.mjs';
-import {ForgeLocalWorkspaces} from '../src/forge-local-workspaces.mjs';
+import {ForgeLocalWorkspaces,resolveForgeWorkspaceDocumentsDirectory} from '../src/forge-local-workspaces.mjs';
 import {forgeFreshConversationContext} from '../src/forge-fresh-conversation-context.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {createForgeLoopbackMcp} from '../src/forge-loopback-mcp.mjs';
@@ -70,7 +70,7 @@ const runtimeBuildProof=verifyRuntimeManifest(root,
     ? {manifestPath:path.join(process.resourcesPath,'runtime-build.json')}
     : undefined);
 if(runtimeBuildProof.status==='invalid') throw new Error('lab_runtime_build_integrity_failed');
-const {userRoot} = resolveLabUserRoot({
+const {userRoot,staged:stagedProfile} = resolveLabUserRoot({
   argv:process.argv,
   localAppData:process.env.LOCALAPPDATA ||
     path.join(process.env.USERPROFILE || root, 'AppData', 'Local')
@@ -114,7 +114,11 @@ const store = new Store(path.join(dataRoot, 'ordax-orchestrator-lab.sqlite'));
 // Real user workspaces use the Windows-known Documents directory; existing
 // app-private files remain untouched until explicitly reconciled.
 const forgeLocalWorkspaces=new ForgeLocalWorkspaces({
-  store,documentsDirectory:app.getPath('documents'),
+  // A staged DEV profile must not create test projects in the Owner's real
+  // Documents folder. Its source and workspace both remain under the
+  // independent staged candidate tree, away from the production SQLite.
+  store,documentsDirectory:resolveForgeWorkspaceDocumentsDirectory({
+    staged:stagedProfile,userRoot,windowsDocuments:app.getPath('documents')}),
   legacyRoot:path.join(dataRoot,'project-files'),
   forbiddenRoots:[userRoot,path.dirname(process.execPath),process.env.SystemRoot,
     process.env.ProgramFiles,process.env.ProgramData,process.env['ProgramFiles(x86)']]

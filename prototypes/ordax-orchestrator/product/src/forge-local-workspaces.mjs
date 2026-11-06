@@ -38,6 +38,17 @@ function within(parent,child) {
   return !relative||(!relative.startsWith('..'+path.sep)&&relative!=='..'&&!path.isAbsolute(relative));
 }
 
+// DEV candidate profiles must never resolve their project folders into the
+// owner's real Windows Documents. Use the same isolated candidate tree as
+// the staged SQLite, but outside its userData directory.
+export function resolveForgeWorkspaceDocumentsDirectory({staged=false,userRoot,windowsDocuments}={}){
+  if(typeof userRoot!=='string'||!path.isAbsolute(userRoot)||
+     typeof windowsDocuments!=='string'||!path.isAbsolute(windowsDocuments))
+    throw Error('forge_workspace_documents_root_invalid');
+  return staged?path.resolve(path.dirname(userRoot),'staged-documents')
+    :path.resolve(windowsDocuments);
+}
+
 export class ForgeLocalWorkspaces {
   constructor({store,documentsDirectory,legacyRoot=null,forbiddenRoots=[]}={}) {
     if(!store?.db||typeof documentsDirectory!=='string'||!path.isAbsolute(documentsDirectory))

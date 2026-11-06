@@ -82,10 +82,14 @@ históricos, não instruções de implementação. A realidade de cada funcional
 
 1. **CONCLUÍDO NO CÓDIGO:** guia canônico GPT-first, descoberta MCP e
    ferramentas privadas existentes, reaproveitando SQLite/Run/recibos.
-2. **IMPLEMENTADO NO CHECKOUT WINDOWS; E2E FÍSICO PENDENTE:** tabela única
-   de workspace real, criação padrão após novo projeto no IPC nativo,
-   seletor nativo para projeto existente, broker ligado à raiz única,
-   isolamento e pasta antiga sem novas escritas.
+2. **CRIAÇÃO/ESCRITA/LEITURA HOMOLOGADAS NO ELECTRON WINDOWS ISOLADO:**
+   tabela única de workspace real, criação padrão após novo projeto no
+   IPC nativo e broker ligado à raiz única, com readback e SHA-256 dos
+   bytes físicos conferidos independentemente. Perfil DEV aprovado
+   `candidate-userdata-v2.4.6-alpha.31073` escreve somente em sua própria
+   pasta `OrdaX/staged-documents/Forge`, jamais em Documentos reais;
+   o perfil operacional usa a localização Documentos do Windows.
+   **Pendente:** prova visual do seletor nativo para pastas existentes.
 3. **MIGRAÇÃO NO WINDOWS IMPLEMENTADA; PROVA FÍSICA DO DIÁLOGO PENDENTE:**
    o Owner pode mover a pasta privada anterior para Documentos/Forge, com
    confirmação, SHA-256, rollback em falha e nenhuma cópia duplicada no
@@ -97,9 +101,12 @@ históricos, não instruções de implementação. A realidade de cada funcional
    bloqueio de sessões cruzadas. **PENDENTE:** homologar no Electron Windows
    e criar ponte HTTPS segura com autenticação/consentimento. Não supor
    disponibilidade de escrita no GPT Web sem prova física.
-5. **PENDENTE:** prova física no Windows/cliente GPT real, pacote oficial,
-   reconciliação do trabalho paralelo, integração dos gates aplicáveis,
-   push/merge apenas após autorização para operações remotas.
+5. **PROVA WINDOWS PARCIAL:** Electron DEV isolado carregou a interface,
+   seus controles e métodos IPC; criou um projeto com pasta física temporária,
+   escreveu um HTML e conferiu SHA-256 independente. **Pendente:** aprovação
+   de MCP por diálogo nativo, seleção/migração por UI, cliente GPT Web real,
+   pacote oficial e gates aplicáveis. Preservar alterações paralelas;
+   push/merge somente após autorização para operações remotas.
 
 **Critérios de saída:** pasta escrita e lida fisicamente, isolamento entre
 projetos, manutenção do histórico após restart, sem duplicidade entre
