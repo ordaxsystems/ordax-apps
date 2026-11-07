@@ -122,6 +122,19 @@ históricos, não instruções de implementação. A realidade de cada funcional
   referências `env:` e terminou com falta de `CONTROL_PLANE_API_KEY` (esperado,
   sem credencial real nem processo residual). Isto confirma a sintaxe até o
   preflight local; não prova conexão de rede com a OpenAI.
+  **Prova oficial local adicional (06/11/2026, sem credenciais externas):**
+  o `tunnel-client v0.0.20 dev proxy --backend=go` apontou para o
+  `createForgeLoopbackMcp` real em um projeto SQLite descartável. Em
+  rastreamento HTTP limitado a método/status, executou `initialize` (200,
+  protocolo MCP `2025-11-25`), `notifications/initialized` (202) e `DELETE`
+  da sessão (200), com bearer de projeto aceito. As sondagens preliminares
+  `POST` sem JSON e `GET` sem SSE retornaram 415/405; URLs opcionais OAuth
+  inexistentes retornaram 404. Não houve `tools/list`, JSON de conexão
+  nem prova de despacho remoto: **catálogo/ready ainda não homologados**.
+  Controle comparativo: o MESMO `dev proxy` com `dev mcp-stub` da própria
+  OpenAI também não publicou conexão pronta neste Windows (sem credentials
+  reais); portanto o resultado isolado não prova um defeito do Forge.
+  Não adicionar OAuth ou SSE artificiais para forçar sucesso.
   O estado `processRunning` **não** significa `remoteChatGptConnected`:
   chamadas reais do ChatGPT continuam pendentes.
   Testes de ciclo de vida usam subprocesso simulado, não credenciais reais
