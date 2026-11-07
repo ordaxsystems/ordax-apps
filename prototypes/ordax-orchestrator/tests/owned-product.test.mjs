@@ -17,7 +17,12 @@ test('tracked product has its own canonical identity and version', () => {
   const npmLock=JSON.parse(read('product/package-lock.json'));
   const origin=JSON.parse(read('product/OWNED-SOURCE.json'));
   assert.equal(pkg.version,version.version);
-  assert.equal(pkg.name,sourceLock.targetIdentity.name);
+  // Forge is the current package identity; sourceLock keeps the original
+  // imported technical identity as historical, immutable provenance.
+  assert.equal(pkg.name,'ordax-forge');
+  assert.equal(npmLock.name,pkg.name);
+  assert.equal(npmLock.packages[''].name,pkg.name);
+  assert.equal(sourceLock.targetIdentity.name,'ordax-orchestrator-lab');
   assert.equal(pkg.build.appId,sourceLock.targetIdentity.appId);
   // The source lock preserves the original technical snapshot, not the live commercial brand.
   assert.equal(pkg.build.productName,PRODUCT_NAME);
