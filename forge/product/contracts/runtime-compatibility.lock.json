@@ -1,13 +1,13 @@
 {
   "schema": "ordax.forge-runtime-compatibility/1",
   "runtimeRepository": "ordaxsystems/ordax-runtime",
-  "runtimeLockPath": "contracts/orchestrator-app.lock.json",
-  "runtimeContractPath": "ordax_dev_agent/assets/orchestrator_app_contract.json",
-  "runtimeContractSha256": "1cd06435cb8e1c0b2e2edcfa200d54901f78c9e8221b04f5a2075e42bfb37491",
+  "runtimeLockPath": "contracts/forge-app.lock.json",
+  "runtimeContractPath": "ordax_dev_agent/assets/forge_app_contract.json",
+  "runtimeContractSha256": "27d515fb47ff98614645b703866f7dedfce847792518be8069d928467d270d4c",
   "sourceRepository": "ordaxsystems/ordax-apps",
-  "sourceCommit": "8bff30f3a0749a26b268a8ec3f8e127dd95e1b6f",
+  "sourceCommit": "8f60435b59c76a096f1391efb0f15e26cc3d3955",
   "sourcePath": "forge/product/src/forge-contract.mjs",
-  "sourceBlob": "ccfa686be5af8c7339604341f1ac3e73dad0e78b",
+  "sourceBlob": "1e991aa6839ec57b055db8f518d8338b2bd0c00b",
   "contract": "ordax.forge/1",
   "authority": "none"
 }

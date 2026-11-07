@@ -2,7 +2,7 @@ import {createHmac,timingSafeEqual} from 'node:crypto';
 import {Socket,createConnection} from 'node:net';
 import {ORCHESTRATOR_TOOLS} from './forge-contract.mjs';
 
-export const RUNTIME_BRIDGE_SCHEMA='ordax.orchestrator-host/1';
+export const RUNTIME_BRIDGE_SCHEMA='ordax.forge-host/1';
 export const RUNTIME_READ_CAPABILITY='forge.app_read';
 export const RUNTIME_LEASE_RENEWAL='hmac-sha256-key-rotation/1';
 // Host v1 is a fixed authority boundary. New App/MCP reads must not silently

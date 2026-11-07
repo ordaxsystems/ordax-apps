@@ -3,7 +3,7 @@
 const {createHmac,randomBytes,randomUUID}=require('node:crypto');
 const fs=require('node:fs');
 const path=require('node:path');
-const schema='ordax.orchestrator-host/1';
+const schema='ordax.forge-host/1';
 const canonical=value=>{
   if(Array.isArray(value))return '['+value.map(canonical).join(',')+']';
   if(value&&typeof value==='object')return '{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+canonical(value[k])).join(',')+'}';
