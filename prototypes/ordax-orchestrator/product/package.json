@@ -51,7 +51,7 @@
     "node": ">=22.13.0"
   },
   "build": {
-    "appId": "br.com.ordax.orchestrator.lab",
+    "appId": "br.com.ordax.forge",
     "productName": "OrdaX Forge",
     "asar": true,
     "files": [
@@ -75,7 +75,7 @@
       ],
       "icon": "build/icon.png",
       "artifactName": "OrdaX-Forge-${version}.exe",
-      "executableName": "OrdaX Orchestrator Lab"
+      "executableName": "OrdaX Forge"
     },
     "compression": "normal",
     "npmRebuild": false,

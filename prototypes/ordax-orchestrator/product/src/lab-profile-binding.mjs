@@ -35,9 +35,9 @@ export function resolveLabUserRoot({
     const candidate=candidates[0].slice(stagedPrefix.length);
     if(!path.isAbsolute(candidate) || !stagedName.test(path.basename(path.resolve(candidate))))
       throw new Error('lab_staged_profile_invalid_path');
-    return {userRoot:path.join(path.resolve(candidate),'OrdaX','OrchestratorLab'),staged:true};
+    return {userRoot:path.join(path.resolve(candidate),'OrdaX','Forge'),staged:true};
   }
-  return {userRoot:path.join(localAppData,'OrdaX','OrchestratorLab'),staged:false};
+  return {userRoot:path.join(localAppData,'OrdaX','Forge'),staged:false};
 }
 
 export function labProfileFingerprint(userRoot,{platform=process.platform}={}){

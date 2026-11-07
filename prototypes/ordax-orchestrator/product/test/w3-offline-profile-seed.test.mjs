@@ -25,7 +25,7 @@ test('W3 preflight seed is isolated, unsubmitted, immutable and creates no recei
   assert.equal(receipt.providerMessagesSent,0);
   assert.equal(receipt.receipts,0);
   assert.equal(receipt.W3Certified,false);
-  const dbPath=path.join(profile,'OrdaX','OrchestratorLab','data','ordax-orchestrator-lab.sqlite');
+  const dbPath=path.join(profile,'OrdaX','Forge','data','ordax-forge.sqlite');
   const db=new DatabaseSync(dbPath,{readOnly:true});
   try{
     assert.equal(db.prepare('SELECT COUNT(*) n FROM tasks WHERE chat_url IS NOT NULL').get().n,1);

@@ -101,7 +101,7 @@ function cleanBodyCandidate(raw) {
 
 export class EmbeddedChatWorker {
   constructor() {
-    this.partition = 'persist:ordax-orchestrator-lab-chatgpt';
+    this.partition = 'persist:ordax-forge-chatgpt';
     this.session = session.fromPartition(this.partition);
     this.view = createView(this.partition);
     this.active = false;

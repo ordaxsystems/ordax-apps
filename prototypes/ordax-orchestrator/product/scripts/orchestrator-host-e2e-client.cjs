@@ -48,9 +48,9 @@ async function verifyHostFixture({child,root,profile,exchange}) {
   try {
     const ready=await exchange({schema,type:'bootstrap',sessionId,key:key.toString('base64'),
       ownerUserId:randomUUID(),clientId:'oauth-ci-host-fixture',deviceId:randomUUID(),grantId:randomUUID(),
-      capability:'orchestrator.app_read',expiresAt,expectedCommit:process.env.GITHUB_SHA,
+      capability:'forge.app_read',expiresAt,expectedCommit:process.env.GITHUB_SHA,
       expectedDigest:proof.contentDigest,
-      expectedProfile:labProfileFingerprint(path.join(profile,'OrdaX','OrchestratorLab'))});
+      expectedProfile:labProfileFingerprint(path.join(profile,'OrdaX','Forge'))});
     if(ready.ok!==true||ready.type!=='ready'||ready.sourceCommit!==process.env.GITHUB_SHA||
       ready.contentDigest!==proof.contentDigest||ready.operations?.length!==7) {
       console.error(JSON.stringify({schema:'ordax.lab.host-identity-diagnostic.v1',

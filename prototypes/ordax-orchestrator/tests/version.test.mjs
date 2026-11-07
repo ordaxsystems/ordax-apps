@@ -47,8 +47,8 @@ test('derived package and npm lock versions match SSOT without altering original
   assert.equal(out.version,version.version);
   assert.equal(outLock.version,version.version);
   assert.equal(outLock.packages[''].version,version.version);
-  assert.equal(out.name,'ordax-orchestrator-lab');
-  assert.equal(outLock.name,'ordax-orchestrator-lab');
+  assert.equal(out.name,'ordax-forge');
+  assert.equal(outLock.name,'ordax-forge');
   assert.equal(pkg.version,source.sourceVersion);
   assert.equal(locked.version,source.sourceVersion);
   assert.throws(()=>deriveSourceFile('package-lock.json',JSON.stringify({
@@ -63,9 +63,9 @@ test('runtime app version mismatch prevents promotion even if identity is valid'
     build:{appId:source.targetIdentity.appId,productName:source.targetIdentity.productName,
       files:['desktop/**/*','src/*.mjs','supervisor/**/*','package.json']}
   }));
-  const main=Buffer.from("const userRoot = path.join(localAppData, 'OrdaX', 'OrchestratorLab');\nnew Store(path.join(dataRoot, 'ordax-orchestrator-lab.sqlite'))");
-  const worker=Buffer.from("const partition='persist:ordax-orchestrator-lab-chatgpt';");
-  const html=Buffer.from('<title>OrdaX Orchestrator Lab</title>');
+  const main=Buffer.from("const userRoot = path.join(localAppData, 'OrdaX', 'Forge');\nnew Store(path.join(dataRoot, 'ordax-forge.sqlite'))");
+  const worker=Buffer.from("const partition='persist:ordax-forge-chatgpt';");
+  const html=Buffer.from('<title>OrdaX Forge</title>');
   assert.throws(()=>assertDerivedIdentity({
     'package.json':pkg,'desktop/main.mjs':main,
     'desktop/embedded-worker.mjs':worker,'desktop/ui.html':html

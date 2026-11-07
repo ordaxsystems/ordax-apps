@@ -19,15 +19,15 @@
     "REFERENCIAS.md"
   ],
   "targetIdentity": {
-    "name": "ordax-orchestrator-lab",
-    "appId": "br.com.ordax.orchestrator.lab",
-    "productName": "OrdaX Orchestrator Lab",
+    "name": "ordax-forge",
+    "appId": "br.com.ordax.forge",
+    "productName": "OrdaX Forge",
     "userDataSuffix": [
       "OrdaX",
-      "OrchestratorLab"
+      "Forge"
     ],
-    "database": "ordax-orchestrator-lab.sqlite",
-    "providerPartition": "persist:ordax-orchestrator-lab-chatgpt"
+    "database": "ordax-forge.sqlite",
+    "providerPartition": "persist:ordax-forge-chatgpt"
   },
   "forbiddenSourceIdentityRuntime": [
     "br.com.ordax.gratis",

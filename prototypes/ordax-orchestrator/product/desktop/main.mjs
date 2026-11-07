@@ -113,7 +113,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'ordax-asset', privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ]);
 
-const store = new Store(path.join(dataRoot, 'ordax-orchestrator-lab.sqlite'));
+const store = new Store(path.join(dataRoot, 'ordax-forge.sqlite'));
 // Canonical project path lives in the existing SQLite, not another store.
 // Real user workspaces use the Windows-known Documents directory; existing
 // app-private files remain untouched until explicitly reconciled.

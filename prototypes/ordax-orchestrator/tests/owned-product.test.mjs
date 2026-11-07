@@ -22,16 +22,18 @@ test('tracked product has its own canonical identity and version', () => {
   assert.equal(pkg.name,'ordax-forge');
   assert.equal(npmLock.name,pkg.name);
   assert.equal(npmLock.packages[''].name,pkg.name);
-  assert.equal(sourceLock.targetIdentity.name,'ordax-orchestrator-lab');
+  assert.equal(sourceLock.targetIdentity.name,'ordax-forge');
   assert.equal(pkg.build.appId,sourceLock.targetIdentity.appId);
   // The source lock preserves the original technical snapshot, not the live commercial brand.
   assert.equal(pkg.build.productName,PRODUCT_NAME);
-  assert.equal(sourceLock.targetIdentity.productName,'OrdaX Orchestrator Lab');
+  assert.equal(sourceLock.targetIdentity.productName,'OrdaX Forge');
   assert.equal(npmLock.version,version.version);
   assert.equal(npmLock.packages[''].version,version.version);
   assert.equal(origin.source.repository,sourceLock.repository);
   assert.equal(origin.source.commit,sourceLock.commit);
-  assert.equal(origin.product.appId,sourceLock.targetIdentity.appId);
+  // The one-time Flow extraction provenance is immutable, even after Forge
+  // becomes the sole live app identity and executable.
+  assert.equal(origin.product.appId,'br.com.ordax.orchestrator.lab');
 });
 
 test('product is under version control and not a generated workspace or copied Flow Hub', () => {
@@ -62,11 +64,11 @@ test('start defaults to the Node host while explicit Electron retains its isolat
   const profile=read('product/src/lab-profile-binding.mjs');
   assert.match(main,/resolveLabUserRoot/);
   assert.match(main,/app\.setPath\('userData', userRoot\)/);
-  assert.match(profile,/path\.join\(localAppData,'OrdaX','OrchestratorLab'\)/);
+  assert.match(profile,/path\.join\(localAppData,'OrdaX','Forge'\)/);
   assert.match(profile,/lab_staged_profile_explicit_binding_required/);
-  assert.match(main,/ordax-orchestrator-lab\.sqlite/);
+  assert.match(main,/ordax-forge\.sqlite/);
   assert.doesNotMatch(main,/'OrdaX', 'Gratis'|ordax-gratis\.sqlite/);
-  assert.match(worker,/persist:ordax-orchestrator-lab-chatgpt/);
+  assert.match(worker,/persist:ordax-forge-chatgpt/);
   assert.doesNotMatch(worker,/persist:ordax-gratis-chatgpt|ORDAX_CHATGPT_PARTITION/);
 });
 

@@ -55,7 +55,7 @@ async function main() {
  const source=labDatabasePath();
  if(!fs.existsSync(source) || !fs.statSync(source).isFile())
    throw Error('upgrade_source_database_missing');
- const root=path.join(profile,'OrdaX','OrchestratorLab','recovery');
+ const root=path.join(profile,'OrdaX','Forge','recovery');
  const db=new DatabaseSync(source,{readOnly:true});
  let state;
  try {state=readState(db);}
@@ -82,7 +82,7 @@ async function main() {
   // Assets are stored outside SQLite. Preserve their bytes alongside the
   // transactional database, without copying browser cookies/credentials.
   const assets=copyOwnedAssets(
-    path.join(profile,'OrdaX','OrchestratorLab','data','assets'),
+    path.join(profile,'OrdaX','Forge','data','assets'),
     path.join(directory,'assets'));
   // Source may change harmlessly while Electron stays open. The online
   // snapshot is transactional, so only the snapshot's own integrity matters.

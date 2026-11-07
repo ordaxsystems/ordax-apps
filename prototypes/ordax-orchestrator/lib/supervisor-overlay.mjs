@@ -108,7 +108,7 @@ const uiAddition = [
   'const labApproveButton = document.getElementById("labSupervisorApprove");',
   'const labSendButton = document.getElementById("labSupervisorSend");',
   'const labStatus = await window.ordax.supervisorStatus().catch(() => ({enabled:false}));',
-  'document.getElementById("labVersion").textContent = labStatus.version ? "OrdaX Orchestrator Lab v" + labStatus.version : "Versão do Lab indisponível";',
+  'document.getElementById("labVersion").textContent = labStatus.version ? "OrdaX Forge v" + labStatus.version : "Versão do Lab indisponível";',
   'labState.textContent = labStatus.enabled',
   '  ? "Ativo: cada mensagem proposta exige aprovação humana."',
   '  : "Desativado. Requer GROQ_API_KEY e ORDAX_LAB_SUPERVISOR_ENABLE=1 no Lab."; ',
@@ -188,14 +188,14 @@ export function applySupervisorOverlay(relative, source) {
       "const here = path.dirname(fileURLToPath(import.meta.url));",
       "const root = path.resolve(here, '..');",
       "const localAppData = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || root, 'AppData', 'Local');",
-      "const userRoot = path.join(localAppData, 'OrdaX', 'OrchestratorLab');",
+      "const userRoot = path.join(localAppData, 'OrdaX', 'Forge');",
       "app.setPath('userData', userRoot);",
       ''
     ].join('\n');
     assert.equal(text.split(labDataBlock).length - 1, 1, 'Pinned Lab userData block drifted');
     text = text.replace(labDataBlock, '');
-    text = once(text, "app.setName('OrdaX Orchestrator Lab');",
-      "app.setName('OrdaX Orchestrator Lab');\n" + labDataBlock, 'replace');
+    text = once(text, "app.setName('OrdaX Forge');",
+      "app.setName('OrdaX Forge');\n" + labDataBlock, 'replace');
     text=once(text, "import { app, BrowserWindow, ipcMain, protocol, net } from 'electron';",
       "import { app, BrowserWindow, ipcMain, protocol, net, dialog } from 'electron';", 'replace');
     text=once(text,"import path from 'node:path';", imports, 'after');

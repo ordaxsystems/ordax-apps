@@ -13,7 +13,7 @@ export function resolveTaskHandoffRoot({tempRoot,userRoot}={}) {
      typeof userRoot!=='string'||!path.isAbsolute(userRoot))
     throw new Error('task_handoff_root_invalid');
   const profileKey=createHash('sha256').update(path.resolve(userRoot).toLowerCase(),'utf8').digest('hex').slice(0,20);
-  const root=path.join(path.resolve(tempRoot),'OrdaX','OrchestratorLab','handoffs',profileKey);
+  const root=path.join(path.resolve(tempRoot),'OrdaX','Forge','handoffs',profileKey);
   if(root.length+1+maxHandoffFilenameLength>maxWindowsPathLength)
     throw new Error('task_handoff_path_too_long');
   return root;

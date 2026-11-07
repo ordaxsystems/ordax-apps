@@ -32,9 +32,9 @@ function start() {
   const profileBinding = fs.readFileSync(path.join(product, 'src', 'lab-profile-binding.mjs'), 'utf8');
   if (!main.includes('resolveLabUserRoot({') ||
       !main.includes("app.setPath('userData', userRoot)") ||
-      !profileBinding.includes("path.join(localAppData,'OrdaX','OrchestratorLab')") ||
-      !main.includes("'ordax-orchestrator-lab.sqlite'") ||
-      !worker.includes("'persist:ordax-orchestrator-lab-chatgpt'") ||
+      !profileBinding.includes("path.join(localAppData,'OrdaX','Forge')") ||
+      !main.includes("'ordax-forge.sqlite'") ||
+      !worker.includes("'persist:ordax-forge-chatgpt'") ||
       worker.includes('persist:ordax-gratis-chatgpt') ||
       worker.includes('ORDAX_CHATGPT_PARTITION')) {
     throw Error('owned_product_profile_isolation_violation');

@@ -11,7 +11,7 @@ let phase='preflight';
     throw Error('packaged_orchestration_requires_windows_ci');
   const root=path.resolve(__dirname,'..');
   const version=require(path.join(root,'package.json')).version;
-  const executable=path.join(root,'dist','win-unpacked','OrdaX Orchestrator Lab.exe');
+  const executable=path.join(root,'dist','win-unpacked','OrdaX Forge.exe');
   if(!fs.existsSync(executable))throw Error('packaged_orchestration_binary_missing');
   const base=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-orchestration-app-'));
   const profile=path.join(base,'candidate-userdata-v'+version);

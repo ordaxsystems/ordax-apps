@@ -1,9 +1,9 @@
 {
-  "name": "@ordax/orchestrator-lab-bootstrap",
+  "name": "@ordax/forge-bootstrap",
   "private": true,
   "version": "0.2.0-alpha.42",
   "type": "module",
-  "description": "OrdaX Orchestrator Lab — Node-hosted development UI; Electron source remains an explicit desktop target.",
+  "description": "OrdaX Forge — Node-hosted development UI; Electron source remains an explicit desktop target.",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "validate": "npm run version:check && npm test",

@@ -167,7 +167,7 @@ test('Host routes coordinator chat to Groq and keeps the credential across resta
   assert.equal(requests.length,4);
   assert.equal((await post('orchestratorInvoke',['status',{}])).body.uncertainCommands,1);
   assert.equal((await post('getTaskDraft',[coordinator.chatTaskId])).body.draft,'');
-  const dbBytes=await fs.readFile(path.join(dataRoot,'ordax-orchestrator-lab.sqlite'));
+  const dbBytes=await fs.readFile(path.join(dataRoot,'ordax-forge.sqlite'));
   assert.equal(dbBytes.includes(Buffer.from(fakeKey)),false);
   await server.close();server=null;application.close();application=null;
   application=createHostApplication({productRoot,dataRoot,environment:{},fetchImpl,credentialStore:credentials});

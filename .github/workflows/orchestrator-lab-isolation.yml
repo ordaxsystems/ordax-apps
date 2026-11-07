@@ -233,7 +233,7 @@ jobs:
             checkout_sha = $env:GITHUB_SHA
             file = $file.Name
             sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            app_id = 'br.com.ordax.orchestrator.lab'
+            app_id = 'br.com.ordax.forge'
             runtime_source_commit = $packagedProof.sourceCommit
             runtime_content_digest = $packagedProof.contentDigest
             runtime_file_count = $packagedProof.fileCount
@@ -245,7 +245,7 @@ jobs:
           # app.asar alone is forbidden: install the SAME unpacked executable
           # and resources as one coherent Windows candidate.
           $unpackedRoot = Join-Path $dist 'win-unpacked'
-          $unpackedExe = Join-Path $unpackedRoot 'OrdaX Orchestrator Lab.exe'
+          $unpackedExe = Join-Path $unpackedRoot 'OrdaX Forge.exe'
           $unpackedManifest = Join-Path $unpackedRoot 'resources/runtime-build.json'
           if (-not (Test-Path -LiteralPath $unpackedExe -PathType Leaf) -or
               -not (Test-Path -LiteralPath $unpackedManifest -PathType Leaf)) {
@@ -263,9 +263,9 @@ jobs:
             build_type = 'unsigned_dev_test_only'
             workflow_run_id = $env:GITHUB_RUN_ID
             checkout_sha = $env:GITHUB_SHA
-            app_id = 'br.com.ordax.orchestrator.lab'
+            app_id = 'br.com.ordax.forge'
             package_version = $packagedProof.packageVersion
-            executable = 'win-unpacked/OrdaX Orchestrator Lab.exe'
+            executable = 'win-unpacked/OrdaX Forge.exe'
             executable_sha256 = (Get-FileHash -LiteralPath $unpackedExe -Algorithm SHA256).Hash.ToLowerInvariant()
             resources_asar = 'win-unpacked/resources/app.asar'
             resources_asar_sha256 = $packagedProof.asarSha256

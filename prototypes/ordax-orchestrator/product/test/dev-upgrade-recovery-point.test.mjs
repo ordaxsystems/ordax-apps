@@ -18,7 +18,7 @@ function call(profile,approval='1') {
 function fixture(t) {
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-preupgrade-'));
   const profile=path.join(temp,'candidate-userdata-v0.2.0-alpha.2');
-  const dbFile=path.join(profile,'OrdaX','OrchestratorLab','data','ordax-orchestrator-lab.sqlite');
+  const dbFile=path.join(profile,'OrdaX','Forge','data','ordax-forge.sqlite');
   const store=new Store(dbFile);
   t.after(()=>{store.close();fs.rmSync(temp,{recursive:true,force:true});});
   return {store,profile,dbFile};
@@ -29,7 +29,7 @@ test('preflight makes a consistent online SQLite plus asset backup without chang
  const run=store.beginProviderRun(task.id,'Synthetic');
  store.appendMessage(task.id,'assistant','Completed synthetic answer');
  store.finishRun(task.id,run.runId);
- const assetDir=path.join(profile,'OrdaX','OrchestratorLab','data','assets','task_123');
+ const assetDir=path.join(profile,'OrdaX','Forge','data','assets','task_123');
  fs.mkdirSync(assetDir,{recursive:true});
  fs.writeFileSync(path.join(assetDir,'one.png'),Buffer.from('synthetic asset content'));
  const output=call(profile);
@@ -68,7 +68,7 @@ test('preflight refuses active provider Run before creating any recovery directo
  const output=call(profile);
  assert.equal(output.status,2);
  assert.match(output.stderr,/upgrade_active_run_blocked/);
- assert.equal(fs.existsSync(path.join(profile,'OrdaX','OrchestratorLab','recovery')),false);
+ assert.equal(fs.existsSync(path.join(profile,'OrdaX','Forge','recovery')),false);
 });
 test('preflight refuses missing explicit staged permission before touching any profile',t=>{
  const {profile}=fixture(t);
@@ -76,5 +76,5 @@ test('preflight refuses missing explicit staged permission before touching any p
  assert.equal(output.status,2);
  assert.match(output.stderr,/lab_e2e_explicit_approval_required/);
  assert.equal(fs.existsSync(profile),true);
-  assert.equal(fs.existsSync(path.join(profile,'OrdaX','OrchestratorLab','recovery')),false);
+  assert.equal(fs.existsSync(path.join(profile,'OrdaX','Forge','recovery')),false);
 });
