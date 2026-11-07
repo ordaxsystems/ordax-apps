@@ -1308,6 +1308,7 @@ registerUiHandler('ordax:forge:workspace:create',(event,projectId)=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_workspace_native_ui_only');
   orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
+  if(forgeOfficialTunnel.status().projectId===projectId)forgeOfficialTunnel.stop();
   return forgeLocalWorkspaces.createDefault(projectId);
 });
 registerUiHandler('ordax:forge:workspace:choose',async(event,projectId)=>{
@@ -1332,6 +1333,7 @@ registerUiHandler('ordax:forge:workspace:choose',async(event,projectId)=>{
   // Local authorized UI can select a directory, but cannot add authority
   // to another project or mutate the root after a prior successful grant.
   orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
+  if(forgeOfficialTunnel.status().projectId===projectId)forgeOfficialTunnel.stop();
   return forgeLocalWorkspaces.bindSelected(projectId,chosen.filePaths[0]);
 });
 registerUiHandler('ordax:forge:workspace:migrate',async(event,projectId)=>{

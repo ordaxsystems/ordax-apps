@@ -92,7 +92,7 @@ históricos, não instruções de implementação. A realidade de cada funcional
   valida túnel, projeto e endpoint estritamente em `127.0.0.1`; gera apenas
   argumentos documentados para o `tunnel-client` oficial, com referências
   `env:` para Authorization em chamadas e em descoberta, incluindo porta
-  de saúde efêmera. Nunca inclui API key ou bearer no argv e rejeita
+  de saúde efêmera. Usa a sintaxe real do CLI `--mcp.server-url=url=http://127.0.0.1:<porta>/mcp`, não uma URL nua. Nunca inclui API key ou bearer no argv e rejeita
   parâmetros externos, binários não correspondentes e autorização ausente.
   A preparação é intencionalmente inativa; não inicia novo processo sem
   consentimento, binário oficial, tunnel_id e chave de Runtime válidos.
@@ -112,8 +112,18 @@ históricos, não instruções de implementação. A realidade de cada funcional
   O Main só entrega ao cliente o bearer do projeto já autorizado e a
   localização do executável verificado. Revogar o projeto, migrar sua pasta,
   desativar MCP ou fechar o Forge encerra o cliente, sem manter túnel
-  autônomo fora do aplicativo. O estado `processRunning` **não** significa
-  `remoteChatGptConnected`: chamadas reais do ChatGPT continuam pendentes.
+  autônomo fora do aplicativo. O controlador aguarda a saída física do
+  processo anterior antes de permitir outra inicialização (sem túnel duplo);
+  cancelamento durante o startup permanece bloqueado até `exit`.
+  Vincular/criar uma pasta de projeto também encerra o túnel daquele projeto
+  antes de alterar a identidade do workspace.
+  **Prova do CLI real no Windows:** `tunnel-client v0.0.20 run` recebeu
+  `--mcp.server-url=url=http://127.0.0.1:65000/mcp` e os headers por
+  referências `env:` e terminou com falta de `CONTROL_PLANE_API_KEY` (esperado,
+  sem credencial real nem processo residual). Isto confirma a sintaxe até o
+  preflight local; não prova conexão de rede com a OpenAI.
+  O estado `processRunning` **não** significa `remoteChatGptConnected`:
+  chamadas reais do ChatGPT continuam pendentes.
   Testes de ciclo de vida usam subprocesso simulado, não credenciais reais
   da organização. Prova de UI no Electron Windows isolado `31077`: os quatro
   controles do túnel carregaram, cliente oficial v0.0.20 identificado,

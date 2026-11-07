@@ -21,7 +21,7 @@ test('official tunnel launcher is outbound-only, project scoped and leaks no sec
   assert.equal(s.command,executablePath);
   assert.deepEqual(s.args,[
     'run','--control-plane.tunnel-id='+tunnelId,
-    '--mcp.server-url='+endpoint,
+    '--mcp.server-url=url='+endpoint,
     '--mcp.extra-headers=Authorization: env:FORGE_TUNNEL_LOCAL_BEARER',
     '--mcp.discovery-extra-headers=Authorization: env:FORGE_TUNNEL_LOCAL_BEARER',
     '--health.listen-addr=127.0.0.1:0'
@@ -47,7 +47,8 @@ test('tunnel preparation refuses unapproved, unscoped, unsafe or public targets'
   const good=input();
   for(const patch of [
     {ownerApproved:false},{platform:'linux'}, {projectId:'project_../../other'},
-    {tunnelId:'tunnel_notreal'}, {endpoint:'http://localhost:60252/mcp'},
+    {tunnelId:'tunnel_notreal'}, {tunnelId:'tunnel__'+'a'.repeat(32)},
+    {endpoint:'http://localhost:60252/mcp'},
     {endpoint:'http://0.0.0.0:60252/mcp'},
     {endpoint:'https://127.0.0.1:60252/mcp'},
     {endpoint:'http://127.0.0.1:60252/mcp?secret=1'},

@@ -1,32 +1,33 @@
 import {spawn} from 'node:child_process';
 import {makeForgeOfficialTunnelLaunch} from './forge-mcp-official-tunnel.mjs';
 
-// One optional outbound connector process owned by the existing Forge app.
-// Never exposes secrets in status, exceptions, argv or logs. No auto-start.
+// One optional outbound client owned by the Forge process. A terminated
+// process must confirm its exit before any replacement is allowed.
 export function createForgeOfficialTunnelSession({
   spawnClient=spawn,launch=makeForgeOfficialTunnelLaunch
 }={}){
   let child=null;
   let current=null;
   let state='stopped';
+  let cancelStartup=null;
   const status=()=>Object.freeze({
-    state,processRunning:state==='running',projectId:current?.projectId??null,
-    tunnelId:current?.tunnelId??null,remoteChatGptConnected:false,
-    chatGptCallVerified:false,autostart:false
+    state,processRunning:state==='running'||state==='stopping',
+    projectId:current?.projectId??null,tunnelId:current?.tunnelId??null,
+    remoteChatGptConnected:false,chatGptCallVerified:false,autostart:false
   });
   function stop(){
-    const prior=child;
-    child=null;
-    current=null;
-    state='stopped';
-    if(prior){
-      try{prior.kill();}catch{}
-    }
+    if(!child){current=null;state='stopped';return status();}
+    if(state==='stopping')return status();
+    state='stopping';
+    if(cancelStartup){const cancel=cancelStartup;cancelStartup=null;cancel();}
+    // Keep the old process registered until exit/error. A Windows kill is
+    // asynchronous, and accepting another start here could duplicate a tunnel.
+    try{child.kill();}catch{ /* Stay blocked until process exit. */ }
     return status();
   }
   async function start(params){
-    if(child||state==='starting')throw Error('forge_tunnel_already_running');
-    const descriptor=launch(params); // validates owner consent and exact scope
+    if(child||state!=='stopped')throw Error('forge_tunnel_already_running');
+    const descriptor=launch(params);
     state='starting';
     current={...descriptor.publicStatus};
     let candidate;
@@ -41,21 +42,29 @@ export function createForgeOfficialTunnelSession({
       throw Error('forge_tunnel_process_unavailable');
     }
     child=candidate;
-    const outcome=await new Promise((resolve,reject)=>{
+    return new Promise((resolve,reject)=>{
+      let settled=false;
+      const rejectOnce=reason=>{
+        if(settled)return;
+        settled=true;cancelStartup=null;
+        reject(Error(reason));
+      };
+      cancelStartup=()=>rejectOnce('forge_tunnel_start_cancelled');
       candidate.once('spawn',()=>{
-        if(child!==candidate)return reject(Error('forge_tunnel_start_cancelled'));
-        state='running';
-        resolve(status());
+        if(child!==candidate||state!=='starting')
+          return rejectOnce('forge_tunnel_start_cancelled');
+        state='running';cancelStartup=null;
+        if(!settled){settled=true;resolve(status());}
       });
       candidate.once('error',()=>{
         if(child===candidate){child=null;current=null;state='stopped';}
-        reject(Error('forge_tunnel_process_unavailable'));
+        rejectOnce('forge_tunnel_process_unavailable');
       });
       candidate.once('exit',()=>{
         if(child===candidate){child=null;current=null;state='stopped';}
+        rejectOnce('forge_tunnel_start_exited');
       });
     });
-    return outcome;
   }
   return Object.freeze({start,stop,status});
 }

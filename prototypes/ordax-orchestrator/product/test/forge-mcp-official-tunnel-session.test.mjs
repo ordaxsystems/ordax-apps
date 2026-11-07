@@ -58,6 +58,40 @@ test('process failure and exit clear remote readiness, never leak a secret',asyn
   assert.equal(control.status().remoteChatGptConnected,false);
   assert.equal(control.stop().state,'stopped');
 });
+test('cannot start a duplicate while Windows is still closing the previous tunnel',async()=>{
+  let candidate;
+  const control=createForgeOfficialTunnelSession({spawnClient:()=>{
+    candidate=new EventEmitter();
+    candidate.kill=()=>{candidate.killRequested=true;return true;};
+    queueMicrotask(()=>candidate.emit('spawn'));
+    return candidate;
+  }});
+  await control.start(config);
+  const stopping=control.stop();
+  assert.equal(stopping.state,'stopping');
+  assert.equal(stopping.processRunning,true,'shutdown is not yet confirmed');
+  assert.equal(candidate.killRequested,true);
+  await assert.rejects(control.start(config),/already_running/);
+  candidate.emit('exit',0);
+  assert.equal(control.status().state,'stopped');
+  assert.equal(control.status().projectId,null);
+});
+test('cancel during startup cannot silently mark a late process as running',async()=>{
+  let candidate;
+  const control=createForgeOfficialTunnelSession({spawnClient:()=>{
+    candidate=new EventEmitter();candidate.kill=()=>true;
+    return candidate;
+  }});
+  const pending=control.start(config);
+  assert.equal(control.status().state,'starting');
+  assert.equal(control.stop().state,'stopping');
+  await assert.rejects(pending,/start_cancelled/);
+  candidate.emit('spawn');
+  assert.equal(control.status().state,'stopping');
+  await assert.rejects(control.start(config),/already_running/);
+  candidate.emit('exit',0);
+  assert.equal(control.status().state,'stopped');
+});
 test('invalid controls cannot spawn or persist any token',async()=>{
   const f=fixture();
   await assert.rejects(f.control.start({...config,controlPlaneKey:'bad'}),/credentials_unavailable/);
