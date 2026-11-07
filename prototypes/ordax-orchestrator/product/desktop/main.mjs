@@ -31,6 +31,7 @@ import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {createForgeLoopbackMcp} from '../src/forge-loopback-mcp.mjs';
 import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
 import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
+import {inspectForgeOfficialTunnelClient} from '../src/forge-mcp-tunnel-readiness.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
 import {IsolatedInteractiveHtmlPreview} from './isolated-interactive-preview.mjs';
@@ -1354,6 +1355,7 @@ registerUiHandler('ordax:forge:local-mcp:status',event=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
   return {...forgeLocalMcp.status(),trustedProjects:forgeMcpTrusted.trustedProjects(),
+    officialTunnel:inspectForgeOfficialTunnelClient(),
     autoResumeProjects:forgeMcpResume.enabledProjects(),
     autoResumeAvailable:forgeMcpResume.supported(),
     autoResumeBlocked:forgeMcpResumeError};

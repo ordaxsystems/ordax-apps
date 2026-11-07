@@ -96,8 +96,18 @@ históricos, não instruções de implementação. A realidade de cada funcional
   parâmetros externos, binários não correspondentes e autorização ausente.
   A preparação é intencionalmente inativa; não inicia novo processo sem
   consentimento, binário oficial, tunnel_id e chave de Runtime válidos.
-  **Bloqueio externo em 06/11/2026:** `tunnel-client` não encontrado no PATH
-  do Windows; tunnel_id e credenciais de organização não verificados.
+  **Cliente oficial instalado e verificado em 06/11/2026:** release
+  `openai/tunnel-client v0.0.20` (Windows amd64), baixado diretamente do
+  GitHub oficial; SHA-256 do ZIP conferido contra release e SHA256SUMS,
+  versão e opções do CLI conferidas no executável físico. Uma única cópia
+  do componente opcional reside em `%LOCALAPPDATA%/OrdaX/Forge/Components/`
+  com manifesto de procedência; não é outro instalador de Forge, não cria
+  serviço e não inicia sozinho. `forge-mcp-tunnel-readiness.mjs` valida
+  o SHA-256 do executável fixado e informa o estado sem reivindicar conexão
+  GPT Web. Status incorporado à tela Conexões, sem receber credenciais.
+  **Bloqueio externo atual:** tunnel_id e chave Runtime da organização
+  ainda não verificados, além da permissão de custom MCP no ChatGPT.
+  Não tentar forçar uma conexão não autorizada nem instalar outro gateway.
   A documentação oficial reserva custom MCP completo/escrita no ChatGPT Web
   para Business e Enterprise/Edu; em conta Plus, não declarar esse acesso.
   O transporte real permanece não conectado. Não receber tokens em logs

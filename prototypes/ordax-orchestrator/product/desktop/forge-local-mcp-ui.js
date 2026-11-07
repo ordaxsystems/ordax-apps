@@ -7,6 +7,7 @@ const mcpRevoke=localMcpElement('forgeLocalMcpRevoke');
 const mcpResume=localMcpElement('forgeLocalMcpResume');
 const mcpProject=localMcpElement('forgeLocalMcpProject');
 const mcpState=localMcpElement('forgeLocalMcpState');
+const officialTunnelState=localMcpElement('forgeOfficialTunnelState');
 const mcpCredentials=localMcpElement('forgeLocalMcpCredentials');
 const mcpToken=localMcpElement('forgeLocalMcpToken');
 const mcpUrl=localMcpElement('forgeLocalMcpUrl');
@@ -39,6 +40,12 @@ async function refreshMcp(){
   }
   try{
     const status=await api.forgeLocalMcpStatus();
+    if(officialTunnelState){
+      officialTunnelState.textContent=status.officialTunnel?.installed
+        ?'Cliente oficial OpenAI '+status.officialTunnel.clientVersion+
+          ' instalado e verificado. GPT Web não conectado; autorização do túnel e permissões do workspace ainda não comprovadas.'
+        :'GPT Web não conectado. O cliente oficial de túnel ainda não foi validado nesta instalação.';
+    }
     const scopes=Array.isArray(status.scopes)?status.scopes:(status.scope?[status.scope]:[]);
     const selected=scopes.includes(mcpProject?.value);
     const trusted=Array.isArray(status.trustedProjects)?status.trustedProjects:[];
