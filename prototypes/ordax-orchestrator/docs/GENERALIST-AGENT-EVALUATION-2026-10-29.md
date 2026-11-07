@@ -1,4 +1,6 @@
-# OrdaX Orchestrator — generalist agent development (2026-10-29)
+# OrdaX Orchestrator — avaliação histórica de agente generalista (2026-10-29)
+
+> **REFERÊNCIA HISTÓRICA — substituída na direção do produto em 2026-11-06.** A única arquitetura e sequência executiva vigentes estão em [Forge GPT-first — plano canônico](FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md). Dados de PR/CI/E2E abaixo são evidências datadas; NÃO reativar Groq obrigatória, instância por projeto, caminhos privados como destino final ou dependência Runtime externo para arquivos locais. O código e as provas atuais determinam o que já funciona.
 
 ## Objective
 Groq is the general-purpose **coordinator** of an authorized OrdaX workflow, not a story writer and not a second executor. The app provides tools, durable checkpoints, authority checks, receipts and evaluation. Tests across domains develop the system, its prompts, tool affordances and error handling; they do **not** update model weights or constitute fine-tuning.

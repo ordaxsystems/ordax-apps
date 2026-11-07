@@ -11,6 +11,11 @@ import {AutonomousDialogue} from './autonomous-dialogue.mjs';
 import {classifyExistingSiteChange} from './natural-site-intent.mjs';
 import {latestSiteWork} from './site-work-context.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
+import {forgeProjectContext,forgeMcpDiscovery} from './forge-executor-context.mjs';
+import {forgeProjectMemoryView} from './forge-project-memory-view.mjs';
+import {forgeProjectAdministratorView} from './forge-project-administrator-view.mjs';
+import {forgeProjectHandoffView} from './forge-project-handoff-view.mjs';
+import {UNTITLED_FORGE_PROJECT,suggestForgeProjectTitle} from './project-auto-title.mjs';
 import {deleteProjectRecords} from './project-deletion.mjs';
 import {ProjectRepository} from './project-repository.mjs';
 import {workExecutionSummary} from './work-execution-summary.mjs';
@@ -26,7 +31,7 @@ function missionProjectName(mission) {
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
 export class OrchestratorService {
-  constructor({store,authorize,provider=null,coordinator=null,confirmProposal=null,confirmProposalSend=null,workspacePort=null,repositoryPort=null,verifyLocalArtifact=null}={}) {
+  constructor({store,authorize,provider=null,coordinator=null,confirmProposal=null,confirmProposalSend=null,workspacePort=null,fileBroker=null,repositoryPort=null,verifyLocalArtifact=null}={}) {
     if(!store?.db || typeof authorize!=='function')throw Error('orchestrator_ports_required');
     this.store=store; this.db=store.db; this.authorize=authorize;
     this.provider=provider; this.coordinator=coordinator;
@@ -138,6 +143,7 @@ export class OrchestratorService {
     this.continuation=new LabContinuation({store,service:this});
     this.autonomous=new AutonomousDialogue({store,service:this});
     this.workspace=new ProjectWorkspace({store,port:workspacePort});
+    this.files=fileBroker;
     this.repository=new ProjectRepository({port:repositoryPort});
   }
 
@@ -273,8 +279,9 @@ export class OrchestratorService {
     if(binding?.status==='paused')throw Error('orchestrator_paused');
     const uncertain=binding?.kind==='work'
       ?this.hasUnresolvedWorkReceipt(binding.project_id,taskId)
-      :Boolean(this.db.prepare(`SELECT 1 FROM lab_command_receipt_scope
-        WHERE status='uncertain' AND task_id=? LIMIT 1`).get(taskId));
+      :Boolean(this.db.prepare(`SELECT 1 FROM lab_command_receipts
+        WHERE project_id=? AND operation='forjador_send' AND status='uncertain'
+        LIMIT 1`).get(binding?.project_id));
     if(uncertain)throw Error('orchestrator_reconciliation_required');
   }
 
@@ -382,18 +389,45 @@ export class OrchestratorService {
         workspaceSessionId:context.workspaceSessionId,confirmName:input.confirmName});
       return this.finish(reserved.commandId,result);
     });
+    if(operation==='project_file_write')return this.writeProjectFile(context,input);
     if(tool.readOnly)return this.read(context,operation,input);
     if(operation==='proposal_send')return this.confirmAndSendProposal(context,input);
     if(operation==='proposal_review'&&input.approved)return this.confirmAndReviewProposal(context,input);
-    if(['work_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare'].includes(operation))return this.dispatch(context,operation,input);
+    if(['work_send','forjador_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare'].includes(operation))return this.dispatch(context,operation,input);
     return this.transaction(()=>{
       const reserved=this.reserve(context,operation,input);
       if(reserved.existing)return reserved.existing;
-      const result=operation==='proposal_review'?this.reviewProposal(context,input):this.mutate(operation,input);
-      if(['project_create','mission_create'].includes(operation))this.db.prepare('UPDATE lab_command_receipts SET project_id=? WHERE id=?')
+      const result=operation==='project_memory_propose'
+        ?(this.task(input.projectId,input.taskId),this.store.memoryCandidates.proposeFromAssistant(input.taskId,input))
+        :operation==='proposal_review'?this.reviewProposal(context,input):this.mutate(operation,input);
+      if(['project_create','project_quick_create','mission_create'].includes(operation))this.db.prepare('UPDATE lab_command_receipts SET project_id=? WHERE id=?')
         .run(result.projectId,reserved.commandId);
       return this.finish(reserved.commandId,result);
     });
+  }
+
+  // A filesystem effect must reserve its durable command BEFORE writing.
+  // A crash or uncertain readback leaves a non-replayable receipt; successful
+  // SHA-256 readback is required before reporting completion.
+  writeProjectFile(context,input) {
+    if(!this.files)throw Error('forge_file_broker_unavailable');
+    const reserved=this.transaction(()=>this.reserve(context,'project_file_write',input));
+    if(reserved.existing)return reserved.existing;
+    try {
+      this.requireAccess(context,'project_file_write',input.projectId);
+      const proof=this.files.write(input.projectId,input.path,input.content,
+        input.expectedSha256??null);
+      return this.transaction(()=>this.finish(reserved.commandId,proof));
+    }catch(error){
+      const deterministic=new Set(['forge_file_path_invalid','forge_file_content_invalid',
+        'forge_file_size_limit','forge_file_expected_hash_invalid',
+        'forge_file_version_conflict','forge_file_not_found','forge_file_reparse_denied']);
+      const reason=deterministic.has(error?.message)?error.message:'forge_file_effect_uncertain';
+      try{this.transaction(()=>this.finish(reserved.commandId,
+        {reason,path:input.path,verified:false},
+        deterministic.has(error?.message)?'failed':'uncertain'));}catch{}
+      throw error;
+    }
   }
 
   async bindWorkspace(context,input) {
@@ -454,6 +488,39 @@ export class OrchestratorService {
       return {proposals};
     }
     if(operation==='workspace_status')return this.workspace.status(context,input.projectId);
+    if(operation==='forge_discover') {
+      const contextView=this.read(context,'project_context',input);
+      return forgeMcpDiscovery(contextView);
+    }
+    if(operation==='project_context') {
+      // The existing session authorization has already checked projectId.
+      // Project title/objective are DATA, never new tool instructions.
+      const project=this.db.prepare('SELECT name,objective,repository_url FROM lab_projects WHERE id=? AND workspace_session_id=?')
+        .get(input.projectId,context.workspaceSessionId);
+      if(!project)throw Error('orchestrator_project_unavailable');
+      const last=this.db.prepare(`SELECT r.status FROM runs r
+        JOIN lab_task_bindings b ON b.task_id=r.task_id AND b.kind='work'
+        WHERE b.project_id=? ORDER BY r.rowid DESC LIMIT 1`).get(input.projectId);
+      const total=this.db.prepare(`SELECT COUNT(*) AS n FROM lab_task_bindings
+        WHERE project_id=? AND kind='work'`).get(input.projectId).n;
+      return {...forgeProjectContext({projectId:input.projectId,project,
+        workspace:this.workspace.status(context,input.projectId),workCount:total,
+        latestRunStatus:last?.status||null}),
+        appPrivateFiles:this.files?.status(input.projectId)||{available:false,mode:'capability_unavailable'}};
+    }
+    if(operation==='project_memory')return forgeProjectMemoryView(this.store,input.projectId);
+    if(operation==='project_administrator_snapshot')return forgeProjectAdministratorView(this.store,input.projectId);
+    if(operation==='project_files_status')return this.files?.status(input.projectId)||{
+      projectId:input.projectId,available:false,mode:'capability_unavailable'};
+    if(operation==='project_files_list'){
+      if(!this.files)throw Error('forge_file_broker_unavailable');
+      return this.files.list(input.projectId,input.directory||'');
+    }
+    if(operation==='project_file_read'){
+      if(!this.files)throw Error('forge_file_broker_unavailable');
+      return this.files.read(input.projectId,input.path);
+    }
+    if(operation==='project_handoff')return forgeProjectHandoffView(this.store,input.projectId,{taskId:input.taskId||null});
     if(operation==='continuity_status') {
       this.orchestrator(input.projectId,input.orchestratorId);
       return this.continuation.status(input.projectId,input.orchestratorId);
@@ -618,7 +685,7 @@ export class OrchestratorService {
     // Keep ALL in-flight GPT sends reserved until their durable receipt ends.
     const activeCommands=Number(this.db.prepare(`SELECT COUNT(*) n
       FROM lab_command_receipts WHERE status='running'
-      AND operation IN ('work_send','proposal_send')`).get().n);
+      AND operation IN ('work_send','proposal_send','forjador_send')`).get().n);
     const hostOccupied=Boolean(this.provider?.busy?.());
     const occupied=activeRuns>0||activeCommands>0||hostOccupied;
     return Object.freeze({
@@ -817,6 +884,37 @@ export class OrchestratorService {
     const now=this.store.now();
     if(operation==='project_create') {
       return {projectId:this.createProjectRecord(input.name,input.objective||'',input.repositoryUrl,now)};
+    }
+    if(operation==='project_quick_create') {
+      // Unlike mission_create, no work/draft or speculative user task exists.
+      const projectId=this.createProjectRecord(UNTITLED_FORGE_PROJECT,'',null,now);
+      const orchestratorId='orchestrator_'+randomUUID();
+      const chat=this.store.createTask('Forjador');
+      this.db.prepare('INSERT INTO lab_orchestrators VALUES(?,?,?,?,?,?,?)')
+        .run(orchestratorId,projectId,'Forjador',
+          'Conversa de projeto. Entender o pedido do usuário e coordenar apenas ações disponíveis e autorizadas.',
+          'ready',chat.id,now);
+      this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)')
+        .run(chat.id,projectId,orchestratorId,'orchestrator');
+      return {projectId,projectName:UNTITLED_FORGE_PROJECT,
+        orchestratorId,chatTaskId:chat.id,workCreated:0,providerMessagesSent:0};
+    }
+    if(operation==='project_auto_title') {
+      const row=this.db.prepare(`SELECT p.name,o.chat_task_id AS chatTaskId FROM lab_projects p
+        JOIN lab_orchestrators o ON o.project_id=p.id
+        WHERE p.id=? AND p.workspace_session_id=? ORDER BY o.created_at,o.id LIMIT 1`)
+        .get(input.projectId,this.store.getWorkspaceSession().id);
+      if(!row)throw Error('orchestrator_project_unavailable');
+      if(row.name!==UNTITLED_FORGE_PROJECT)
+        return {projectId:input.projectId,name:row.name,changed:false};
+      const first=this.db.prepare(`SELECT content FROM messages WHERE task_id=? AND role='user'
+        ORDER BY created_at,id LIMIT 1`).get(row.chatTaskId);
+      if(!first)return {projectId:input.projectId,name:row.name,changed:false};
+      const title=suggestForgeProjectTitle(first.content);
+      if(title===UNTITLED_FORGE_PROJECT)return {projectId:input.projectId,name:row.name,changed:false};
+      const changed=this.db.prepare('UPDATE lab_projects SET name=? WHERE id=? AND name=?')
+        .run(title,input.projectId,UNTITLED_FORGE_PROJECT).changes;
+      return {projectId:input.projectId,name:title,changed:changed===1};
     }
     if(operation==='mission_create') {
       const projectName=input.name||missionProjectName(input.mission);
@@ -1190,7 +1288,7 @@ export class OrchestratorService {
     return this.activeCoordinatorTurns.has(taskId)||Boolean(this.db.prepare(`
       SELECT 1 FROM lab_command_receipt_scope
       WHERE status='running' AND operation IN
-        ('orchestrator_chat','orchestrator_analyze','orchestrator_prepare')
+        ('forjador_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare')
       AND task_id=? LIMIT 1`).get(taskId));
   }
 
@@ -1200,7 +1298,7 @@ export class OrchestratorService {
   projectWorkInProgress(projectId) {
     return Boolean(this.db.prepare(`SELECT 1 FROM lab_command_receipts
       WHERE project_id=? AND status='running'
-        AND operation IN ('work_send','proposal_send')
+        AND operation IN ('work_send','proposal_send','forjador_send')
       UNION ALL
       SELECT 1 FROM runs r JOIN lab_task_bindings b ON b.task_id=r.task_id
       WHERE b.project_id=? AND b.kind='work' AND r.status='running'
@@ -1264,16 +1362,29 @@ export class OrchestratorService {
     // Return an accepted command even if the provider is now offline; never replay.
     if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
     const isWorkSend=operation==='work_send'||operation==='proposal_send';
-    // Transport is determined by the operation, never by the visible GPT pane.
-    // Coordinator conversations use the configured coordinator (Groq on
-    // Windows); only explicit work sends reach the ChatGPT Web executor.
-    const usesProvider=isWorkSend;
+    const isForjadorSend=operation==='forjador_send';
+    // Ordinary Forjador turns now use the same GPT transport as work. Groq
+    // remains an optional analysis/proposal port, not a chat dependency.
+    const usesProvider=isWorkSend||isForjadorSend;
     const sendInput=preparedSend||input;
     const orch=isWorkSend?null:this.orchestrator(input.projectId,input.orchestratorId);
     const task=isWorkSend?this.task(input.projectId,sendInput.taskId,'work'):
       this.task(input.projectId,orch.chat_task_id,'orchestrator');
     const owner=orch||this.orchestrator(input.projectId,task.orchestrator_id);
     if(isWorkSend)this.assertDependenciesSatisfied(input.projectId,task.id);
+    if(isForjadorSend){
+      this.assertProviderTaskAvailable(task.id,{allowCoordinator:true});
+      // The UI has already persisted revision N. Validate it before reserving
+      // a command; the physical executor must consume revision N+1.
+      if(sendInput.draftRevision!=null){
+        const draft=this.store.getTaskDraft(task.id);
+        if(draft.draft_revision!==sendInput.draftRevision||
+           draft.draft.trim()!==String(sendInput.content||'').trim())
+          throw Error('task_draft_revision_conflict');
+        if(!Number.isSafeInteger(sendInput.draftRevision+1))
+          throw Error('invalid_task_draft_revision');
+      }
+    }
     const repositoryUrl=this.projectRepositoryUrl(input.projectId);
     if(owner.status==='paused')throw Error('orchestrator_paused');
     const port=usesProvider?this.provider:this.coordinator;
@@ -1341,7 +1452,7 @@ export class OrchestratorService {
     const providerContent=usesProvider
       ?preparedSend?.providerContent||appendRemoteRepositoryInstructions(content,repositoryUrl)
       :content;
-    const workspaceStatus=isWorkSend?null:this.workspace.status(context,input.projectId);
+    const workspaceStatus=usesProvider?null:this.workspace.status(context,input.projectId);
     const workspaceObservation=workspaceStatus?{
       state:workspaceStatus.state,
       capabilityAvailable:workspaceStatus.available===true,
@@ -1412,8 +1523,12 @@ export class OrchestratorService {
       // Fresh authorization immediately before a potentially external effect.
       this.requireAccess(context,operation,input.projectId);
       const reply=await port.send({taskId:task.id,content:usesProvider?providerContent:content,
-        draftRevision:sendInput.draftRevision??null,
-        taskKind:isWorkSend?'work':null,
+        // Work sends already supply the next revision. Forjador sends carry
+        // the saved current revision and must clear it at N+1 atomically.
+        draftRevision:isForjadorSend&&sendInput.draftRevision!=null
+          ?sendInput.draftRevision+1:sendInput.draftRevision??null,
+        taskKind:isForjadorSend?'orchestrator':isWorkSend?'work':null,
+        authorSource:isForjadorSend?'orchestrator':'human',
         mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork,
         completionProfile:reviewSource?'technical_review':'standard',workspaceObservation,repositoryUrl,
         delegateWork:operation==='orchestrator_chat'&&input.delegateWork===true});

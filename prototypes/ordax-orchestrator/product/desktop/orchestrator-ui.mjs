@@ -156,6 +156,15 @@ export function describeWorkspaceConnection(state) {
 
 export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onSelectRightPane,onOpenAppSettings,onNavigationChange,onArtifactPreviewTask}) {
   const $=id=>document.getElementById(id);
+  // One real tools menu, not three permanent engineering panels above chat.
+  // Relocate the existing nodes so their IDs, listeners and real capabilities
+  // remain canonical and available on demand.
+  const advancedContent=$('forgeCoordinatorAdvancedContent');
+  for(const id of ['projectPulseDisclosure','orchestrationCapabilitySummary',
+      'forjadorGroqInspector','orchestrationIntegrations']){
+    const node=$(id);
+    if(advancedContent&&node)advancedContent.append(node);
+  }
   let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
   let projectRefreshGeneration=0,orchestratorRefreshGeneration=0,autonomousRefreshGeneration=0;
   let workspaceInspectionGeneration=0,workspacePortAvailable=false;
@@ -164,7 +173,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   let gptWebTransportAvailable=false;
   let chatgptPlanStatus={connected:false,planUsageAuthorized:false,secureStorageAvailable:false};
   let groqConfigured=false,coordinatorProvider=null;
-  let analysisBusy=false,preflightBusy=false,preflightGeneration=0,repositoryBusy=false,observationBusy=false,repositoryPortAvailable=false,coordinatorSubmitting=false,nodeHost=false;
+  let analysisBusy=false,preflightBusy=false,preflightGeneration=0,repositoryBusy=false,observationBusy=false,repositoryPortAvailable=false,coordinatorSubmitting=false,quickProjectCreating=false,nodeHost=false;
   let coordinatorDraftTaskId=null,coordinatorDraftRevision=0,coordinatorDraftTimer=null;
   let coordinatorDraftGeneration=0,pendingCoordinatorDraft=null,coordinatorDraftWrite=Promise.resolve();
   const requestKeys=new Map();
@@ -275,12 +284,14 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     coordinatorDraftRevision=0;
     pendingCoordinatorDraft=null;
     $('coordinatorPrompt').value='';
+    fitCoordinatorComposer();
     setCoordinatorDraftState('');
     if(!taskId)return;
     const draft=await readCoordinatorDraft(taskId);
     if(!isCurrent()||generation!==coordinatorDraftGeneration||taskId!==chatTaskId)return;
     coordinatorDraftRevision=Number(draft.draft_revision||0);
     $('coordinatorPrompt').value=draft.draft||'';
+    fitCoordinatorComposer();
     setCoordinatorDraftState(draft.draft?'Rascunho local preservado nesta conversa':'');
   }
   async function prepareCoordinatorDraft(taskId) {
@@ -303,7 +314,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(chatTaskId===taskId&&coordinatorDraftTaskId===taskId) {
       coordinatorDraftRevision=draft.draft_revision;
       pendingCoordinatorDraft=null;
-      if($('coordinatorPrompt').value===raw)$('coordinatorPrompt').value='';
+      if($('coordinatorPrompt').value===raw){$('coordinatorPrompt').value='';fitCoordinatorComposer();}
       setCoordinatorDraftState('Mensagem registrada no histórico; rascunho removido.');
     }
     return true;
@@ -315,7 +326,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('activeProjectName').textContent=current?.name||'Conecte seu projeto';
     const otherProjects=projects.filter(project=>project.id!==projectId);
     const repository=current?.repository_url?'GitHub vinculado por URL · leitura não verificada':'Repositório GitHub ainda não vinculado';
-    $('activeProjectDetail').textContent=current?repository:'Crie seu primeiro projeto usando Novo projeto.';
+    $('activeProjectDetail').textContent=current?.name==='Novo projeto'
+      ?'Conversa vazia · faça seu primeiro pedido ao Forjador.'
+      :current?repository:'Crie seu primeiro projeto usando Novo projeto.';
     // One canonical Store supplies the active project and switchable others.
     // Previously created projects are first-class, never hidden as legacy.
     $('projectSwitcher').hidden=otherProjects.length===0;
@@ -332,7 +345,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   function renderOrchestratorNavigation() {
     const list=$('orchestratorNavList');list.replaceChildren();
     if(!projectId){const empty=document.createElement('p');empty.className='nav-empty';empty.textContent='Selecione um projeto.';list.append(empty);return;}
-    if(!orchestrators.length){const empty=document.createElement('p');empty.className='nav-empty';empty.textContent='Adicione um orquestrador para começar.';list.append(empty);return;}
+    if(!orchestrators.length){const empty=document.createElement('p');empty.className='nav-empty';empty.textContent='Adicione um administrador para começar.';list.append(empty);return;}
     for(const item of orchestrators){
       const button=document.createElement('button');button.type='button';button.className='nav-item orchestrator-nav-item';
       button.textContent=item.name;button.dataset.orchestratorId=item.id;
@@ -853,7 +866,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     nodeHost=state.executionSurface==='node_host';
     $('orchestratorWorkRail').setAttribute('aria-label',nodeHost?'Frentes de trabalho do projeto':'Conversas do projeto no GPT');
     $('workRailTitle').textContent=nodeHost?'Frentes de trabalho':'Conversas no GPT';
-    $('coordinatorRailToggle').textContent=nodeHost?'Frentes':'Frentes GPT';
+    $('coordinatorRailToggle').textContent='Sessões GPT';
     $('newScopedWorkButton').textContent=nodeHost?'＋ Nova frente':'＋ Nova conversa no GPT';
     $('newScopedWorkDetails').querySelector('summary').textContent=nodeHost?'Configurar título da frente':'Configurar nome da conversa';
     $('newScopedWorkForm').querySelector('button[type="submit"]').textContent=nodeHost?'Criar frente e abrir rascunho':'Criar e abrir conversa';
@@ -865,26 +878,29 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     repositoryPortAvailable=engineStatus.repositoryPortAvailable===true;
     workspacePortAvailable=engineStatus.workspacePortAvailable===true;
     gptWebTransportAvailable=engineStatus.providerExecutionAvailable===true&&!nodeHost;
-    // The coordinator is a distinct conversation, not another GPT Web front.
-    orchestratorChatAvailable=coordinatorAvailable;
+    // GPT-first: the same canonical Forjador Task is now served by GPT Web.
+    // Groq is optional for the advanced analyst, not the normal chat.
+    orchestratorChatAvailable=gptWebTransportAvailable;
     coordinatorDraftCommitAvailable=engineStatus.coordinatorDraftCommitAvailable===true;
     if(!coordinatorDraftCommitAvailable)setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
     else if($('coordinatorDraftState').textContent.includes('backend anterior'))
       setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
     $('coordinatorNavProvider').textContent='Conversa do projeto';
-    $('coordinatorRouteLabel').textContent='ASSISTENTE ORDAX';
+    $('coordinatorRouteLabel').textContent='FORJADOR';
     $('coordinatorApiSettings').textContent='Ajustes';
-    $('coordinatorPrompt').placeholder='O que você quer criar?';
+    $('coordinatorPrompt').placeholder='Descreva o que você quer criar ou mudar…';
     $('coordinatorSend').textContent='Enviar';
     $('coordinatorSend').setAttribute('aria-label','Enviar mensagem');
-    $('orchestrationConnection').textContent=coordinatorAvailable
-      ?'Descreva seu pedido normalmente. O OrdaX cuida das etapas disponíveis.'
-      :'Assistente indisponível. Verifique as conexões em Ajustes para continuar.';
+    $('orchestrationConnection').textContent=orchestratorChatAvailable
+      ?'GPT Web disponível. O envio exige uma sessão autenticada.'
+      :'GPT Web indisponível. Verifique a sessão em Ajustes.';
+    if($('coordinatorTransport'))$('coordinatorTransport').hidden=orchestratorChatAvailable;
     syncCapabilitySummary();
     syncCoordinatorActions();
   }
   $('coordinatorApiSettings').addEventListener('click',()=>onOpenAppSettings?.('providers'));
   function openNewProjectForm(){
+    $('forgeProjectAdvanced').open=true;
     const form=$('projectSetup');
     form.open=true;
     // The same canonical form serves the desktop shortcut and compact header.
@@ -893,20 +909,51 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('projectName').focus();
   }
   $('addProject').addEventListener('click',openNewProjectForm);
-  $('quickNewProject').addEventListener('click',openNewProjectForm);
+  async function createBlankProject(){
+    if(quickProjectCreating)return;
+    quickProjectCreating=true;
+    const button=$('quickNewProject');button.disabled=true;
+    try{
+      await flushCoordinatorDraft();
+      const previous=projectId;
+      // A unique creationNonce distinguishes two real clicks without weakening
+      // the canonical idempotent command receipt.
+      const receipt=await command('project_quick_create',{creationNonce:crypto.randomUUID()});
+      if(receipt.status!=='succeeded'||!receipt.result?.projectId)
+        throw Error('forge_quick_project_unconfirmed');
+      if(projectId!==previous){await refreshProjects();return;}
+      projectId=receipt.result.projectId;
+      orchestratorId=receipt.result.orchestratorId;
+      clearProjectPreflight();
+      $('projectSetup').open=false;$('forgeProjectAdvanced').open=false;
+      await refreshProjects();await refreshOrchestrators();
+      await showCoordinator();
+      $('coordinatorPrompt').focus();
+      status('Novo projeto. Escreva sua primeira mensagem ao Forjador.');
+    }catch{
+      status('Não foi possível confirmar o novo projeto. Verifique a lista antes de tentar de novo.');
+      await refreshProjects().catch(()=>{});
+    }finally{
+      quickProjectCreating=false;button.disabled=false;
+    }
+  }
+  $('quickNewProject').addEventListener('click',()=>void createBlankProject());
   $('renameProjectButton').addEventListener('click',()=>{
     if(!projectId)return;
     $('renameProjectInput').value=projectsCache.find(item=>item.id===projectId)?.name||'';
+    $('forgeProjectAdvanced').open=true;
     $('projectRenameSetup').open=true;$('renameProjectInput').focus();
   });
   $('deleteProjectButton').addEventListener('click',()=>{
     if(!projectId)return;
     $('projectDeleteName').value='';
+    $('forgeProjectAdvanced').open=true;
     $('projectDeleteSetup').open=true;
     $('projectDeleteName').focus();
   });
   $('addOrchestrator').addEventListener('click',()=>{
-    if(!projectId){status('Selecione ou crie um projeto antes de adicionar um orquestrador.');return;}
+    if(!projectId){status('Selecione ou crie um projeto antes de adicionar um administrador.');return;}
+    $('forgeProjectAdvanced').open=true;
     $('orchestratorSetup').open=true;$('orchestratorName').focus();
   });
   $('newScopedWorkButton').addEventListener('click',()=>{
@@ -914,7 +961,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   });
   let workRailReturnFocus=$('coordinatorRailToggle');
   const setWorkRailOpen=open=>{
-    const ready=open?(onSelectRightPane?.('context').catch(()=>{})??Promise.resolve()):Promise.resolve();
+    const ready=onSelectRightPane?.(open?'context':'execution').catch(()=>{})??Promise.resolve();
     document.body.classList.toggle('orchestrator-rail-open',open);
     $('contextRail').classList.toggle('open',open);
     $('coordinatorRailToggle').setAttribute('aria-expanded',String(open));
@@ -1059,7 +1106,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   async function refreshContinuityStatus() {
     const p=projectId,o=orchestratorId;
-    if(!p||!o){$('continuityToggle').disabled=true;$('continuityProposalsToggle').disabled=true;$('continuityFollowupPrepare').hidden=true;$('continuityFollowupPrepare').disabled=true;$('continuityState').textContent='Selecione um orquestrador.';return;}
+    if(!p||!o){$('continuityToggle').disabled=true;$('continuityProposalsToggle').disabled=true;$('continuityFollowupPrepare').hidden=true;$('continuityFollowupPrepare').disabled=true;$('continuityState').textContent='Selecione um administrador.';return;}
     const [result,engineStatus]=await Promise.all([
       call('continuity_status',{projectId:p,orchestratorId:o}),
       call('status').catch(()=>null)
@@ -1117,7 +1164,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(generation!==orchestratorRefreshGeneration||p!==projectId)return [];
     orchestrators=result.orchestrators;
     if(!orchestrators.some(o=>o.id===orchestratorId))orchestratorId=orchestrators[0]?.id||null;
-    options($('orchestratorSelect'),orchestrators,'Selecione um orquestrador');
+    options($('orchestratorSelect'),orchestrators,'Selecione um administrador');
     $('orchestratorSelect').value=orchestratorId||'';
     const selected=orchestrators.find(o=>o.id===orchestratorId);
     const selectedId=selected?.id||null;
@@ -1132,8 +1179,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('openHistory').disabled=!p||!selected;
     $('openEvidence').disabled=!p||!selected;
     $('orchestratorMission').textContent=selected
-      ?selected.name+' · '+selected.mission
-      :'Configure o Administrador Geral deste projeto.';
+      ?'Crie e continue seu trabalho em uma conversa.'
+      :'Selecione um projeto para começar.';
+    $('orchestratorMission').title=selected?.mission||'';
     $('orchestratorTitle').textContent='Conversa';
     syncCoordinatorActions();
     renderOrchestratorNavigation();
@@ -1283,17 +1331,36 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       box.append(note);
     }
     if(page.messages.length===0) {
-      const empty=document.createElement('div');empty.className='coordinator-empty';
-      const title=document.createElement('strong');title.textContent='Como posso ajudar?';
+      const empty=document.createElement('div');empty.className='coordinator-empty forge-welcome';
+      const mark=document.createElement('span');mark.className='forge-welcome-mark';
+      mark.textContent='◇';mark.setAttribute('aria-hidden','true');
+      const title=document.createElement('strong');title.textContent='O que vamos criar hoje?';
       const copy=document.createElement('p');
-      copy.textContent='Descreva o que deseja criar, mudar ou entender. Basta escrever normalmente.';
-      const settings=document.createElement('button');settings.type='button';settings.className='mini-secondary';settings.textContent='Ajustes';
-      settings.addEventListener('click',()=>$('coordinatorApiSettings').click());
-      empty.append(title,copy,settings);box.append(empty);
+      copy.textContent='Conte sua ideia ao Forjador ou comece com uma sugestão.';
+      const choices=document.createElement('div');choices.className='forge-welcome-choices';
+      for(const [label,suggestion] of [
+        ['Criar um site','Crie um site para minha ideia.'],
+        ['Desenvolver um app','Quero desenvolver um aplicativo.'],
+        ['Planejar um projeto','Ajude-me a planejar um novo projeto.']
+      ]){
+        const button=document.createElement('button');
+        button.type='button';button.className='forge-welcome-choice';
+        button.textContent=label;
+        button.addEventListener('click',()=>{
+          const input=$('coordinatorPrompt');
+          if(input.disabled)return;
+          input.value=suggestion;
+          input.dispatchEvent(new Event('input',{bubbles:true}));
+          input.focus();
+        });
+        choices.append(button);
+      }
+      empty.append(mark,title,copy,choices);box.append(empty);
     }
     for(const message of page.messages) {
       const article=document.createElement('article');article.className='coordinator-message';
-      const role=document.createElement('strong');role.textContent=message.role==='user'?'Você':'OrdaX';
+      article.dataset.role=message.role==='user'?'user':'assistant';
+      const role=document.createElement('strong');role.textContent=message.role==='user'?'Você':'Forjador';
       const text=document.createElement('p');text.textContent=message.content;
       article.append(role,text);box.append(article);
     }
@@ -1404,7 +1471,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   $('orchestratorSelect').addEventListener('change',async()=>{
     const previous=orchestratorId,next=$('orchestratorSelect').value||null;
     if(previous===next)return;
-    try{await flushCoordinatorDraft();}catch{$('orchestratorSelect').value=previous||'';status('O rascunho do chat central não foi salvo; o orquestrador atual foi mantido.');return;}
+    try{await flushCoordinatorDraft();}catch{$('orchestratorSelect').value=previous||'';status('O rascunho do chat central não foi salvo; o administrador atual foi mantido.');return;}
     orchestratorId=next;clearProjectPreflight();
     try{await refreshOrchestrators();if(chatTaskId)await showCoordinator();
       else await onNavigationChange?.({view:'home',projectId,orchestratorId,taskId:null});
@@ -1529,7 +1596,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       if(receipt.status!=='succeeded'||p!==projectId)return;
       orchestratorId=receipt.result.orchestratorId;
       $('newOrchestratorForm').reset();$('orchestratorSetup').open=false;
-      await refreshOrchestrators();await showCoordinator();status('Orquestrador configurado.');
+      await refreshOrchestrators();await showCoordinator();status('Administrador configurado.');
     });
   });
   $('openOrchestrator').addEventListener('click',()=>{void showCoordinator().catch(error);});
@@ -1605,6 +1672,33 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   });
   // One keyboard submission path: Enter or Ctrl/Cmd+Enter submits; Shift+Enter
   // inserts a newline and IME composition must never trigger an early send.
+  // DEV-only, explicit read of the last exact Groq request for this project.
+  // The Forjador's ordinary chat never exposes internal model messages.
+  $('inspectGroqPrompt').addEventListener('click',async()=>{
+    const selected=projectId,button=$('inspectGroqPrompt'),display=$('groqPromptDisplay');
+    if(!selected){display.textContent='Selecione um projeto para inspecionar.';return;}
+    button.disabled=true;
+    display.textContent='Consultando o último payload da Groq, sem enviar mensagem…';
+    try{
+      const trace=await api.forjadorGroqPrompt?.(selected);
+      if(selected!==projectId)return;
+      display.textContent=trace&&(trace.groq||trace.gpt)
+        ?JSON.stringify({
+          groq:trace.groq&&Array.isArray(trace.groq.messages)?{
+            observedAt:trace.groq.observedAt,model:trace.groq.model,
+            phase:trace.groq.phase,messages:trace.groq.messages}:null,
+          gpt:trace.gpt?{preparedAt:trace.gpt.preparedAt,
+            taskId:trace.gpt.taskId,runId:trace.gpt.runId,
+            authorSource:trace.gpt.authorSource,
+            originalRequest:trace.gpt.originalRequest,
+            composedPrompt:trace.gpt.composedPrompt,
+            deliveryObserved:trace.gpt.deliveryObserved}:null
+        },null,2)
+        :'Não há requisição Groq ou GPT preparada nesta sessão para este projeto. Nenhum envio foi iniciado.';
+    }catch{
+      if(selected===projectId)display.textContent='Diagnóstico local indisponível. Nenhuma mensagem foi enviada.';
+    }finally{button.disabled=false;}
+  });
   $('coordinatorPrompt').addEventListener('keydown',event=>{
     if(event.key!=='Enter'||event.isComposing||event.shiftKey)return;
     event.preventDefault();
@@ -1613,9 +1707,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   $('coordinatorComposer').addEventListener('submit',event=>{
     event.preventDefault();
     // Acquire the single-flight lock BEFORE the first async draft read.
-    // The form's button restoration must not allow a second Groq dispatch.
+    // The form's button restoration must not allow a second GPT dispatch.
     if(coordinatorSubmitting||analysisBusy||$('coordinatorSend').disabled)return;
-    const delegateWork=!nodeHost;
     coordinatorSubmitting=true;syncCoordinatorActions();
     void formAction(event.currentTarget,async()=>{
       const p=projectId,o=orchestratorId,t=chatTaskId;
@@ -1623,27 +1716,24 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       // Selection can change while awaiting the durable draft. Never send a
       // stale coordinator message to the old project after navigation.
       if(p!==projectId||o!==orchestratorId||t!==chatTaskId||!content)return;
-      status('Entendendo o pedido…');
-      const receipt=await command('orchestrator_chat',{projectId:p,orchestratorId:o,content,delegateWork,draftRevision:draft.draftRevision});
+      status('Enviando ao GPT…');
+      const receipt=await command('forjador_send',{projectId:p,orchestratorId:o,content,draftRevision:draft.draftRevision});
       if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
-      await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
       if(receipt.status==='succeeded'){
-        const delegation=receipt.result?.delegation;
-        status(delegation?.status==='accepted'
-          ?'Pedido recebido. Preparando a execução…'
-          :delegation?.status==='blocked'
-            ?'Não foi possível começar essa tarefa. Verifique as conexões em Ajustes.'
-            :'Resposta registrada.');
+        await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
+        status('Resposta do GPT registrada. Efeitos externos ainda exigem verificação.');
+      } else if(receipt.status==='uncertain'){
+        status('Envio GPT incerto. Consulte Execução antes de qualquer novo envio; não houve repetição.');
+      } else {
+        status('GPT não confirmou o envio. O rascunho foi mantido para verificação.');
       }
-      else {
-        const code=receipt?.result?.failureCode;
-        status(code==='groq_auth_rejected'
-          ?'A conexão do administrador não está autorizada. Nenhum trabalho foi iniciado.'
-          :code==='groq_invalid_response'||code==='groq_invalid_jarvis_decision'
-            ?'O administrador não conseguiu interpretar a resposta. O pedido está salvo; nenhum envio GPT foi iniciado.'
-            :receipt.status==='uncertain'
-              ?'O resultado do administrador está incerto. Verifique o histórico; não vou repetir o pedido.'
-              :'A solicitação não foi concluída. O pedido foi salvo sem executar o GPT.');
+      // Auto-label only a still-untitled project after a persisted first turn.
+      // User-selected names always win; this never calls a model or GPT.
+      if(receipt.status==='succeeded'||receipt.status==='failed'){
+        try{
+          await command('project_auto_title',{projectId:p});
+          if(p===projectId)await refreshProjects();
+        }catch{/* title is optional and must never block the conversation */}
       }
       await renderCoordinator();
     }).finally(()=>{coordinatorSubmitting=false;syncCoordinatorActions();});
@@ -1729,7 +1819,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(button.disabled||!projectId||!orchestratorId)return;
     const p=projectId,o=orchestratorId;
     const mission=$('coordinatorPrompt').value.trim();
-    if(!mission){status('Descreva a missão única no campo do orquestrador.');$('coordinatorPrompt').focus();return;}
+    if(!mission){status('Descreva a missão única no campo do Forjador.');$('coordinatorPrompt').focus();return;}
     $('startAutonomousStory').disabled=true;$('startAutonomousDialogue').disabled=true;
     $('startAutonomousTechnical').disabled=true;
     try {
@@ -1796,7 +1886,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       catch{setCoordinatorDraftState('Não foi possível confirmar o rascunho salvo. Ele foi preservado e nenhuma proposta foi enviada.');return;}
       if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
       const content=draft?.content;
-      if(!content){status('Descreva no campo de mensagem a frente que o orquestrador deve preparar.');$('coordinatorPrompt').focus();return;}
+      if(!content){status('Descreva no campo de mensagem a frente que o administrador deve preparar.');$('coordinatorPrompt').focus();return;}
       status('A IA está preparando uma proposta de frente para sua revisão…');
       try {
         const receipt=await command('orchestrator_prepare',{projectId:p,orchestratorId:o,content,draftRevision:draft.draftRevision});
@@ -1807,7 +1897,15 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       }catch{error();}
     }finally{analysisBusy=false;coordinatorSubmitting=false;syncCoordinatorActions();}
   });
-  $('coordinatorPrompt').addEventListener('input',stageCoordinatorDraft);
+  function fitCoordinatorComposer(){
+    const input=$('coordinatorPrompt');
+    input.style.height='auto';
+    input.style.height=Math.min(input.scrollHeight,164)+'px';
+  }
+  $('coordinatorPrompt').addEventListener('input',()=>{
+    fitCoordinatorComposer();
+    stageCoordinatorDraft();
+  });
   $('coordinatorPrompt').addEventListener('blur',()=>{void flushCoordinatorDraft().catch(()=>{});});
   $('newScopedWorkForm').addEventListener('submit',event=>{
     event.preventDefault();void formAction(event.currentTarget,async()=>{

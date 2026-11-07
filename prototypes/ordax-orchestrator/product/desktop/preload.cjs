@@ -2,8 +2,22 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('ordax', {
   coordinatorChatStatus: () => ipcRenderer.invoke('ordax:orchestrator:chat-status'),
+  forjadorGroqPrompt: projectId => ipcRenderer.invoke('ordax:forjador:groq-prompt',projectId),
   orchestratorInvoke: (operation,input={}) => ipcRenderer.invoke('ordax:orchestrator:invoke',{operation,input}),
   orchestratorMcp: message => ipcRenderer.invoke('ordax:orchestrator:mcp',message),
+  forgeLocalMcpStatus: () => ipcRenderer.invoke('ordax:forge:local-mcp:status'),
+  forgeLocalMcpStart: projectId => ipcRenderer.invoke('ordax:forge:local-mcp:start',projectId),
+  forgeLocalMcpAdd: projectId => ipcRenderer.invoke('ordax:forge:local-mcp:add',projectId),
+  forgeLocalMcpRevoke: projectId => ipcRenderer.invoke('ordax:forge:local-mcp:revoke',projectId),
+  forgeLocalMcpResumeEnable: projectId => ipcRenderer.invoke('ordax:forge:local-mcp:resume-enable',projectId),
+  forgeLocalMcpResumeDisable: projectId => ipcRenderer.invoke('ordax:forge:local-mcp:resume-disable',projectId),
+  forgeLocalMcpStop: () => ipcRenderer.invoke('ordax:forge:local-mcp:stop'),
+  forgeOfficialTunnelStart: input => ipcRenderer.invoke('ordax:forge:tunnel:start',input),
+  forgeOfficialTunnelStop: () => ipcRenderer.invoke('ordax:forge:tunnel:stop'),
+  forgeWorkspaceStatus: projectId => ipcRenderer.invoke('ordax:forge:workspace:status',projectId),
+  forgeWorkspaceCreate: projectId => ipcRenderer.invoke('ordax:forge:workspace:create',projectId),
+  forgeWorkspaceChoose: projectId => ipcRenderer.invoke('ordax:forge:workspace:choose',projectId),
+  forgeWorkspaceMigrate: projectId => ipcRenderer.invoke('ordax:forge:workspace:migrate',projectId),
   onOrchestratorChanged: callback => {
     const listener=()=>callback();
     ipcRenderer.on('ordax:orchestrator:changed',listener);
@@ -52,6 +66,8 @@ contextBridge.exposeInMainWorld('ordax', {
   labBuildProof: () => ipcRenderer.invoke('ordax:lab:build-proof'),
   providerStatus: () => ipcRenderer.invoke('ordax:provider:status'),
   providerDiagnostic: () => ipcRenderer.invoke('ordax:provider:diagnostic'),
+  providerMcpSelection: () => ipcRenderer.invoke('ordax:provider:mcp-selection'),
+  onProviderMcpObserved: callback => ipcRenderer.on('ordax:provider:mcp-observed',(_event,data)=>callback(data)),
   providerNavigate: direction => ipcRenderer.invoke('ordax:provider:navigate',direction),
   setProviderBounds: bounds => ipcRenderer.invoke('ordax:provider:view-bounds',bounds),
   getObserverMode: () => ipcRenderer.invoke('ordax:provider:observer-mode:get'),

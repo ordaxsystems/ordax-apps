@@ -30,11 +30,12 @@ test('host serves only the current UI allowlist with a restrictive browser polic
     const css=await fs.readFile(path.join(productRoot,'desktop','ui.css'),'utf8');
     assert.match(ui,/<footer class="left-footer">[\s\S]*<details id="hostBrowserControls" class="host-browser-controls"[\s\S]*<\/footer>/);
     assert.doesNotMatch(css,/\.host-browser-controls\{position:fixed/);
-    // The Work rail is nested inside contextPanel. A selector that hides
-    // contextPanel would make the real work list invisible in coordinator mode.
+    // The Work rail shares the right-hand tabbed workspace with execution,
+    // preview, files and provider; a hidden contextPanel must never mask them.
     assert.ok(ui.indexOf('id="contextPanel"')<ui.indexOf('id="orchestratorWorkRail"'));
-    assert.match(css,/body\.orchestrator-focus #contextRail>:not\(#contextPanel\)\{display:none!important\}/);
-    assert.match(css,/body\.orchestrator-focus #contextPanel\{display:flex!important;overflow:hidden;padding:0\}/);
+    assert.match(css,/body\.orchestrator-focus #contextRail>\.right-pane-tabs\{\s*display:grid!important/);
+    assert.match(css,/body\.orchestrator-focus #contextRail>#contextPanel:not\(\[hidden\]\)\{display:flex!important\}/);
+    assert.match(css,/body\.orchestrator-focus #contextRail>#contextPanel\[hidden\]\{display:none!important\}/);
     assert.match(css,/body\.orchestrator-focus #contextPanel>:not\(#orchestratorWorkRail\)\{display:none!important\}/);
     assert.doesNotMatch(css,/#contextRail>:not\(#orchestratorWorkRail\)/);
     assert.match(css,/\.app-settings-dialog\{width:min\(900px/);
@@ -75,6 +76,54 @@ test('host requires same-origin browser bootstrap and recovers a browser session
     assert.equal(second.status,200);
     assert.notEqual(second.headers.get('set-cookie').split(';',1)[0],cookie);
   } finally {await server.close();}
+});
+
+test('host reclaims idle browser slots under pressure but preserves active sessions',async()=>{
+  let now=1_000_000;
+  const server=createHostBrowserServer({productRoot,assetsRoot:path.join(productRoot,'data','assets'),invoke:async()=>null,clock:()=>now});
+  const {origin}=await server.listen();
+  const create=()=>fetch(origin+'/api/session',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'});
+  try {
+    const cookies=[];
+    for(let i=0;i<64;i++){
+      const response=await create();
+      assert.equal(response.status,200);
+      cookies.push(response.headers.get('set-cookie').split(';',1)[0]);
+    }
+    assert.equal((await create()).status,429,'active sessions retain their capacity');
+    now+=45*60_000;
+    const keep=await fetch(origin+'/api/session',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookies[0]},body:'{}'});
+    assert.equal(keep.status,200);
+    now+=20*60_000;
+    assert.equal((await create()).status,200,'idle slots are reclaimed');
+    assert.equal((await fetch(origin+'/api/session',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookies[0]},body:'{}'})).status,200);
+    assert.equal((await fetch(origin+'/api/invoke',{headers:{Cookie:cookies[1]}})).status,401,'reclaimed token has no access');
+  }finally{await server.close();}
+});
+
+test('a live browser event stream keeps its session during capacity recovery',async()=>{
+  let now=1_000_000;
+  const server=createHostBrowserServer({productRoot,assetsRoot:path.join(productRoot,'data','assets'),invoke:async()=>null,clock:()=>now});
+  const {origin}=await server.listen();
+  const create=()=>fetch(origin+'/api/session',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'});
+  let reader;
+  try {
+    const first=await create();
+    assert.equal(first.status,200);
+    const cookie=first.headers.get('set-cookie').split(';',1)[0];
+    const stream=await fetch(origin+'/api/events',{headers:{Cookie:cookie}});
+    reader=stream.body.getReader();
+    await reader.read();
+    for(let i=1;i<64;i++)assert.equal((await create()).status,200);
+    now+=61*60_000;
+    assert.equal((await create()).status,200,'abandoned sessions yield a free slot');
+    const recovered=await fetch(origin+'/api/session',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookie},body:'{}'});
+    assert.equal(recovered.status,200);
+    assert.equal(recovered.headers.get('set-cookie').split(';',1)[0],cookie);
+    server.publish('orchestrator-changed',{source:'continuity'});
+    const frame=new TextDecoder().decode((await reader.read()).value||new Uint8Array());
+    assert.match(frame,/event: orchestrator-changed/);
+  }finally{await reader?.cancel().catch(()=>{});await server.close();}
 });
 
 test('ChatGPT callback is bound to the host cookie and redirects without exposing its authorization code',async()=>{

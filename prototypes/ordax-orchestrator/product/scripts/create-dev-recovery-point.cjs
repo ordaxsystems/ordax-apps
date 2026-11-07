@@ -1,4 +1,4 @@
-// Explicit operator preflight for upgrading a staged OrdaX Orchestrator Lab.
+// Explicit operator preflight for upgrading a staged OrdaX Forge build.
 // SQLite online backup: no stopping Electron, no credentials, no provider calls.
 // Never restores data or changes the source database.
 const fs=require('node:fs');

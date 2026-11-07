@@ -8,11 +8,23 @@ const definitions = [
   ['status','Inspect local engine state and limitations.',{},[],true],
   ['projects_list','List accessible Lab projects.',{},[],true],
   ['project_preflight','Inspect project-scoped local evidence and external capability blockers without a provider request, GitHub read, grant or GPT send.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
+  ['forge_discover','Read the actual Forge app capabilities and authorized current project. Start here to avoid assuming folder access, completed operations, or deployment.',{projectId:id},['projectId'],true],
+  ['project_context','Discover the canonical Forge execution protocol, selected project identity, workspace grant state and work availability. Does not read or create files, grant access or send GPT.',{projectId:id},['projectId'],true],
+  ['project_memory','Read bounded canonical memory and pending suggestions across all project conversations. Every item retains its source; provider replies are never proof of filesystem effects. No model call.',{projectId:id},['projectId'],true],
+  ['project_memory_propose','Stage a GPT Administrator note for human review, citing an exact excerpt from an already persisted assistant message of this project. Never updates canon or certifies files. No GPT send.',{projectId:id,taskId:id,sourceMessageId:id,category:{...text(20),pattern:'^(goal|constraint|decision|entity|structure|fact|open_loop|reference)$'},key:text(160),content:text(8000),evidence:text(600)},['projectId','taskId','sourceMessageId','category','key','content','evidence'],false],
+  ['project_administrator_snapshot','Read a bounded project-wide evidence snapshot of works, GPT Runs, unresolved commands, accepted notes and pending suggestions. Not a semantic model review or proof of file changes.',{projectId:id},['projectId'],true],
+  ['project_handoff','Read a bounded project handoff from canonical SQLite: tasks, message excerpts, accepted decisions, pending receipts and an optional selected task. No GPT send, session rotation, model summary or filesystem proof.',{projectId:id,taskId:id},['projectId'],true],
+  ['project_files_status','Inspect the single Forge project workspace: owner-bound Windows folder when verified, otherwise legacy private sandbox. Never grants an external path.',{projectId:id},['projectId'],true],
+  ['project_files_list','List up to 100 entries in the currently bound project workspace using relative paths; rejects traversal and reparse points.',{projectId:id,directory:text(240,0)},['projectId'],true],
+  ['project_file_read','Read one UTF-8 file up to 64 KiB in the authorized project workspace, with SHA-256. No arbitrary disk access.',{projectId:id,path:text(240)},['projectId','path'],true],
+  ['project_file_write','Create or replace one UTF-8 file up to 64 KiB inside the Forge-bound project workspace. Existing files require previous SHA-256; writes receive durable receipts and checked readback. Never chooses a folder or grants access.',{projectId:id,path:text(240),content:text(65536,0),expectedSha256:{...text(64),pattern:'^[a-f0-9]{64}$'}},['projectId','path','content'],false],
   ['repository_observe','Read bounded GitHub HEAD metadata only after the owner port verifies and rechecks a project-scoped grant; cache only historical metadata in the App Store. No live authorization, file content, PR mutation or GPT send.',{projectId:id},['projectId'],true],
   ['workspace_status','Inspect verified project-local workspace bindings and capability availability. No filesystem access.',{projectId:id},['projectId'],true],
   ['workspace_snapshot','Read a bounded Runtime-verified workspace summary through a project-scoped resource grant.',{projectId:id,bindingId:id},['projectId','bindingId'],true],
   ['workspace_bind','Bind a preauthorized opaque Runtime resource to a project. Never accepts a filesystem path or grants authority.',{projectId:id,deviceId:id,resourceId:{...text(180),pattern:'^resource_[A-Za-z0-9_-]{8,160}$'}},['projectId','deviceId','resourceId'],false],
   ['project_create','Create an isolated Lab project and optionally bind its canonical GitHub repository URL. No repository contents are read.',{name:text(140),objective:text(4000,0),repositoryUrl:text(300,0)},['name'],false],
+  ['project_quick_create','Create one empty Forge project and its Forjador chat with no name, goal, GPT work, prompt or provider send required.',{creationNonce:id},['creationNonce'],false],
+  ['project_auto_title','Suggest the title of a still-untitled Forge project from its first persisted user chat message. Does not overwrite a user title, call Groq or send GPT.',{projectId:id},['projectId'],false],
   ['mission_create','Atomically create a project, coordinator and first work conversation with the mission saved as a draft. Does not submit to GPT.',{name:text(140,0),mission:text(4000),repositoryUrl:text(300,0)},['mission'],false],
   ['project_rename','Rename one accessible project. Does not alter its repository or work.',{projectId:id,name:text(140)},['projectId','name'],false],
   ['project_delete','Permanently delete one confirmed project and its App-owned conversations. Blocks running or uncertain effects, active observation and resource bindings. Never removes external filesystem projects.',{projectId:id,confirmName:text(140)},['projectId','confirmName'],false],
@@ -37,7 +49,8 @@ const definitions = [
   ['work_messages','Read a bounded page of persisted work or coordinator messages.',{projectId:id,taskId:id,before:text(1000),limit:{type:'integer',minimum:1,maximum:50}},['projectId','taskId'],true],
   ['work_send','Send one authorized prompt through the existing App executor. An uncertain command must never be replayed.',{projectId:id,taskId:id,content:text(6000),draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','taskId','content'],false],
   ['conversation_rotate','Prepare a new GPT segment for the same work. Does not send or bypass limits.',{projectId:id,taskId:id},['projectId','taskId'],false],
-  ['orchestrator_chat','Send a coordinator turn. For local user creation requests with delegateWork enabled, the assistant may classify the intent and start the existing bounded autonomous work executor; all decisions and receipts remain scoped and durable.',{projectId:id,orchestratorId:id,content:text(4000),delegateWork:{type:'boolean'},draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','orchestratorId','content'],false],
+  ['orchestrator_chat','Legacy optional Groq coordination. For local user creation requests with delegateWork enabled, the assistant may classify the intent and start the existing bounded autonomous work executor; all decisions and receipts remain scoped and durable.',{projectId:id,orchestratorId:id,content:text(4000),delegateWork:{type:'boolean'},draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','orchestratorId','content'],false],
+  ['forjador_send','Send one normal Forjador chat turn directly to the GPT executor in the same project conversation, without a Groq request. Uses canonical Run and command receipts; uncertain delivery is never replayed.',{projectId:id,orchestratorId:id,content:text(4000),draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','orchestratorId','content'],false],
   ['orchestrator_analyze','Review recent project work, or interpret one receipt-backed GPT Run and propose an evidence-grounded next step. Recommendations only; no GPT submission.',{projectId:id,orchestratorId:id,reviewRunId:id},['projectId','orchestratorId'],false],
   ['orchestrator_prepare','Prepare one proposed new work and initial draft with the coordinator API. No work or GPT submission until local review.',{projectId:id,orchestratorId:id,content:text(4000),draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','orchestratorId','content'],false],
   ['proposals_list','Read pending work proposals for the selected coordinator.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
@@ -51,7 +64,7 @@ export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,desc
     properties:{...(!readOnly?{requestId}:{}),...properties},
     required:[...(!readOnly?['requestId']:[]),...required]},
   annotations:{readOnlyHint:readOnly,destructiveHint:operation==='project_delete',idempotentHint:true,
-    openWorldHint:['work_send','proposal_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare','autonomous_dialogue_start','autonomous_dialogue_continue'].includes(operation)}
+    openWorldHint:['work_send','proposal_send','forjador_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare','autonomous_dialogue_start','autonomous_dialogue_continue'].includes(operation)}
 })));
 
 export function validateOrchestratorInput(operation, input) {
@@ -71,7 +84,10 @@ export function validateOrchestratorInput(operation, input) {
       if(typeof value!=='string' || value.includes('\0') || value.length>schema.maxLength ||
         value.trim().length<schema.minLength || (schema.pattern&&!new RegExp(schema.pattern).test(value)))
         throw Error('orchestrator_invalid_input');
-      normalized[key]=value.trim();
+      // Preserve exact bytes of file content and exact relative path syntax;
+      // silently trimming either would bypass validation or alter source code.
+      normalized[key]=((operation.startsWith('project_file_')&&['content','path'].includes(key))||
+        (operation==='project_files_list'&&key==='directory'))?value:value.trim();
     } else if(schema.type==='array') {
       const item=schema.items;
       if(!Array.isArray(value)||value.length>schema.maxItems||

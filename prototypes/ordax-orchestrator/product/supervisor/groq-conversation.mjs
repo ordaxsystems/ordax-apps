@@ -154,9 +154,11 @@ function incompleteGroqResponse(parsed,maxCompletionTokens){
 }
 
 export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
-  fetchImpl=globalThis.fetch,model='openai/gpt-oss-20b',timeoutMs=25000}={}) {
+  fetchImpl=globalThis.fetch,model='openai/gpt-oss-20b',timeoutMs=25000,
+  onModelRequest=null}={}) {
   if(typeof getApiKey!=='function'||typeof isEnabled!=='function'||!store?.db||
-    typeof fetchImpl!=='function'||!Number.isSafeInteger(timeoutMs)||timeoutMs<1000||timeoutMs>60000||
+    typeof fetchImpl!=='function'||(onModelRequest!==null&&typeof onModelRequest!=='function')||
+    !Number.isSafeInteger(timeoutMs)||timeoutMs<1000||timeoutMs>60000||
     typeof model!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$/.test(model))
     throw Error('orchestrator_coordinator_ports_required');
   return Object.freeze({
@@ -228,6 +230,15 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
           'Se action=respond, reply deve responder diretamente ao usuário sem narrar processos internos. '+
           'A decisão JSON não executa uma tarefa; somente o aplicativo controla autorizações, envios e recibos.'
         :'';
+      const modelMessages=[{role:'system',content:request.system+outputInstructions+
+        (delegateWork?' CAPACIDADES REAIS DO APLICATIVO: '+JSON.stringify(ORDAX_CAPABILITY_MANIFEST)+
+          (existingSite?' Este projeto tem um arquivo HTML local registrado e uma conversa GPT existente. Pedidos como melhore o HTML e mude cores/fonte são alterações, não explicações. A execução usa a mesma conversa e a prévia só muda após arquivo verificado.':''):'')},
+        ...request.history];
+      // The DEV inspector receives the exact model message array, never API
+      // headers/credentials. It cannot edit the request or trigger a send.
+      if(onModelRequest)try{onModelRequest({projectId,orchestratorId,taskId,
+        model,messages:modelMessages,phase:completionProfile,
+        observedAt:new Date().toISOString()});}catch{/* telemetry is optional */}
       let response;
       try {
         response=await fetchImpl('https://api.groq.com/openai/v1/chat/completions',{
@@ -240,10 +251,7 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
               ?{reasoning_format:'hidden'}:{}),
             ...((narrative||prepareWork||technicalReview||standardChat)&&/^openai\/gpt-oss-(20b|120b)$/.test(model)
               ?{reasoning_effort:'low'}:{}),
-            messages:[{role:'system',content:request.system+outputInstructions+
-              (delegateWork?' CAPACIDADES REAIS DO APLICATIVO: '+JSON.stringify(ORDAX_CAPABILITY_MANIFEST)+
-                (existingSite?' Este projeto tem um arquivo HTML local registrado e uma conversa GPT existente. Pedidos como melhore o HTML e mude cores/fonte são alterações, não explicações. A execução usa a mesma conversa e a prévia só muda após arquivo verificado.':''):'')},
-              ...request.history]})
+            messages:modelMessages})
         });
       } catch(error) {
         const timedOut=error?.name==='TimeoutError'||error?.name==='AbortError';

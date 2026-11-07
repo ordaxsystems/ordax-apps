@@ -1,4 +1,4 @@
-name: OrdaX Orchestrator Lab P0 Pinned Baseline
+name: OrdaX Forge — P0 Pinned Baseline
 
 on:
   pull_request:

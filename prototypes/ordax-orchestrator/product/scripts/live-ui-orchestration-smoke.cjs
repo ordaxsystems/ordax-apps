@@ -158,12 +158,13 @@ let cleanupFailurePhase=null;
     const credential=await evaluate(`window.ordax.supervisorStatus()`);
     if(credential.configured!==true||credential.keySaved!==true||credential.secureStorageAvailable!==true)
       throw Error('api_key_not_persisted_securely');
-    phase='groq_auto_available_after_configure';
-    await wait("(async()=>{const s=await window.ordax.coordinatorChatStatus();return s.enabled===true&&s.configured===true&&!document.getElementById('coordinatorApiEnable')&&!document.getElementById('prepareWork').disabled})()");
+    phase='groq_advisory_available_after_configure';
+    // GPT-first availability remains independent of the optional Groq key.
+    await wait("(async()=>{const s=await window.ordax.coordinatorChatStatus();return s.provider==='chatgpt_web'&&s.enabled===true&&s.configured===true&&s.groqConfigured===true&&!document.getElementById('coordinatorApiEnable')&&!document.getElementById('prepareWork').disabled})()");
     phase='api_key_remove';
     await evaluate(`window.ordax.supervisorRemoveKey()`);
-    phase='groq_unavailable_after_key_removal';
-    await wait("(async()=>{const s=await window.ordax.coordinatorChatStatus();return s.enabled===false&&s.configured===false&&!document.getElementById('coordinatorApiEnable')&&document.getElementById('analyzeWorks').disabled&&document.getElementById('prepareWork').disabled})()");
+    phase='groq_advisory_unavailable_after_key_removal';
+    await wait("(async()=>{const s=await window.ordax.coordinatorChatStatus();return s.provider==='chatgpt_web'&&s.enabled===true&&s.configured===true&&s.groqConfigured===false&&!document.getElementById('coordinatorApiEnable')&&document.getElementById('analyzeWorks').disabled&&document.getElementById('prepareWork').disabled})()");
     disposableApiKeyCleanupRequired=false;
     phase='mcp_work_create';
     const summary=await evaluate(`(async()=>{
@@ -192,7 +193,8 @@ let cleanupFailurePhase=null;
         workCount:works.works.length,workId:works.works[0]?.id,coordinatorMessages:messages.messages.length,
         missionDraftPreserved:missionTask?.draft==='Criar missão isolada sem enviar ao provedor'&&missionTask?.draft_revision===1};
     })()`);
-    if(summary.projectId!==projectId||summary.toolCount!==ORCHESTRATOR_TOOLS.length||!summary.continuationAvailable||!summary.commandSucceeded||
+    // Native Forjador sends stay UI-only; MCP cannot recursively send to GPT.
+    if(summary.projectId!==projectId||summary.toolCount!==ORCHESTRATOR_TOOLS.filter(tool=>tool.operation!=='forjador_send').length||!summary.continuationAvailable||!summary.commandSucceeded||
       !summary.idempotent||summary.workCount!==2||!summary.missionDraftPreserved||summary.coordinatorMessages!==0)
       throw Error('native_mcp_state_mismatch');
     phase='work_list_refresh';
@@ -228,14 +230,18 @@ let cleanupFailurePhase=null;
     await evaluate(`(()=>{
       const create=document.getElementById('quickNewProject');
       if(getComputedStyle(create).display==='none')throw Error('project_create_not_visible');
-      create.click();
-      const f=document.getElementById('newProjectForm');
-      document.getElementById('projectName').value='Segundo projeto E2E';
-      document.getElementById('projectObjective').value='Verificar alternância sem enviar ao provedor';
-      f.requestSubmit();
+      create.click(); // One click creates ONE empty project; do not submit a second form.
     })()`);
     phase='project_switch_wait_second';
-    const secondProjectId=await wait("document.getElementById('activeProjectName').textContent==='Segundo projeto E2E'&&document.getElementById('projectSelect').value");
+    const secondProjectId=await wait("document.getElementById('activeProjectName').textContent==='Novo projeto'&&document.getElementById('projectSelect').value");
+    // Rename the same newly-created project through the existing native UI.
+    phase='project_switch_rename_second';
+    await evaluate(`(()=>{
+      document.getElementById('renameProjectButton').click();
+      document.getElementById('renameProjectInput').value='Segundo projeto E2E';
+      document.getElementById('renameProjectForm').requestSubmit();
+    })()`);
+    await wait("document.getElementById('activeProjectName').textContent==='Segundo projeto E2E'");
     if(secondProjectId===projectId)throw Error('project_switch_not_isolated');
     phase='project_switch_verify_second';
     const secondSelected=await evaluate(`(()=>{
@@ -254,8 +260,8 @@ let cleanupFailurePhase=null;
       const works=(await window.ordax.orchestratorInvoke('work_list',{projectId:selected})).works;
       return works?.map(work=>work.title);
     })()`);
-    if(!Array.isArray(alternateWorks)||alternateWorks.length!==1||
-      alternateWorks[0]!=='Primeira frente')throw Error('project_switch_not_isolated');
+    if(!Array.isArray(alternateWorks)||alternateWorks.length!==0)
+      throw Error('project_switch_not_isolated'); // Blank GPT-first project creates no Work or Run.
     phase='project_switch_return_first';
     await evaluate(`document.querySelector('#projectNavList button').click()`);
     await wait(`document.getElementById('projectSelect').value==='${projectId}'&&

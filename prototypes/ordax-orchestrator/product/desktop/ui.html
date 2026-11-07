@@ -21,15 +21,15 @@
       <section class="project-hub" aria-label="Gerenciar e alternar projetos">
         <div class="project-hub-heading">
           <strong>Projetos</strong>
-          <button id="quickNewProject" type="button" aria-controls="projectSetup" aria-label="Criar novo projeto">+ Novo projeto</button>
+          <button id="quickNewProject" type="button" aria-controls="projectSetup" aria-label="Criar novo projeto">＋ Novo</button>
         </div>
         <section class="project-identity" aria-label="Projeto selecionado">
-          <span class="project-identity-kicker">PROJETO ATIVO</span>
+          <span class="project-identity-kicker">EM FOCO</span>
           <strong id="activeProjectName">Nenhum projeto selecionado</strong>
           <small id="activeProjectDetail">Crie um projeto para começar</small>
         </section>
         <section id="projectSwitcher" class="project-chooser" aria-label="Alternar para outro projeto" hidden>
-          <span class="project-chooser-label">Alternar projeto</span>
+          <span class="project-chooser-label">PROJETOS RECENTES</span>
           <div id="projectNavList" class="nav-item-list" aria-label="Outros projetos disponíveis"></div>
         </section>
       </section>
@@ -38,7 +38,7 @@
         <span class="workspace-modes-caption">Áreas do projeto</span>
         <button id="openOrchestrator" class="workspace-mode workspace-mode-coordinator" type="button" aria-pressed="false" disabled>
           <span class="workspace-mode-symbol" aria-hidden="true">◇</span>
-          <span class="workspace-mode-copy"><strong>Assistente Forge</strong><small id="coordinatorNavProvider">Conversa do projeto</small></span>
+          <span class="workspace-mode-copy"><strong>Forjador</strong><small id="coordinatorNavProvider">Conversa principal · GPT</small></span>
           <span class="workspace-mode-arrow" aria-hidden="true">↗</span>
         </button>
         <button id="openWorks" class="workspace-mode workspace-mode-gpt" type="button" aria-pressed="false" aria-controls="orchestratorWorkRail" aria-expanded="false" disabled>
@@ -56,6 +56,7 @@
         </button>
       </nav>
       <section class="orchestration-navigation" aria-label="Configuração do projeto e administração">
+        <details id="forgeProjectAdvanced" class="forge-project-advanced"><summary>Gerenciar projeto</summary>
         <div class="nav-section-heading"><span>Configuração do projeto</span><div class="nav-heading-actions"><button id="renameProjectButton" class="nav-add" type="button" aria-label="Renomear projeto" disabled>✎</button><button id="deleteProjectButton" class="nav-add" type="button" aria-label="Excluir projeto" disabled>×</button><button id="addProject" class="nav-add" type="button" aria-label="Conectar projeto">+</button></div></div>
 
         <select id="projectSelect" class="native-state-control" aria-label="Selecionar projeto ativo" title="Projeto ativo"><option value="">Conversas sem projeto</option></select>
@@ -85,15 +86,16 @@
             <button id="projectDeleteSubmit" type="submit">Excluir projeto definitivamente</button>
           </form>
         </details>
-        <div class="nav-section-heading orchestrator-heading"><span>Administração</span><button id="addOrchestrator" class="nav-add" type="button" aria-label="Novo orquestrador">+</button></div>
-        <div id="orchestratorNavList" class="nav-item-list" aria-label="Lista de orquestradores"></div>
-        <select id="orchestratorSelect" class="native-state-control" aria-label="Selecionar administrador do projeto" title="Administrador do projeto"><option value="">Selecione um orquestrador</option></select>
-        <details id="orchestratorSetup" class="nav-setup"><summary>Novo orquestrador</summary>
+        <div class="nav-section-heading orchestrator-heading"><span>Administração</span><button id="addOrchestrator" class="nav-add" type="button" aria-label="Novo administrador">+</button></div>
+        <div id="orchestratorNavList" class="nav-item-list" aria-label="Lista de administradores"></div>
+        <select id="orchestratorSelect" class="native-state-control" aria-label="Selecionar administrador do projeto" title="Administrador do projeto"><option value="">Selecione um administrador</option></select>
+        <details id="orchestratorSetup" class="nav-setup"><summary>Novo administrador</summary>
           <form id="newOrchestratorForm" hidden>
             <label for="orchestratorName">Nome</label><input id="orchestratorName" maxlength="140" required />
             <label for="missionInput">Missão e instruções</label><textarea id="missionInput" maxlength="4000" rows="3" required></textarea>
-            <button type="submit">Criar orquestrador</button>
+            <button type="submit">Criar administrador</button>
           </form>
+        </details>
         </details>
       </section>
       <button id="newTask" class="primary new-task">＋ Nova conversa GPT</button>
@@ -146,16 +148,17 @@
     </aside>
 
     <section class="chat-column">
-      <section id="orchestrationPanel" class="orchestration-panel" hidden aria-label="Conversa com o orquestrador">
+      <section id="orchestrationPanel" class="orchestration-panel" hidden aria-label="Conversa com o Forjador">
         <header class="coordinator-head">
-          <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><span class="route-kicker" id="coordinatorRouteLabel">ASSISTENTE ORDAX</span><h2 id="orchestratorTitle">Conversa</h2><p id="orchestratorMission"></p></div></div>
+          <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><span class="route-kicker" id="coordinatorRouteLabel">FORJADOR</span><h2 id="orchestratorTitle">Conversa</h2><p id="orchestratorMission"></p></div></div>
           <div class="coordinator-head-actions">
-            <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Frentes</button>
+            <details id="forgeCoordinatorAdvanced" class="forge-coordinator-advanced"><summary aria-label="Ferramentas e diagnóstico" title="Ferramentas e diagnóstico">⋯</summary><div id="forgeCoordinatorAdvancedContent" class="forge-coordinator-advanced-content"></div></details>
+            <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Sessões GPT</button>
             <button id="pauseOrchestrator" class="ghost-button" type="button" disabled>Pausar</button>
             <button id="coordinatorApiSettings" class="ghost-button" type="button" aria-label="Abrir configurações de modelos" title="Configurar modelos conectados">Ajustes</button>
           </div>
         </header>
-        <div class="coordinator-transport" role="status" aria-live="polite">
+        <div id="coordinatorTransport" class="coordinator-transport" role="status" aria-live="polite">
           <span class="transport-symbol" aria-hidden="true">●</span>
           <span id="orchestrationConnection" class="orchestration-connection">Converse normalmente. O OrdaX organiza as tarefas com os serviços conectados.</span>
         </div>
@@ -185,6 +188,14 @@
           <span id="capabilityRuntime" data-state="blocked">Runtime · sem conexão</span>
           <span id="capabilityContinuity" data-state="blocked">24 h · não operacional</span>
         </div>
+        <details id="forjadorGroqInspector" class="command-advanced forjador-prompt-inspector">
+          <summary>Diagnóstico DEV · prompts reais Groq e GPT</summary>
+          <div class="forjador-prompt-inspector-body">
+            <p>Somente nesta sessão: mensagens exatas preparadas para a Groq e prompt montado pelo Forge para o GPT, com estado da entrega. Sem chaves, cabeçalhos, arquivos gravados ou reenvios.</p>
+            <button id="inspectGroqPrompt" class="mini-secondary" type="button">Mostrar prompts reais</button>
+            <pre id="groqPromptDisplay" role="status" aria-live="polite">Nenhum prompt inspecionado.</pre>
+          </div>
+        </details>
         <details id="orchestrationIntegrations" class="orchestration-integrations">
           <summary><span>Projeto, conexões e automação</span><small>Configurações e limites de execução</small></summary>
           <div class="orchestration-integrations-content">
@@ -199,6 +210,12 @@
               <small id="repositoryObservationState" role="status" aria-live="polite" data-state="idle">Nenhum HEAD autenticado verificado nesta sessão.</small>
               <small id="remoteRepositoryStatus" role="status">Vincule um repositório GitHub para orientar as conversas de trabalho.</small>
               <small id="remoteRepositoryCapabilityNote">A API recebe somente a URL. No desktop, tarefas podem pedir ao ChatGPT para usar a integração GitHub da sessão; isso não comprova que a integração está disponível. Nenhum arquivo local é lido nesta etapa.</small>
+            </section>
+            <section class="coordinator-analysis-actions" aria-label="Ferramentas do executor GPT">
+              <strong>Executor GPT · Ferramentas MCP</strong>
+              <small>O Forjador usa Groq e solicita o OrdaX MCP nas tarefas delegadas ao GPT Web incluindo @ordax-mcp. A menção não substitui seleção do dispositivo, autorização nem recibos de execução.</small>
+              <button id="forjadorMcpCheck" class="mini-secondary" type="button">Verificar seleção no GPT</button>
+              <small id="forjadorMcpStatus" role="status" aria-live="polite">Seleção de ferramentas não verificada. Nenhuma execução MCP comprovada nesta conversa.</small>
             </section>
             <section id="workspaceOverview" class="coordinator-analysis-actions" aria-label="Acesso autorizado ao workspace local">
               <strong>Workspace · Runtime MCP</strong>
@@ -236,16 +253,17 @@
         </div>
         <div id="coordinatorProposals" class="coordinator-proposals" aria-label="Propostas para revisão"></div>
         <form id="coordinatorComposer">
-          <label class="sr-only" for="coordinatorPrompt">Mensagem ao orquestrador</label>
-          <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="O que você quer criar?" aria-describedby="orchestrationConnection" required></textarea>
+          <label class="sr-only" for="coordinatorPrompt">Mensagem ao Forjador</label>
+          <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="Descreva o que você quer criar ou mudar…" aria-describedby="orchestrationConnection" title="Enter para enviar; Shift+Enter para nova linha" required></textarea>
           <button id="coordinatorSend" class="send-button coordinator-send" type="submit" aria-label="Enviar mensagem" disabled>Enviar</button>
         </form>
-        <small class="coordinator-route-note">Ao pedir uma criação, você autoriza o OrdaX a usar os serviços conectados para essa tarefa, respeitando os limites da sessão. Ctrl+Enter envia · Shift+Enter cria nova linha.</small>
+        <small class="coordinator-route-note">Enter envia · Shift+Enter quebra linha</small>
         <small id="coordinatorDraftState" class="coordinator-draft-state" role="status" aria-live="polite"></small>
       </section>
       <p id="orchestrationNotice" class="orchestration-notice" role="status" aria-live="polite"></p>
       <section id="taskPanel" class="task-panel hidden">
         <header class="task-head">
+          <button id="taskBackToForjador" class="task-back-forjador" type="button" aria-label="Voltar ao chat do Forjador" title="Voltar ao Forjador">← Forjador</button>
           <div class="task-identity">
             <div class="task-avatar">✦</div>
             <div>
@@ -316,16 +334,18 @@
       <section id="empty" class="empty">
         <div class="empty-mark">O</div>
         <h2>Seu projeto começa no Forge.</h2>
-        <p>Crie uma missão, converse com o Forge na área Groq e abra frentes de execução no ChatGPT Web quando precisar. Cada campo identifica o seu destino.</p>
+        <p>Crie ou selecione um projeto à esquerda. Depois, converse normalmente com o Forjador; a execução e os resultados aparecem à direita.</p>
         <button class="primary empty-create" type="button" data-start-project>Começar pelo Forge</button>
       </section>
     </section>
 
     <aside id="contextRail" class="context-rail">
       <nav id="rightPaneTabs" class="right-pane-tabs" aria-label="Painel de trabalho" role="tablist">
-        <button id="providerPaneTab" class="right-pane-tab active" type="button" role="tab" aria-selected="true" aria-controls="providerPanel" data-pane="provider">ChatGPT</button>
+        <button id="executionPaneTab" class="right-pane-tab active" type="button" role="tab" aria-selected="true" aria-controls="executionOverview" data-pane="execution">Execução</button>
         <button id="previewPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="previewPanel" data-pane="preview">Preview</button>
-        <button id="contextPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="contextPanel" data-pane="context">Projeto</button>
+        <button id="filesPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="filesPanel" data-pane="files">Arquivos</button>
+        <button id="providerPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="providerPanel" data-pane="provider">GPT Web</button>
+        <button id="contextPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="contextPanel" data-pane="context" hidden>Frentes</button>
       </nav>
       <section id="providerPanel" class="right-pane-panel provider-panel" role="tabpanel" aria-labelledby="providerPaneTab">
         <div class="provider-toolbar" aria-label="Navegação do ChatGPT">
@@ -343,9 +363,9 @@
         </div>
       </section>
       <section id="previewPanel" class="right-pane-panel preview-panel" role="tabpanel" aria-labelledby="previewPaneTab" hidden>
-        <div class="preview-state-card"><span class="eyebrow">Preview do projeto</span><h3>Runtime ainda não forneceu uma visualização</h3><p>Quando houver um preview autorizado do workspace pelo Runtime, ele aparecerá aqui. Esta tela não cria servidor nem simula arquivos.</p><span id="previewRuntimeState" class="preview-runtime-state">Aguardando conexão do Runtime</span></div>
+        <div class="preview-state-card"><span class="eyebrow">Preview do projeto</span><h3>O resultado aparecerá aqui</h3><p>A prévia exibe somente HTML realmente recebido e verificado pelo Forge. Nenhum site fictício é mostrado.</p><span id="previewRuntimeState" class="preview-runtime-state">Aguardando conexão do Runtime</span></div>
       </section>
-      <section id="executionOverview" class="execution-overview" aria-label="Estado real dos Runs e evidências do projeto" hidden>
+      <section id="executionOverview" class="execution-overview right-pane-panel" role="tabpanel" aria-labelledby="executionPaneTab" aria-label="Estado real dos Runs e evidências do projeto">
         <section id="workSurfacePreview" class="work-surface-preview" aria-label="Prévia visual do resultado" hidden>
           <header class="work-surface-heading"><div><span class="eyebrow">RESULTADO DO PROJETO</span><strong id="workSurfaceFilename">index.html</strong></div><span id="workSurfaceProof">HTML verificado</span><button id="workSurfaceModeToggle" type="button" title="Alternar prévia interativa e visual">Somente visual</button></header>
           <div id="workSurfaceVersionBar" class="work-surface-version-bar" hidden>
@@ -364,7 +384,7 @@
         <article class="execution-mission-card">
           <div class="execution-mission-label"><span class="execution-mission-icon" aria-hidden="true">◎</span><span>Missão atual</span><span id="executionMissionBadge" class="execution-badge" data-state="idle">Sem missão ativa</span></div>
           <h3 id="executionMissionTitle">Nenhuma missão técnica selecionada</h3>
-          <p id="executionMissionDetail">Os estados serão apresentados conforme os registros do Orchestrator.</p>
+          <p id="executionMissionDetail">Os estados serão apresentados conforme os registros do Forge.</p>
           <div class="execution-mission-metrics"><span><strong id="executionWorkCount">0</strong> frentes</span><span><strong id="executionRunningCount">0</strong> em execução</span><span><strong id="executionReviewCount">0</strong> a revisar</span></div>
         </article>
         <section class="execution-monitor-section" aria-label="Frentes e executores observados">
@@ -376,6 +396,11 @@
           <ol id="executionActivity" class="execution-activity"><li>Sem atividade confirmada para esta missão.</li></ol>
         </section>
         <details class="execution-monitor-details"><summary>Limites e evidências</summary><p>Os dados vêm do projeto local, dos Runs GPT e das decisões Groq registradas. Uma resposta GPT não comprova alterações, testes ou publicação. Nada é marcado como validado sem evidência externa.</p></details>
+      </section>
+      <section id="filesPanel" class="right-pane-panel forge-files-panel" role="tabpanel" aria-labelledby="filesPaneTab" hidden>
+        <div class="forge-files-heading"><span class="eyebrow">WORKSPACE DO PROJETO</span><h2 id="forgeFilesProjectName">Arquivos</h2><button id="forgeFilesRefresh" class="mini-secondary" type="button" aria-label="Atualizar estado do workspace">↻ Atualizar</button></div>
+        <div class="forge-files-empty" role="status" aria-live="polite"><span aria-hidden="true">▤</span><strong id="forgeFilesStateTitle">Sem pasta vinculada</strong><p id="forgeFilesState">Os arquivos aparecerão quando o Forge tiver um workspace real autorizado. Nenhuma pasta foi criada por esta tela.</p></div>
+        <button id="forgeFilesConnections" class="mini-secondary" type="button">Ver conexões</button>
       </section>
       <div id="contextPanel" class="right-pane-panel context-panel" role="tabpanel" aria-labelledby="contextPaneTab" hidden>
       <section id="orchestratorWorkRail" class="orchestrator-work-rail" hidden aria-label="Conversas do projeto no GPT">
@@ -608,6 +633,46 @@
           </section>
           <section id="settingsPanelConnections" class="app-settings-panel" role="tabpanel" aria-labelledby="settingsTabConnections" data-settings-panel="connections" tabindex="0" hidden>
             <div class="app-settings-card"><span class="app-settings-eyebrow">GITHUB</span><h3>Repositórios</h3><p>O endereço do repositório é configurado dentro de cada projeto. A leitura de branches, PRs e verificações depende de uma conexão autorizada pelo Platform; este perfil ainda não a confirma.</p><button id="settingsOpenProject" type="button" class="mini-secondary">Configurar projeto</button></div>
+            <div class="app-settings-card"><span class="app-settings-eyebrow">FERRAMENTAS DO GPT</span><h3>OrdaX MCP · conexão de teste</h3><p>O Forjador envia mensagens comuns ao GPT Web; Groq é opcional para análise. O marcador @ordax-mcp pode ser solicitado nas tarefas enviadas ao GPT Web. O plugin precisa estar disponível na conta; a seleção Owner do dispositivo continua obrigatória. A verificação não envia mensagens nem cria arquivos.</p><button id="settingsMcpCheck" type="button" class="mini-secondary">Verificar seleção no ChatGPT</button><p id="settingsMcpState" class="settings-connection-state" role="status" aria-live="polite">Seleção do plugin não verificada.</p><p class="diagnostics-hint">O marcador visual do plugin não comprova uma ação. Arquivos e comandos só contam como feitos quando houver recibo verificável. O MCP Forge local abaixo é separado do OrdaX MCP e ainda não está conectado ao GPT Web.</p></div>
+            <div id="forgeLocalMcpPanel" class="app-settings-card">
+              <span class="app-settings-eyebrow">FORGE MCP · LOCAL</span><h3>Conexão do projeto neste computador</h3>
+              <p>Um servidor MCP local em 127.0.0.1 para todos os projetos, com autorização e token independente por projeto (válidos até revogar ou fechar o aplicativo). As ferramentas acessam exclusivamente o workspace autorizado de cada projeto. Não há publicação ou conexão automática com o GPT Web.</p>
+              <label for="forgeLocalMcpProject">Projeto autorizado</label>
+              <select id="forgeLocalMcpProject" aria-label="Projeto que poderá ser acessado pelo cliente MCP local"></select>
+              <div id="forgeWorkspacePanel" class="app-settings-card">
+                <span class="app-settings-eyebrow">PASTA DO PROJETO</span>
+                <p>A pasta padrão é Documentos/Forge/NomeDoProjeto. O Forge guarda um único vínculo no SQLite, sem cópias do código. Projetos existentes podem escolher outra pasta.</p>
+                <p id="forgeWorkspaceState" class="settings-connection-state" role="status" aria-live="polite">Selecione um projeto para verificar a pasta.</p>
+                <div class="settings-connection-actions">
+                  <button id="forgeWorkspaceCreate" type="button" class="mini-secondary">Criar pasta padrão</button>
+                  <button id="forgeWorkspaceChoose" type="button" class="mini-secondary">Escolher pasta existente</button>
+                  <button id="forgeWorkspaceMigrate" type="button" class="mini-secondary" hidden>Migrar arquivos antigos</button>
+                </div>
+              </div>
+              <div class="settings-connection-actions">
+                <button id="forgeLocalMcpStart" type="button" class="mini-secondary">Ativar MCP local</button>
+                <button id="forgeLocalMcpRevoke" type="button" class="mini-secondary">Revogar confiança</button>
+                <button id="forgeLocalMcpResume" type="button" class="mini-secondary" disabled>Manter conectado após reinício</button>
+                <button id="forgeLocalMcpStop" type="button" class="mini-secondary">Desativar todos</button>
+              </div>
+              <p id="forgeLocalMcpState" class="settings-connection-state" role="status" aria-live="polite">O MCP local está desativado.</p>
+              <p id="forgeOfficialTunnelState" class="settings-connection-state" role="status" aria-live="polite">Conexão com GPT Web ainda não verificada.</p>
+              <div id="forgeOfficialTunnelControls" class="app-settings-card">
+                <label for="forgeOfficialTunnelId">ID do túnel autorizado na OpenAI Platform</label>
+                <input id="forgeOfficialTunnelId" type="text" autocomplete="off" spellcheck="false" placeholder="tunnel_…" />
+                <label for="forgeOfficialTunnelKey">Chave restrita de execução (somente nesta sessão)</label>
+                <input id="forgeOfficialTunnelKey" type="password" autocomplete="off" spellcheck="false" placeholder="Não compartilhe esta chave no chat" />
+                <button id="forgeOfficialTunnelStart" type="button" class="mini-secondary" disabled>Iniciar túnel oficial</button>
+                <button id="forgeOfficialTunnelStop" type="button" class="mini-secondary" disabled>Desligar túnel</button>
+              </div>
+              <div id="forgeLocalMcpCredentials" hidden>
+                <label for="forgeLocalMcpUrl">Endpoint (somente clientes MCP locais)</label>
+                <input id="forgeLocalMcpUrl" type="text" readonly autocomplete="off" spellcheck="false"/>
+                <label for="forgeLocalMcpToken">Token temporário (não compartilhar)</label>
+                <textarea id="forgeLocalMcpToken" rows="3" readonly autocomplete="off" spellcheck="false"></textarea>
+                <p class="diagnostics-hint">Configure o cliente local com Authorization: Bearer &lt;token&gt;. Esta chave aparece uma só vez: para recuperá-la, desative e reative a conexão.</p>
+              </div>
+            </div>
             <div class="app-settings-card"><span class="app-settings-eyebrow">RUNTIME</span><h3>Execução local</h3><p>Arquivos, testes e alterações no computador exigem um dispositivo conectado e um grant válido do Runtime/Platform. Nenhum grant é criado por esta tela.</p><p class="settings-connection-state" data-state="blocked">Aguardando conexão autorizada</p></div>
             <div class="app-settings-card"><span class="app-settings-eyebrow">CONTINUIDADE</span><h3>Operação em segundo plano</h3><p>O estado de segundo plano aparece em Geral quando o Windows oferece esse recurso. Operação contínua só será indicada após integração e verificação pelo Runtime/Scheduler.</p></div>
           </section>
@@ -638,5 +703,7 @@
   </dialog>
   <script src="./host-browser-bridge.js"></script>
   <script type="module" src="./ui.js"></script>
+  <script type="module" src="./forge-local-mcp-ui.js"></script>
+  <script type="module" src="./forge-workspace-ui.js"></script>
 </body>
 </html>

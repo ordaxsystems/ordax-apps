@@ -1,10 +1,10 @@
 {
-  "name": "ordax-orchestrator-lab",
+  "name": "ordax-forge",
   "version": "0.2.0-alpha.42",
   "private": true,
   "type": "module",
   "main": "desktop/bootstrap.mjs",
-  "description": "Laboratorio isolado de orquestracao derivado do Flow/Gratis",
+  "description": "OrdaX Forge — ambiente GPT-first para projetos, conversas e execução verificada",
   "author": "OrdaX Systems",
   "scripts": {
     "check": "node scripts/check-source.mjs",
@@ -74,7 +74,7 @@
         }
       ],
       "icon": "build/icon.png",
-      "artifactName": "OrdaX-Orchestrator-Lab-${version}.exe",
+      "artifactName": "OrdaX-Forge-${version}.exe",
       "executableName": "OrdaX Orchestrator Lab"
     },
     "compression": "normal",

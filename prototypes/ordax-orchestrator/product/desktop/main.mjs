@@ -13,6 +13,7 @@ import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
 import { testGroqApiKey } from '../src/groq-key-health.mjs';
 import { createLocalGroqCredential } from '../src/local-supervisor-credential.mjs';
 import { createOrchestratorKernel } from '../src/orchestrator-kernel.mjs';
+import {withForjadorMcpMention,mentionWasRequested,FORJADOR_MCP_MENTION} from '../src/provider-mcp-mention.mjs';
 import { createProviderAwareTaskOpener, createTaskUiHandlers } from '../src/task-ui-handlers.mjs';
 import { ORCHESTRATOR_TOOLS } from '../src/orchestrator-contract.mjs';
 import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,resolveOrchestratorRuntimeTransport,openOrchestratorRuntimeStreams } from '../src/orchestrator-runtime-bridge.mjs';
@@ -23,6 +24,15 @@ import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { Store, MESSAGE_PAGE_SIZE } from '../src/store.mjs';
+import {ForgeProjectFiles} from '../src/forge-project-files.mjs';
+import {ForgeLocalWorkspaces,resolveForgeWorkspaceDocumentsDirectory} from '../src/forge-local-workspaces.mjs';
+import {forgeFreshConversationContext} from '../src/forge-fresh-conversation-context.mjs';
+import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
+import {createForgeLoopbackMcp} from '../src/forge-loopback-mcp.mjs';
+import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
+import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
+import {inspectForgeOfficialTunnelClient,officialTunnelComponentDirectory} from '../src/forge-mcp-tunnel-readiness.mjs';
+import {createForgeOfficialTunnelSession} from '../src/forge-mcp-official-tunnel-session.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
 import {IsolatedInteractiveHtmlPreview} from './isolated-interactive-preview.mjs';
@@ -64,7 +74,7 @@ const runtimeBuildProof=verifyRuntimeManifest(root,
     ? {manifestPath:path.join(process.resourcesPath,'runtime-build.json')}
     : undefined);
 if(runtimeBuildProof.status==='invalid') throw new Error('lab_runtime_build_integrity_failed');
-const {userRoot} = resolveLabUserRoot({
+const {userRoot,staged:stagedProfile} = resolveLabUserRoot({
   argv:process.argv,
   localAppData:process.env.LOCALAPPDATA ||
     path.join(process.env.USERPROFILE || root, 'AppData', 'Local')
@@ -104,6 +114,23 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const store = new Store(path.join(dataRoot, 'ordax-orchestrator-lab.sqlite'));
+// Canonical project path lives in the existing SQLite, not another store.
+// Real user workspaces use the Windows-known Documents directory; existing
+// app-private files remain untouched until explicitly reconciled.
+const forgeLocalWorkspaces=new ForgeLocalWorkspaces({
+  // A staged DEV profile must not create test projects in the Owner's real
+  // Documents folder. Its source and workspace both remain under the
+  // independent staged candidate tree, away from the production SQLite.
+  store,documentsDirectory:resolveForgeWorkspaceDocumentsDirectory({
+    staged:stagedProfile,userRoot,windowsDocuments:app.getPath('documents')}),
+  legacyRoot:path.join(dataRoot,'project-files'),
+  forbiddenRoots:[userRoot,path.dirname(process.execPath),process.env.SystemRoot,
+    process.env.ProgramFiles,process.env.ProgramData,process.env['ProgramFiles(x86)']]
+    .filter(value=>typeof value==='string'&&path.isAbsolute(value))
+});
+const forgeProjectFiles=new ForgeProjectFiles({root:path.join(dataRoot,'project-files'),
+  workspaceLookup:projectId=>forgeLocalWorkspaces.rootForProject(projectId),
+  requireOwnerBinding:true});
 
 const stagedLab=process.argv.includes('--ordax-lab-staged-approved');
 const backgroundSupported=process.platform==='win32'&&app.isPackaged&&!hostBrowserMode&&!stagedLab;
@@ -310,7 +337,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   if (!task) throw new Error('task_not_found');
 
   const conversationPlan = planProviderConversation(task, {
-    forceNew:newSession,nextPromptBytes:Buffer.byteLength(String(prompt||'').trim(),'utf8')
+    forceNew:newSession,nextPromptBytes:Buffer.byteLength(withForjadorMcpMention(String(prompt||'').trim(),{authorSource}),'utf8')
   });
   const needsContinuation = Boolean(conversationPlan.newSession && task.has_messages);
   const checkpointVersion = task.checkpoint_version;
@@ -330,7 +357,8 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       checkpointVersion:handoffSnapshot.manifest.checkpointVersion,
       byteLength:handoffSnapshot.manifest.byteLength
     });
-    const boundedPromptChars=16000-estimatedNotice.length;
+    const boundedPromptChars=16000-estimatedNotice.length-
+      (authorSource==='orchestrator'?FORJADOR_MCP_MENTION.length+2:0);
     if(boundedPromptChars<1024)throw new Error('task_handoff_prompt_budget_exhausted');
     continuationPacket=store.buildContinuationPacket(taskId,prompt,{maxChars:boundedPromptChars});
     assertContinuationContextReady(continuationPacket);
@@ -344,7 +372,15 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       byteLength:handoffSnapshot.manifest.byteLength
     });
   }
-  const providerPrompt = (continuationPacket?.prompt || prompt)+contextAttachmentNotice;
+  // The Forjador's GPT work turns request the already-installed OrdaX MCP.
+  // Mentioning an app does not grant access or prove a tool was executed.
+  // A fresh Task chat inherits approved editorial context of its project.
+  // Established Task segments keep their existing checkpoint/handoff path.
+  const projectContext=!task.has_messages
+    ?forgeFreshConversationContext(store,taskId):null;
+  const providerPrompt = withForjadorMcpMention(
+    (projectContext?.text||'')+(continuationPacket?.prompt || prompt)+contextAttachmentNotice,{authorSource}
+  );
   if(contextManifest&&contextAttachmentNotice){
     if(providerPrompt.length>16000)throw new Error('task_handoff_prompt_budget_exceeded');
     contextManifest={...contextManifest,maxChars:16000,promptChars:providerPrompt.length,promptSha256:providerPromptDigest(providerPrompt)};
@@ -379,6 +415,11 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   try {
     providerViews.bindRun(runWorker,runContext);
     if (win && !win.isDestroyed()) emitRendererEvent('ordax:task:run-started', { taskId, runId, userMessage });
+    const projectId=store.db.prepare('SELECT project_id FROM lab_task_bindings WHERE task_id=? LIMIT 1')
+      .get(taskId)?.project_id||null;
+    lastGptDispatch={projectId,taskId,runId,authorSource,
+      originalRequest:prompt,composedPrompt:providerPrompt,
+      preparedAt:new Date().toISOString(),deliveryObserved:false};
     const result = await runWorker.sendPrompt({
       prompt:providerPrompt,chatUrl:task.chat_url,newSession:conversationPlan.newSession,
       contextAttachment,
@@ -404,6 +445,18 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       },
       onProvisionalProgress:({text,source})=>{
         if(providerViews.runForWorker(runWorker)===runContext)provisional.capture(text,source);
+      },
+      onMcpSelectionObserved:selection=>{
+        if(providerViews.runForWorker(runWorker)!==runContext)return;
+        const selectedState=['selection_visible','name_visible_unverified','not_observed','unavailable']
+          .includes(selection?.state)?selection.state:'unavailable';
+        const mentionRequested=mentionWasRequested(providerPrompt);
+        const state=selectedState==='not_observed'&&mentionRequested?'mention_requested':selectedState;
+        try {store.event(taskId,'provider.mcp.selection_observed',{
+          run_id:runId,state,mention_requested:mentionRequested,
+          selection_observed:selectedState==='selection_visible',invocation_verified:false
+        });}catch{/* diagnostic cannot affect delivery */}
+        emitRendererEvent('ordax:provider:mcp-observed',{state,taskId,runId});
       },
       onSubmissionIntent:({intentAt,chatUrl,baselineUserMessageId,baselineUserMessagePresent,baselinePromptMatches})=>{
         if(providerViews.runForWorker(runWorker)!==runContext)throw new Error('submission_run_context_changed');
@@ -461,6 +514,8 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
           try { store.event(taskId,'provider.submission.provenance_unavailable',{run_id:runId}); }
           catch { /* Preserve transport result; reconcile conservatively. */ }
         }
+        if(lastGptDispatch?.runId===runId)
+          lastGptDispatch={...lastGptDispatch,deliveryObserved:true};
         return binding;
       }
     });
@@ -986,6 +1041,20 @@ registerUiHandler('ordax:provider:diagnostic', async event => {
   // Read-only provider UI inspection; no API key, chat submission or disk write.
   return worker.inspectDiagnosticReadOnly();
 });
+registerUiHandler('ordax:forjador:groq-prompt', (event,projectId) => {
+  requireTrustedSupervisorRenderer(event);
+  if(typeof projectId!=='string'||!projectId)return null;
+  // Both are local, read-only, last request only; no keys, storage or replay.
+  const groq=lastGroqModelRequest?.projectId===projectId?lastGroqModelRequest:null;
+  const gpt=lastGptDispatch?.projectId===projectId?lastGptDispatch:null;
+  return groq||gpt?{groq,gpt}:null;
+});
+registerUiHandler('ordax:provider:mcp-selection', async event => {
+  requireTrustedSupervisorRenderer(event);
+  // UI markers are diagnostic, never proof of a selected tool invocation.
+  if(hostBrowserMode)return {state:'unavailable',selectionObserved:false,invocationVerified:false};
+  return worker.inspectMcpSelectionReadOnly();
+});
 registerUiHandler('ordax:provider:view-bounds', (event,rect) => {
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw new Error('provider_view_unavailable_on_host');
@@ -1047,8 +1116,10 @@ const currentGroqKey=()=>groqCredential.read()||process.env.GROQ_API_KEY||null;
 // Readable protected Groq key is the sole advisory availability source.
 // Background project continuation and GPT sends retain separate authorizations.
 const coordinatorChatEnabled=()=>Boolean(currentGroqKey());
-const coordinatorChatStatus=()=>({enabled:coordinatorChatEnabled(),configured:Boolean(currentGroqKey()),
-  groqConfigured:Boolean(currentGroqKey()),provider:'groq',executionSurface:'electron'});
+// Normal Forjador chat is GPT-first. Groq remains an optional analytical port;
+// an available Web worker is not proof of user login or a selected MCP app.
+const coordinatorChatStatus=()=>({enabled:Boolean(worker),configured:Boolean(worker),
+  groqConfigured:Boolean(currentGroqKey()),provider:'chatgpt_web',executionSurface:'electron'});
 function requireLabSupervisor() {
   if (process.env.ORDAX_LAB_SUPERVISOR_ENABLE !== '1') throw new Error('supervisor_disabled');
   const apiKey=currentGroqKey();
@@ -1091,10 +1162,14 @@ async function confirmInActiveUi({title,message,detail,approveLabel='Confirmar',
 // One App service for native UI and the MCP adapter. The fixed identity is
 // local-only; it is NOT exported as authentication for a remote MCP endpoint.
 let localOrchestratorContext=null;
+// Latest exact Groq model messages kept only in memory for the owner DEV
+// inspector. No API keys, authorization headers, disk logs or remote MCP.
+let lastGroqModelRequest=null;
+let lastGptDispatch=null;
 let runtimeOrchestratorBridge=null;
 let closeRuntimeOrchestratorPipe=null;
 const orchestratorKernel=createOrchestratorKernel({
-  store,version:app.getVersion(),
+  store,version:app.getVersion(),fileBroker:forgeProjectFiles,
   // Reuse the exact preview's path, symlink, structure and SHA-256 verifier.
   // Never return HTML bytes to Groq or grant arbitrary file reads.
   verifyLocalArtifact:({taskId,assetId})=>{
@@ -1105,7 +1180,8 @@ const orchestratorKernel=createOrchestratorKernel({
   // Destructive project deletion is authorized only from the local UI owner,
   // never delegated through the Runtime MCP bridge (even if a remote grant exists).
   authorize:({context,operation})=>context===localOrchestratorContext||
-    (operation!=='project_delete'&&runtimeOrchestratorBridge?.allows(context,operation)===true),
+    (!['project_delete','forjador_send'].includes(operation)&&
+      runtimeOrchestratorBridge?.allows(context,operation)===true),
   confirmProposalSend:async({title,content})=>confirmInActiveUi({
     title:'Confirmar primeiro envio ao ChatGPT',message:title,
     detail:'Mensagem exata a enviar:\n\n'+content+'\n\nSerá enviada uma única mensagem pelo executor do App. Uma resposta observada não comprova alterações em arquivos ou outros efeitos.',
@@ -1119,9 +1195,23 @@ const orchestratorKernel=createOrchestratorKernel({
   provider:{busy:()=>Boolean(liveRun||worker?.active||providerScheduler?.snapshot().pendingTasks),
     ready:async()=>{assertProviderSendReadiness(await worker.health());return true;},
     send:async({taskId,content,draftRevision,taskKind,authorSource='human'})=>{
-      const execution=await enqueueExecution(taskId,runWorker=>runTask(taskId,content,{
-        newSession:false,draftRevision,allowCoordinatorTask:taskKind==='orchestrator',authorSource
-      },runWorker));
+      // No provider interaction may occur before beginProviderRun commits a
+      // canonical Run. If the Run count did not change, a rejected preflight
+      // is PROVABLY not submitted and must not quarantine the project as an
+      // uncertain GPT delivery. Actual attempted sends remain fail-closed.
+      const countRuns=()=>store.db.prepare('SELECT COUNT(*) AS n FROM runs WHERE task_id=?')
+        .get(taskId)?.n??0;
+      const runsBefore=countRuns();
+      let execution;
+      try{
+        execution=await enqueueExecution(taskId,runWorker=>runTask(taskId,content,{
+          newSession:false,draftRevision,allowCoordinatorTask:taskKind==='orchestrator',authorSource
+        },runWorker));
+      }catch(error){
+        if(!error?.providerDeliveryState&&countRuns()===runsBefore)
+          throw normalizeProviderFailure(error,{stage:'preflight'});
+        throw error;
+      }
       // Completion is the ONLY automatic capture trigger. An interrupted
       // Run, model proposal, failed send or historical recovery never triggers
       // a download, and a missing official file card never becomes a result.
@@ -1156,10 +1246,39 @@ const orchestratorKernel=createOrchestratorKernel({
       return chatReceiptFromRunTask(execution);
     }},
   coordinator:createGroqCoordinatorConversation({store,getApiKey:currentGroqKey,
-    isEnabled:coordinatorChatEnabled})
+    isEnabled:coordinatorChatEnabled,
+    onModelRequest:payload=>{lastGroqModelRequest=payload;}})
 });
 localOrchestratorContext=orchestratorKernel.context;
 const {service:orchestratorService,mcp:localOrchestratorMcp}=orchestratorKernel;
+const forgeMcpTrusted=new ForgeMcpOwnerTrust({store,
+  scopeSignature:projectId=>{
+    const binding=forgeLocalWorkspaces.binding(projectId);
+    if(!binding)return 'app-private:'+projectId;
+    if(!forgeLocalWorkspaces.status(projectId).verified)
+      throw Error('forge_mcp_trust_workspace_unverified');
+    return 'owner-bound:'+binding.root+':'+binding.identity;
+  }
+});
+const forgeMcpResume=new ForgeMcpSecureResume({store,ownerTrust:forgeMcpTrusted,
+  secureStorage:safeStorage});
+let forgeMcpResumeError=null;
+const forgeOfficialTunnel=createForgeOfficialTunnelSession();
+const forgeLocalMcp=createForgeLoopbackMcp({
+  createMcp:({projectId,allowedOperations})=>createOrchestratorMcp({
+    service:orchestratorService,getContext:()=>localOrchestratorContext,
+    version:app.getVersion(),allowedProjectId:projectId,allowedOperations
+  }),
+  authorizeProject:projectId=>{
+    try{orchestratorService.requireAccess(localOrchestratorContext,
+      'project_file_read',projectId);
+      return forgeMcpTrusted.isTrusted(projectId);
+    }catch{return false;}
+  },
+  // Tokens are bound to the verified workspace identity at issue time.
+  // Reapproving a changed folder can never revive an old bearer/session.
+  projectScope:projectId=>forgeMcpTrusted.scopeHash(projectId)
+});
 orchestratorService.autonomous.setNotifier(()=>notifyOrchestratorChanged());
 orchestratorService.recoverInterruptedCommands();
 // Off by default. This inherited private pipe is NOT a public MCP endpoint.
@@ -1194,11 +1313,219 @@ function withDeletedProjectAssetCleanup(receipt,scope){
     filesPending:scope.assetPaths.length,entriesRemaining:scope.taskIds.length};}
   return {...receipt,result:{...receipt.result,localAssetCleanup}};
 }
+// Local folder authority is created only by the trusted Windows owner UI.
+// Model-provided paths, MCP calls and a stored GitHub URL cannot create grants.
+registerUiHandler('ordax:forge:workspace:status',(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_workspace_native_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'project_files_status',projectId);
+  return forgeLocalWorkspaces.status(projectId);
+});
+registerUiHandler('ordax:forge:workspace:create',(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_workspace_native_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
+  if(forgeOfficialTunnel.status().projectId===projectId)forgeOfficialTunnel.stop();
+  return forgeLocalWorkspaces.createDefault(projectId);
+});
+registerUiHandler('ordax:forge:workspace:choose',async(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_workspace_native_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
+  const current=forgeLocalWorkspaces.status(projectId);
+  if(current.configured)throw Error('forge_workspace_already_bound');
+  const chosen=await dialog.showOpenDialog(win,{
+    title:'Selecionar a pasta oficial deste projeto Forge',
+    // Staged verification must never open the owner's real Documents by
+    // default. The native owner may choose a folder explicitly only after
+    // the ordinary binding and overlap checks.
+    defaultPath:stagedProfile
+      ?(fs.existsSync(forgeLocalWorkspaces.base)
+        ?forgeLocalWorkspaces.base:path.dirname(userRoot))
+      :app.getPath('documents'),
+    properties:['openDirectory'],
+    buttonLabel:'Vincular esta pasta'
+  });
+  if(chosen.canceled||chosen.filePaths.length!==1)return {cancelled:true};
+  // Local authorized UI can select a directory, but cannot add authority
+  // to another project or mutate the root after a prior successful grant.
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
+  if(forgeOfficialTunnel.status().projectId===projectId)forgeOfficialTunnel.stop();
+  return forgeLocalWorkspaces.bindSelected(projectId,chosen.filePaths[0]);
+});
+registerUiHandler('ordax:forge:workspace:migrate',async(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_workspace_native_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
+  const status=forgeLocalWorkspaces.status(projectId);
+  if(status.configured||!status.legacyMigrationRequired)
+    throw Error('forge_workspace_migration_not_applicable');
+  const accepted=await confirmInActiveUi({
+    title:'Migrar arquivos antigos do Forge',
+    message:'Mover os arquivos privados anteriores para a pasta oficial deste projeto?',
+    detail:'Os arquivos serão MOVIMENTADOS (não copiados) para Documentos/Forge. O Forge verifica SHA-256 e vincula a pasta ao projeto existente no mesmo SQLite. A operação não altera conversas, credenciais ou outros projetos. Se a pasta estiver em outro disco ou a verificação falhar, o movimento será bloqueado ou revertido.',
+    approveLabel:'Migrar arquivos'
+  });
+  if(!accepted)return {cancelled:true};
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
+  if(forgeOfficialTunnel.status().projectId===projectId)forgeOfficialTunnel.stop();
+  return forgeLocalWorkspaces.migrateLegacy(projectId);
+});
+// Local MCP is explicitly enabled only from the trusted Electron settings UI.
+// Activation returns a one-time bearer token; status never returns it.
+registerUiHandler('ordax:forge:local-mcp:status',event=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
+  return {...forgeLocalMcp.status(),trustedProjects:forgeMcpTrusted.trustedProjects(),
+    officialTunnel:inspectForgeOfficialTunnelClient(),
+    officialTunnelSession:forgeOfficialTunnel.status(),
+    autoResumeProjects:forgeMcpResume.enabledProjects(),
+    autoResumeAvailable:forgeMcpResume.supported(),
+    autoResumeBlocked:forgeMcpResumeError};
+});
+registerUiHandler('ordax:forge:local-mcp:start',async(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
+  if(!forgeMcpTrusted.isTrusted(projectId)&&
+      !await confirmInActiveUi({title:'Habilitar MCP Forge local',
+    message:'Confiar neste projeto para futuras conexões MCP locais até revogar?',
+    detail:'Conexão exclusiva a 127.0.0.1, chave temporária, vale até revogar ou fechar o Forge; a chave permanece somente na memória e a confiança fica no SQLite sem tokens. Permite leitura e escrita somente no workspace atual deste projeto, quando vinculado e verificado. Não concede acesso a outras pastas, não publica na internet e não conecta automaticamente ao GPT Web.',
+    approveLabel:'Confiar e habilitar'}))return {running:false,declined:true};
+  const previouslyTrusted=forgeMcpTrusted.isTrusted(projectId);
+  if(!previouslyTrusted)forgeMcpTrusted.trust(projectId);
+  try{
+    const saved=forgeMcpResume.recover().find(grant=>grant.projectId===projectId);
+    return {...await forgeLocalMcp.start(projectId,saved
+      ?{listenPort:saved.port,resumeToken:saved.token}:{}),trusted:true};
+  }
+  catch(error){if(!previouslyTrusted)forgeMcpTrusted.revoke(projectId);throw error;}
+});
+// One loopback endpoint can host multiple owner-authorized projects, but
+// never grants a second project implicitly or shares its bearer/session.
+registerUiHandler('ordax:forge:local-mcp:add',async(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
+  if(!forgeLocalMcp.status().running)throw Error('forge_mcp_not_active');
+  if(!forgeMcpTrusted.isTrusted(projectId)&&
+      !await confirmInActiveUi({title:'Autorizar projeto no MCP Forge',
+    message:'Confiar também neste projeto para futuras conexões MCP locais?',
+    detail:'O servidor local permanece na mesma porta. Este projeto terá token e sessões exclusivos até revogação ou fechamento do Forge. A autorização não inclui outros projetos, não publica na internet e não conecta automaticamente ao GPT Web.',
+    approveLabel:'Confiar neste projeto'}))return {declined:true};
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
+  const previouslyTrusted=forgeMcpTrusted.isTrusted(projectId);
+  if(!previouslyTrusted)forgeMcpTrusted.trust(projectId);
+  try{
+    const saved=forgeMcpResume.recover().find(grant=>grant.projectId===projectId);
+    return {...forgeLocalMcp.addProject(projectId,saved?.port===forgeLocalMcp.localGrant(
+      forgeLocalMcp.status().scope)?.port?{resumeToken:saved.token}:{}),trusted:true};
+  }
+  catch(error){if(!previouslyTrusted)forgeMcpTrusted.revoke(projectId);throw error;}
+});
+registerUiHandler('ordax:forge:local-mcp:revoke',async(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
+  if(forgeOfficialTunnel.status().projectId===projectId)forgeOfficialTunnel.stop();
+  // An unavailable project must never prevent the Owner from revoking trust.
+  if(forgeLocalMcp.status().scopes.includes(projectId))
+    await forgeLocalMcp.revokeProject(projectId);
+  const forgotten=forgeMcpTrusted.revoke(projectId);
+  return {...forgeLocalMcp.status(),...forgotten,
+    trustedProjects:forgeMcpTrusted.trustedProjects()};
+});
+registerUiHandler('ordax:forge:local-mcp:resume-enable',async(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
+  if(!forgeMcpTrusted.isTrusted(projectId))throw Error('forge_mcp_resume_trust_required');
+  if(!forgeMcpResume.supported())throw Error('forge_mcp_resume_windows_protection_unavailable');
+  const grant=forgeLocalMcp.localGrant(projectId);
+  if(!grant)throw Error('forge_mcp_resume_active_grant_required');
+  const approved=await confirmInActiveUi({
+    title:'Manter MCP Forge conectado após reiniciar',
+    message:'Reconectar automaticamente este projeto quando o Forge iniciar?',
+    detail:'Esta opção mantém um token exclusivo do projeto cifrado pelo Windows no SQLite do Forge. O token não é gravado em texto puro. O Forge poderá abrir a conexão local e dar acesso ao workspace autorizado após reiniciar, até você desativar a reconexão ou revogar a confiança. Nunca publica o MCP na internet. Se a pasta mudar, o acesso será bloqueado.',
+    approveLabel:'Habilitar reconexão segura'
+  });
+  if(!approved)return {declined:true};
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
+  if(!forgeMcpTrusted.isTrusted(projectId))throw Error('forge_mcp_resume_trust_revoked');
+  const current=forgeLocalMcp.localGrant(projectId);
+  if(!current||current.token!==grant.token||current.port!==grant.port)
+    throw Error('forge_mcp_resume_grant_rotated');
+  return {...forgeMcpResume.enable(current),
+    autoResumeProjects:forgeMcpResume.enabledProjects()};
+});
+registerUiHandler('ordax:forge:local-mcp:resume-disable',(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
+  return {...forgeMcpResume.disable(projectId),
+    autoResumeProjects:forgeMcpResume.enabledProjects()};
+});
+registerUiHandler('ordax:forge:tunnel:start',async(event,request)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_tunnel_native_ui_only');
+  const projectId=request?.projectId;
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
+  if(!forgeMcpTrusted.isTrusted(projectId))throw Error('forge_tunnel_project_untrusted');
+  if(!inspectForgeOfficialTunnelClient().installed)
+    throw Error('forge_tunnel_official_client_unavailable');
+  if(forgeOfficialTunnel.status().state!=='stopped')
+    throw Error('forge_tunnel_already_running');
+  const grant=forgeLocalMcp.localGrant(projectId);
+  if(!grant)throw Error('forge_tunnel_local_mcp_not_active');
+  const allowed=await confirmInActiveUi({
+    title:'Conectar o projeto Forge ao túnel oficial',
+    message:'Permitir que um túnel autorizado da OpenAI acesse este projeto?',
+    detail:'O cliente oficial cria uma conexão de saída com a OpenAI e encaminha ferramentas MCP SOMENTE deste projeto. Isso pode permitir leitura e alteração de arquivos dentro da pasta autorizada. Não publica uma porta na internet, não autoriza outros projetos e não comprova conexão com o ChatGPT por si só. A chave de execução fica somente na memória deste processo e não será salva no SQLite.',
+    approveLabel:'Iniciar túnel autorizado'
+  });
+  if(!allowed)return {declined:true,...forgeOfficialTunnel.status()};
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
+  if(!forgeMcpTrusted.isTrusted(projectId))throw Error('forge_tunnel_trust_revoked');
+  const current=forgeLocalMcp.localGrant(projectId);
+  if(!current||current.token!==grant.token||current.port!==grant.port)
+    throw Error('forge_tunnel_local_grant_changed');
+  return forgeOfficialTunnel.start({
+    projectId,tunnelId:request?.tunnelId,controlPlaneKey:request?.runtimeKey,
+    endpoint:'http://127.0.0.1:'+current.port+'/mcp',
+    bearerToken:current.token,
+    executablePath:path.join(officialTunnelComponentDirectory(process.env.LOCALAPPDATA),'tunnel-client.exe'),
+    ownerApproved:true,platform:process.platform
+  });
+});
+registerUiHandler('ordax:forge:tunnel:stop',event=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_tunnel_native_ui_only');
+  return forgeOfficialTunnel.stop();
+});
+registerUiHandler('ordax:forge:local-mcp:stop',async event=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
+  forgeOfficialTunnel.stop(); // No remote client may outlive the local MCP.
+  forgeMcpResume.disableAll(); // Desativar todos must remain off after restart.
+  return forgeLocalMcp.stop();
+});
 registerUiHandler('ordax:orchestrator:invoke',async(event,payload)=>{
   requireTrustedSupervisorRenderer(event);
   const scope=payload?.operation==='project_delete'?projectAssetCleanupScope(payload?.input?.projectId):null;
+  if(payload?.operation==='project_delete'&&
+    forgeOfficialTunnel.status().projectId===payload?.input?.projectId)
+    forgeOfficialTunnel.stop();
   const receipt=await orchestratorService.invoke(localOrchestratorContext,payload?.operation,payload?.input??{});
-  const result=withDeletedProjectAssetCleanup(receipt,scope);
+  let result=withDeletedProjectAssetCleanup(receipt,scope);
+  // New projects receive a real workspace at the Windows Documents known
+  // folder. The DB project survives a filesystem failure, but the UI must
+  // report the failure, never claim a workspace that was not verified.
+  if(['project_create','project_quick_create','mission_create'].includes(payload?.operation)&&
+      receipt?.status==='succeeded'&&typeof receipt?.result?.projectId==='string'){
+    let workspaceSetup;
+    try{workspaceSetup=forgeLocalWorkspaces.createDefault(receipt.result.projectId);}
+    catch(error){workspaceSetup={configured:false,blocked:true,
+      reason:String(error?.message||'forge_workspace_creation_failed').slice(0,120)};}
+    result={...result,result:{...result.result,workspaceSetup}};
+  }
   if(ORCHESTRATOR_TOOLS.some(t=>t.operation===payload?.operation&&!t.readOnly)&&win&&!win.isDestroyed())
     emitRendererEvent('ordax:orchestrator:changed');
   return result;
@@ -1418,6 +1745,23 @@ app.whenReady().then(async () => {
     }
   });
 
+  // Opt-in only: restart the same in-app MCP listener from Windows-sealed
+  // project credentials. Fail closed if any binding or loopback port is invalid.
+  if(!hostBrowserMode){
+    const saved=forgeMcpResume.recover();
+    if(saved.length){
+      try{
+        await forgeLocalMcp.start(saved[0].projectId,
+          {listenPort:saved[0].port,resumeToken:saved[0].token});
+        for(const grant of saved.slice(1))
+          forgeLocalMcp.addProject(grant.projectId,{resumeToken:grant.token});
+        forgeMcpResumeError=null;
+      }catch{
+        forgeMcpResumeError='forge_mcp_resume_port_or_authority_unavailable';
+        await forgeLocalMcp.stop();
+      }
+    }
+  }
   await createWindow();
   if(backgroundOptedIn){
     const trayReady=await ensureBackgroundTray();
@@ -1469,6 +1813,8 @@ app.on('will-quit', () => {
   if(backgroundTray){backgroundTray.destroy();backgroundTray=null;}
   if(continuationTimer)clearInterval(continuationTimer);
   void hostBrowserServer?.close();
+  forgeOfficialTunnel.stop();
+  void forgeLocalMcp.stop();
   closeRuntimeOrchestratorPipe?.();
   store.close();
 });

@@ -1,4 +1,4 @@
-> **DIREÇÃO ATUAL DO PRODUTO — 2026-11-01:** [Contrato canônico de instância única com administrador autônomo](docs/ORCHESTRATOR-CANONICAL-PRODUCT.md). A descrição Project-First, os nomes alpha e os cenários multi-projeto abaixo documentam evolução e mecanismos existentes, **não** definem mais a UX-alvo. Nenhuma nova IA deve retomar arquitetura de múltiplos projetos ativos, Groq secundário ou GPT Web como chat do administrador. Implementação ainda precisa de gates de autorização e E2E reais.
+> **DIREÇÃO ÚNICA DO FORGE V3 — 2026-11-06:** [Plano GPT-first, Windows, pastas reais e MCP integrado](docs/FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md). Este README mantém detalhes históricos do Orchestrator Lab; antigas afirmações de Groq obrigatória, instância/perfil por projeto e dependência exclusiva de Runtime externo estão superadas. Código/testes/prova física determinam capacidades entregues; nenhum E2E é presumido.
 
 # OrdaX Forge — produto de coordenação (nome comercial)
 

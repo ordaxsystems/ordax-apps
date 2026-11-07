@@ -16,6 +16,7 @@ export function createOrchestratorKernel({
   confirmProposal=null,
   confirmProposalSend=null,
   workspacePort=null,
+  fileBroker=null,
   repositoryPort=null,
   verifyLocalArtifact=null,
   version='development'
@@ -24,7 +25,7 @@ export function createOrchestratorKernel({
     throw Error('orchestrator_kernel_ports_required');
   const context=Object.freeze({actorId,clientId,workspaceSessionId:store.getWorkspaceSession().id});
   const service=new OrchestratorService({
-    store,authorize,provider,coordinator,confirmProposal,confirmProposalSend,workspacePort,repositoryPort,
+    store,authorize,provider,coordinator,confirmProposal,confirmProposalSend,workspacePort,fileBroker,repositoryPort,
     verifyLocalArtifact
   });
   const mcp=createOrchestratorMcp({service,getContext:()=>context,version});
