@@ -24,6 +24,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import {HTML_ARTIFACT_LIMIT_BYTES,validateHtmlArtifactName} from '../src/provider-html-artifact.mjs';
+import {classifyProviderMcpSelection} from '../src/provider-mcp-selection.mjs';
 import { fileURLToPath } from 'node:url';
 import { classifyProviderContextAttachmentObservation, selectProviderContextFileInput, PROVIDER_CONTEXT_FILE_INPUT_SELECTOR, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
 
@@ -574,6 +575,37 @@ export class EmbeddedChatWorker {
     return { ...this.status(), navigated:true };
   }
 
+  // Read only the currently composed ChatGPT message; no app-menu click,
+  // credential handling, navigation, permission grant or provider send.
+  async inspectMcpSelectionReadOnly({allowDuringRun=false}={}) {
+    if((this.active&&!allowDuringRun) || !/^https:\/\/chatgpt\.com\//i.test(this.view.webContents.getURL()))
+      return classifyProviderMcpSelection(null);
+    const wc=this.view.webContents;
+    const observation=await evaluateProviderReadOnlyDom({
+      debugger:wc.debugger,expression:`(() => {
+        const composer=${composerExpression()};
+        if(!composer)return {composerPresent:false};
+        const scope=composer.closest('form')||composer.parentElement;
+        if(!scope)return {composerPresent:true};
+        const visible=node=>{
+          const rect=node.getBoundingClientRect(),style=getComputedStyle(node);
+          return rect.width>0&&rect.height>0&&style.display!=='none'&&style.visibility!=='hidden';
+        };
+        const candidates=[...scope.querySelectorAll('button,[role="button"],[aria-selected],[data-selected]')];
+        const matches=candidates.filter(node=>{
+          if(!visible(node))return false;
+          const label=String(node.getAttribute('aria-label')||node.getAttribute('title')||node.textContent||'').trim();
+          return label.length<=120&&/\\bOrdaX\\s+MCP\\b/i.test(label);
+        });
+        const selected=matches.some(node=>node.getAttribute('aria-pressed')==='true'||
+          node.getAttribute('aria-selected')==='true'||node.getAttribute('data-selected')==='true'||
+          node.getAttribute('data-state')==='active');
+        return {composerPresent:true,exactNamedControl:matches.length>0,exactSelectedControl:selected};
+      })()`,timeoutMs:5000,timeoutCode:'provider_mcp_selection_observation_timeout'
+    }).catch(()=>null);
+    return classifyProviderMcpSelection(observation);
+  }
+
   // Inspect the currently visible provider page; never navigate or submit.
   // The only returned values are allowlisted flags and bounded counts.
   async inspectDiagnosticReadOnly() {
@@ -925,7 +957,7 @@ export class EmbeddedChatWorker {
     })()`);
   }
 
-  async #setComposerAndSend(prompt,{onSubmissionIntent=null}={}) {
+  async #setComposerAndSend(prompt,{onSubmissionIntent=null,onMcpSelectionObserved=null}={}) {
     const wc = this.view.webContents;
     const initial = await this.#waitForComposer();
     if (initial.text.trim()) throw new Error('chatgpt_draft_present');
@@ -959,6 +991,13 @@ export class EmbeddedChatWorker {
       await sleep(80);
     }
     if (!recognized) throw new Error('composer_input_not_recognized');
+    // Observe the plugin marker AFTER the exact payload is in the editor.
+    // A typed @ mention alone is never considered a tool execution receipt.
+    const selection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true});
+    if(this.streamContext)this.streamContext.mcpSelectionState=selection.state;
+    if(typeof onMcpSelectionObserved==='function'){
+      try{await onMcpSelectionObserved(selection);}catch{/* optional observation */}
+    }
 
     // Wait until React renders a usable submit control before attempting
     // exactly one standards-based form submission. No fallback clicks.
@@ -1361,7 +1400,7 @@ export class EmbeddedChatWorker {
 
   async sendPrompt({ prompt, chatUrl = null, newSession = false, contextAttachment = null,
     onContextAttachmentObserved = null, onDeliveryObserved = null, onProvisionalProgress = null,
-    onSubmissionIntent = null }) {
+    onSubmissionIntent = null, onMcpSelectionObserved = null }) {
     return this.enqueue(async () => {
       const wc = this.view.webContents;
       this.lastFailureMetrics = null;
@@ -1413,7 +1452,7 @@ export class EmbeddedChatWorker {
 
       if(contextAttachment)await this.#attachContextFile(contextAttachment,onContextAttachmentObserved);
       this.#setStage('submit');
-      await this.#setComposerAndSend(promptText,{onSubmissionIntent});
+      await this.#setComposerAndSend(promptText,{onSubmissionIntent,onMcpSelectionObserved});
       if (!this.streamContext.submittedAt) this.streamContext.submittedAt = Date.now();
 
       // New chats may need time to acquire a canonical permalink. Existing

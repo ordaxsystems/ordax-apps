@@ -13,6 +13,7 @@ import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
 import { testGroqApiKey } from '../src/groq-key-health.mjs';
 import { createLocalGroqCredential } from '../src/local-supervisor-credential.mjs';
 import { createOrchestratorKernel } from '../src/orchestrator-kernel.mjs';
+import {withForjadorMcpMention,mentionWasRequested,FORJADOR_MCP_MENTION} from '../src/provider-mcp-mention.mjs';
 import { createProviderAwareTaskOpener, createTaskUiHandlers } from '../src/task-ui-handlers.mjs';
 import { ORCHESTRATOR_TOOLS } from '../src/orchestrator-contract.mjs';
 import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,resolveOrchestratorRuntimeTransport,openOrchestratorRuntimeStreams } from '../src/orchestrator-runtime-bridge.mjs';
@@ -310,7 +311,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   if (!task) throw new Error('task_not_found');
 
   const conversationPlan = planProviderConversation(task, {
-    forceNew:newSession,nextPromptBytes:Buffer.byteLength(String(prompt||'').trim(),'utf8')
+    forceNew:newSession,nextPromptBytes:Buffer.byteLength(withForjadorMcpMention(String(prompt||'').trim(),{authorSource}),'utf8')
   });
   const needsContinuation = Boolean(conversationPlan.newSession && task.has_messages);
   const checkpointVersion = task.checkpoint_version;
@@ -330,7 +331,8 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       checkpointVersion:handoffSnapshot.manifest.checkpointVersion,
       byteLength:handoffSnapshot.manifest.byteLength
     });
-    const boundedPromptChars=16000-estimatedNotice.length;
+    const boundedPromptChars=16000-estimatedNotice.length-
+      (authorSource==='orchestrator'?FORJADOR_MCP_MENTION.length+2:0);
     if(boundedPromptChars<1024)throw new Error('task_handoff_prompt_budget_exhausted');
     continuationPacket=store.buildContinuationPacket(taskId,prompt,{maxChars:boundedPromptChars});
     assertContinuationContextReady(continuationPacket);
@@ -344,7 +346,11 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       byteLength:handoffSnapshot.manifest.byteLength
     });
   }
-  const providerPrompt = (continuationPacket?.prompt || prompt)+contextAttachmentNotice;
+  // The Forjador's GPT work turns request the already-installed OrdaX MCP.
+  // Mentioning an app does not grant access or prove a tool was executed.
+  const providerPrompt = withForjadorMcpMention(
+    (continuationPacket?.prompt || prompt)+contextAttachmentNotice,{authorSource}
+  );
   if(contextManifest&&contextAttachmentNotice){
     if(providerPrompt.length>16000)throw new Error('task_handoff_prompt_budget_exceeded');
     contextManifest={...contextManifest,maxChars:16000,promptChars:providerPrompt.length,promptSha256:providerPromptDigest(providerPrompt)};
@@ -379,6 +385,11 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   try {
     providerViews.bindRun(runWorker,runContext);
     if (win && !win.isDestroyed()) emitRendererEvent('ordax:task:run-started', { taskId, runId, userMessage });
+    const projectId=store.db.prepare('SELECT project_id FROM lab_task_bindings WHERE task_id=? LIMIT 1')
+      .get(taskId)?.project_id||null;
+    lastGptDispatch={projectId,taskId,runId,authorSource,
+      originalRequest:prompt,composedPrompt:providerPrompt,
+      preparedAt:new Date().toISOString(),deliveryObserved:false};
     const result = await runWorker.sendPrompt({
       prompt:providerPrompt,chatUrl:task.chat_url,newSession:conversationPlan.newSession,
       contextAttachment,
@@ -404,6 +415,18 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       },
       onProvisionalProgress:({text,source})=>{
         if(providerViews.runForWorker(runWorker)===runContext)provisional.capture(text,source);
+      },
+      onMcpSelectionObserved:selection=>{
+        if(providerViews.runForWorker(runWorker)!==runContext)return;
+        const selectedState=['selection_visible','name_visible_unverified','not_observed','unavailable']
+          .includes(selection?.state)?selection.state:'unavailable';
+        const mentionRequested=mentionWasRequested(providerPrompt);
+        const state=selectedState==='not_observed'&&mentionRequested?'mention_requested':selectedState;
+        try {store.event(taskId,'provider.mcp.selection_observed',{
+          run_id:runId,state,mention_requested:mentionRequested,
+          selection_observed:selectedState==='selection_visible',invocation_verified:false
+        });}catch{/* diagnostic cannot affect delivery */}
+        emitRendererEvent('ordax:provider:mcp-observed',{state,taskId,runId});
       },
       onSubmissionIntent:({intentAt,chatUrl,baselineUserMessageId,baselineUserMessagePresent,baselinePromptMatches})=>{
         if(providerViews.runForWorker(runWorker)!==runContext)throw new Error('submission_run_context_changed');
@@ -461,6 +484,8 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
           try { store.event(taskId,'provider.submission.provenance_unavailable',{run_id:runId}); }
           catch { /* Preserve transport result; reconcile conservatively. */ }
         }
+        if(lastGptDispatch?.runId===runId)
+          lastGptDispatch={...lastGptDispatch,deliveryObserved:true};
         return binding;
       }
     });
@@ -986,6 +1011,20 @@ registerUiHandler('ordax:provider:diagnostic', async event => {
   // Read-only provider UI inspection; no API key, chat submission or disk write.
   return worker.inspectDiagnosticReadOnly();
 });
+registerUiHandler('ordax:forjador:groq-prompt', (event,projectId) => {
+  requireTrustedSupervisorRenderer(event);
+  if(typeof projectId!=='string'||!projectId)return null;
+  // Both are local, read-only, last request only; no keys, storage or replay.
+  const groq=lastGroqModelRequest?.projectId===projectId?lastGroqModelRequest:null;
+  const gpt=lastGptDispatch?.projectId===projectId?lastGptDispatch:null;
+  return groq||gpt?{groq,gpt}:null;
+});
+registerUiHandler('ordax:provider:mcp-selection', async event => {
+  requireTrustedSupervisorRenderer(event);
+  // UI markers are diagnostic, never proof of a selected tool invocation.
+  if(hostBrowserMode)return {state:'unavailable',selectionObserved:false,invocationVerified:false};
+  return worker.inspectMcpSelectionReadOnly();
+});
 registerUiHandler('ordax:provider:view-bounds', (event,rect) => {
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw new Error('provider_view_unavailable_on_host');
@@ -1091,6 +1130,10 @@ async function confirmInActiveUi({title,message,detail,approveLabel='Confirmar',
 // One App service for native UI and the MCP adapter. The fixed identity is
 // local-only; it is NOT exported as authentication for a remote MCP endpoint.
 let localOrchestratorContext=null;
+// Latest exact Groq model messages kept only in memory for the owner DEV
+// inspector. No API keys, authorization headers, disk logs or remote MCP.
+let lastGroqModelRequest=null;
+let lastGptDispatch=null;
 let runtimeOrchestratorBridge=null;
 let closeRuntimeOrchestratorPipe=null;
 const orchestratorKernel=createOrchestratorKernel({
@@ -1156,7 +1199,8 @@ const orchestratorKernel=createOrchestratorKernel({
       return chatReceiptFromRunTask(execution);
     }},
   coordinator:createGroqCoordinatorConversation({store,getApiKey:currentGroqKey,
-    isEnabled:coordinatorChatEnabled})
+    isEnabled:coordinatorChatEnabled,
+    onModelRequest:payload=>{lastGroqModelRequest=payload;}})
 });
 localOrchestratorContext=orchestratorKernel.context;
 const {service:orchestratorService,mcp:localOrchestratorMcp}=orchestratorKernel;

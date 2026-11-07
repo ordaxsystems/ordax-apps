@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('ordax', {
   coordinatorChatStatus: () => ipcRenderer.invoke('ordax:orchestrator:chat-status'),
+  forjadorGroqPrompt: projectId => ipcRenderer.invoke('ordax:forjador:groq-prompt',projectId),
   orchestratorInvoke: (operation,input={}) => ipcRenderer.invoke('ordax:orchestrator:invoke',{operation,input}),
   orchestratorMcp: message => ipcRenderer.invoke('ordax:orchestrator:mcp',message),
   onOrchestratorChanged: callback => {
@@ -52,6 +53,8 @@ contextBridge.exposeInMainWorld('ordax', {
   labBuildProof: () => ipcRenderer.invoke('ordax:lab:build-proof'),
   providerStatus: () => ipcRenderer.invoke('ordax:provider:status'),
   providerDiagnostic: () => ipcRenderer.invoke('ordax:provider:diagnostic'),
+  providerMcpSelection: () => ipcRenderer.invoke('ordax:provider:mcp-selection'),
+  onProviderMcpObserved: callback => ipcRenderer.on('ordax:provider:mcp-observed',(_event,data)=>callback(data)),
   providerNavigate: direction => ipcRenderer.invoke('ordax:provider:navigate',direction),
   setProviderBounds: bounds => ipcRenderer.invoke('ordax:provider:view-bounds',bounds),
   getObserverMode: () => ipcRenderer.invoke('ordax:provider:observer-mode:get'),

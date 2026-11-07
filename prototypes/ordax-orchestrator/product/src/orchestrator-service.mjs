@@ -11,6 +11,8 @@ import {AutonomousDialogue} from './autonomous-dialogue.mjs';
 import {classifyExistingSiteChange} from './natural-site-intent.mjs';
 import {latestSiteWork} from './site-work-context.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
+import {forgeProjectContext} from './forge-executor-context.mjs';
+import {UNTITLED_FORGE_PROJECT,suggestForgeProjectTitle} from './project-auto-title.mjs';
 import {deleteProjectRecords} from './project-deletion.mjs';
 import {ProjectRepository} from './project-repository.mjs';
 import {workExecutionSummary} from './work-execution-summary.mjs';
@@ -390,7 +392,7 @@ export class OrchestratorService {
       const reserved=this.reserve(context,operation,input);
       if(reserved.existing)return reserved.existing;
       const result=operation==='proposal_review'?this.reviewProposal(context,input):this.mutate(operation,input);
-      if(['project_create','mission_create'].includes(operation))this.db.prepare('UPDATE lab_command_receipts SET project_id=? WHERE id=?')
+      if(['project_create','project_quick_create','mission_create'].includes(operation))this.db.prepare('UPDATE lab_command_receipts SET project_id=? WHERE id=?')
         .run(result.projectId,reserved.commandId);
       return this.finish(reserved.commandId,result);
     });
@@ -454,6 +456,21 @@ export class OrchestratorService {
       return {proposals};
     }
     if(operation==='workspace_status')return this.workspace.status(context,input.projectId);
+    if(operation==='project_context') {
+      // The existing session authorization has already checked projectId.
+      // Project title/objective are DATA, never new tool instructions.
+      const project=this.db.prepare('SELECT name,objective,repository_url FROM lab_projects WHERE id=? AND workspace_session_id=?')
+        .get(input.projectId,context.workspaceSessionId);
+      if(!project)throw Error('orchestrator_project_unavailable');
+      const last=this.db.prepare(`SELECT r.status FROM runs r
+        JOIN lab_task_bindings b ON b.task_id=r.task_id AND b.kind='work'
+        WHERE b.project_id=? ORDER BY r.rowid DESC LIMIT 1`).get(input.projectId);
+      const total=this.db.prepare(`SELECT COUNT(*) AS n FROM lab_task_bindings
+        WHERE project_id=? AND kind='work'`).get(input.projectId).n;
+      return forgeProjectContext({projectId:input.projectId,project,
+        workspace:this.workspace.status(context,input.projectId),workCount:total,
+        latestRunStatus:last?.status||null});
+    }
     if(operation==='continuity_status') {
       this.orchestrator(input.projectId,input.orchestratorId);
       return this.continuation.status(input.projectId,input.orchestratorId);
@@ -817,6 +834,37 @@ export class OrchestratorService {
     const now=this.store.now();
     if(operation==='project_create') {
       return {projectId:this.createProjectRecord(input.name,input.objective||'',input.repositoryUrl,now)};
+    }
+    if(operation==='project_quick_create') {
+      // Unlike mission_create, no work/draft or speculative user task exists.
+      const projectId=this.createProjectRecord(UNTITLED_FORGE_PROJECT,'',null,now);
+      const orchestratorId='orchestrator_'+randomUUID();
+      const chat=this.store.createTask('Forjador');
+      this.db.prepare('INSERT INTO lab_orchestrators VALUES(?,?,?,?,?,?,?)')
+        .run(orchestratorId,projectId,'Forjador',
+          'Conversa de projeto. Entender o pedido do usuário e coordenar apenas ações disponíveis e autorizadas.',
+          'ready',chat.id,now);
+      this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)')
+        .run(chat.id,projectId,orchestratorId,'orchestrator');
+      return {projectId,projectName:UNTITLED_FORGE_PROJECT,
+        orchestratorId,chatTaskId:chat.id,workCreated:0,providerMessagesSent:0};
+    }
+    if(operation==='project_auto_title') {
+      const row=this.db.prepare(`SELECT p.name,o.chat_task_id AS chatTaskId FROM lab_projects p
+        JOIN lab_orchestrators o ON o.project_id=p.id
+        WHERE p.id=? AND p.workspace_session_id=? ORDER BY o.created_at,o.id LIMIT 1`)
+        .get(input.projectId,this.store.getWorkspaceSession().id);
+      if(!row)throw Error('orchestrator_project_unavailable');
+      if(row.name!==UNTITLED_FORGE_PROJECT)
+        return {projectId:input.projectId,name:row.name,changed:false};
+      const first=this.db.prepare(`SELECT content FROM messages WHERE task_id=? AND role='user'
+        ORDER BY created_at,id LIMIT 1`).get(row.chatTaskId);
+      if(!first)return {projectId:input.projectId,name:row.name,changed:false};
+      const title=suggestForgeProjectTitle(first.content);
+      if(title===UNTITLED_FORGE_PROJECT)return {projectId:input.projectId,name:row.name,changed:false};
+      const changed=this.db.prepare('UPDATE lab_projects SET name=? WHERE id=? AND name=?')
+        .run(title,input.projectId,UNTITLED_FORGE_PROJECT).changes;
+      return {projectId:input.projectId,name:title,changed:changed===1};
     }
     if(operation==='mission_create') {
       const projectName=input.name||missionProjectName(input.mission);

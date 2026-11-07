@@ -140,7 +140,7 @@ test('physical frontend monitor describes registered execution, not fictitious a
     assert.throws(()=>describeExecutionMonitor(invalid),/invalid_execution_monitor_counts/);
   assert.match(uiHtml,/id="executionOverviewTitle"/);
   assert.match(uiHtml,/id="executionOverviewDescription"/);
-  assert.match(uiHtml,new RegExp('Assistente '+PRODUCT_SHORT_NAME));
+  assert.match(uiHtml,/Forjador/);
   assert.match(uiHtml,/Tarefas e resultados/);
   const renderer=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.match(renderer,/\$\('executionOverviewTitle'\)\.textContent=overview\.title/);
@@ -177,7 +177,7 @@ test('empty project state promises persistence without claiming autonomous execu
   assert.match(ui,/document\.querySelector\('\[data-start-project\]'\)/);
   assert.doesNotMatch(ui,/querySelector\('\[data-create-task\]'\)/);
 
-  assert.match(uiHtml,/Cada campo identifica o seu destino/);
+  assert.match(uiHtml,/Converse normalmente com o Forjador|converse normalmente com o Forjador/);
   assert.doesNotMatch(uiHtml,/continuar amanhã|gerencia automaticamente as conversas internas/);
 });
 
@@ -414,7 +414,7 @@ test('embedded ChatGPT surface is sandboxed and navigation-scoped', () => {
 });
 
 test('ChatGPT text insertion focuses and verifies the embedded composer before dispatch',()=>{
-  const start=worker.indexOf('  async #setComposerAndSend(prompt,{onSubmissionIntent=null}={}) {');
+  const start=worker.indexOf('  async #setComposerAndSend(prompt,{onSubmissionIntent=null,onMcpSelectionObserved=null}={}) {');
   const end=worker.indexOf('    // Wait until React renders a usable submit control',start);
   const preparation=worker.slice(start,end);
   assert.ok(start>=0&&end>start);
@@ -579,7 +579,7 @@ test('project hub exposes creation and switching before the administrative navig
   assert.match(html,/<section id="projectSwitcher" class="project-chooser"[^>]*hidden>/);
   assert.match(orchestration,/projectSwitcher'\)\.hidden=otherProjects\.length===0/);
   assert.match(orchestration,/projects\.filter\(project=>project\.id!==projectId\)/);
-  assert.match(orchestration,/quickNewProject'\)\.addEventListener\('click',openNewProjectForm\)/);
+  assert.match(orchestration,/quickNewProject'\)\.addEventListener\('click',\(\)=>void createBlankProject\(\)\)/);
   assert.match(orchestration,/addProject'\)\.addEventListener\('click',openNewProjectForm\)/);
   assert.match(css,/body\.orchestrator-focus #quickNewProject/);
   assert.match(css,/body\.orchestrator-focus \.project-chooser/);
@@ -591,7 +591,7 @@ test('project hub exposes creation and switching before the administrative navig
   assert.doesNotMatch(html,/Trocar de projeto anterior/);
   assert.match(orchestration,/activeProjectName'\)\.textContent=current\?\.name/);
   assert.match(orchestration,/GitHub vinculado por URL · leitura não verificada/);
-  assert.match(orchestration,/ASSISTENTE ORDAX/);
+  assert.match(orchestration,/coordinatorRouteLabel'\)\.textContent='FORJADOR'/);
   assert.match(css,/--font-ui:/);
   for(const token of ['--bg:','--panel:','--panel-2:','--border:','--text:','--muted:','--focus:'])
     assert.ok(css.includes(token),token+' should be defined in the canonical CSS root');
@@ -723,8 +723,9 @@ test('work rail separates observed evidence from advisory plans without duplicat
   assert.match(css,/\.work-plan-details\[open\]>summary\{/);
   assert.ok(html.indexOf('id="contextPanel"')<html.indexOf('id="orchestratorWorkRail"'),
     'work rail is nested in contextPanel and requires its parent visible');
-  assert.match(css,/#contextRail>:not\(#contextPanel\)\{display:none!important\}/);
-  assert.match(css,/#contextPanel\{display:flex!important;overflow:hidden;padding:0\}/);
+  assert.doesNotMatch(css,/#contextRail>:not\(#contextPanel\)\{display:none!important\}/);
+  assert.match(css,/body\.orchestrator-focus #contextRail>\.right-pane-tabs\{\s*display:grid!important;/);
+  assert.match(css,/#contextRail>#contextPanel:not\(\[hidden\]\)\{display:flex!important\}/);
   assert.match(css,/#contextPanel>:not\(#orchestratorWorkRail\)\{display:none!important\}/);
   assert.doesNotMatch(css,/#contextRail>:not\(#orchestratorWorkRail\)/);
 });
@@ -837,15 +838,17 @@ test('coordinator shows an actionable empty state and keeps mobile controls insi
   assert.match(orchestration,/page\.messages\.length===0/);
   assert.match(orchestration,/uncertainCommands/);
   assert.match(orchestration,/nada foi reenviado automaticamente/);
-  assert.match(orchestration,/Como posso ajudar\?/);
-  assert.match(orchestration,/Descreva o que deseja criar/);
-  assert.match(orchestration,/settings.textContent='Ajustes'/);
+  assert.match(orchestration,/O que vamos criar hoje\?/);
+  assert.match(orchestration,/Conte sua ideia ao Forjador/);
+  assert.match(orchestration,/Criar um site/);
+  assert.match(orchestration,/Desenvolver um app/);
   assert.match(orchestration,/ChatGPT Plan · autorizado/);
   assert.match(html,/id="coordinatorApiSettings"[^>]*>Ajustes</);
   assert.match(css,/coordinator-head-actions #coordinatorApiSettings\{font-size:9px;width:auto/);
   assert.match(orchestration,/groq_auth_rejected:/);
   assert.match(orchestration,/O tempo de resposta do \$\{provider\} expirou sem confirmação/);
-  assert.match(orchestration,/settings\.addEventListener\('click',\(\)=>\$\('coordinatorApiSettings'\)\.click\(\)\)/);
+  assert.match(orchestration,/input\.dispatchEvent\(new Event\('input',\{bubbles:true\}\)\)/);
+  assert.match(html,/id="forgeCoordinatorAdvanced"/);
   assert.match(css,/\.coordinator-empty\{[^}]*text-align:center/);
   assert.match(css,/body\.orchestrator-focus \.coordinator-analysis-actions\{display:grid;grid-template-columns:minmax\(0,1fr\)/);
   assert.match(css,/body\.orchestrator-focus \.coordinator-analysis-actions>small\{min-width:0;overflow-wrap:anywhere\}/);
@@ -1165,7 +1168,7 @@ test('Groq and ChatGPT workspaces have distinct visible destinations and fail-cl
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   assert.match(uiHtml,/id="openOrchestrator"/);
   assert.match(uiHtml,/id="openWorks"/);
-  assert.match(uiHtml,/ASSISTENTE ORDAX/);
+  assert.match(uiHtml,/id="coordinatorRouteLabel">FORJADOR</);
   assert.match(uiHtml,/CONVERSA DE TRABALHO · CHATGPT WEB/);
   assert.match(uiHtml,/id="coordinatorComposer"/);
   assert.match(uiHtml,/id="composer"/);
@@ -1173,7 +1176,7 @@ test('Groq and ChatGPT workspaces have distinct visible destinations and fail-cl
   assert.match(uiHtml,/Enviar ao GPT/);
   assert.match(ui,/setWorkspaceRoute\('coordinator'\)/);
   assert.match(ui,/setWorkspaceRoute\('gpt'\)/);
-  assert.match(ui,/flushDraft\(\);await selectRightPane\('context'\)/);
+  assert.match(ui,/flushDraft\(\);await selectRightPane\('execution'\)/);
   assert.match(ui,/await selectRightPane\('provider'\)/);
   assert.match(orchestratorUi,/orchestratorChatAvailable=coordinatorAvailable/);
   assert.doesNotMatch(orchestratorUi,/orchestratorChatAvailable=gptWebTransportAvailable/);

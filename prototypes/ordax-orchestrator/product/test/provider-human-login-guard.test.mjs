@@ -35,7 +35,7 @@ test('actual worker invokes pre-submit gate before draft, baseline and submissio
   assert.ok(send);
   const auth=send.indexOf('assertProviderSendReadiness(health)');
   const draft=send.indexOf('const currentDraft =');
-  const submit=send.indexOf('await this.#setComposerAndSend(promptText,{onSubmissionIntent})');
+  const submit=send.indexOf('await this.#setComposerAndSend(promptText,{onSubmissionIntent,onMcpSelectionObserved})');
   assert.ok(auth>0&&auth<draft&&draft<submit);
   assert.match(worker,/classifyProviderAuthObservation/);
 });

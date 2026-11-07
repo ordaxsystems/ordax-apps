@@ -101,6 +101,7 @@ test('Work Surface version history re-verifies each asset and never promotes an 
     replaceChildren(){this.options=[];},
     append(option){this.options.push(option);}};
   elements.set('#workSurfaceVersion',select);
+  elements.set('#previewPanel .preview-state-card',{hidden:false});
   const frame={style:{},srcdoc:'',
     setAttribute(name,value){this[name]=value;}};
   elements.set('#workSurfaceFrame',frame);
