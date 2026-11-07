@@ -102,6 +102,43 @@ test('loopback MCP requires explicit token and keeps tools inside one project',a
   await assert.rejects(fetch(endpoint),/fetch failed|ECONNREFUSED/);
 });
 
+test('MCP reclaims abandoned sessions only when full and preserves active sessions and grants',async t=>{
+  const f=fixture(t);
+  const projectId=await f.makeProject('session_slots');
+  const ready=await f.transport.start(projectId);
+  const sessions=[];
+  for(let i=0;i<8;i++){
+    const start=await rpc(ready.endpoint,ready.token,null,{...initialize,id:100+i});
+    assert.equal(start.status,200);
+    assert.ok(start.session);
+    sessions.push(start.session);
+  }
+  assert.equal(f.transport.status().sessions,8);
+  // Never displace a recent/active session just because a ninth client asks.
+  const full=await rpc(ready.endpoint,ready.token,null,{...initialize,id:199});
+  assert.equal(full.status,409);
+  assert.equal(full.payload.error,'forge_mcp_session_limit');
+  f.advance(45*60_000);
+  const active=await rpc(ready.endpoint,ready.token,sessions[0],notify);
+  assert.equal(active.status,202);
+  f.advance(20*60_000);
+  const replacement=await rpc(ready.endpoint,ready.token,null,{...initialize,id:200});
+  assert.equal(replacement.status,200,'reclaims long-idle orphaned sessions');
+  assert.equal(f.transport.status().sessions,2);
+  const preserved=await rpc(ready.endpoint,ready.token,sessions[0],{
+    jsonrpc:'2.0',id:201,method:'tools/list'
+  });
+  assert.equal(preserved.status,200,'actively used client survives capacity pressure');
+  const missing=await rpc(ready.endpoint,ready.token,sessions[1],{
+    jsonrpc:'2.0',id:202,method:'tools/list'
+  });
+  assert.equal(missing.status,404,'abandoned session no longer has authority');
+  assert.equal(f.transport.status().running,true);
+  assert.equal(f.transport.status().expiresAt,null);
+  const newlyActive=await rpc(ready.endpoint,ready.token,replacement.session,notify);
+  assert.equal(newlyActive.status,202);
+});
+
 test('local MCP remains usable beyond 30 minutes until explicit revocation or Forge shutdown',async t=>{
   const f=fixture(t);
   const a=await f.makeProject('transport_continuity');

@@ -10,6 +10,8 @@ const MAX_RESPONSE_BYTES=450_000;
 const ID=/^project_[a-zA-Z0-9-]{1,100}$/;
 const SESSION=/^[0-9a-f-]{36}$/;
 const TOKEN=/^[A-Za-z0-9_-]{40,128}$/;
+const MAX_MCP_SESSIONS=8;
+const RECLAIM_IDLE_SESSION_MS=60*60_000; // Capacity pressure only, never a grant TTL.
 // Owner approval lives for the running Forge process, not a fixed 30-minute
 // wall clock. Credentials remain RAM-only, scoped and revoked on stop/exit.
 
@@ -97,8 +99,20 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.no
       let session;
       let newSessionId=null;
       if(message.method==='initialize'){
-        if(sessionId!==undefined||sessions.size>=8)
+        if(sessionId!==undefined)
           return json(res,409,{error:'forge_mcp_session_limit'});
+        // Dead clients sometimes disappear without sending DELETE. Reclaim
+        // only sessions inactive for over an hour AND only when all slots
+        // are full. Active sessions and their per-project grants survive.
+        if(sessions.size>=MAX_MCP_SESSIONS){
+          const now=clock();
+          for(const [id,entry] of sessions){
+            if(!valid(entry.grant)||now-entry.lastActivity>RECLAIM_IDLE_SESSION_MS)
+              sessions.delete(id);
+          }
+          if(sessions.size>=MAX_MCP_SESSIONS)
+            return json(res,409,{error:'forge_mcp_session_limit'});
+        }
         newSessionId=randomUUID();
         session=createMcp({projectId:grant.projectId,
           allowedOperations:FORGE_LOCAL_MCP_OPERATIONS});
@@ -110,6 +124,7 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.no
         if(!entry||entry.grant!==grant)
           return json(res,404,{error:'forge_mcp_session_required'});
         session=entry.handler;
+        entry.lastActivity=clock();
       }
       // Project authority is revalidated for every request, not just approval.
       if(!authorizeProject(grant.projectId))
@@ -117,7 +132,7 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.no
       const result=await session.handle(message);
       if(newSessionId){
         if(!result?.result?.protocolVersion)return json(res,400,{error:'forge_mcp_initialize_rejected'});
-        sessions.set(newSessionId,{handler:session,grant});
+        sessions.set(newSessionId,{handler:session,grant,lastActivity:clock()});
       }
       if(result===null){res.writeHead(202,{'Cache-Control':'no-store'});return res.end();}
       if(Buffer.byteLength(JSON.stringify(result))>MAX_RESPONSE_BYTES)

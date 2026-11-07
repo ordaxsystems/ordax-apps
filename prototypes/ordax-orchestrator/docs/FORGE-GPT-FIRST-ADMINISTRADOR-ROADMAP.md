@@ -61,6 +61,15 @@ históricos, não instruções de implementação. A realidade de cada funcional
   revogação encerra apenas sessões do projeto revogado. `status` não revela
   tokens. A ponte HTTPS remota com consentimento ainda está pendente.
   Não criar processos MCP nem URLs separados para cada projeto.
+  **Recuperação de sessões ociosas implementada (07/11/2026):** no máximo
+  oito sessões HTTP MCP ativas; se um cliente abandonar sua sessão sem
+  `DELETE`, o Forge recupera apenas sessões com mais de uma hora sem
+  atividade **quando uma nona sessão solicita vaga**. Sessões utilizadas
+  recentemente não são eliminadas e a autorização Owner/token do projeto
+  NÃO recebe prazo. Uma sessão abandonada retorna 404 e o cliente pode
+  inicializar outra com o token ainda autorizado. Regressão comprovou
+  capacidade cheia (409), recuperação de órfãs, preservação da sessão viva
+  e continuidade da concessão sem novo consentimento.
   **Continuidade atual:** a confiança autorizada pelo Owner é registrada
   por projeto na tabela `forge_mcp_owner_approvals` do SQLite existente,
   sem guardar segredos. Na próxima ativação do mesmo projeto, o Forge
