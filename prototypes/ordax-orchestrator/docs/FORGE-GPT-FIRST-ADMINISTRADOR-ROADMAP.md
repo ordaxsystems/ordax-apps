@@ -105,6 +105,21 @@ históricos, não instruções de implementação. A realidade de cada funcional
   serviço e não inicia sozinho. `forge-mcp-tunnel-readiness.mjs` valida
   o SHA-256 do executável fixado e informa o estado sem reivindicar conexão
   GPT Web. Status incorporado à tela Conexões, sem receber credenciais.
+  **Ciclo de vida do cliente oficial implementado na branch:**
+  `forge-mcp-official-tunnel-session.mjs` cria no máximo um processo auxiliar
+  `tunnel-client` após confirmação Owner; a UI Conexões recebe `tunnel_id`
+  e chave restrita localmente, limpa a chave ao enviar e não a persiste.
+  O Main só entrega ao cliente o bearer do projeto já autorizado e a
+  localização do executável verificado. Revogar o projeto, migrar sua pasta,
+  desativar MCP ou fechar o Forge encerra o cliente, sem manter túnel
+  autônomo fora do aplicativo. O estado `processRunning` **não** significa
+  `remoteChatGptConnected`: chamadas reais do ChatGPT continuam pendentes.
+  Testes de ciclo de vida usam subprocesso simulado, não credenciais reais
+  da organização. Prova de UI no Electron Windows isolado `31077`: os quatro
+  controles do túnel carregaram, cliente oficial v0.0.20 identificado,
+  MCP local e túnel desligados por padrão, botões desabilitados sem escopo,
+  segredo de entrada vazio e mascarado; nenhuma conexão remota iniciada.
+  A instalação operacional do Forge não é reiniciada por essa validação.
   **Bloqueio externo atual:** tunnel_id e chave Runtime da organização
   ainda não verificados, além da permissão de custom MCP no ChatGPT.
   Não tentar forçar uma conexão não autorizada nem instalar outro gateway.

@@ -8,10 +8,26 @@ const mcpResume=localMcpElement('forgeLocalMcpResume');
 const mcpProject=localMcpElement('forgeLocalMcpProject');
 const mcpState=localMcpElement('forgeLocalMcpState');
 const officialTunnelState=localMcpElement('forgeOfficialTunnelState');
+const officialTunnelId=localMcpElement('forgeOfficialTunnelId');
+const officialTunnelKey=localMcpElement('forgeOfficialTunnelKey');
+const officialTunnelStart=localMcpElement('forgeOfficialTunnelStart');
+const officialTunnelStop=localMcpElement('forgeOfficialTunnelStop');
 const mcpCredentials=localMcpElement('forgeLocalMcpCredentials');
 const mcpToken=localMcpElement('forgeLocalMcpToken');
 const mcpUrl=localMcpElement('forgeLocalMcpUrl');
 let mcpBusy=false;
+let lastMcpStatus=null;
+function syncTunnelControls(){
+  const session=lastMcpStatus?.officialTunnelSession;
+  const running=session?.processRunning===true;
+  if(officialTunnelStart)officialTunnelStart.disabled=mcpBusy||running||
+    !lastMcpStatus?.officialTunnel?.installed||
+    !lastMcpStatus?.scopes?.includes(mcpProject?.value)||
+    !officialTunnelId?.value?.trim()||!officialTunnelKey?.value||
+    typeof api?.forgeOfficialTunnelStart!=='function';
+  if(officialTunnelStop)officialTunnelStop.disabled=mcpBusy||!running||
+    typeof api?.forgeOfficialTunnelStop!=='function';
+}
 const api=window.ordax;
 const usable=typeof api?.forgeLocalMcpStatus==='function'&&
   typeof api?.forgeLocalMcpStart==='function'&&
@@ -40,11 +56,15 @@ async function refreshMcp(){
   }
   try{
     const status=await api.forgeLocalMcpStatus();
+    lastMcpStatus=status;
+    syncTunnelControls();
     if(officialTunnelState){
-      officialTunnelState.textContent=status.officialTunnel?.installed
-        ?'Cliente oficial OpenAI '+status.officialTunnel.clientVersion+
-          ' instalado e verificado. GPT Web não conectado; autorização do túnel e permissões do workspace ainda não comprovadas.'
-        :'GPT Web não conectado. O cliente oficial de túnel ainda não foi validado nesta instalação.';
+      officialTunnelState.textContent=status.officialTunnelSession?.processRunning
+        ?'Cliente de túnel iniciado para o projeto autorizado. Conexão e chamadas GPT Web ainda não comprovadas.'
+        :status.officialTunnel?.installed
+          ?'Cliente oficial OpenAI '+status.officialTunnel.clientVersion+
+            ' instalado e verificado. GPT Web não conectado; faltam autorização e permissões do workspace.'
+          :'GPT Web não conectado. Cliente oficial ainda não verificado nesta instalação.';
     }
     const scopes=Array.isArray(status.scopes)?status.scopes:(status.scope?[status.scope]:[]);
     const selected=scopes.includes(mcpProject?.value);
@@ -76,6 +96,8 @@ async function refreshMcp(){
         trusted.length+' projeto(s) com confiança salva no SQLite; as chaves não são persistidas.');
     }
   }catch{
+    lastMcpStatus=null;
+    syncTunnelControls();
     hideSecret();
     setState('Não foi possível verificar o MCP local.');
     if(mcpStart)mcpStart.disabled=true;
@@ -145,8 +167,37 @@ mcpResume?.addEventListener('click',async()=>{
   }catch{setState('Reconexão segura não disponível neste perfil Windows.');}
   finally{mcpBusy=false;await refreshMcp();}
 });
+officialTunnelId?.addEventListener('input',syncTunnelControls);
+officialTunnelKey?.addEventListener('input',syncTunnelControls);
+officialTunnelStart?.addEventListener('click',async()=>{
+  if(mcpBusy||!usable||!mcpProject?.value||!officialTunnelKey?.value)return;
+  const request={projectId:mcpProject.value,
+    tunnelId:officialTunnelId.value.trim(),runtimeKey:officialTunnelKey.value};
+  officialTunnelKey.value=''; // Never retain the restricted key in the UI.
+  mcpBusy=true;syncTunnelControls();
+  try{
+    const result=await api.forgeOfficialTunnelStart(request);
+    if(result?.declined)setState('Conexão remota não autorizada; nada foi iniciado.');
+  }catch{
+    setState('Túnel não iniciado. Verifique autorização, ID e chave restrita no Windows.');
+  }finally{
+    request.runtimeKey=null;
+    mcpBusy=false;await refreshMcp();
+  }
+});
+officialTunnelStop?.addEventListener('click',async()=>{
+  if(mcpBusy||typeof api?.forgeOfficialTunnelStop!=='function')return;
+  mcpBusy=true;syncTunnelControls();
+  try{await api.forgeOfficialTunnelStop();}
+  catch{setState('Não foi possível confirmar o encerramento do túnel.');}
+  finally{mcpBusy=false;await refreshMcp();}
+});
 mcpProject?.addEventListener('change',()=>{hideSecret();void refreshMcp();});
 localMcpElement('settingsTabConnections')?.addEventListener('click',()=>{void loadProjects();});
 localMcpElement('openAppSettings')?.addEventListener('click',()=>{void loadProjects();});
-localMcpElement('appSettingsDialog')?.addEventListener('close',hideSecret);
+localMcpElement('appSettingsDialog')?.addEventListener('close',()=>{
+  hideSecret();
+  if(officialTunnelKey)officialTunnelKey.value='';
+  syncTunnelControls();
+});
 void loadProjects();

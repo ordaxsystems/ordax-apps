@@ -39,7 +39,8 @@ export function makeForgeOfficialTunnelLaunch({
     throw Error('forge_tunnel_official_executable_required');
   if(typeof bearerToken!=='string'||!BEARER.test(bearerToken)||
     typeof controlPlaneKey!=='string'||controlPlaneKey.length<20||
-    controlPlaneKey.length>512||/\s|[\x00-\x1f\x7f]/.test(controlPlaneKey))
+    controlPlaneKey.length>512||
+    ![...controlPlaneKey].every(char=>char.charCodeAt(0)>=33&&char.charCodeAt(0)<=126))
     throw Error('forge_tunnel_credentials_unavailable');
   // Isolate the child environment: never inherit unrelated MCP channels or
   // another tunnel ID, API credential, proxy override or stale header values.

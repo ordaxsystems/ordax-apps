@@ -31,7 +31,8 @@ import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {createForgeLoopbackMcp} from '../src/forge-loopback-mcp.mjs';
 import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
 import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
-import {inspectForgeOfficialTunnelClient} from '../src/forge-mcp-tunnel-readiness.mjs';
+import {inspectForgeOfficialTunnelClient,officialTunnelComponentDirectory} from '../src/forge-mcp-tunnel-readiness.mjs';
+import {createForgeOfficialTunnelSession} from '../src/forge-mcp-official-tunnel-session.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
 import {IsolatedInteractiveHtmlPreview} from './isolated-interactive-preview.mjs';
@@ -1248,6 +1249,7 @@ const forgeMcpTrusted=new ForgeMcpOwnerTrust({store,
 const forgeMcpResume=new ForgeMcpSecureResume({store,ownerTrust:forgeMcpTrusted,
   secureStorage:safeStorage});
 let forgeMcpResumeError=null;
+const forgeOfficialTunnel=createForgeOfficialTunnelSession();
 const forgeLocalMcp=createForgeLoopbackMcp({
   createMcp:({projectId,allowedOperations})=>createOrchestratorMcp({
     service:orchestratorService,getContext:()=>localOrchestratorContext,
@@ -1347,6 +1349,7 @@ registerUiHandler('ordax:forge:workspace:migrate',async(event,projectId)=>{
   });
   if(!accepted)return {cancelled:true};
   orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
+  if(forgeOfficialTunnel.status().projectId===projectId)forgeOfficialTunnel.stop();
   return forgeLocalWorkspaces.migrateLegacy(projectId);
 });
 // Local MCP is explicitly enabled only from the trusted Electron settings UI.
@@ -1356,6 +1359,7 @@ registerUiHandler('ordax:forge:local-mcp:status',event=>{
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
   return {...forgeLocalMcp.status(),trustedProjects:forgeMcpTrusted.trustedProjects(),
     officialTunnel:inspectForgeOfficialTunnelClient(),
+    officialTunnelSession:forgeOfficialTunnel.status(),
     autoResumeProjects:forgeMcpResume.enabledProjects(),
     autoResumeAvailable:forgeMcpResume.supported(),
     autoResumeBlocked:forgeMcpResumeError};
@@ -1403,6 +1407,7 @@ registerUiHandler('ordax:forge:local-mcp:add',async(event,projectId)=>{
 registerUiHandler('ordax:forge:local-mcp:revoke',async(event,projectId)=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
+  if(forgeOfficialTunnel.status().projectId===projectId)forgeOfficialTunnel.stop();
   // An unavailable project must never prevent the Owner from revoking trust.
   if(forgeLocalMcp.status().scopes.includes(projectId))
     await forgeLocalMcp.revokeProject(projectId);
@@ -1439,15 +1444,56 @@ registerUiHandler('ordax:forge:local-mcp:resume-disable',(event,projectId)=>{
   return {...forgeMcpResume.disable(projectId),
     autoResumeProjects:forgeMcpResume.enabledProjects()};
 });
+registerUiHandler('ordax:forge:tunnel:start',async(event,request)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_tunnel_native_ui_only');
+  const projectId=request?.projectId;
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
+  if(!forgeMcpTrusted.isTrusted(projectId))throw Error('forge_tunnel_project_untrusted');
+  if(!inspectForgeOfficialTunnelClient().installed)
+    throw Error('forge_tunnel_official_client_unavailable');
+  if(forgeOfficialTunnel.status().state!=='stopped')
+    throw Error('forge_tunnel_already_running');
+  const grant=forgeLocalMcp.localGrant(projectId);
+  if(!grant)throw Error('forge_tunnel_local_mcp_not_active');
+  const allowed=await confirmInActiveUi({
+    title:'Conectar o projeto Forge ao túnel oficial',
+    message:'Permitir que um túnel autorizado da OpenAI acesse este projeto?',
+    detail:'O cliente oficial cria uma conexão de saída com a OpenAI e encaminha ferramentas MCP SOMENTE deste projeto. Isso pode permitir leitura e alteração de arquivos dentro da pasta autorizada. Não publica uma porta na internet, não autoriza outros projetos e não comprova conexão com o ChatGPT por si só. A chave de execução fica somente na memória deste processo e não será salva no SQLite.',
+    approveLabel:'Iniciar túnel autorizado'
+  });
+  if(!allowed)return {declined:true,...forgeOfficialTunnel.status()};
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
+  if(!forgeMcpTrusted.isTrusted(projectId))throw Error('forge_tunnel_trust_revoked');
+  const current=forgeLocalMcp.localGrant(projectId);
+  if(!current||current.token!==grant.token||current.port!==grant.port)
+    throw Error('forge_tunnel_local_grant_changed');
+  return forgeOfficialTunnel.start({
+    projectId,tunnelId:request?.tunnelId,controlPlaneKey:request?.runtimeKey,
+    endpoint:'http://127.0.0.1:'+current.port+'/mcp',
+    bearerToken:current.token,
+    executablePath:path.join(officialTunnelComponentDirectory(process.env.LOCALAPPDATA),'tunnel-client.exe'),
+    ownerApproved:true,platform:process.platform
+  });
+});
+registerUiHandler('ordax:forge:tunnel:stop',event=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_tunnel_native_ui_only');
+  return forgeOfficialTunnel.stop();
+});
 registerUiHandler('ordax:forge:local-mcp:stop',async event=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
+  forgeOfficialTunnel.stop(); // No remote client may outlive the local MCP.
   forgeMcpResume.disableAll(); // Desativar todos must remain off after restart.
   return forgeLocalMcp.stop();
 });
 registerUiHandler('ordax:orchestrator:invoke',async(event,payload)=>{
   requireTrustedSupervisorRenderer(event);
   const scope=payload?.operation==='project_delete'?projectAssetCleanupScope(payload?.input?.projectId):null;
+  if(payload?.operation==='project_delete'&&
+    forgeOfficialTunnel.status().projectId===payload?.input?.projectId)
+    forgeOfficialTunnel.stop();
   const receipt=await orchestratorService.invoke(localOrchestratorContext,payload?.operation,payload?.input??{});
   let result=withDeletedProjectAssetCleanup(receipt,scope);
   // New projects receive a real workspace at the Windows Documents known
@@ -1748,6 +1794,7 @@ app.on('will-quit', () => {
   if(backgroundTray){backgroundTray.destroy();backgroundTray=null;}
   if(continuationTimer)clearInterval(continuationTimer);
   void hostBrowserServer?.close();
+  forgeOfficialTunnel.stop();
   void forgeLocalMcp.stop();
   closeRuntimeOrchestratorPipe?.();
   store.close();

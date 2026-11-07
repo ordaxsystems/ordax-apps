@@ -656,6 +656,14 @@
               </div>
               <p id="forgeLocalMcpState" class="settings-connection-state" role="status" aria-live="polite">O MCP local está desativado.</p>
               <p id="forgeOfficialTunnelState" class="settings-connection-state" role="status" aria-live="polite">Conexão com GPT Web ainda não verificada.</p>
+              <div id="forgeOfficialTunnelControls" class="app-settings-card">
+                <label for="forgeOfficialTunnelId">ID do túnel autorizado na OpenAI Platform</label>
+                <input id="forgeOfficialTunnelId" type="text" autocomplete="off" spellcheck="false" placeholder="tunnel_…" />
+                <label for="forgeOfficialTunnelKey">Chave restrita de execução (somente nesta sessão)</label>
+                <input id="forgeOfficialTunnelKey" type="password" autocomplete="off" spellcheck="false" placeholder="Não compartilhe esta chave no chat" />
+                <button id="forgeOfficialTunnelStart" type="button" class="mini-secondary" disabled>Iniciar túnel oficial</button>
+                <button id="forgeOfficialTunnelStop" type="button" class="mini-secondary" disabled>Desligar túnel</button>
+              </div>
               <div id="forgeLocalMcpCredentials" hidden>
                 <label for="forgeLocalMcpUrl">Endpoint (somente clientes MCP locais)</label>
                 <input id="forgeLocalMcpUrl" type="text" readonly autocomplete="off" spellcheck="false"/>
