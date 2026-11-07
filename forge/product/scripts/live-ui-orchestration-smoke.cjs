@@ -1,0 +1,333 @@
+// Real Electron App-only scenario. Operates native forms and MCP IPC, never
+// ChatGPT DOM, screenshots, a paid API, or an installed user profile.
+const {waitForLabUiTarget,waitForLabAppMode}=require('./e2e-lab-target.cjs');
+const {acquireE2ELock}=require('./e2e-lock.cjs');
+const {closeCdpWebSocket}=require('./cdp-websocket-close.cjs');
+acquireE2ELock('orchestration-native-mcp');
+if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
+  throw Error('lab_orchestration_e2e_approval_required');
+const scenarioReasons=new Set([
+  'app_evaluation_failed','app_evaluation_timeout','socket_unavailable',
+  'runtime_identity_mismatch','fresh_disabled_profile_required','global_settings_unavailable','project_navigation_not_selected',
+  'mission_draft_not_persisted','workspace_grant_absence_not_visible','coordinator_workspace_layout_missing',
+  'api_key_not_persisted_securely','prepare_action_unavailable','mcp_initialization_failed',
+  'native_mcp_state_mismatch','work_conversation_layout_failed',
+  'lab_e2e_multiple_visible_app_windows','lab_e2e_multiple_app_windows',
+  'lab_e2e_provider_fallback_not_app_test','lab_e2e_profile_proof_unavailable','lab_e2e_profile_mismatch',
+  'lab_e2e_app_mode_not_ready','lab_e2e_app_mode_required',
+  'lab_ui_not_ready:endpoint_not_ready','lab_ui_not_ready:ui_target_not_ready',
+  'lab_ui_not_ready:app_mode_not_ready'
+]);
+let phase='startup';
+let scenarioFailurePhase=null;
+let cleanupFailurePhase=null;
+(async()=>{
+  const {ORCHESTRATOR_TOOLS}=await import('../src/forge-contract.mjs');
+  phase='app_start';
+  const tab=await waitForLabUiTarget();
+  const ws=new WebSocket(tab.webSocketDebuggerUrl);
+  let sequence=0;
+  const pending=new Map();
+  let disposableApiKeyCleanupRequired=false;
+  let successReport=null;
+  const evaluate=expression=>new Promise((resolve,reject)=>{
+    const id=++sequence;
+    const timer=setTimeout(()=>{pending.delete(id);reject(Error('app_evaluation_timeout'));},20000);
+    pending.set(id,{resolve,reject,timer});
+    ws.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression,awaitPromise:true,returnByValue:true}}));
+  });
+  try {
+    await new Promise((resolve,reject)=>{ws.onopen=resolve;ws.onerror=()=>reject(Error('socket_unavailable'));});
+    ws.onmessage=event=>{
+      let message;try{message=JSON.parse(event.data);}catch{return;}
+      const waiter=pending.get(message.id);if(!waiter)return;
+      pending.delete(message.id);clearTimeout(waiter.timer);
+      if(message.error||message.result?.exceptionDetails)waiter.reject(Error('app_evaluation_failed'));
+      else waiter.resolve(message.result?.result?.value);
+    };
+    phase='app_ready';
+    await waitForLabAppMode(evaluate);
+    const proof=await evaluate('window.ordax.labBuildProof()');
+    if(proof?.verified!==true||proof.sourceCommit!==process.env.ORDAX_LAB_E2E_EXPECTED_COMMIT)
+      throw Error('runtime_identity_mismatch');
+    phase='fresh_profile';
+    const before=await evaluate(`(async()=>({status:await window.ordax.orchestratorInvoke('status'),
+      projects:(await window.ordax.orchestratorInvoke('projects_list')).projects.length,
+      taskCount:(await window.ordax.listTasks()).length,
+      analysisButton:!!document.getElementById('analyzeWorks'),
+      analysisDisabled:document.getElementById('analyzeWorks')?.disabled,
+      prepareDisabled:document.getElementById('prepareWork')?.disabled,
+      proposalsPresent:!!document.getElementById('coordinatorProposals'),
+      analysisHint:document.getElementById('analysisScopeHint')?.textContent||''}))()`);
+    if(before.projects!==0||before.taskCount!==0||before.status.coordinatorAvailable!==false||
+      before.status.autonomousExecution!==false||!before.analysisButton||before.analysisDisabled!==true||
+      !before.analysisHint.includes('não executa propostas')||before.prepareDisabled!==true||!before.proposalsPresent)throw Error('fresh_disabled_profile_required');
+    phase='global_settings_without_project';
+    await evaluate(`document.getElementById('openAppSettings').click()`);
+    const globalSettings=await evaluate(`(()=>{
+      const dialog=document.getElementById('appSettingsDialog');
+      const tabs=[...document.querySelectorAll('[data-settings-tab]')];
+      return {open:dialog.open,title:document.getElementById('appSettingsTitle')?.textContent,
+        projectSelected:!!document.getElementById('projectSelect')?.value,
+        tabs:tabs.map(tab=>tab.dataset.settingsTab),selected:tabs.find(tab=>tab.getAttribute('aria-selected')==='true')?.dataset.settingsTab};
+    })()`);
+    if(!globalSettings.open||globalSettings.title!=='Configurações'||globalSettings.projectSelected||
+      globalSettings.tabs.join(',')!=='general,providers,connections'||globalSettings.selected!=='general')
+      throw Error('global_settings_unavailable');
+    await evaluate(`document.getElementById('settingsTabProviders').click()`);
+    const providerSettings=await evaluate(`(()=>({selected:document.getElementById('settingsTabProviders').getAttribute('aria-selected'),
+      key:!!document.getElementById('labSupervisorKeyInput'),gpt:!!document.getElementById('settingsOpenChatGptLogin')}))()`);
+    if(providerSettings.selected!=='true'||!providerSettings.key||!providerSettings.gpt)throw Error('global_settings_unavailable');
+    await evaluate(`document.getElementById('settingsTabConnections').click()`);
+    if(!(await evaluate(`document.getElementById('settingsPanelConnections').hidden===false`)))throw Error('global_settings_unavailable');
+    await evaluate(`document.getElementById('settingsDone').click()`);
+    await evaluate(`(()=>{if(document.getElementById('appSettingsDialog').open)throw Error('global_settings_unavailable')})()`);
+    phase='mission_create';
+    await evaluate(`(()=>{
+      document.getElementById('projectSetup').open=true;
+      document.getElementById('projectName').value='Projeto E2E isolado';
+      document.getElementById('projectObjective').value='Criar missão isolada sem enviar ao provedor';
+      document.getElementById('newProjectForm').requestSubmit();
+    })()`);
+    const wait=expression=>evaluate(`(async()=>{for(let n=0;n<80;n++){
+      const value=await (${expression});if(value)return value;
+      await new Promise(r=>setTimeout(r,100));}throw Error('ui_condition_timeout');})()`);
+    phase='mission_project_selected';
+    const projectId=await wait("document.getElementById('projectSelect').value");
+    await wait("document.getElementById('activeProjectName').textContent==='Projeto E2E isolado'");
+    // The selected project owns the active card, not the list of OTHER
+    // projects. E2E must verify the new one-source UI contract, not the
+    // previous "legacy project" list that duplicated the selected project.
+    const projectNavigation=await evaluate(`(()=>{
+      const selector=document.getElementById('projectSelect');
+      const active=document.getElementById('activeProjectName');
+      const switcher=document.getElementById('projectSwitcher');
+      const others=[...document.querySelectorAll('#projectNavList button')];
+      return selector.value==='${projectId}' &&
+        selector.selectedOptions[0]?.textContent==='Projeto E2E isolado' &&
+        active.textContent==='Projeto E2E isolado' && switcher.hidden &&
+        others.length===0 && !!document.getElementById('quickNewProject');
+    })()`);
+    if(!projectNavigation)throw Error('project_navigation_not_selected');
+    phase='mission_persisted';
+    await wait("document.getElementById('orchestrationNotice')?.textContent?.includes('Projeto e missão criados localmente')");
+    const missionDraft=await evaluate(`(async()=>{
+      const projectId=document.getElementById('projectSelect').value;
+      const coordinators=(await window.ordax.orchestratorInvoke('orchestrators_list',{projectId})).orchestrators;
+      const works=(await window.ordax.orchestratorInvoke('work_list',{projectId})).works;
+      const first=works.find(work=>work.title==='Primeira frente');
+      const task=first?await window.ordax.getTask(first.id):null;
+      return {coordinatorCount:coordinators.length,workCount:works.length,
+        mission:coordinators[0]?.mission,draft:task?.draft,draftRevision:task?.draft_revision};
+    })()`);
+    if(missionDraft.coordinatorCount!==1||missionDraft.workCount!==1||
+      missionDraft.mission!=='Criar missão isolada sem enviar ao provedor'||
+      missionDraft.draft!==missionDraft.mission||missionDraft.draftRevision!==1)
+      throw Error('mission_draft_not_persisted');
+    phase='workspace_access';
+    await wait("document.getElementById('workspaceConnection')?.textContent?.includes('Runtime/workspace local não conectado') && !document.getElementById('inspectWorkspace')?.disabled");
+    // Real native App click: no read is authorized by absence of a port.
+    await evaluate("document.getElementById('inspectWorkspace').click()");
+    await wait("document.getElementById('workspaceEvidence')?.textContent?.includes('Nenhum snapshot verificado')");
+    const workspace=await evaluate(`(async()=>{const projectId=document.getElementById('projectSelect').value;
+      const state=await window.ordax.orchestratorInvoke('workspace_status',{projectId});
+      return {available:state.available,state:state.state,bindings:state.bindings.length,
+        ui:document.getElementById('workspaceConnection')?.textContent||'',
+        evidence:document.getElementById('workspaceEvidence')?.textContent||'',
+        inspectionEnabled:!document.getElementById('inspectWorkspace')?.disabled};})()`);
+    if(workspace.available!==false||workspace.state!=='capability_unavailable'||
+      workspace.bindings!==0||!workspace.inspectionEnabled||
+      !workspace.ui.includes('Runtime/workspace local não conectado')||
+      !workspace.evidence.includes('Nenhum snapshot verificado'))
+      throw Error('workspace_grant_absence_not_visible');
+    phase='coordinator_create';
+    await evaluate(`(()=>{
+      document.getElementById('newOrchestratorForm').closest('details').open=true;
+      document.getElementById('orchestratorName').value='Coordenador E2E';
+      document.getElementById('missionInput').value='Analisar somente este projeto';
+      document.getElementById('newOrchestratorForm').requestSubmit();
+    })()`);
+    await wait("document.getElementById('orchestratorSelect').value && !document.getElementById('orchestrationPanel').hidden");
+    const coordinatorLayout=await evaluate(`(()=>({focus:document.body.classList.contains('orchestrator-focus'),rail:!document.getElementById('orchestratorWorkRail').hidden,selected:[...document.querySelectorAll('#orchestratorNavList button')].some(b=>b.getAttribute('aria-pressed')==='true')}))()`);
+    if(!coordinatorLayout.focus||!coordinatorLayout.rail||!coordinatorLayout.selected)throw Error('coordinator_workspace_layout_missing');
+    phase='api_key_save';
+    // Disposable credential fixture only: activation must not call the API.
+    disposableApiKeyCleanupRequired=true;
+    await evaluate(`window.ordax.supervisorSaveKey('gsk_'+ 'A'.repeat(40))`);
+    phase='api_key_save_status';
+    const credential=await evaluate(`window.ordax.supervisorStatus()`);
+    if(credential.configured!==true||credential.keySaved!==true||credential.secureStorageAvailable!==true)
+      throw Error('api_key_not_persisted_securely');
+    phase='groq_advisory_available_after_configure';
+    // GPT-first availability remains independent of the optional Groq key.
+    await wait("(async()=>{const s=await window.ordax.coordinatorChatStatus();return s.provider==='chatgpt_web'&&s.enabled===true&&s.configured===true&&s.groqConfigured===true&&!document.getElementById('coordinatorApiEnable')&&!document.getElementById('prepareWork').disabled})()");
+    phase='api_key_remove';
+    await evaluate(`window.ordax.supervisorRemoveKey()`);
+    phase='groq_advisory_unavailable_after_key_removal';
+    await wait("(async()=>{const s=await window.ordax.coordinatorChatStatus();return s.provider==='chatgpt_web'&&s.enabled===true&&s.configured===true&&s.groqConfigured===false&&!document.getElementById('coordinatorApiEnable')&&document.getElementById('analyzeWorks').disabled&&document.getElementById('prepareWork').disabled})()");
+    disposableApiKeyCleanupRequired=false;
+    phase='mcp_work_create';
+    const summary=await evaluate(`(async()=>{
+      const p=document.getElementById('projectSelect').value;
+      const o=document.getElementById('orchestratorSelect').value;
+      const api=window.ordax;
+      const initialize=await api.orchestratorMcp({jsonrpc:'2.0',id:1,method:'initialize',params:{
+        protocolVersion:'2025-11-25',clientInfo:{name:'App-only-E2E',version:'1'},capabilities:{}}});
+      if(initialize.error)throw Error('mcp_initialization_failed');
+      await api.orchestratorMcp({jsonrpc:'2.0',method:'notifications/initialized'});
+      const catalog=await api.orchestratorMcp({jsonrpc:'2.0',id:2,method:'tools/list'});
+      const command={jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'forge_work_create',arguments:{
+        requestId:'app-only-work-once',projectId:p,orchestratorId:o,title:'Frente criada pelo MCP'}}};
+      const first=await api.orchestratorMcp(command);
+      const repeated=await api.orchestratorMcp({...command,id:4});
+      const works=await api.orchestratorInvoke('work_list',{projectId:p});
+      const orchs=await api.orchestratorInvoke('orchestrators_list',{projectId:p});
+      const messages=await api.orchestratorInvoke('work_messages',{projectId:p,taskId:orchs.orchestrators[0].chat_task_id});
+      const missionWork=works.works.find(work=>work.title==='Primeira frente');
+      const missionTask=missionWork?await api.getTask(missionWork.id):null;
+      return {projectId:p,toolCount:catalog.result.tools.length,
+        continuationAvailable:catalog.result.tools.some(t=>t.name==='forge_continuity_status'&&t.annotations?.readOnlyHint===true)&&
+          catalog.result.tools.some(t=>t.name==='forge_continuity_proposals_set'&&t.annotations?.readOnlyHint===false),
+        commandSucceeded:first.result.structuredContent.status==='succeeded',
+        idempotent:JSON.stringify(first.result)===JSON.stringify(repeated.result),
+        workCount:works.works.length,workId:works.works[0]?.id,coordinatorMessages:messages.messages.length,
+        missionDraftPreserved:missionTask?.draft==='Criar missão isolada sem enviar ao provedor'&&missionTask?.draft_revision===1};
+    })()`);
+    // Native Forjador sends stay UI-only; MCP cannot recursively send to GPT.
+    if(summary.projectId!==projectId||summary.toolCount!==ORCHESTRATOR_TOOLS.filter(tool=>tool.operation!=='forjador_send').length||!summary.continuationAvailable||!summary.commandSucceeded||
+      !summary.idempotent||summary.workCount!==2||!summary.missionDraftPreserved||summary.coordinatorMessages!==0)
+      throw Error('native_mcp_state_mismatch');
+    phase='work_list_refresh';
+    await wait("[...document.querySelectorAll('#tasks .task strong')].some(n=>n.textContent==='Frente criada pelo MCP')");
+    phase='work_open';
+    await evaluate(`([...document.querySelectorAll('#tasks .task')].find(row=>row.querySelector('strong')?.textContent==='Frente criada pelo MCP')?.click())`);
+    await wait("!document.getElementById('taskPanel').classList.contains('hidden') && document.getElementById('orchestrationPanel').hidden && document.getElementById('taskTitle').textContent==='Frente criada pelo MCP'");
+    phase='coordinator_reopen';
+    await evaluate(`document.querySelector('#orchestratorNavList button.active').click()`);
+    await wait("!document.getElementById('orchestrationPanel').hidden && document.getElementById('taskPanel').classList.contains('hidden')");
+    phase='scoped_work_create';
+    await evaluate(`document.getElementById('newScopedWorkButton').click()`);
+    await wait("document.getElementById('newScopedWorkDetails').open");
+    await evaluate(`(()=>{document.getElementById('scopedWorkTitle').value='Frente criada pela interface';document.getElementById('newScopedWorkForm').requestSubmit()})()`);
+    await wait("document.querySelectorAll('#orchestratorWorks .work-card').length===2 && !document.getElementById('taskPanel').classList.contains('hidden') && document.getElementById('taskTitle').textContent==='Frente criada pela interface'");
+    const layoutResult=await evaluate(`(()=>({openedWork:document.getElementById('taskTitle').textContent,
+      projectItems:document.querySelectorAll('#projectNavList button').length,
+      orchestratorItems:document.querySelectorAll('#orchestratorNavList button').length,
+      conversationCards:document.querySelectorAll('#orchestratorWorks .work-card').length,
+      analysisDisabled:document.getElementById('analyzeWorks').disabled}))()`);
+    phase='final_layout_verify';
+    if(layoutResult.openedWork!=='Frente criada pela interface'||layoutResult.conversationCards!==2||
+      layoutResult.analysisDisabled!==true)
+      throw Error('work_conversation_layout_failed');
+    phase='project_switch_real';
+    // On the same packaged Electron profile, create a second project with
+    // the actual sidebar command and return to the first via its visible row.
+    // Neither operation contacts Groq, ChatGPT or an external MCP service.
+    phase='project_switch_reopen_admin';
+    await evaluate(`document.querySelector('#orchestratorNavList button.active').click()`);
+    await wait("!document.getElementById('orchestrationPanel').hidden");
+    phase='project_switch_create_second';
+    await evaluate(`(()=>{
+      const create=document.getElementById('quickNewProject');
+      if(getComputedStyle(create).display==='none')throw Error('project_create_not_visible');
+      create.click(); // One click creates ONE empty project; do not submit a second form.
+    })()`);
+    phase='project_switch_wait_second';
+    const secondProjectId=await wait("document.getElementById('activeProjectName').textContent==='Novo projeto'&&document.getElementById('projectSelect').value");
+    // Rename the same newly-created project through the existing native UI.
+    phase='project_switch_rename_second';
+    await evaluate(`(()=>{
+      document.getElementById('renameProjectButton').click();
+      document.getElementById('renameProjectInput').value='Segundo projeto E2E';
+      document.getElementById('renameProjectForm').requestSubmit();
+    })()`);
+    await wait("document.getElementById('activeProjectName').textContent==='Segundo projeto E2E'");
+    if(secondProjectId===projectId)throw Error('project_switch_not_isolated');
+    phase='project_switch_verify_second';
+    const secondSelected=await evaluate(`(()=>{
+      const list=document.querySelectorAll('#projectNavList button');
+      const previous=[...list].find(b=>b.dataset.projectId==='${projectId}');
+      return !document.getElementById('projectSwitcher').hidden&&
+        list.length===1&&previous?.textContent==='Projeto E2E isolado'&&
+        document.getElementById('activeProjectName').textContent==='Segundo projeto E2E';
+    })()`);
+    if(!secondSelected)throw Error('project_switch_not_isolated');
+    // Read only the currently selected project's Work set. Cross-project
+    // reads must never be used to relax the canonical scope gate in tests.
+    phase='project_switch_verify_second_work';
+    const alternateWorks=await evaluate(`(async()=>{
+      const selected=document.getElementById('projectSelect').value;
+      const works=(await window.ordax.orchestratorInvoke('work_list',{projectId:selected})).works;
+      return works?.map(work=>work.title);
+    })()`);
+    if(!Array.isArray(alternateWorks)||alternateWorks.length!==0)
+      throw Error('project_switch_not_isolated'); // Blank GPT-first project creates no Work or Run.
+    phase='project_switch_return_first';
+    await evaluate(`document.querySelector('#projectNavList button').click()`);
+    await wait(`document.getElementById('projectSelect').value==='${projectId}'&&
+      document.getElementById('activeProjectName').textContent==='Projeto E2E isolado'&&
+      !document.getElementById('orchestrationPanel').hidden`);
+    phase='project_switch_verify_first';
+    const restored=await evaluate(`(async()=>{
+      const selected=document.getElementById('projectSelect').value;
+      const first=(await window.ordax.orchestratorInvoke('work_list',{projectId:selected})).works;
+      return {first:first.map(w=>w.title),
+        otherVisible:[...document.querySelectorAll('#projectNavList button')].some(b=>b.dataset.projectId==='${secondProjectId}')};
+    })()`);
+    if(!Array.isArray(restored?.first)||restored.first.length!==3||
+      !restored.first.includes('Primeira frente')||
+      !restored.first.includes('Frente criada pelo MCP')||
+      !restored.first.includes('Frente criada pela interface')||!restored.otherVisible)
+      throw Error('project_switch_lost_scoped_work');
+    successReport={schema:'ordax.lab.orchestration-app-e2e.v1',ok:true,
+      appMode:true,runtimeVerified:true,toolCount:summary.toolCount,sharedStateVerified:true,
+      projectSwitchVerified:true,
+      projectFormVerified:true,missionDraftPersisted:true,missionStartBlockedWithoutSession:true,
+      globalSettingsWithoutProjectVerified:true,coordinatorFormVerified:true,workVisibleInApp:true,
+      projectNavigationVerified:true,coordinatorWorkspaceVerified:true,workConversationUiVerified:true,
+      projectWorkspaceFailClosedVerified:true,
+      localApiOptInVerified:true,localApiDisableVerified:true,analysisNeedsExplicitApiOptIn:true,
+      idempotencyVerified:true,providerMessagesSent:0,coordinatorApiCalls:0,
+      externalMcpConnected:false,autonomousExecution:false};
+  }catch(error){
+    scenarioFailurePhase=phase;
+    throw error;
+  }finally{
+    try {
+      if(disposableApiKeyCleanupRequired) {
+        phase='test_credential_cleanup';
+        await evaluate(`window.ordax.supervisorRemoveKey()`);
+        const status=await evaluate(`window.ordax.supervisorStatus()`);
+        if(status?.keySaved!==false)throw Error('test_api_key_cleanup_failed');
+      }
+    } catch(error) {
+      cleanupFailurePhase=phase;
+      throw error;
+    } finally {
+      try {
+        phase='pending_request_cleanup';
+        for(const item of pending.values()){clearTimeout(item.timer);item.reject(Error('socket_closed'));}
+      } catch(error) {
+        cleanupFailurePhase=phase;
+        throw error;
+      } finally {
+        phase='cdp_websocket_cleanup';
+        try{await closeCdpWebSocket(ws);}
+        catch(error){cleanupFailurePhase=phase;throw error;}
+      }
+    }
+  }
+  console.log(JSON.stringify(successReport));
+})().catch(error=>{
+  const cleanupReasons=new Set(['cdp_websocket_close_unavailable','cdp_websocket_close_timeout_invalid',
+    'cdp_websocket_close_invalid_state','cdp_websocket_close_timeout','cdp_websocket_close_failed']);
+  const reportedPhase=scenarioFailurePhase||cleanupFailurePhase||phase;
+  const reason=scenarioFailurePhase?(scenarioReasons.has(error?.message)?error.message:'app_orchestration_scenario_failed')
+    :cleanupFailurePhase?(cleanupReasons.has(error?.message)?error.message:'app_orchestration_cleanup_failed')
+    :'app_orchestration_scenario_failed';
+  const report={schema:'ordax.lab.orchestration-app-e2e.v1',ok:false,phase:reportedPhase,reason};
+  if(cleanupFailurePhase)report.cleanupPhase=cleanupFailurePhase;
+  console.error(JSON.stringify(report));
+  process.exitCode=2;
+});
+
