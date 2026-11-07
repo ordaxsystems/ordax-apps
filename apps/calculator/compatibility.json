@@ -22,11 +22,6 @@
       "optional": false
     }
   ],
-  "state": {
-    "id": "ordax.calculator-stateless",
-    "writeVersion": 1,
-    "readableFrom": 1,
-    "readableThrough": 1
-  },
+  "state": null,
   "authority": "none"
 }
