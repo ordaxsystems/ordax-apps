@@ -1309,10 +1309,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   async function renderCoordinator() {
     if(!projectId||!chatTaskId)return;
     const p=projectId,t=chatTaskId,o=orchestratorId;
-    const [page,{proposals},engineStatus]=await Promise.all([
+    const [page,{proposals},engineStatus,chatTask]=await Promise.all([
       call('work_messages',{projectId:p,taskId:t,limit:50}),
       call('proposals_list',{projectId:p,orchestratorId:o}),
-      call('status').catch(()=>null)
+      call('status').catch(()=>null),
+      api.getTask(t).catch(()=>null)
     ]);
     if(p!==projectId||t!==chatTaskId)return;
     const box=$('coordinatorMessages'),recoveryNotice=$('coordinatorRecoveryNotice');
@@ -1325,6 +1326,30 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     recoveryNotice.textContent=uncertainCommands
       ?`Há ${uncertainCommands} comando${uncertainCommands===1?'':'s'} com resultado incerto nesta sessão. A solicitação está registrada, mas não há resposta confirmada; nada foi reenviado automaticamente. Revise o histórico antes de decidir outro envio.`
       :'';
+    // The Forjador's own ChatGPT Task was previously reachable only through
+    // hidden Work navigation. Reuse the canonical Task inspection and explicit
+    // read-only reply recovery; never create a second delivery/retry route.
+    const needsReplyRecovery=Boolean(chatTask?.chat_url &&
+      ['failed','interrupted'].includes(chatTask?.latest_run?.status));
+    recoveryNotice.classList.toggle('hidden',uncertainCommands===0&&!needsReplyRecovery);
+    if(needsReplyRecovery) {
+      const recoveryLink=document.createElement('button');
+      recoveryLink.type='button';
+      recoveryLink.className='mini-secondary';
+      recoveryLink.textContent='Verificar resposta no GPT (sem reenviar)';
+      recoveryLink.addEventListener('click',async()=>{
+        if(p!==projectId||t!==chatTaskId||o!==orchestratorId)return;
+        recoveryLink.disabled=true;
+        try {
+          coordinatorOpen=false;
+          await onOpenWork(t);
+        } catch {
+          status('Não foi possível abrir a verificação. Nenhuma mensagem foi reenviada.');
+          recoveryLink.disabled=false;
+        }
+      });
+      recoveryNotice.append(recoveryLink);
+    }
     if(page.has_more) {
       const note=document.createElement('p');
       note.textContent='Exibindo as 50 mensagens mais recentes. O histórico anterior permanece salvo.';

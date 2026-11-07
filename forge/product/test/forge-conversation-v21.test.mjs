@@ -36,6 +36,22 @@ test('welcome suggestions stage a normal editable draft, never submit or start t
   assert.match(css,/\.forge-welcome-choices/);
 });
 
+test('failed Forjador send exposes the existing linked-thread recovery, never a retry',()=>{
+  const js=read('orchestrator-ui.mjs'),ui=read('ui.js'),html=read('ui.html');
+  const begin=js.indexOf('const needsReplyRecovery=');
+  const end=js.indexOf('if(page.has_more)',begin);
+  assert.ok(begin>0&&end>begin);
+  const recovery=js.slice(begin,end);
+  assert.match(recovery,/chatTask\?\.chat_url/);
+  assert.match(recovery,/chatTask\?\.latest_run\?\.status/);
+  assert.match(recovery,/\['failed','interrupted'\]/);
+  assert.match(recovery,/t!==chatTaskId/);
+  assert.match(recovery,/onOpenWork\(t\)/);
+  assert.match(recovery,/Verificar resposta no GPT \(sem reenviar\)/);
+  assert.doesNotMatch(recovery,/sendPrompt\(|command\(|\.requestSubmit\(|\.submit\(/);
+  assert.match(ui,/inspectLinkedThread'\)\.addEventListener\('click'/);
+  assert.match(html,/id="confirmLinkedReplyRecovery"/);
+});
 test('conversation keeps one canonical textarea and one submit route',()=>{
   const html=read('ui.html'),js=read('orchestrator-ui.mjs');
   assert.equal((html.match(/id="coordinatorPrompt"/g)||[]).length,1);
