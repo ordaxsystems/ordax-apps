@@ -88,11 +88,11 @@ test('MCP lists sourced proposal but no privilege to mark it accepted',async t=>
   await server.handle({jsonrpc:'2.0',method:'notifications/initialized'});
   const tools=await server.handle({jsonrpc:'2.0',id:2,method:'tools/list'});
   const names=tools.result.tools.map(x=>x.name);
-  assert.ok(names.includes('orchestrator_project_memory_propose'));
-  assert.ok(!names.includes('orchestrator_project_memory_review'));
+  assert.ok(names.includes('forge_project_memory_propose'));
+  assert.ok(!names.includes('forge_project_memory_review'));
   assert.ok(!names.includes('forge_forjador_send'));
   const proposal=await server.handle({jsonrpc:'2.0',id:3,method:'tools/call',
-    params:{name:'orchestrator_project_memory_propose',arguments:{
+    params:{name:'forge_project_memory_propose',arguments:{
       requestId:'model_review_1',projectId:p.projectId,taskId:p.chatTaskId,
       sourceMessageId:message.id,category:'decision',key:'Frontend',
       content:'A primeira versão será em HTML.',evidence:'Decidimos criar a versão inicial em HTML.'

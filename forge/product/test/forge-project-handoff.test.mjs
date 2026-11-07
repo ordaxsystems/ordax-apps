@@ -78,5 +78,5 @@ test('handoff exposes unresolved commands without replay or external effects',as
     params:{protocolVersion:'2025-06-18',clientInfo:{name:'test',version:'1'},capabilities:{}}});
   await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
   const listed=await mcp.handle({jsonrpc:'2.0',id:2,method:'tools/list'});
-  assert.ok(listed.result.tools.some(x=>x.name==='orchestrator_project_handoff'));
+  assert.ok(listed.result.tools.some(x=>x.name==='forge_project_handoff'));
 });

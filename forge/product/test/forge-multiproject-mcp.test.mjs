@@ -55,7 +55,7 @@ const initialize={jsonrpc:'2.0',id:1,method:'initialize',params:{
 }};
 const notify={jsonrpc:'2.0',method:'notifications/initialized'};
 const invoke=(id,name,args={})=>({jsonrpc:'2.0',id,method:'tools/call',
-  params:{name:'orchestrator_'+name,arguments:args}});
+  params:{name:name.startsWith('forge_')?name:'forge_'+name,arguments:args}});
 
 test('one MCP localhost listener serves independently authorized projects without token/session crossover',async t=>{
   const f=fixture(t),a=await f.project('alpha'),b=await f.project('beta');

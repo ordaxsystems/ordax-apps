@@ -1370,8 +1370,8 @@ test('MCP initialize/discovery/call use exactly the same App service and persist
   assert.equal(tools.length,exposed.length);
   assert.deepEqual(new Set(tools.map(tool=>tool.name)),new Set(exposed.map(tool=>tool.name)));
   assert.equal(tools.some(tool=>tool.name==='forge_forjador_send'),false);
-  assert.ok(tools.some(tool=>tool.name==='orchestrator_continuity_status'&&tool.annotations.readOnlyHint===true));
-  assert.ok(tools.some(tool=>tool.name==='orchestrator_continuity_set'&&tool.annotations.readOnlyHint===false));
+  assert.ok(tools.some(tool=>tool.name==='forge_continuity_status'&&tool.annotations.readOnlyHint===true));
+  assert.ok(tools.some(tool=>tool.name==='forge_continuity_set'&&tool.annotations.readOnlyHint===false));
   assert.ok(tools.every(tool=>tool.inputSchema.additionalProperties===false));
   // Forge's own MCP is a domain adapter, never the external OrdaX computer
   // control transport. A real grant/Runtime port cannot be inferred from
@@ -1383,11 +1383,11 @@ test('MCP initialize/discovery/call use exactly the same App service and persist
   assert.equal(forgeStatus.workspacePortAvailable,false);
   assert.equal(forgeStatus.repositoryPortAvailable,false);
   assert.equal(forgeStatus.autonomousExecution,false);
-  const created=await rpc('tools/call',{name:'orchestrator_project_create',arguments:{requestId:'mcp-one',name:'MCP project'}});
+  const created=await rpc('tools/call',{name:'forge_project_create',arguments:{requestId:'mcp-one',name:'MCP project'}});
   const receipt=created.result.structuredContent;
   assert.equal(receipt.status,'succeeded');
   assert.equal((await f.call('projects_list')).projects[0].id,receipt.result.projectId);
-  const repeated=await rpc('tools/call',{name:'orchestrator_project_create',arguments:{requestId:'mcp-one',name:'MCP project'}});
+  const repeated=await rpc('tools/call',{name:'forge_project_create',arguments:{requestId:'mcp-one',name:'MCP project'}});
   assert.deepEqual(repeated.result.structuredContent,receipt);
   assert.equal((await rpc('tools/call',{name:'arbitrary_shell',arguments:{}})).error.code,-32602);
   f.setAllowed(false);

@@ -105,7 +105,7 @@ test('MCP exposes project memory but never the recursive Forjador-to-GPT send',a
   await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
   const listed=await mcp.handle({jsonrpc:'2.0',id:2,method:'tools/list'});
   const names=listed.result.tools.map(x=>x.name);
-  assert.ok(names.includes('orchestrator_project_memory'));
+  assert.ok(names.includes('forge_project_memory'));
   assert.ok(!names.includes('forge_forjador_send'));
   const call=await mcp.handle({jsonrpc:'2.0',id:3,method:'tools/call',
     params:{name:'forge_forjador_send',
