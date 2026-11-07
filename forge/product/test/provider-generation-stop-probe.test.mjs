@@ -65,3 +65,66 @@ test('visible final response control or explicit marker confirms only when gener
   assert.equal(providerHasObservedCompletion({generationStopVisible:false,
     completionControlLabels:['Parar de gerar']}),false);
 });
+
+function observedAssistantTurn({actions=[],stop=false,scoped=true}={}) {
+  const turn={
+    parentElement:null,
+    querySelectorAll(selector){return selector==='button,[role="button"]'||selector==='button'?actions:[];}
+  };
+  const assistant={
+    parentElement:turn,
+    hasAttribute:()=>false,
+    querySelector:()=>null,
+    querySelectorAll:()=>[],
+    closest:()=>scoped?turn:null
+  };
+  const document={querySelectorAll(selector) {
+    if(selector.includes('stop-button'))return stop?[element({testId:'stop-button'})]:[];
+    if(selector.includes('[data-message-role="assistant"]'))return [assistant];
+    return [];
+  }};
+  const window={getComputedStyle:node=>({display:'block',visibility:'visible',opacity:'1',...node.style})};
+  return new Function('document','window',
+    `return ${providerResponseControlStateExpression}`)(document,window);
+}
+
+const finishedToolbar=()=>[
+  element({testId:'copy-turn-action-button'}),
+  element({testId:'good-response-turn-action-button'}),
+  element({testId:'bad-response-turn-action-button'})
+];
+
+test('current ChatGPT completed feedback toolbar positively confirms the last assistant turn',()=>{
+  assert.deepEqual(observedAssistantTurn({actions:finishedToolbar()}),
+    {generationStopVisible:false,responseCompletionObserved:true});
+  assert.equal(providerHasObservedCompletion({
+    generationStopVisible:false,finishedAssistantToolbar:true
+  }),true);
+  assert.equal(responseObservationComplete({
+    candidate:{text:'FORGE_LINK_OK_20261107',complete:true},
+    stable:2,transient:false,generating:false
+  }),true);
+});
+
+test('localized visible action labels also recognize a finished assistant turn',()=>{
+  const actions=[
+    element({label:'Copiar'}),
+    element({label:'Boa resposta'}),
+    element({label:'Resposta ruim'})
+  ];
+  assert.equal(observedAssistantTurn({actions}).responseCompletionObserved,true);
+});
+
+test('feedback completion cannot be inferred from absent Stop, partial, hidden or unrelated toolbars',()=>{
+  assert.equal(observedAssistantTurn({actions:[]}).responseCompletionObserved,false);
+  assert.equal(observedAssistantTurn({actions:finishedToolbar().slice(0,2)}).responseCompletionObserved,false);
+  assert.equal(observedAssistantTurn({actions:finishedToolbar(),scoped:false}).responseCompletionObserved,false);
+  assert.equal(observedAssistantTurn({
+    actions:[...finishedToolbar().slice(0,2),element({
+      testId:'bad-response-turn-action-button',hidden:true
+    })]
+  }).responseCompletionObserved,false);
+  assert.equal(observedAssistantTurn({
+    actions:finishedToolbar(),stop:true
+  }).responseCompletionObserved,false);
+});

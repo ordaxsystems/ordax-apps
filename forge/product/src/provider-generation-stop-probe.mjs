@@ -24,20 +24,51 @@ function providerStopControlVisible(document, isVisible) {
   });
 }
 
+// ChatGPT Web now exposes its finished-turn feedback toolbar rather than
+// a persistent "Regenerate response" button. Attribute it strictly to the
+// latest assistant turn; a prior turn's toolbar is never completion evidence.
+// Multiple distinct first-party actions must be visible together.
+function providerFinishedAssistantToolbar(latestAssistant, isVisible) {
+  if (!latestAssistant || typeof latestAssistant.closest !== 'function') return false;
+  const turn = latestAssistant.closest(
+    '[data-testid="conversation-turn"],[data-testid^="conversation-turn-"],[data-turn-id]'
+  ) || latestAssistant.closest('[data-message-author-role="assistant"],[data-message-role="assistant"]');
+  if (!turn || typeof turn.querySelectorAll !== 'function') return false;
+  const actions = new Set();
+  for (const control of turn.querySelectorAll('button,[role="button"]')) {
+    if (!isVisible(control)) continue;
+    const testId = String(control.getAttribute('data-testid') || '').trim().toLowerCase();
+    const label = String(control.getAttribute('aria-label') ||
+      control.getAttribute('title') || '').trim().toLowerCase();
+    if (testId === 'copy-turn-action-button' ||
+      /^(?:copiar(?: resposta| mensagem)?|copy(?: response| message)?)$/.test(label))
+      actions.add('copy');
+    if (testId === 'good-response-turn-action-button' ||
+      /^(?:boa resposta|good response|gostei|thumbs up)$/.test(label))
+      actions.add('good');
+    if (testId === 'bad-response-turn-action-button' ||
+      /^(?:resposta ruim|bad response|n[aã]o gostei|thumbs down)$/.test(label))
+      actions.add('bad');
+  }
+  return actions.has('copy') && actions.has('good') && actions.has('bad');
+}
+
 export function providerHasObservedCompletion({
   generationStopVisible,
   explicitCompletionMarker,
-  completionControlLabels = []
+  completionControlLabels = [],
+  finishedAssistantToolbar = false
 } = {}) {
   if (generationStopVisible === true) return false;
-  if (explicitCompletionMarker === true) return true;
+  if (explicitCompletionMarker === true || finishedAssistantToolbar === true) return true;
   const completionLabel = /^(?:gerar resposta novamente|regenerar resposta|regenerate response)$/i;
   return Array.isArray(completionControlLabels) &&
     completionControlLabels.some(label => completionLabel.test(String(label || '').trim()));
 }
 
 const pageProbeBootstrap = `const providerVisibleElement=(${providerVisibleElement.toString()});` +
-  `const providerStopControlVisible=(${providerStopControlVisible.toString()});`;
+  `const providerStopControlVisible=(${providerStopControlVisible.toString()});` +
+  `const providerFinishedAssistantToolbar=(${providerFinishedAssistantToolbar.toString()});`;
 
 export const providerGenerationStopProbeExpression = `(() => {
   ${pageProbeBootstrap}
@@ -54,6 +85,7 @@ export const providerResponseControlStateExpression = `(() => {
   const explicitCompletionMarker=Boolean(latestAssistant && (
     latestAssistant.hasAttribute('data-message-complete') || latestAssistant.querySelector('[data-message-complete]')
   ));
+  const finishedAssistantToolbar=providerFinishedAssistantToolbar(latestAssistant,providerVisibleElement);
   let completionControlLabels=[];
   for(let current=latestAssistant,depth=0;current&&depth<8;current=current.parentElement,depth++) {
     const labels=Array.from(current.querySelectorAll('button')).filter(providerVisibleElement).map(button=>
@@ -65,7 +97,7 @@ export const providerResponseControlStateExpression = `(() => {
     }
   }
   const responseCompletionObserved=(${providerHasObservedCompletion.toString()})({
-    generationStopVisible,explicitCompletionMarker,completionControlLabels
+    generationStopVisible,explicitCompletionMarker,completionControlLabels,finishedAssistantToolbar
   });
   return {generationStopVisible,responseCompletionObserved};
 })()`;
