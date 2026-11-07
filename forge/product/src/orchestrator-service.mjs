@@ -1,0 +1,1688 @@
+import {randomUUID,createHash} from 'node:crypto';
+import {ORCHESTRATOR_CONTRACT,ORCHESTRATOR_TOOLS,validateOrchestratorInput} from './forge-contract.mjs';
+import {assertTaskHasNoUncertainTransport,listTaskUncertainTransportRuns} from './provider-uncertain-run-policy.mjs';
+import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
+import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
+import {validateWorkProposal} from './orchestrator-proposal.mjs';
+import {interpretGPTWorkReview} from './gpt-work-review.mjs';
+import {findProviderSubmissionProvenance} from './provider-submission-provenance.mjs';
+import {LabContinuation} from './lab-continuation.mjs';
+import {AutonomousDialogue} from './autonomous-dialogue.mjs';
+import {classifyExistingSiteChange} from './natural-site-intent.mjs';
+import {latestSiteWork} from './site-work-context.mjs';
+import {ProjectWorkspace} from './project-workspace.mjs';
+import {forgeProjectContext,forgeMcpDiscovery} from './forge-executor-context.mjs';
+import {forgeProjectMemoryView} from './forge-project-memory-view.mjs';
+import {forgeProjectAdministratorView} from './forge-project-administrator-view.mjs';
+import {forgeProjectHandoffView} from './forge-project-handoff-view.mjs';
+import {UNTITLED_FORGE_PROJECT,suggestForgeProjectTitle} from './project-auto-title.mjs';
+import {deleteProjectRecords} from './project-deletion.mjs';
+import {ProjectRepository} from './project-repository.mjs';
+import {workExecutionSummary} from './work-execution-summary.mjs';
+import {projectWorkPlan} from './work-plan-read-model.mjs';
+import {appendRemoteRepositoryInstructions,normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
+
+function missionProjectName(mission) {
+  const firstLine=String(mission||'').trim().split(/\r?\n/u,1)[0].trim();
+  const firstSentence=firstLine.split(/(?<=[.!?])\s+/u,1)[0].trim();
+  return Array.from(firstSentence).slice(0,140).join('')||'Novo projeto';
+}
+
+// App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
+// provider worker, device executor, identity, grants or global Memory service.
+export class OrchestratorService {
+  constructor({store,authorize,provider=null,coordinator=null,confirmProposal=null,confirmProposalSend=null,workspacePort=null,fileBroker=null,repositoryPort=null,verifyLocalArtifact=null}={}) {
+    if(!store?.db || typeof authorize!=='function')throw Error('orchestrator_ports_required');
+    this.store=store; this.db=store.db; this.authorize=authorize;
+    this.provider=provider; this.coordinator=coordinator;
+    // Optional App-owned, read-only local proof port. No filesystem authority
+    // is inferred from a persisted model answer, asset path or remote URL.
+    this.verifyLocalArtifact=typeof verifyLocalArtifact==='function'?verifyLocalArtifact:null;
+    this.confirmProposal=confirmProposal;
+    this.confirmProposalSend=confirmProposalSend;
+    this.pendingProposalReviews=new Set();
+    // One process-local admission lane per canonical coordinator Task.
+    // The durable command receipts remain the only source of truth.
+    this.activeCoordinatorTurns=new Set();
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS lab_projects (
+        id TEXT PRIMARY KEY, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
+        name TEXT NOT NULL, objective TEXT NOT NULL, created_at TEXT NOT NULL,
+        repository_url TEXT,
+        observation_requested INTEGER NOT NULL DEFAULT 0 CHECK(observation_requested IN (0,1))
+      );
+      CREATE INDEX IF NOT EXISTS idx_lab_project_session ON lab_projects(workspace_session_id);
+      -- One bounded historical HEAD per project, NOT a current grant or
+      -- authoritative remote state. Auth decisions and bearer tokens never
+      -- enter the local App Store.
+      CREATE TABLE IF NOT EXISTS lab_repository_head_evidence (
+        project_id TEXT PRIMARY KEY REFERENCES lab_projects(id) ON DELETE CASCADE,
+        repository_url TEXT NOT NULL,
+        repository_id INTEGER NOT NULL CHECK(repository_id>0),
+        default_branch TEXT NOT NULL,
+        head_sha TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        recorded_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS lab_orchestrators (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES lab_projects(id),
+        name TEXT NOT NULL, mission TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('ready','paused')),
+        chat_task_id TEXT NOT NULL UNIQUE REFERENCES tasks(id), created_at TEXT NOT NULL,
+        UNIQUE(id,project_id)
+      );
+      CREATE TABLE IF NOT EXISTS lab_task_bindings (
+        task_id TEXT PRIMARY KEY REFERENCES tasks(id),
+        project_id TEXT NOT NULL REFERENCES lab_projects(id), orchestrator_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK(kind IN ('work','orchestrator')),
+        FOREIGN KEY(orchestrator_id,project_id) REFERENCES lab_orchestrators(id,project_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_lab_binding_project ON lab_task_bindings(project_id,kind);
+      CREATE TABLE IF NOT EXISTS lab_work_dependencies (
+        project_id TEXT NOT NULL REFERENCES lab_projects(id),
+        task_id TEXT NOT NULL REFERENCES tasks(id),
+        prerequisite_id TEXT NOT NULL REFERENCES tasks(id),
+        PRIMARY KEY(task_id,prerequisite_id),
+        FOREIGN KEY(task_id) REFERENCES lab_task_bindings(task_id),
+        FOREIGN KEY(prerequisite_id) REFERENCES lab_task_bindings(task_id),
+        CHECK(task_id<>prerequisite_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_lab_work_dependencies_project ON lab_work_dependencies(project_id);
+      -- Idempotency receipts for App commands, including project creation
+      -- before a Task exists. NOT a provider queue or replacement action ledger.
+      CREATE TABLE IF NOT EXISTS lab_command_receipts (
+        id TEXT PRIMARY KEY, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
+        actor_id TEXT NOT NULL, client_id TEXT NOT NULL, request_id TEXT NOT NULL,
+        project_id TEXT REFERENCES lab_projects(id), operation TEXT NOT NULL,
+        input_hash TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('running','succeeded','failed','uncertain')),
+        result TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(workspace_session_id,actor_id,client_id,request_id)
+      );
+    `);
+    const receiptSchema=this.db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='lab_command_receipts'").get()?.sql||'';
+    // Legacy table migration renames the referenced table. Drop only its
+    // derived VIEW before that migration so SQLite cannot retain a dangling
+    // reference to the old table name. Recreate after migration below.
+    if(!receiptSchema.includes("'failed'")){
+      this.db.exec('DROP VIEW IF EXISTS lab_command_receipt_scope');
+      this.transaction(()=>{
+      this.db.exec('ALTER TABLE lab_command_receipts RENAME TO lab_command_receipts_legacy');
+      this.db.exec(`CREATE TABLE lab_command_receipts (
+        id TEXT PRIMARY KEY, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
+        actor_id TEXT NOT NULL, client_id TEXT NOT NULL, request_id TEXT NOT NULL,
+        project_id TEXT REFERENCES lab_projects(id), operation TEXT NOT NULL,
+        input_hash TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('running','succeeded','failed','uncertain')),
+        result TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(workspace_session_id,actor_id,client_id,request_id)
+      )`);
+      this.db.exec(`INSERT INTO lab_command_receipts
+        (id,workspace_session_id,actor_id,client_id,request_id,project_id,operation,input_hash,status,result,created_at,updated_at)
+        SELECT id,workspace_session_id,actor_id,client_id,request_id,project_id,operation,input_hash,status,result,created_at,updated_at
+        FROM lab_command_receipts_legacy`);
+      this.db.exec('DROP TABLE lab_command_receipts_legacy');
+      });
+    }
+    if(!this.db.prepare('PRAGMA table_info(lab_projects)').all().some(column=>column.name==='repository_url'))
+      this.db.exec('ALTER TABLE lab_projects ADD COLUMN repository_url TEXT');
+    if(!this.db.prepare('PRAGMA table_info(lab_projects)').all().some(column=>column.name==='observation_requested'))
+      this.db.exec('ALTER TABLE lab_projects ADD COLUMN observation_requested INTEGER NOT NULL DEFAULT 0 CHECK(observation_requested IN (0,1))');
+    // Read-only projection over the ONE durable receipt ledger. SQLite JSON
+    // extraction is never attempted on invalid/truncated result data. A work
+    // receipt with an unresolvable Task quarantines its OWN project only.
+    this.db.exec(`CREATE VIEW IF NOT EXISTS lab_command_receipt_scope AS
+      SELECT c.rowid AS receipt_rowid,c.id,c.project_id,c.operation,c.status,
+        b.task_id AS task_id,
+        CASE WHEN c.operation IN ('work_send','proposal_send')
+          AND c.status IN ('running','uncertain') AND b.task_id IS NULL
+          THEN 1 ELSE 0 END AS unknown_work_target
+      FROM lab_command_receipts c
+      LEFT JOIN lab_task_bindings b ON b.project_id=c.project_id
+        AND b.task_id=CASE WHEN json_valid(c.result) THEN
+          CASE WHEN json_type(c.result,'$.taskId')='text'
+            THEN json_extract(c.result,'$.taskId') END END`);
+    this.continuation=new LabContinuation({store,service:this});
+    this.autonomous=new AutonomousDialogue({store,service:this});
+    this.workspace=new ProjectWorkspace({store,port:workspacePort});
+    this.files=fileBroker;
+    this.repository=new ProjectRepository({port:repositoryPort});
+  }
+
+  transaction(operation) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {const result=operation();this.db.exec('COMMIT');return result;}
+    catch(error){this.db.exec('ROLLBACK');throw error;}
+  }
+
+  createProjectRecord(name,objective,repositoryUrl,now) {
+    const projectId='project_'+randomUUID();
+    this.db.prepare(`INSERT INTO lab_projects
+      (id,workspace_session_id,name,objective,created_at,repository_url) VALUES(?,?,?,?,?,?)`).run(projectId,
+      this.store.getWorkspaceSession().id,name,objective,now,repositoryUrl||null);
+    return projectId;
+  }
+
+  // Call exactly once by the App at startup, never when a client connects.
+  recoverInterruptedCommands() {
+    return this.transaction(()=>{
+      const rows=this.db.prepare(`SELECT id,project_id,result FROM lab_command_receipts
+        WHERE status='running' AND operation='proposal_send'`).all();
+      for(const row of rows) {
+        // A command receipt can be incomplete or corrupted after a crash.
+        // Never use its JSON alone to change a different action or Task.
+        let result=null;
+        try {result=row.result?JSON.parse(row.result):null;} catch {}
+        if(typeof result?.sendActionId!=='string'||typeof result?.taskId!=='string')continue;
+        const action=this.db.prepare(`SELECT a.id FROM action_ledger a
+          JOIN lab_task_bindings b ON b.task_id=a.task_id
+          WHERE a.id=? AND a.task_id=? AND a.resource_key=?
+            AND a.action_type='orchestrator.proposal-send' AND a.status='dispatching'
+            AND b.project_id=? AND b.kind='work'`)
+          .get(result.sendActionId,result.taskId,row.id,row.project_id);
+        if(action)this.store.finishAction(result.taskId,action.id,'indeterminate',
+          {reason:'process_interrupted',providerMessagesSent:null});
+      }
+      return Number(this.db.prepare("UPDATE lab_command_receipts SET status='uncertain',updated_at=? WHERE status='running'")
+        .run(this.store.now()).changes);
+    });
+  }
+
+  requireAccess(context,operation,projectId=null) {
+    const session=this.store.getWorkspaceSession();
+    if(!context || typeof context.actorId!=='string' || !context.actorId ||
+      typeof context.clientId!=='string'||!context.clientId ||
+      context.workspaceSessionId!==session?.id || session?.status!=='active' ||
+      this.authorize({context,operation,projectId})!==true)
+      throw Error('orchestrator_access_denied');
+    if(projectId && !this.db.prepare('SELECT 1 FROM lab_projects WHERE id=? AND workspace_session_id=?')
+      .get(projectId,session.id))throw Error('orchestrator_project_unavailable');
+  }
+
+  orchestrator(projectId,id) {
+    const row=this.db.prepare('SELECT * FROM lab_orchestrators WHERE id=? AND project_id=?').get(id,projectId);
+    if(!row)throw Error('orchestrator_unavailable');
+    return row;
+  }
+
+  task(projectId,taskId,kind=null) {
+    const row=this.db.prepare(`SELECT t.id,t.title,t.status,t.chat_url,t.updated_at,b.kind,b.orchestrator_id
+      FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
+      WHERE t.id=? AND b.project_id=? AND t.workspace_session_id=?`)
+      .get(taskId,projectId,this.store.getWorkspaceSession().id);
+    if(!row || (kind&&row.kind!==kind))throw Error('orchestrator_work_unavailable');
+    return row;
+  }
+
+  // Read-only projection from the same canonical receipts used to reserve a
+  // Run-specific Groq review. Priority is fail-closed: an uncertain or active
+  // earlier request must not disappear behind a later failed model reply.
+  runReviewReceipt(context,projectId,runId) {
+    const receipt=this.db.prepare(`SELECT status,updated_at
+      FROM lab_command_receipts
+      WHERE workspace_session_id=? AND project_id=? AND operation='orchestrator_analyze'
+        AND CASE WHEN json_valid(result) THEN
+          COALESCE(json_extract(result,'$.reviewRunId'),
+            json_extract(result,'$.reviewDecision.sourceRunId')) END=?
+      ORDER BY CASE status
+        WHEN 'uncertain' THEN 0 WHEN 'running' THEN 1
+        WHEN 'succeeded' THEN 2 ELSE 3 END,updated_at DESC,id DESC
+      LIMIT 1`).get(context.workspaceSessionId,projectId,runId);
+    return {runId,status:receipt?.status||'not_requested',
+      updatedAt:receipt?.updated_at||null};
+  }
+
+  historicalRepositoryHead(projectId,repositoryUrl) {
+    const row=this.db.prepare(`SELECT repository_url,repository_id,default_branch,head_sha,observed_at,recorded_at
+      FROM lab_repository_head_evidence WHERE project_id=? AND repository_url=?`)
+      .get(projectId,repositoryUrl);
+    if(!row)return null;
+    // Corrupt or displaced local metadata is never elevated to a live GitHub
+    // claim. Its source was validated at write time by the trusted port.
+    if(!Number.isSafeInteger(row.repository_id)||row.repository_id<=0||
+      !/^[a-f0-9]{40}$/.test(row.head_sha)||
+      typeof row.default_branch!=='string'||row.default_branch.length>140||
+      !/^[A-Za-z0-9_.\\/-]+$/.test(row.default_branch)||
+      row.default_branch.includes('..')||row.default_branch.startsWith('/')||
+      row.default_branch.endsWith('/')||
+      !Number.isFinite(Date.parse(row.observed_at))||
+      !Number.isFinite(Date.parse(row.recorded_at)))
+      return null;
+    return {repositoryId:row.repository_id,defaultBranch:row.default_branch,
+      headSha:row.head_sha,observedAt:row.observed_at,recordedAt:row.recorded_at,
+      provenance:{source:'github_rest_authenticated',historical:true,
+        currentAccessVerified:false,grantRecheckedAtObservation:true,
+        contentsRead:false,prsRead:false,checksRead:false}};
+  }
+
+  projectRepositoryUrl(projectId) {
+    const row=this.db.prepare(`SELECT repository_url FROM lab_projects
+      WHERE id=? AND workspace_session_id=?`).get(projectId,this.store.getWorkspaceSession().id);
+    if(!row)throw Error('orchestrator_project_unavailable');
+    return normalizeGitHubRepositoryUrl(row.repository_url);
+  }
+
+  // Conservatively quarantine an unknown provider target at PROJECT scope,
+  // because a truncated receipt cannot prove which work was submitted.
+  // Valid references are matched to the same project by the read-only view.
+  hasUnresolvedWorkReceipt(projectId,taskId,{includeRunning=false}={}) {
+    const status=includeRunning?"IN ('running','uncertain')":"='uncertain'";
+    return Boolean(this.db.prepare(`SELECT 1 FROM lab_command_receipt_scope
+      WHERE status ${status} AND operation IN ('work_send','proposal_send')
+      AND (task_id=? OR (project_id=? AND unknown_work_target=1)) LIMIT 1`)
+      .get(taskId,projectId));
+  }
+
+  assertProviderTaskAvailable(taskId,{allowCoordinator=false}={}) {
+    const binding=this.db.prepare(`SELECT b.kind,b.project_id,o.status FROM lab_task_bindings b
+      JOIN lab_orchestrators o ON o.id=b.orchestrator_id WHERE b.task_id=?`).get(taskId);
+    if(binding?.kind==='orchestrator'&&!allowCoordinator)throw Error('orchestrator_coordinator_channel_required');
+    if(allowCoordinator&&binding?.kind!=='orchestrator')throw Error('orchestrator_coordinator_task_required');
+    if(binding?.status==='paused')throw Error('orchestrator_paused');
+    const uncertain=binding?.kind==='work'
+      ?this.hasUnresolvedWorkReceipt(binding.project_id,taskId)
+      :Boolean(this.db.prepare(`SELECT 1 FROM lab_command_receipts
+        WHERE project_id=? AND operation='forjador_send' AND status='uncertain'
+        LIMIT 1`).get(binding?.project_id));
+    if(uncertain)throw Error('orchestrator_reconciliation_required');
+  }
+
+  receipt(row) {
+    let result=null;
+    try {result=row.result?JSON.parse(row.result):null;}
+    catch {
+      // Preserve the raw SQLite evidence; never interpret or replay it.
+      if(row.status!=='uncertain')throw Error('orchestrator_receipt_result_invalid');
+      result={reason:'receipt_result_unreadable'};
+    }
+    return {commandId:row.id,operation:row.operation,status:row.status,
+      requiresReconciliation:row.status==='uncertain',
+      result,updatedAt:row.updated_at};
+  }
+
+  getReceipt(context,id) {
+    const row=this.db.prepare(`SELECT * FROM lab_command_receipts WHERE id=? AND
+      workspace_session_id=? AND actor_id=? AND client_id=?`)
+      .get(id,context.workspaceSessionId,context.actorId,context.clientId);
+    if(!row)throw Error('orchestrator_command_unavailable');
+    this.requireAccess(context,row.operation,row.project_id);
+    return this.receipt(row);
+  }
+
+  reserve(context,operation,input) {
+    const inputHash=createHash('sha256').update(JSON.stringify({operation,input})).digest('hex');
+    const existing=this.db.prepare(`SELECT * FROM lab_command_receipts WHERE
+      workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
+      .get(context.workspaceSessionId,context.actorId,context.clientId,input.requestId);
+    if(existing) {
+      if(existing.input_hash!==inputHash)throw Error('orchestrator_request_conflict');
+      this.requireAccess(context,operation,existing.project_id);
+      return {existing:this.receipt(existing)};
+    }
+    const commandId='command_'+randomUUID(),now=this.store.now();
+    this.db.prepare(`INSERT INTO lab_command_receipts
+      (id,workspace_session_id,actor_id,client_id,request_id,project_id,operation,input_hash,status,created_at,updated_at)
+      VALUES(?,?,?,?,?,?,?,?,'running',?,?)`).run(commandId,context.workspaceSessionId,
+      context.actorId,context.clientId,input.requestId,input.projectId||null,operation,inputHash,now,now);
+    return {commandId};
+  }
+
+  finish(commandId,result,status='succeeded') {
+    if(!['succeeded','failed','uncertain'].includes(status))throw Error('invalid_orchestrator_receipt_status');
+    const changed=this.db.prepare("UPDATE lab_command_receipts SET status=?,result=?,updated_at=? WHERE id=? AND status='running'")
+      .run(status,JSON.stringify(result),this.store.now(),commandId).changes;
+    if(changed!==1)throw Error('orchestrator_command_state_conflict');
+    return this.receipt(this.db.prepare('SELECT * FROM lab_command_receipts WHERE id=?').get(commandId));
+  }
+
+  async invoke(context,operation,raw={}) {
+    const {tool,input}=validateOrchestratorInput(operation,raw);
+    // A completed delete has a projectless tombstone so the same requestId
+    // can be inspected without restoring the deleted project's authority.
+    if(operation==='project_delete') {
+      const prior=this.db.prepare(`SELECT * FROM lab_command_receipts WHERE
+        workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
+        .get(context.workspaceSessionId,context.actorId,context.clientId,input.requestId);
+      if(prior?.operation==='project_delete'&&prior.project_id===null&&prior.status==='succeeded') {
+        this.requireAccess(context,operation);
+        const inputHash=createHash('sha256').update(JSON.stringify({operation,input})).digest('hex');
+        if(prior.input_hash!==inputHash)throw Error('orchestrator_request_conflict');
+        return this.receipt(prior);
+      }
+    }
+    this.requireAccess(context,operation,input.projectId||null);
+    if(operation==='autonomous_dialogue_status')return this.autonomous.status(context,input);
+    if(operation==='autonomous_dialogue_start')return {status:'succeeded',operation,result:this.autonomous.start(context,input)};
+    if(operation==='autonomous_dialogue_continue')return {status:'succeeded',operation,
+      result:this.autonomous.continueTechnical(context,input)};
+    if(operation==='repository_observe') {
+      const repositoryUrl=this.projectRepositoryUrl(input.projectId);
+      const recheck=()=>{
+        this.requireAccess(context,operation,input.projectId);
+        if(this.projectRepositoryUrl(input.projectId)!==repositoryUrl)
+          throw Error('orchestrator_repository_changed_during_observation');
+      };
+      const snapshot=await this.repository.observe(context,{projectId:input.projectId,repositoryUrl},recheck);
+      // No await between the final scoped grant check and this existing App
+      // transaction. Revalidate the owner and binding again before saving.
+      this.transaction(()=>{
+        recheck();
+        this.db.prepare(`INSERT INTO lab_repository_head_evidence
+          (project_id,repository_url,repository_id,default_branch,head_sha,observed_at,recorded_at)
+          VALUES(?,?,?,?,?,?,?) ON CONFLICT(project_id) DO UPDATE SET
+          repository_url=excluded.repository_url,repository_id=excluded.repository_id,
+          default_branch=excluded.default_branch,head_sha=excluded.head_sha,
+          observed_at=excluded.observed_at,recorded_at=excluded.recorded_at`)
+          .run(input.projectId,snapshot.repositoryUrl,snapshot.repositoryId,
+            snapshot.defaultBranch,snapshot.headSha,snapshot.observedAt,this.store.now());
+      });
+      return snapshot;
+    }
+    if(operation==='workspace_snapshot')return this.workspace.snapshot(context,input,()=>this.requireAccess(context,operation,input.projectId));
+    if(operation==='workspace_bind')return this.bindWorkspace(context,input);
+    if(operation==='project_delete')return this.transaction(()=>{
+      const reserved=this.reserve(context,operation,input);
+      if(reserved.existing)return reserved.existing;
+      if(this.autonomous.inFlight||this.activeCoordinatorTurns.size||this.pendingProposalReviews.size)
+        throw Error('orchestrator_project_delete_work_active');
+      // Detach ONLY the deletion receipt before removing all scoped history.
+      this.db.prepare('UPDATE lab_command_receipts SET project_id=NULL WHERE id=?').run(reserved.commandId);
+      const result=deleteProjectRecords(this.db,{projectId:input.projectId,
+        workspaceSessionId:context.workspaceSessionId,confirmName:input.confirmName});
+      return this.finish(reserved.commandId,result);
+    });
+    if(operation==='project_file_write')return this.writeProjectFile(context,input);
+    if(tool.readOnly)return this.read(context,operation,input);
+    if(operation==='proposal_send')return this.confirmAndSendProposal(context,input);
+    if(operation==='proposal_review'&&input.approved)return this.confirmAndReviewProposal(context,input);
+    if(['work_send','forjador_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare'].includes(operation))return this.dispatch(context,operation,input);
+    return this.transaction(()=>{
+      const reserved=this.reserve(context,operation,input);
+      if(reserved.existing)return reserved.existing;
+      const result=operation==='project_memory_propose'
+        ?(this.task(input.projectId,input.taskId),this.store.memoryCandidates.proposeFromAssistant(input.taskId,input))
+        :operation==='proposal_review'?this.reviewProposal(context,input):this.mutate(operation,input);
+      if(['project_create','project_quick_create','mission_create'].includes(operation))this.db.prepare('UPDATE lab_command_receipts SET project_id=? WHERE id=?')
+        .run(result.projectId,reserved.commandId);
+      return this.finish(reserved.commandId,result);
+    });
+  }
+
+  // A filesystem effect must reserve its durable command BEFORE writing.
+  // A crash or uncertain readback leaves a non-replayable receipt; successful
+  // SHA-256 readback is required before reporting completion.
+  writeProjectFile(context,input) {
+    if(!this.files)throw Error('forge_file_broker_unavailable');
+    const reserved=this.transaction(()=>this.reserve(context,'project_file_write',input));
+    if(reserved.existing)return reserved.existing;
+    try {
+      this.requireAccess(context,'project_file_write',input.projectId);
+      const proof=this.files.write(input.projectId,input.path,input.content,
+        input.expectedSha256??null);
+      return this.transaction(()=>this.finish(reserved.commandId,proof));
+    }catch(error){
+      const deterministic=new Set(['forge_file_path_invalid','forge_file_content_invalid',
+        'forge_file_size_limit','forge_file_expected_hash_invalid',
+        'forge_file_version_conflict','forge_file_not_found','forge_file_reparse_denied']);
+      const reason=deterministic.has(error?.message)?error.message:'forge_file_effect_uncertain';
+      try{this.transaction(()=>this.finish(reserved.commandId,
+        {reason,path:input.path,verified:false},
+        deterministic.has(error?.message)?'failed':'uncertain'));}catch{}
+      throw error;
+    }
+  }
+
+  async bindWorkspace(context,input) {
+    // Replaying a durable requestId reads its canonical receipt. A historical
+    // binding is NOT a current grant: every new bind and every snapshot still
+    // revalidates the Runtime authority independently.
+    const existing=this.db.prepare(`SELECT id FROM lab_command_receipts WHERE workspace_session_id=?
+      AND actor_id=? AND client_id=? AND request_id=?`)
+      .get(context.workspaceSessionId,context.actorId,context.clientId,input.requestId);
+    if(existing)return this.transaction(()=>{
+      const reserved=this.reserve(context,'workspace_bind',input);
+      if(!reserved.existing)throw Error('orchestrator_command_state_conflict');
+      return reserved.existing;
+    });
+    await this.workspace.authorizeBinding(context,input,()=>this.requireAccess(context,'workspace_bind',input.projectId));
+    return this.transaction(()=>{
+      this.requireAccess(context,'workspace_bind',input.projectId);
+      const reserved=this.reserve(context,'workspace_bind',input);
+      if(reserved.existing)return reserved.existing;
+      return this.finish(reserved.commandId,this.workspace.bindVerified(context,input));
+    });
+  }
+
+  read(context,operation,input) {
+    if(operation==='proposals_list') {
+      const owner=this.orchestrator(input.projectId,input.orchestratorId);
+      const proposals=[];
+      const rows=this.db.prepare(`SELECT id,payload,status,result FROM action_ledger WHERE task_id=?
+        AND action_type='orchestrator.work-proposal' AND status IN ('pending','succeeded') ORDER BY created_at DESC,id LIMIT 50`)
+        .all(owner.chat_task_id);
+      for(const row of rows) {
+        // Keep historical action bytes intact, but never let one corrupted
+        // proposal/result hide valid independent approvals in this read model.
+        // No recovery, approval or task mutation happens during listing.
+        let payload;
+        try {payload=JSON.parse(row.payload);} catch {continue;}
+        if(payload?.actorId!==context.actorId||payload?.clientId!==context.clientId||
+          payload?.projectId!==input.projectId||payload?.orchestratorId!==input.orchestratorId)
+          continue;
+        let proposal;
+        try {proposal=validateWorkProposal(payload.proposal);} catch {continue;}
+        if(row.status==='pending') {
+          if(!this.db.prepare(`SELECT 1 FROM approval_ledger WHERE action_id=? AND task_id=?
+            AND status='pending' LIMIT 1`).get(row.id,owner.chat_task_id))continue;
+          proposals.push({actionId:row.id,status:'pending',...proposal});
+          continue;
+        }
+        let result;
+        try {result=row.result?JSON.parse(row.result):null;} catch {continue;}
+        if(result?.approved!==true||typeof result.taskId!=='string')continue;
+        if(!this.db.prepare(`SELECT 1 FROM approval_ledger WHERE action_id=? AND task_id=?
+          AND status='approved' LIMIT 1`).get(row.id,owner.chat_task_id))continue;
+        const task=this.preparedTask(input.projectId,input.orchestratorId,result.taskId);
+        if(!task||!task.draft.trim()||task.has_messages||task.has_runs||task.has_send)continue;
+        proposals.push({actionId:row.id,status:'prepared',...proposal,
+          taskId:task.id,title:task.title,content:task.draft,draftRevision:task.draft_revision});
+      }
+      return {proposals};
+    }
+    if(operation==='workspace_status')return this.workspace.status(context,input.projectId);
+    if(operation==='forge_discover') {
+      const contextView=this.read(context,'project_context',input);
+      return forgeMcpDiscovery(contextView);
+    }
+    if(operation==='project_context') {
+      // The existing session authorization has already checked projectId.
+      // Project title/objective are DATA, never new tool instructions.
+      const project=this.db.prepare('SELECT name,objective,repository_url FROM lab_projects WHERE id=? AND workspace_session_id=?')
+        .get(input.projectId,context.workspaceSessionId);
+      if(!project)throw Error('orchestrator_project_unavailable');
+      const last=this.db.prepare(`SELECT r.status FROM runs r
+        JOIN lab_task_bindings b ON b.task_id=r.task_id AND b.kind='work'
+        WHERE b.project_id=? ORDER BY r.rowid DESC LIMIT 1`).get(input.projectId);
+      const total=this.db.prepare(`SELECT COUNT(*) AS n FROM lab_task_bindings
+        WHERE project_id=? AND kind='work'`).get(input.projectId).n;
+      return {...forgeProjectContext({projectId:input.projectId,project,
+        workspace:this.workspace.status(context,input.projectId),workCount:total,
+        latestRunStatus:last?.status||null}),
+        appPrivateFiles:this.files?.status(input.projectId)||{available:false,mode:'capability_unavailable'}};
+    }
+    if(operation==='project_memory')return forgeProjectMemoryView(this.store,input.projectId);
+    if(operation==='project_administrator_snapshot')return forgeProjectAdministratorView(this.store,input.projectId);
+    if(operation==='project_files_status')return this.files?.status(input.projectId)||{
+      projectId:input.projectId,available:false,mode:'capability_unavailable'};
+    if(operation==='project_files_list'){
+      if(!this.files)throw Error('forge_file_broker_unavailable');
+      return this.files.list(input.projectId,input.directory||'');
+    }
+    if(operation==='project_file_read'){
+      if(!this.files)throw Error('forge_file_broker_unavailable');
+      return this.files.read(input.projectId,input.path);
+    }
+    if(operation==='project_handoff')return forgeProjectHandoffView(this.store,input.projectId,{taskId:input.taskId||null});
+    if(operation==='continuity_status') {
+      this.orchestrator(input.projectId,input.orchestratorId);
+      return this.continuation.status(input.projectId,input.orchestratorId);
+    }
+    if(operation==='status')return {
+      contract:ORCHESTRATOR_CONTRACT,engine:'app-owned',
+      tools:ORCHESTRATOR_TOOLS.map(t=>t.name),
+      externalTransport:'not_connected',autonomousExecution:false,
+      autonomousAnalysisAvailable:true,
+      coordinatorDraftCommitAvailable:true,
+      workspacePortAvailable:this.workspace.available(),
+      repositoryPortAvailable:this.repository.available(),
+      continuationEnabled:Number(this.db.prepare('SELECT COUNT(*) n FROM lab_continuation_policies WHERE enabled=1').get().n),
+      coordinatorAvailable:this.coordinator?.available?.()===true,
+      providerExecutionAvailable:typeof this.provider?.send==='function',
+      executor:this.executorAdmission(),
+      activeRuns:Number(this.db.prepare("SELECT COUNT(*) n FROM runs WHERE status='running'").get().n),
+      uncertainCommands:Number(this.db.prepare(`SELECT COUNT(*) n FROM lab_command_receipts
+        WHERE status='uncertain' AND workspace_session_id=? AND actor_id=? AND client_id=?`)
+        .get(context.workspaceSessionId,context.actorId,context.clientId).n)
+    };
+    if(operation==='projects_list')return {projects:this.db.prepare(
+      'SELECT id,name,objective,repository_url,created_at,observation_requested FROM lab_projects WHERE workspace_session_id=? ORDER BY created_at,id LIMIT 200')
+      .all(context.workspaceSessionId).filter(row=>this.authorize({context,operation,projectId:row.id})===true)};
+    if(operation==='project_preflight') {
+      // Read-only, project-scoped projection of the canonical Store. A saved
+      // repository URL is NOT authenticated GitHub access; an injected Runtime
+      // port is NOT a project resource grant. Never claim either as verified.
+      const owner=this.orchestrator(input.projectId,input.orchestratorId);
+      const project=this.db.prepare('SELECT repository_url,observation_requested FROM lab_projects WHERE id=? AND workspace_session_id=?')
+        .get(input.projectId,context.workspaceSessionId);
+      const work=this.db.prepare(`SELECT COUNT(*) AS total,
+        COALESCE(SUM(CASE WHEN EXISTS(SELECT 1 FROM runs r WHERE r.task_id=t.id) THEN 1 ELSE 0 END),0) AS started
+        FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
+        WHERE b.project_id=? AND b.orchestrator_id=? AND b.kind='work'
+          AND t.workspace_session_id=?`)
+        .get(input.projectId,input.orchestratorId,context.workspaceSessionId);
+      // Project-scoped command receipts are the source of truth for whether
+      // the local Groq analysis was attempted. The result body is deliberately
+      // excluded from this read model.
+      const analysis=this.db.prepare(`SELECT COUNT(*) AS attempts,
+        COALESCE(SUM(CASE WHEN status='succeeded' THEN 1 ELSE 0 END),0) AS completed,
+        (SELECT status FROM lab_command_receipts WHERE project_id=? AND operation='orchestrator_analyze'
+          ORDER BY updated_at DESC,id DESC LIMIT 1) AS last_status,
+        (SELECT updated_at FROM lab_command_receipts WHERE project_id=? AND operation='orchestrator_analyze'
+          ORDER BY updated_at DESC,id DESC LIMIT 1) AS last_attempt_at
+        FROM lab_command_receipts WHERE project_id=? AND operation='orchestrator_analyze'`)
+        .get(input.projectId,input.projectId,input.projectId);
+      // Any outstanding send in this project is relevant: parallel owners can
+      // share a repo, and missing/invalid target receipts are fail-closed.
+      const unresolved=this.db.prepare(`SELECT COUNT(*) AS total
+        FROM lab_command_receipts
+        WHERE project_id=? AND operation IN ('work_send','proposal_send')
+          AND status IN ('running','uncertain')`).get(input.projectId);
+      const modelConfigured=this.coordinator?.available?.()===true;
+      const blockers=[];
+      if(owner.status!=='ready')blockers.push('coordinator_paused');
+      if(!modelConfigured)blockers.push('coordinator_unavailable');
+      if(work.total===0)blockers.push('no_registered_work');
+      if(unresolved.total>0)blockers.push('work_receipts_unresolved');
+      return {
+        schema:'ordax.orchestrator.project-preflight/2',
+        projectId:input.projectId,orchestratorId:input.orchestratorId,
+        observedAt:this.store.now(),
+        provenance:{source:'app_sqlite',externalObservation:false},
+        repository:{urlRegistered:Boolean(project?.repository_url),authenticatedRead:'unavailable',
+          lastHistoricalHead:project?.repository_url
+            ?this.historicalRepositoryHead(input.projectId,project.repository_url):null},
+        observation:{requested:project.observation_requested===1,active:false,
+          state:project.observation_requested===1?'awaiting_external_authority':'paused',
+          automaticGptDispatchAllowed:false,backgroundSchedulerActive:false},
+        runtime:{grantVerified:false},
+        coordinator:{state:owner.status,modelConfigured,providerResponseVerified:false},
+        work:{registered:Number(work.total),started:Number(work.started),unresolvedSends:Number(unresolved.total)},
+        analysis:{attempts:Number(analysis.attempts),completed:Number(analysis.completed),
+          lastStatus:analysis.last_status,lastAttemptAt:analysis.last_attempt_at},
+        gates:{recordedWorkAnalysisEligible:blockers.length===0,
+          githubObservationVerified:false,automaticGptDispatchAllowed:false,headlessExecutionVerified:false},
+        blockers
+      };
+    }
+    if(operation==='orchestrators_list')return {orchestrators:this.db.prepare(
+      'SELECT * FROM lab_orchestrators WHERE project_id=? ORDER BY created_at,id LIMIT 100').all(input.projectId)};
+    if(operation==='work_plan')return {plan:this.projectPlan(input.projectId,input.maxParallel||4)};
+    if(operation==='work_list')return {works:this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,
+      b.orchestrator_id,(SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments,
+      (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_run_status,
+      (SELECT COUNT(*) FROM runs r WHERE r.task_id=t.id AND r.status='running') running_runs
+      FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
+      WHERE b.project_id=? AND b.kind='work' AND (? IS NULL OR b.orchestrator_id=?)
+      AND t.workspace_session_id=? ORDER BY t.updated_at DESC,t.id LIMIT 200`)
+      .all(input.projectId,input.orchestratorId||null,input.orchestratorId||null,context.workspaceSessionId)
+      .map(work=>({...work,execution:workExecutionSummary([work])[0],
+        dependsOn:this.db.prepare('SELECT prerequisite_id FROM lab_work_dependencies WHERE project_id=? AND task_id=? ORDER BY prerequisite_id')
+          .all(input.projectId,work.id).map(row=>row.prerequisite_id)}))};
+    if(operation==='work_get') {
+      const task=this.task(input.projectId,input.taskId);
+      const runs=this.db.prepare(`SELECT id,status,started_at,completed_at,heartbeat_at
+        FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 10`).all(task.id);
+      return {...task,runs,
+        latestRunReview:task.kind==='work'&&runs[0]?.status==='succeeded'
+          ?this.runReviewReceipt(context,input.projectId,runs[0].id):null,
+        conversations:this.store.listConversations(task.id).slice(-50),
+        pendingApprovals:this.store.pendingApprovals(task.id).map(a=>({id:a.id,status:a.status,actionId:a.action_id})),
+        monitor:this.monitor(task,runs,input.projectId)};
+    }
+    if(operation==='work_messages') {
+      this.task(input.projectId,input.taskId);
+      const page=this.store.messagesPage(input.taskId,{before:input.before||null,limit:input.limit||50});
+      return {...page,messages:page.messages.map(m=>({id:m.id,role:m.role,content:m.content,created_at:m.created_at,author_source:m.author_source}))};
+    }
+    if(operation==='command_get')return this.getReceipt(context,input.commandId);
+    throw Error('orchestrator_unknown_operation');
+  }
+
+  // An external GPT answer is not a delivered site. Only the verified
+  // file attached to that exact completed Run can produce this one real
+  // assistant message in the project conversation. Idempotent across
+  // renderer redraws, recovery and repeated notifications.
+  recordSiteDelivery({taskId,runId,verified=false,sha256=null}={}){
+    if(typeof taskId!=='string'||typeof runId!=='string')return false;
+    return this.transaction(()=>{
+      const owner=this.db.prepare(`SELECT o.chat_task_id AS chatTaskId
+        FROM lab_task_bindings b JOIN lab_orchestrators o
+          ON o.id=b.orchestrator_id AND o.project_id=b.project_id
+        JOIN runs r ON r.task_id=b.task_id AND r.status='succeeded'
+        WHERE b.task_id=? AND b.kind='work' AND r.id=?
+        AND o.chat_task_id<>b.task_id`).get(taskId,runId);
+      if(!owner||!this.db.prepare('SELECT 1 FROM conversation_completed_runs WHERE task_id=? AND run_id=?')
+        .get(taskId,runId))return false;
+      if(this.db.prepare(`SELECT 1 FROM events WHERE task_id=? AND kind='orchestrator.site_delivery'
+          AND json_extract(payload,'$.run_id')=? LIMIT 1`).get(owner.chatTaskId,runId))
+        return false;
+      const answer=this.db.prepare("SELECT id FROM messages WHERE task_id=? AND role='assistant' ORDER BY sequence DESC LIMIT 1")
+        .get(taskId);
+      const asset=answer&&this.db.prepare(`SELECT id,sha256 FROM message_assets
+        WHERE task_id=? AND message_id=? AND kind='file'
+        AND mime_type='text/html' ORDER BY rowid DESC LIMIT 1`).get(taskId,answer.id);
+      const delivered=verified===true&&asset&&asset.sha256===sha256;
+      const response=delivered
+        ?'O site foi atualizado e o arquivo está verificado na área de resultados. Você já pode conferir a prévia à direita. Ainda não foi publicado.'
+        :'Recebi a resposta do trabalho, mas ainda não consegui confirmar um novo arquivo para a prévia. Mantive a última versão verificada, sem publicar ou repetir o pedido.';
+      this.store.appendMessage(owner.chatTaskId,'assistant',response);
+      this.store.event(owner.chatTaskId,'orchestrator.site_delivery',{
+        run_id:runId,task_id:taskId,artifact_verified:Boolean(delivered),
+        ...(delivered?{asset_id:asset.id,sha256:asset.sha256}:{})
+      });
+      return Boolean(delivered);
+    });
+  }
+
+  // The Electron host currently has ONE shared WebContentsView and ONE
+  // canonical provider transport. This capability is a verified ceiling,
+  // not an opt-in flag that may be raised without isolated workers.
+  executorAdmission() {
+    const activeRuns=Number(this.db.prepare(
+      "SELECT COUNT(*) n FROM runs WHERE status='running'"
+    ).get().n);
+    // Only GPT Web submissions occupy the single WebContentsView executor.
+    // Groq/chat/analysis requests have their own coordinator lane and must
+    // not consume provider capacity, even while their receipts are running.
+    // Keep ALL in-flight GPT sends reserved until their durable receipt ends.
+    const activeCommands=Number(this.db.prepare(`SELECT COUNT(*) n
+      FROM lab_command_receipts WHERE status='running'
+      AND operation IN ('work_send','proposal_send','forjador_send')`).get().n);
+    const hostOccupied=Boolean(this.provider?.busy?.());
+    const occupied=activeRuns>0||activeCommands>0||hostOccupied;
+    return Object.freeze({
+      mode:'single_embedded_chatgpt_worker',
+      maxConcurrentSends:1,
+      activeRuns,activeCommands,hostOccupied,
+      availableSlots:occupied?0:1,
+      isolatedWorkerSessions:false,
+      parallelProviderSendsEnabled:false
+    });
+  }
+
+  monitor(task,runs,projectId) {
+    const command=this.db.prepare(`SELECT status FROM lab_command_receipt_scope
+      WHERE task_id=? OR (project_id=? AND unknown_work_target=1)
+      ORDER BY CASE WHEN status IN ('uncertain','running') THEN 0 ELSE 1 END,
+        receipt_rowid DESC LIMIT 1`).get(task.id,projectId);
+    if(command?.status==='uncertain')return {state:'reconciliation_required',mayAutomaticallySend:false};
+    if(command?.status==='running')return {state:'running',mayAutomaticallySend:false};
+    if(command?.status==='failed')return {state:'failed',retryAllowed:true,mayAutomaticallySend:false};
+    const current=runs[0];
+    if(current?.status==='running') {
+      const lastHeartbeatAt=current.heartbeat_at||current.started_at;
+      const age=Date.parse(this.store.now())-Date.parse(lastHeartbeatAt);
+      return {state:!Number.isFinite(age)||age>30000?'execution_unresponsive':'running',
+        lastHeartbeatAt,mayAutomaticallySend:false};
+    }
+    if(current?.status==='interrupted'||listTaskUncertainTransportRuns(this.store,task.id).length)
+      return {state:'reconciliation_required',mayAutomaticallySend:false};
+    if(current?.status==='failed')return {state:'failed',retryAllowed:true,mayAutomaticallySend:false};
+    return {state:task.status==='completed'?'completed':'awaiting_instruction',mayAutomaticallySend:false};
+  }
+
+  projectPlan(projectId,maxParallel=4) {
+      // Query all scoped works: dependencies can span several orchestrators of
+      // the SAME project. Never silently omit dependencies through pagination.
+      const works=this.db.prepare(`SELECT t.id,t.status,
+        (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_run_status,
+        (SELECT r.started_at FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_started_at,
+        (SELECT r.heartbeat_at FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_heartbeat_at,
+        (SELECT COUNT(*) FROM runs r WHERE r.task_id=t.id AND r.status='running') running_runs
+        FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
+        WHERE b.project_id=? AND b.kind='work' AND t.workspace_session_id=?
+        -- Stable creation-order tie-breaker: random Task IDs must never
+        -- change DAG readiness order when timestamps share a clock tick.
+        ORDER BY t.created_at,t.rowid LIMIT 257`)
+        .all(projectId,this.store.getWorkspaceSession().id);
+      if(works.length>256)throw Error('orchestrator_work_plan_too_large');
+      const edges=this.db.prepare(`SELECT project_id,task_id,prerequisite_id
+        FROM lab_work_dependencies WHERE project_id=? ORDER BY task_id,prerequisite_id`)
+        .all(projectId);
+      const planning=projectWorkPlan({
+        projectId:projectId,maxParallel:maxParallel,edges,
+        works:works.map(w=>({...w,monitor:this.monitor(w,[{
+          status:w.latest_run_status,started_at:w.latest_started_at,
+          heartbeat_at:w.latest_heartbeat_at
+        }],projectId)}))
+      });
+      const executor=this.executorAdmission();
+      return Object.freeze({...planning,
+        executor,
+        // Structural candidates are not permission to send. Only one candidate
+        // can occupy the real shared-browser lane, and zero when it is busy.
+        transportSlotCandidates:Object.freeze(planning.candidates.slice(0,executor.availableSlots)),
+        automaticDispatchAllowed:false
+      });
+  }
+
+  // One response-specific snapshot from the existing Store. A simulated Run
+  // without immutable provider provenance is not eligible for semantic review.
+  reviewableGPTResult(projectId,orchestratorId,runId) {
+    const session=this.store.getWorkspaceSession();
+    const row=this.db.prepare(`SELECT r.id,r.task_id,r.status,t.title,t.chat_url
+      FROM runs r JOIN tasks t ON t.id=r.task_id
+      JOIN lab_task_bindings b ON b.task_id=t.id AND b.kind='work'
+      WHERE r.id=? AND r.status='succeeded' AND t.workspace_session_id=?
+        AND b.project_id=? AND b.orchestrator_id=?`)
+      .get(runId,session?.id,projectId,orchestratorId);
+    if(!row||!/^https:\/\/chatgpt\.com\/c\//.test(row.chat_url||''))return null;
+    if(this.db.prepare('SELECT id FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1')
+      .get(row.task_id)?.id!==runId)return null;
+    const confirmed=this.db.prepare('SELECT 1 FROM conversation_completed_runs WHERE run_id=? AND task_id=?')
+      .get(runId,row.task_id);
+    if(!confirmed)return null;
+    const messages=this.db.prepare(`SELECT id,role,content FROM messages
+      WHERE task_id=? AND role IN ('user','assistant') ORDER BY rowid DESC LIMIT 2`)
+      .all(row.task_id).reverse();
+    if(messages.length!==2||messages[0].role!=='user'||messages[1].role!=='assistant'||
+       typeof messages[1].content!=='string'||messages[1].content.trim().length<20)return null;
+    // Reuse the canonical, message-bound delivery receipt verifier. A bare
+    // event of the same type is not trustworthy provenance for another turn.
+    const provenance=findProviderSubmissionProvenance({
+      store:this.store,taskId:row.task_id,chatUrl:row.chat_url,messageId:messages[0].id
+    });
+    if(provenance?.runId!==runId||provenance.evidenceKind!=='delivery_receipt')return null;
+    const answer=messages[1].content;
+    // Start and conclusion are provided separately so a long technical answer
+    // cannot push the actual outcome beyond the model's bounded input window.
+    const head=redactOrchestratorAnalysisText(answer.slice(0,1100),1100);
+    const tail=answer.length>1900?redactOrchestratorAnalysisText(answer.slice(-950),950):'';
+    const observedAnswer=head+(tail?'\n[trecho final da mesma resposta]\n'+tail:'');
+    return {runId,taskId:row.task_id,title:redactOrchestratorAnalysisText(row.title,140),
+      userText:redactOrchestratorAnalysisText(messages[0].content,1000),
+      observedAnswer,head,tail,responseTruncated:answer.length>1900};
+  }
+
+  analysisContext(projectId,orchestratorId) {
+    const owner=this.orchestrator(projectId,orchestratorId);
+    const project=this.db.prepare(`SELECT name,objective FROM lab_projects
+      WHERE id=? AND workspace_session_id=?`).get(projectId,this.store.getWorkspaceSession().id);
+    if(!project)throw Error('orchestrator_project_unavailable');
+
+    // The same Store powers the UI, coordinator and authenticated executor.
+    // Cover many work fronts without copying their full conversation histories.
+    // Never expose the titles or IDs of another coordinator's private works.
+    const totalWorkCount=this.db.prepare(`SELECT COUNT(*) n FROM tasks t
+      JOIN lab_task_bindings b ON b.task_id=t.id
+      WHERE b.project_id=? AND b.orchestrator_id=? AND b.kind='work'
+      AND t.workspace_session_id=?`)
+      .get(projectId,orchestratorId,this.store.getWorkspaceSession().id).n;
+    const overviewRows=this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,
+      (SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments,
+      (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) last_run_status
+      FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
+      WHERE b.project_id=? AND b.orchestrator_id=? AND b.kind='work'
+        AND t.workspace_session_id=? ORDER BY t.updated_at DESC,t.id LIMIT 257`)
+      .all(projectId,orchestratorId,this.store.getWorkspaceSession().id);
+    const ownerIds=new Set(overviewRows.map(row=>row.id));
+
+    // The project DAG is advisory, never an authorization to submit messages.
+    // Preserve project-wide dependencies internally but disclose only THIS
+    // coordinator's scoped work in the Groq analysis.
+    let planning={state:'unavailable',automaticDispatchAllowed:false,qualityCertified:false};
+    let plan=null;
+    try {
+      plan=this.projectPlan(projectId,4);
+      const owned=plan.workers.filter(worker=>ownerIds.has(worker.taskId));
+      planning={state:'available',
+        candidateTaskIds:plan.candidates.filter(id=>ownerIds.has(id)).slice(0,8),
+        waitingCount:plan.waiting.filter(id=>ownerIds.has(id)).length,
+        blockedCount:plan.blocked.filter(id=>ownerIds.has(id)).length,
+        verificationRequiredCount:plan.verificationRequired.filter(id=>ownerIds.has(id)).length,
+        inFlight:owned.filter(worker=>worker.state==='running').length,
+        workCount:totalWorkCount,
+        executorMode:plan.executor.mode,
+        physicalProviderLanes:plan.executor.maxConcurrentSends,
+        availablePhysicalSlots:plan.executor.availableSlots,
+        transportSlotCandidateCount:plan.transportSlotCandidates.filter(id=>ownerIds.has(id)).length,
+        automaticDispatchAllowed:false,qualityCertified:false};
+    }catch(error){
+      if(error?.message!=='orchestrator_work_plan_too_large')throw error;
+      planning={state:'scope_too_large',automaticDispatchAllowed:false,qualityCertified:false};
+    }
+    const candidate=new Set(plan?.candidates||[]);
+    const waiting=new Set(plan?.waiting||[]);
+    const blocked=new Set(plan?.blocked||[]);
+    const states=new Map((plan?.workers||[]).map(worker=>[worker.taskId,worker.state]));
+    const readiness=id=>blocked.has(id)?'blocked':waiting.has(id)?'waiting':
+      candidate.has(id)?'candidate':states.get(id)||'unavailable';
+    // Prioritize reviews and active work, then ready/waiting tasks. The rich
+    // history remains capped at four works with five messages each; the wider
+    // overview has no message contents and no provider authority.
+    const priority=row=>{
+      const state=readiness(row.id);
+      return state==='uncertain'?0:state==='failed'?1:state==='running'?2:
+        state==='blocked'?3:state==='candidate'?4:state==='waiting'?5:6;
+    };
+    const ordered=[...overviewRows].sort((a,b)=>priority(a)-priority(b)||
+      String(b.updated_at).localeCompare(String(a.updated_at))||a.id.localeCompare(b.id));
+    const rows=ordered.slice(0,4);
+    return {
+      planning,
+      project:{name:redactOrchestratorAnalysisText(project.name,160),objective:redactOrchestratorAnalysisText(project.objective,600)},
+      orchestrator:{name:redactOrchestratorAnalysisText(owner.name,160),mission:redactOrchestratorAnalysisText(owner.mission,800)},
+      scope:{includedWorkCount:rows.length,workLimit:4,messageLimitPerWork:5,
+        overviewCount:Math.min(ordered.length,32),overviewLimit:32,totalWorkCount,
+        overviewTruncated:totalWorkCount>32},
+      workOverview:ordered.slice(0,32).map(row=>({
+        title:redactOrchestratorAnalysisText(row.title,180),
+        status:row.status,latestRunStatus:row.last_run_status,
+        readiness:readiness(row.id),updatedAt:row.updated_at
+      })),
+      works:rows.map(row=>{
+        const runs=this.db.prepare(`SELECT status,started_at,completed_at,heartbeat_at
+          FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 3`).all(row.id);
+        const messages=this.store.messages(row.id,{limit:5}).map(message=>({
+          role:message.role,content:redactOrchestratorAnalysisText(message.content,1200),createdAt:message.created_at
+        }));
+        return {title:redactOrchestratorAnalysisText(row.title,180),status:row.status,updatedAt:row.updated_at,
+          providerSegments:row.provider_segments,monitor:this.monitor(row,runs,projectId),runs,messages};
+      })
+    };
+  }
+
+  mutate(operation,input) {
+    const now=this.store.now();
+    if(operation==='project_create') {
+      return {projectId:this.createProjectRecord(input.name,input.objective||'',input.repositoryUrl,now)};
+    }
+    if(operation==='project_quick_create') {
+      // Unlike mission_create, no work/draft or speculative user task exists.
+      const projectId=this.createProjectRecord(UNTITLED_FORGE_PROJECT,'',null,now);
+      const orchestratorId='orchestrator_'+randomUUID();
+      const chat=this.store.createTask('Forjador');
+      this.db.prepare('INSERT INTO lab_orchestrators VALUES(?,?,?,?,?,?,?)')
+        .run(orchestratorId,projectId,'Forjador',
+          'Conversa de projeto. Entender o pedido do usuário e coordenar apenas ações disponíveis e autorizadas.',
+          'ready',chat.id,now);
+      this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)')
+        .run(chat.id,projectId,orchestratorId,'orchestrator');
+      return {projectId,projectName:UNTITLED_FORGE_PROJECT,
+        orchestratorId,chatTaskId:chat.id,workCreated:0,providerMessagesSent:0};
+    }
+    if(operation==='project_auto_title') {
+      const row=this.db.prepare(`SELECT p.name,o.chat_task_id AS chatTaskId FROM lab_projects p
+        JOIN lab_orchestrators o ON o.project_id=p.id
+        WHERE p.id=? AND p.workspace_session_id=? ORDER BY o.created_at,o.id LIMIT 1`)
+        .get(input.projectId,this.store.getWorkspaceSession().id);
+      if(!row)throw Error('orchestrator_project_unavailable');
+      if(row.name!==UNTITLED_FORGE_PROJECT)
+        return {projectId:input.projectId,name:row.name,changed:false};
+      const first=this.db.prepare(`SELECT content FROM messages WHERE task_id=? AND role='user'
+        ORDER BY created_at,id LIMIT 1`).get(row.chatTaskId);
+      if(!first)return {projectId:input.projectId,name:row.name,changed:false};
+      const title=suggestForgeProjectTitle(first.content);
+      if(title===UNTITLED_FORGE_PROJECT)return {projectId:input.projectId,name:row.name,changed:false};
+      const changed=this.db.prepare('UPDATE lab_projects SET name=? WHERE id=? AND name=?')
+        .run(title,input.projectId,UNTITLED_FORGE_PROJECT).changes;
+      return {projectId:input.projectId,name:title,changed:changed===1};
+    }
+    if(operation==='mission_create') {
+      const projectName=input.name||missionProjectName(input.mission);
+      const projectId=this.createProjectRecord(projectName,input.mission,input.repositoryUrl,now);
+      const orchestratorId='orchestrator_'+randomUUID();
+      const coordinatorName='Orquestrador';
+      const coordinator=this.store.createTask(coordinatorName);
+      this.db.prepare('INSERT INTO lab_orchestrators VALUES(?,?,?,?,?,?,?)')
+        .run(orchestratorId,projectId,coordinatorName,input.mission,'ready',coordinator.id,now);
+      this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)')
+        .run(coordinator.id,projectId,orchestratorId,'orchestrator');
+      const work=this.store.createTask('Primeira frente');
+      this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)')
+        .run(work.id,projectId,orchestratorId,'work');
+      this.store.setDraft(work.id,input.mission,1);
+      return {projectId,projectName,orchestratorId,chatTaskId:coordinator.id,
+        taskId:work.id,taskTitle:work.title,draftRevision:1};
+    }
+    if(operation==='project_rename') {
+      const workspaceSessionId=this.store.getWorkspaceSession().id;
+      const changed=this.db.prepare('UPDATE lab_projects SET name=? WHERE id=? AND workspace_session_id=?')
+        .run(input.name,input.projectId,workspaceSessionId).changes;
+      if(changed!==1)throw Error('orchestrator_project_unavailable');
+      return {projectId:input.projectId,name:input.name};
+    }
+    if(operation==='project_observation_set') {
+      if(input.enabled) {
+        // An App profile can request observation of ONE project at a time.
+        // This is a local consent fence, not an external GitHub/Runtime grant.
+        // Mutations are executed within the existing BEGIN IMMEDIATE receipt
+        // transaction; concurrent requests cannot both pass this check.
+        const other=this.db.prepare(`SELECT 1 FROM lab_projects
+          WHERE workspace_session_id=? AND observation_requested=1 AND id<>? LIMIT 1`)
+          .get(this.store.getWorkspaceSession().id,input.projectId);
+        if(other)throw Error('orchestrator_project_observation_exclusive');
+      }
+      const result=this.db.prepare('UPDATE lab_projects SET observation_requested=? WHERE id=? AND workspace_session_id=?')
+        .run(input.enabled?1:0,input.projectId,this.store.getWorkspaceSession().id);
+      if(result.changes!==1)throw Error('orchestrator_project_unavailable');
+      // This records intent only; it is not a Platform grant or a running
+      // scheduler. This response must never imply successful remote observation.
+      return {projectId:input.projectId,requested:input.enabled,active:false,
+        state:input.enabled?'awaiting_external_authority':'paused',
+        automaticGptDispatchAllowed:false,providerMessagesSent:0,externalCalls:0};
+    }
+    if(operation==='project_repository_set') {
+      const repositoryUrl=normalizeGitHubRepositoryUrl(input.repositoryUrl);
+      const project=this.db.prepare(`SELECT repository_url,observation_requested FROM lab_projects
+        WHERE id=? AND workspace_session_id=?`).get(input.projectId,this.store.getWorkspaceSession().id);
+      if(!project)throw Error('orchestrator_project_unavailable');
+      if(project.repository_url!==repositoryUrl) {
+        if(project.observation_requested===1)throw Error('orchestrator_repository_change_requires_observation_pause');
+        const workStarted=this.db.prepare(`SELECT 1 FROM lab_task_bindings b JOIN tasks t ON t.id=b.task_id
+          WHERE b.project_id=? AND b.kind='work' AND (
+            t.draft_revision>0 OR
+            EXISTS(SELECT 1 FROM messages m WHERE m.task_id=b.task_id) OR
+            EXISTS(SELECT 1 FROM runs r WHERE r.task_id=b.task_id) OR
+            EXISTS(SELECT 1 FROM action_ledger a WHERE a.task_id=b.task_id AND a.action_type='orchestrator.proposal-send')
+          ) LIMIT 1`).get(input.projectId);
+        const workUncertain=this.db.prepare(`SELECT 1 FROM lab_command_receipts
+          WHERE project_id=? AND operation IN ('work_send','proposal_send') AND status IN ('running','uncertain') LIMIT 1`)
+          .get(input.projectId);
+        if(workStarted||workUncertain)throw Error('orchestrator_repository_change_requires_new_project');
+      }
+      const changed=this.db.prepare('UPDATE lab_projects SET repository_url=? WHERE id=? AND workspace_session_id=?')
+        .run(repositoryUrl,input.projectId,this.store.getWorkspaceSession().id).changes;
+      if(changed!==1)throw Error('orchestrator_project_unavailable');
+      if(project.repository_url!==repositoryUrl)
+        this.db.prepare('DELETE FROM lab_repository_head_evidence WHERE project_id=?').run(input.projectId);
+      return {projectId:input.projectId,repositoryUrl};
+    }
+    if(operation==='orchestrator_create') {
+      const orchestratorId='orchestrator_'+randomUUID();
+      const chat=this.store.createTask(input.name);
+      this.db.prepare('INSERT INTO lab_orchestrators VALUES(?,?,?,?,?,?,?)')
+        .run(orchestratorId,input.projectId,input.name,input.mission,'ready',chat.id,now);
+      this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)')
+        .run(chat.id,input.projectId,orchestratorId,'orchestrator');
+      return {orchestratorId,chatTaskId:chat.id};
+    }
+    if(operation==='continuity_proposals_set') {
+      this.orchestrator(input.projectId,input.orchestratorId);
+      return this.continuation.configureProposals(input.projectId,input.orchestratorId,input.enabled);
+    }
+    if(operation==='continuity_set') {
+      this.orchestrator(input.projectId,input.orchestratorId);
+      return this.continuation.configure(input.projectId,input.orchestratorId,input.enabled);
+    }
+    if(operation==='continuity_followup_prepare') {
+      const owner=this.orchestrator(input.projectId,input.orchestratorId);
+      if(owner.status!=='ready')throw Error('orchestrator_paused');
+      const policy=this.db.prepare('SELECT enabled FROM lab_continuation_policies WHERE project_id=? AND orchestrator_id=?')
+        .get(input.projectId,input.orchestratorId);
+      if(policy?.enabled!==1)throw Error('orchestrator_continuity_disabled');
+      const analyzed=this.db.prepare(`SELECT q.task_id,c.result
+        FROM lab_continuation_reviews q JOIN lab_command_receipts c ON c.id=q.command_id
+        WHERE q.run_id=? AND q.project_id=? AND q.orchestrator_id=?
+          AND q.state='analyzed' AND c.status='succeeded' AND c.operation='orchestrator_analyze'`)
+        .get(input.reviewRunId,input.projectId,input.orchestratorId);
+      let decision;
+      try{decision=JSON.parse(analyzed?.result||'{}').reviewDecision;}catch{}
+      const route=new Set(['continue_same_conversation','request_correction','new_conversation']);
+      if(!analyzed||!route.has(decision?.decision)||decision?.reviewOnly!==true||
+         decision.sourceRunId!==input.reviewRunId||decision.externalEffectVerified!==false||
+         decision.automaticGPTSendAuthorized!==false||
+         typeof decision.nextPrompt!=='string'||decision.nextPrompt.trim().length<20||
+         decision.nextPrompt.length>2200)throw Error('orchestrator_followup_decision_unavailable');
+      const source=this.reviewableGPTResult(input.projectId,input.orchestratorId,input.reviewRunId);
+      if(!source||source.taskId!==analyzed.task_id)throw Error('orchestrator_followup_source_stale');
+      this.assertProviderTaskAvailable(source.taskId);
+      if(this.hasUnresolvedWorkReceipt(input.projectId,source.taskId,{includeRunning:true}))
+        throw Error('orchestrator_reconciliation_required');
+      // A different requestId must never prepare or rotate this source Run
+      // twice. The durable event and draft update share the same transaction.
+      if(this.db.prepare(`SELECT 1 FROM events WHERE task_id=? AND kind='orchestrator.followup.prepared'
+        AND json_extract(payload,'$.source_run_id')=? LIMIT 1`)
+        .get(source.taskId,input.reviewRunId))throw Error('orchestrator_followup_already_prepared');
+      const draft=this.store.getTaskDraft(source.taskId);
+      if(draft.draft!=='')throw Error('orchestrator_followup_draft_not_empty');
+      if(!Number.isSafeInteger(draft.draft_revision+1))
+        throw Error('orchestrator_draft_revision_exhausted');
+      const rotate=decision.decision==='new_conversation';
+      if(rotate) {
+        if(this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
+           this.provider?.busy?.())throw Error('orchestrator_executor_busy');
+        this.store.rotateConversation(source.taskId,'orchestrator_review_approved');
+      }
+      const prepared=this.store.setDraft(source.taskId,decision.nextPrompt,draft.draft_revision+1);
+      if(prepared.draft!==decision.nextPrompt||prepared.draft_revision!==draft.draft_revision+1)
+        throw Error('orchestrator_followup_draft_conflict');
+      this.store.event(source.taskId,'orchestrator.followup.prepared',{
+        source_run_id:input.reviewRunId,decision:decision.decision,
+        draft_revision:prepared.draft_revision,conversation_rotated:rotate
+      });
+      return {taskId:source.taskId,sourceRunId:input.reviewRunId,decision:decision.decision,
+        draftRevision:prepared.draft_revision,conversationRotated:rotate,
+        providerMessagesSent:0,requiresUserSend:true};
+    }
+    if(operation==='orchestrator_pause') {
+      const owner=this.orchestrator(input.projectId,input.orchestratorId);
+      this.db.prepare('UPDATE lab_orchestrators SET status=? WHERE id=?')
+        .run(input.paused?'paused':'ready',input.orchestratorId);
+      if(input.paused) {
+        // A Groq request may already have left the process. Do not cancel or
+        // replay it; atomically preserve an uncertain receipt at the pause
+        // boundary so a late reply cannot be promoted after rapid resume.
+        // Scope to this coordinator Task, not unrelated project work/GPT sends.
+        this.db.prepare(`UPDATE lab_command_receipts
+          SET status='uncertain',
+              result=json_set(CASE WHEN json_valid(result) THEN result
+                ELSE json_object('taskId',?) END,'$.reason','coordinator_paused_inflight'),
+              updated_at=?
+          WHERE project_id=? AND status='running'
+            AND operation IN ('orchestrator_chat','orchestrator_analyze','orchestrator_prepare')
+            AND id IN (SELECT id FROM lab_command_receipt_scope
+              WHERE project_id=? AND task_id=?)`)
+          .run(owner.chat_task_id,this.store.now(),input.projectId,input.projectId,owner.chat_task_id);
+        this.continuation.quarantineInFlight(
+          input.projectId,input.orchestratorId,'orchestrator_paused');
+      }
+      return {orchestratorId:input.orchestratorId,status:input.paused?'paused':'ready'};
+    }
+    if(operation==='work_dependency_set') {
+      this.task(input.projectId,input.taskId,'work');
+      // Prerequisites are pre-execution policy, not retroactive evidence.
+      // For continuing an already-executed work, create a new work milestone.
+      if(this.db.prepare('SELECT 1 FROM runs WHERE task_id=? LIMIT 1').get(input.taskId)||
+        this.hasUnresolvedWorkReceipt(input.projectId,input.taskId,{includeRunning:true}))
+        throw Error('orchestrator_dependencies_locked_after_execution');
+      for(const dep of input.dependsOn)this.task(input.projectId,dep,'work');
+      const existing=this.db.prepare('SELECT task_id,prerequisite_id FROM lab_work_dependencies WHERE project_id=?').all(input.projectId);
+      const graph=new Map();
+      for(const edge of existing) {
+        if(!graph.has(edge.task_id))graph.set(edge.task_id,[]);
+        if(edge.task_id!==input.taskId)graph.get(edge.task_id).push(edge.prerequisite_id);
+      }
+      graph.set(input.taskId,[...input.dependsOn]);
+      const done=new Set(),active=new Set();
+      const visit=id=>{
+        if(active.has(id))throw Error('orchestrator_dependency_cycle');
+        if(done.has(id))return;
+        active.add(id);
+        for(const dep of graph.get(id)||[])visit(dep);
+        active.delete(id);done.add(id);
+      };
+      for(const id of graph.keys())visit(id);
+      this.db.prepare('DELETE FROM lab_work_dependencies WHERE project_id=? AND task_id=?').run(input.projectId,input.taskId);
+      const insert=this.db.prepare('INSERT INTO lab_work_dependencies(project_id,task_id,prerequisite_id) VALUES(?,?,?)');
+      for(const dep of input.dependsOn)insert.run(input.projectId,input.taskId,dep);
+      return {taskId:input.taskId,dependsOn:[...input.dependsOn]};
+    }
+    if(operation==='work_batch_create') {
+      // One existing BEGIN IMMEDIATE receipt transaction owns all creations.
+      // Invalid titles, duplicate fronts or capacity overflow produce zero tasks.
+      this.orchestrator(input.projectId,input.orchestratorId);
+      const titles=input.titles.map(title=>title.trim());
+      const titleKey=title=>title.normalize('NFKC').replace(/\s+/gu,' ').trim().toLocaleLowerCase('pt-BR');
+      if(titles.length<2||titles.length>16||
+        titles.some(title=>!title||title.length>140||/[\r\n\0]/u.test(title))||
+        new Set(titles.map(titleKey)).size!==titles.length)
+        throw Error('orchestrator_batch_titles_invalid');
+      const current=this.db.prepare(`SELECT COUNT(*) n FROM lab_task_bindings
+        WHERE project_id=? AND kind='work'`).get(input.projectId).n;
+      if(current+titles.length>256)throw Error('orchestrator_work_plan_too_large');
+      // A fresh requestId must not create a second copy of an existing work.
+      // Validate inside the same receipt transaction, including across restarts.
+      const existing=this.db.prepare(`SELECT t.title FROM tasks t
+        JOIN lab_task_bindings b ON b.task_id=t.id
+        WHERE b.project_id=? AND b.orchestrator_id=? AND b.kind='work'
+          AND t.status!='archived'`).all(input.projectId,input.orchestratorId);
+      const existingTitles=new Set(existing.map(row=>titleKey(row.title)));
+      if(titles.some(title=>existingTitles.has(titleKey(title))))
+        throw Error('orchestrator_batch_title_already_exists');
+      const insert=this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)');
+      const taskIds=[];
+      for(const title of titles) {
+        const task=this.store.createTask(title);
+        insert.run(task.id,input.projectId,input.orchestratorId,'work');
+        taskIds.push(task.id);
+      }
+      return {taskIds,created:taskIds.length,providerMessagesSent:0};
+    }
+    if(operation==='work_create') {
+      this.orchestrator(input.projectId,input.orchestratorId);
+      const task=this.store.createTask(input.title);
+      this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)')
+        .run(task.id,input.projectId,input.orchestratorId,'work');
+      return {taskId:task.id};
+    }
+    if(operation==='conversation_rotate') {
+      this.task(input.projectId,input.taskId,'work');
+      assertTaskHasNoUncertainTransport(this.store,input.taskId);
+      if(this.hasUnresolvedWorkReceipt(input.projectId,input.taskId,{includeRunning:true}))
+        throw Error('orchestrator_reconciliation_required');
+      if(this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||this.provider?.busy?.())
+        throw Error('orchestrator_executor_busy');
+      this.store.rotateConversation(input.taskId,'orchestrator_command');
+      return {taskId:input.taskId,rotationPrepared:true,providerMessagesSent:0};
+    }
+    throw Error('orchestrator_unknown_operation');
+  }
+
+  inspectProposal(context,input) {
+    const owner=this.orchestrator(input.projectId,input.orchestratorId);
+    const action=this.db.prepare(`SELECT payload,status FROM action_ledger WHERE id=? AND task_id=?
+      AND action_type='orchestrator.work-proposal'`).get(input.actionId,owner.chat_task_id);
+    if(!action)throw Error('orchestrator_proposal_unavailable');
+    const payload=JSON.parse(action.payload);
+    if(payload.actorId!==context.actorId||payload.clientId!==context.clientId||
+      payload.projectId!==input.projectId||payload.orchestratorId!==input.orchestratorId)
+      throw Error('orchestrator_access_denied');
+    if(action.status!=='pending')throw Error('orchestrator_proposal_already_reviewed');
+    if(input.approved&&owner.status==='paused')throw Error('orchestrator_paused');
+    const approval=this.db.prepare(`SELECT id FROM approval_ledger WHERE action_id=? AND task_id=? AND status='pending'`)
+      .get(input.actionId,owner.chat_task_id);
+    if(!approval)throw Error('orchestrator_proposal_approval_missing');
+    const proposal=validateWorkProposal(payload.proposal);
+    return {owner,approval,proposal};
+  }
+
+  async confirmAndReviewProposal(context,input) {
+    const existing=this.db.prepare(`SELECT id FROM lab_command_receipts WHERE workspace_session_id=?
+      AND actor_id=? AND client_id=? AND request_id=?`).get(context.workspaceSessionId,
+      context.actorId,context.clientId,input.requestId);
+    if(existing)return this.transaction(()=>this.reserve(context,'proposal_review',input).existing);
+    const {proposal}=this.inspectProposal(context,input);
+    if(this.pendingProposalReviews.has(input.actionId))throw Error('orchestrator_proposal_review_busy');
+    this.pendingProposalReviews.add(input.actionId);
+    try {
+      // No SQLite transaction or main-thread blocking dialog during human review.
+      if(await this.confirmProposal?.({projectId:input.projectId,orchestratorId:input.orchestratorId,proposal})!==true)
+        throw Error('orchestrator_proposal_not_approved');
+      this.requireAccess(context,'proposal_review',input.projectId);
+      return this.transaction(()=>{
+        const reserved=this.reserve(context,'proposal_review',input);
+        if(reserved.existing)return reserved.existing;
+        return this.finish(reserved.commandId,this.reviewProposal(context,input,true));
+      });
+    } finally {this.pendingProposalReviews.delete(input.actionId);}
+  }
+
+  reviewProposal(context,input,nativeConfirmed=false) {
+    const {owner,approval,proposal}=this.inspectProposal(context,input);
+    let taskId=null;
+    if(input.approved) {
+      // A caller/model-supplied boolean is not approval. Only the trusted App
+      // process can supply the confirmation port; MCP uses this same gate.
+      if(nativeConfirmed!==true)
+        throw Error('orchestrator_proposal_not_approved');
+      taskId=this.mutate('work_create',{projectId:input.projectId,orchestratorId:input.orchestratorId,title:proposal.title}).taskId;
+      this.store.setDraft(taskId,proposal.content,1);
+    }
+    this.store.resolveApproval(owner.chat_task_id,approval.id,input.approved);
+    const result={taskId,approved:input.approved,providerMessagesSent:0};
+    this.store.finishAction(owner.chat_task_id,input.actionId,input.approved?'succeeded':'cancelled',result);
+    return result;
+  }
+
+  preparedTask(projectId,orchestratorId,taskId) {
+    return this.db.prepare(`SELECT t.id,t.title,t.draft,t.draft_revision,
+      EXISTS(SELECT 1 FROM messages WHERE task_id=t.id) has_messages,
+      EXISTS(SELECT 1 FROM runs WHERE task_id=t.id) has_runs,
+      EXISTS(SELECT 1 FROM action_ledger WHERE task_id=t.id AND action_type='orchestrator.proposal-send') has_send
+      FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id WHERE t.id=? AND b.project_id=?
+      AND b.orchestrator_id=? AND b.kind='work' AND t.workspace_session_id=? AND t.status!='archived'`)
+      .get(taskId,projectId,orchestratorId,this.store.getWorkspaceSession().id);
+  }
+
+  inspectPreparedSend(context,input) {
+    const owner=this.orchestrator(input.projectId,input.orchestratorId);
+    if(owner.status==='paused')throw Error('orchestrator_paused');
+    const action=this.db.prepare(`SELECT payload,result FROM action_ledger WHERE id=? AND task_id=?
+      AND action_type='orchestrator.work-proposal' AND status='succeeded'`).get(input.actionId,owner.chat_task_id);
+    if(!action)throw Error('orchestrator_proposal_unavailable');
+    const payload=JSON.parse(action.payload),result=JSON.parse(action.result||'null');
+    if(payload.actorId!==context.actorId||payload.clientId!==context.clientId||
+      payload.projectId!==input.projectId||payload.orchestratorId!==input.orchestratorId)
+      throw Error('orchestrator_access_denied');
+    if(!result?.approved||!this.db.prepare(`SELECT 1 FROM approval_ledger WHERE action_id=? AND task_id=? AND status='approved'`)
+      .get(input.actionId,owner.chat_task_id))throw Error('orchestrator_proposal_approval_missing');
+    const task=this.preparedTask(input.projectId,input.orchestratorId,result.taskId);
+    if(!task||task.has_messages||task.has_runs||task.has_send)throw Error('orchestrator_first_send_unavailable');
+    if(task.draft_revision!==input.draftRevision||!Number.isSafeInteger(task.draft_revision+1)||!task.draft.trim()||task.draft.length>6000)
+      throw Error('orchestrator_draft_changed');
+    // Existing executor consumes the NEXT revision when clearing the draft.
+    return {taskId:task.id,title:task.title,content:task.draft,reviewedDraftRevision:task.draft_revision,draftRevision:task.draft_revision+1};
+  }
+
+  async confirmAndSendProposal(context,input) {
+    const existing=this.db.prepare(`SELECT id FROM lab_command_receipts WHERE workspace_session_id=?
+      AND actor_id=? AND client_id=? AND request_id=?`).get(context.workspaceSessionId,
+      context.actorId,context.clientId,input.requestId);
+    if(existing)return this.transaction(()=>this.reserve(context,'proposal_send',input).existing);
+    this.requireAccess(context,'work_send',input.projectId);
+    const draft=this.inspectPreparedSend(context,input);
+    const repositoryUrl=this.projectRepositoryUrl(input.projectId);
+    const providerContent=appendRemoteRepositoryInstructions(draft.content,repositoryUrl);
+    const reviewedDraft={...draft,repositoryUrl,providerContent};
+    if(typeof this.provider?.send!=='function')throw Error('orchestrator_provider_unavailable');
+    if(this.executorAdmission().availableSlots===0)
+      throw Error('orchestrator_executor_busy');
+    if(this.pendingProposalReviews.has(input.actionId))throw Error('orchestrator_proposal_review_busy');
+    this.pendingProposalReviews.add(input.actionId);
+    try {
+      if(this.provider.ready&&await this.provider.ready()!==true)throw Error('orchestrator_provider_unavailable');
+      if(await this.confirmProposalSend?.({...draft,content:providerContent,sourceContent:draft.content,
+        repositoryUrl,projectId:input.projectId,orchestratorId:input.orchestratorId})!==true)
+        throw Error('orchestrator_proposal_not_approved');
+      this.requireAccess(context,'proposal_send',input.projectId);
+      this.requireAccess(context,'work_send',input.projectId);
+      const current=this.inspectPreparedSend(context,input);
+      if(current.content!==draft.content||this.projectRepositoryUrl(input.projectId)!==repositoryUrl)
+        throw Error('orchestrator_draft_changed');
+      return await this.dispatch(context,'proposal_send',input,{...current,...reviewedDraft});
+    }finally{this.pendingProposalReviews.delete(input.actionId);}
+  }
+
+  assertDependenciesSatisfied(projectId,taskId) {
+    const hasDependencies=this.db.prepare(
+      'SELECT 1 FROM lab_work_dependencies WHERE project_id=? AND task_id=? LIMIT 1'
+    ).get(projectId,taskId);
+    if(!hasDependencies)return;
+    const plan=this.projectPlan(projectId,4);
+    const states=new Map(plan.workers.map(worker=>[worker.taskId,worker.state]));
+    const target=plan.workers.find(worker=>worker.taskId===taskId);
+    if(!target||target.dependsOn.some(id=>states.get(id)!=='succeeded'))
+      throw Error('orchestrator_work_prerequisite_not_confirmed');
+  }
+
+  coordinatorTurnBusy(taskId) {
+    return this.activeCoordinatorTurns.has(taskId)||Boolean(this.db.prepare(`
+      SELECT 1 FROM lab_command_receipt_scope
+      WHERE status='running' AND operation IN
+        ('forjador_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare')
+      AND task_id=? LIMIT 1`).get(taskId));
+  }
+
+  // A running GPT Web action must only defer opt-in Groq coordination for
+  // its own project. Neither a global provider busy flag nor work in another
+  // project has authority to block this read-only coordinator channel.
+  projectWorkInProgress(projectId) {
+    return Boolean(this.db.prepare(`SELECT 1 FROM lab_command_receipts
+      WHERE project_id=? AND status='running'
+        AND operation IN ('work_send','proposal_send','forjador_send')
+      UNION ALL
+      SELECT 1 FROM runs r JOIN lab_task_bindings b ON b.task_id=r.task_id
+      WHERE b.project_id=? AND b.kind='work' AND r.status='running'
+      LIMIT 1`).get(projectId,projectId));
+  }
+
+  // Shared bounded-memory selector for opt-in reviews and proposals. An
+  // unavailable, occupied or project-busy coordinator must not hold the
+  // whole queue. Receipt, consent and provider gates remain in the caller.
+  // The SQLite iterator does not materialize the full backlog.
+  selectContinuationCandidate(candidates) {
+    let blocked='idle';
+    for(const row of candidates) {
+      if(this.coordinator?.available?.(row.project_id,row.orchestrator_id)!==true) {
+        if(blocked==='idle')blocked='blocked_coordinator';
+        continue;
+      }
+      if(this.coordinatorTurnBusy(this.orchestrator(row.project_id,row.orchestrator_id).chat_task_id)) {
+        if(blocked==='idle')blocked='coordinator_busy';
+        continue;
+      }
+      if(this.projectWorkInProgress(row.project_id)) {
+        if(blocked==='idle')blocked='executor_busy';
+        continue;
+      }
+      return {row};
+    }
+    return {state:blocked};
+  }
+
+  async withCoordinatorTurn(taskId,action) {
+    if(typeof taskId!=='string'||!taskId||typeof action!=='function')
+      throw Error('orchestrator_coordinator_ports_required');
+    // Fail closed BEFORE the model request. This is not a queue or a retry.
+    if(this.coordinatorTurnBusy(taskId)){
+      const error=Error('orchestrator_coordinator_busy');
+      error.orchestratorRequestOutcome='rejected';
+      throw error;
+    }
+    this.activeCoordinatorTurns.add(taskId);
+    try{return await action();}
+    finally{this.activeCoordinatorTurns.delete(taskId);}
+  }
+
+  async dispatch(context,operation,input,preparedSend=null) {
+    if(operation==='work_send'||operation==='proposal_send')
+      return this.dispatchCore(context,operation,input,preparedSend);
+    // Repeated requestIds return their existing receipt even while busy.
+    const existing=this.db.prepare(`SELECT id FROM lab_command_receipts
+      WHERE workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
+      .get(context.workspaceSessionId,context.actorId,context.clientId,input.requestId);
+    if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
+    const chatTaskId=this.orchestrator(input.projectId,input.orchestratorId).chat_task_id;
+    return this.withCoordinatorTurn(chatTaskId,()=>this.dispatchCore(context,operation,input,preparedSend));
+  }
+
+  async dispatchCore(context,operation,input,preparedSend=null) {
+    const existing=this.db.prepare(`SELECT id,input_hash FROM lab_command_receipts WHERE workspace_session_id=?
+      AND actor_id=? AND client_id=? AND request_id=?`).get(context.workspaceSessionId,
+      context.actorId,context.clientId,input.requestId);
+    // Return an accepted command even if the provider is now offline; never replay.
+    if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
+    const isWorkSend=operation==='work_send'||operation==='proposal_send';
+    const isForjadorSend=operation==='forjador_send';
+    // Ordinary Forjador turns now use the same GPT transport as work. Groq
+    // remains an optional analysis/proposal port, not a chat dependency.
+    const usesProvider=isWorkSend||isForjadorSend;
+    const sendInput=preparedSend||input;
+    const orch=isWorkSend?null:this.orchestrator(input.projectId,input.orchestratorId);
+    const task=isWorkSend?this.task(input.projectId,sendInput.taskId,'work'):
+      this.task(input.projectId,orch.chat_task_id,'orchestrator');
+    const owner=orch||this.orchestrator(input.projectId,task.orchestrator_id);
+    if(isWorkSend)this.assertDependenciesSatisfied(input.projectId,task.id);
+    if(isForjadorSend){
+      this.assertProviderTaskAvailable(task.id,{allowCoordinator:true});
+      // The UI has already persisted revision N. Validate it before reserving
+      // a command; the physical executor must consume revision N+1.
+      if(sendInput.draftRevision!=null){
+        const draft=this.store.getTaskDraft(task.id);
+        if(draft.draft_revision!==sendInput.draftRevision||
+           draft.draft.trim()!==String(sendInput.content||'').trim())
+          throw Error('task_draft_revision_conflict');
+        if(!Number.isSafeInteger(sendInput.draftRevision+1))
+          throw Error('invalid_task_draft_revision');
+      }
+    }
+    const repositoryUrl=this.projectRepositoryUrl(input.projectId);
+    if(owner.status==='paused')throw Error('orchestrator_paused');
+    const port=usesProvider?this.provider:this.coordinator;
+    if(typeof port?.send!=='function'||(port.available&&port.available(input.projectId,owner.id)!==true))
+      throw Error('orchestrator_provider_unavailable');
+    const prepareWork=operation==='orchestrator_prepare';
+    const reviewSource=operation==='orchestrator_analyze'&&input.reviewRunId
+      ?this.reviewableGPTResult(input.projectId,input.orchestratorId,input.reviewRunId):null;
+    if(input.reviewRunId&&!reviewSource)throw Error('orchestrator_review_source_unconfirmed');
+    const baseAnalysis=operation==='orchestrator_analyze'||prepareWork
+      ?this.analysisContext(input.projectId,input.orchestratorId):null;
+    const technicalScope=reviewSource?this.autonomous.reviewScope(context,{
+      projectId:input.projectId,orchestratorId:input.orchestratorId,
+      runId:reviewSource.runId,taskId:reviewSource.taskId
+    }):null;
+    const analysisContext=reviewSource?{
+      phase:'gpt_response_review',project:baseAnalysis.project,
+      orchestrator:baseAnalysis.orchestrator,
+      scope:{includedWorkCount:1,totalWorkCount:baseAnalysis.scope.totalWorkCount},
+      ...(technicalScope?{technicalMission:technicalScope}:{}),
+      reviewEvidence:{runId:reviewSource.runId,runStatus:'succeeded',
+        providerResponseObserved:true,externalEffectsVerified:false,
+        responseTruncated:reviewSource.responseTruncated,
+        answerStart:reviewSource.head,answerEnd:reviewSource.tail},
+      works:[{title:reviewSource.title,status:'provider_response_observed',
+        runs:[{status:'succeeded'}],messages:[
+          {role:'user',content:reviewSource.userText},
+          {role:'assistant',content:reviewSource.head},
+          ...(reviewSource.tail?[{role:'assistant',content:'[Trecho final da mesma resposta] '+reviewSource.tail}]:[])
+        ]}]
+    }:baseAnalysis;
+    if(operation==='orchestrator_analyze'&&analysisContext.works.length===0)throw Error('orchestrator_works_unavailable');
+    const content=operation==='orchestrator_analyze'
+      ?reviewSource
+        ?'INTERPRETAÇÃO DE UMA RESPOSTA GPT REAL, Run '+reviewSource.runId+
+          '. Leia exclusivamente a resposta GPT observada em reviewEvidence e works, inclusive o trecho final. '+
+          'Não afirme que código foi alterado, testado ou implantado sem evidência externa; um Run succeeded comprova só a resposta. '+
+          'Como especialista em validação independente, confira o critério de aceite contra a resposta observada. '+
+          'Não transforme uma alegação GPT em prova de arquivo, execução, teste ou publicação. '+
+          'Decida o próximo passo específico para a missão e as pendências. '+
+          (technicalScope
+            ?'REVISÃO DE ETAPA TÉCNICA: use technicalMission no contexto como limite. '+
+              'Observe o objetivo original e o especialista da etapa; previousAcceptance '+
+              'é somente o critério proposto na revisão anterior, NÃO prova de implementação. '+
+              'verifiedArtifact, quando presente, comprova APENAS o arquivo HTML local cujo SHA-256 foi relido '+
+              'pelo App. browserRenderObserved indica somente captura de imagem em navegador isolado, '+
+               'browserControls registra apenas checagens locais de details, alternância ARIA e formulário required '+
+               'num navegador descartável; um passed não certifica o site completo. '+
+               'Não prova backend, serviços externos, GitHub, publicação ou aceite geral. '+
+              'Não invente uma missão nova, autorização, alteração ou dependência fora desse objetivo. '
+            :'')+
+          'Responda SOMENTE JSON conforme o formato do provedor, incluindo o Run, a decisao, resumo, '+
+          'justificativa, trecho literal observado, aceite e proxima instrucao conforme a decisao. '+
+          'acceptance deve conter {criterion,status,observedExcerpt}: um criterio de aceite '+
+          'especifico do objetivo, status answer_indicates_progress, requires_external_verification '+
+          'ou not_met, e um trecho literal de 16 a 180 caracteres da resposta observada. '+
+          'Nao declare criterio externo como comprovado so pelo texto GPT. '+
+          'decision deve ser continue_same_conversation, new_conversation, new_work, request_correction, '+
+          'verify_external_effect, candidate_complete ou blocked. observedExcerpt deve copiar literalmente '+
+          'um trecho de 16 a 180 caracteres da resposta GPT fornecida. nextPrompt é uma instrução concreta '+
+          'de 20 a 2200 caracteres apenas nas decisões de continuar, nova conversa, nova frente ou corrigir; '+
+          'nas outras, use null. Não invente grants, acesso a arquivos, commit, execução ou verificação.'
+        :'Analise explicitamente as conversas recentes de trabalho deste projeto e recomende próximos passos, sem executar nenhum deles.'
+      :sendInput.content;
+    const providerContent=usesProvider
+      ?preparedSend?.providerContent||appendRemoteRepositoryInstructions(content,repositoryUrl)
+      :content;
+    const workspaceStatus=usesProvider?null:this.workspace.status(context,input.projectId);
+    const workspaceObservation=workspaceStatus?{
+      state:workspaceStatus.state,
+      capabilityAvailable:workspaceStatus.available===true,
+      snapshotObserved:false,
+      gitMetadataAvailable:false,
+      fileContentAvailable:false,
+      filesRead:workspaceStatus.filesRead,
+      filesWritten:workspaceStatus.filesWritten
+    }:null;
+    // GPT transport admission and uncertain GPT receipts must never block
+    // the independent Groq conversation with the coordinator.
+    if(usesProvider) {
+      assertTaskHasNoUncertainTransport(this.store,task.id);
+      if(this.executorAdmission().availableSlots===0)
+        throw Error('orchestrator_executor_busy');
+    }
+    // Advisory API replies cannot submit GPT work. Preserve their uncertain
+    // receipts without replay, but allow a fresh explicit API request. Only
+    // uncertain provider submissions quarantine the work transport.
+    if(isWorkSend&&this.hasUnresolvedWorkReceipt(input.projectId,task.id))
+      throw Error('orchestrator_reconciliation_required');
+    const reserved=this.transaction(()=>{
+      this.requireAccess(context,operation,input.projectId);
+      if(isWorkSend)this.assertDependenciesSatisfied(input.projectId,task.id);
+      // Admission is atomic with reservation: a fresh requestId, another
+      // renderer or a restarted process cannot dispatch this Run twice.
+      // Reuse the canonical receipt (including older reviewDecision records).
+      if(reviewSource && ['running','uncertain','succeeded'].includes(
+        this.runReviewReceipt(context,input.projectId,reviewSource.runId).status))
+        throw Error('orchestrator_run_review_already_attempted');
+      const reservation=this.reserve(context,operation,input);
+      if(reservation.existing)return {existing:reservation.existing};
+      if(preparedSend) {
+        reservation.sendActionId=this.store.beginAction(task.id,null,'orchestrator.proposal-send',reservation.commandId,
+          {actorId:context.actorId,clientId:context.clientId,sourceActionId:input.actionId,
+            contentSha256:createHash('sha256').update(providerContent).digest('hex'),reviewedDraftRevision:sendInput.reviewedDraftRevision,
+            draftRevision:sendInput.draftRevision});
+        reservation.approvalId=this.store.requestApproval(task.id,reservation.sendActionId,'Envio único confirmado em diálogo nativo');
+        this.store.resolveApproval(task.id,reservation.approvalId,true);
+        this.db.prepare("UPDATE action_ledger SET status='dispatching' WHERE id=?").run(reservation.sendActionId);
+      }
+      this.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
+        .run(JSON.stringify({taskId:task.id,
+          ...(reviewSource?{reviewRunId:reviewSource.runId}:{}),
+          ...(reservation.sendActionId?{
+          sendActionId:reservation.sendActionId,approvalId:reservation.approvalId}: {})}),reservation.commandId);
+      if(!usesProvider) {
+        const coordinatorDraft=['orchestrator_chat','orchestrator_prepare'].includes(operation)&&input.draftRevision!==undefined;
+        if(coordinatorDraft) {
+          const draft=this.store.getTaskDraft(task.id);
+          if(draft.draft_revision!==input.draftRevision||draft.draft.trim()!==content.trim())
+            throw Error('task_draft_revision_conflict');
+          if(!Number.isSafeInteger(input.draftRevision+1))throw Error('invalid_task_draft_revision');
+        }
+        // Run-specific review is an internal decision stored in the
+        // canonical receipt and mission ledger, not a human chat turn.
+        if(!reviewSource)this.store.appendMessage(task.id,'user',content);
+        if(coordinatorDraft) {
+          const cleared=this.store.setDraft(task.id,'',input.draftRevision+1);
+          if(cleared.draft!==''||cleared.draft_revision!==input.draftRevision+1)
+            throw Error('task_draft_revision_conflict');
+        }
+      }
+      return reservation;
+    });
+    if(reserved.existing)return reserved.existing;
+    try {
+      // Fresh authorization immediately before a potentially external effect.
+      this.requireAccess(context,operation,input.projectId);
+      const reply=await port.send({taskId:task.id,content:usesProvider?providerContent:content,
+        // Work sends already supply the next revision. Forjador sends carry
+        // the saved current revision and must clear it at N+1 atomically.
+        draftRevision:isForjadorSend&&sendInput.draftRevision!=null
+          ?sendInput.draftRevision+1:sendInput.draftRevision??null,
+        taskKind:isForjadorSend?'orchestrator':isWorkSend?'work':null,
+        authorSource:isForjadorSend?'orchestrator':'human',
+        mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork,
+        completionProfile:reviewSource?'technical_review':'standard',workspaceObservation,repositoryUrl,
+        delegateWork:operation==='orchestrator_chat'&&input.delegateWork===true});
+      this.requireAccess(context,operation,input.projectId);
+      if(!usesProvider) {
+        // Pause can happen during the external Groq await. A durable receipt
+        // already moved to uncertain must remain terminal even after resume.
+        if(this.db.prepare('SELECT status FROM lab_command_receipts WHERE id=?')
+          .get(reserved.commandId)?.status!=='running')
+          return this.getReceipt(context,reserved.commandId);
+        if(!reply||typeof reply.content!=='string'||!reply.content.trim()||reply.content.length>12000)
+          throw Error('orchestrator_reply_invalid');
+        // Parse an evidence-anchored decision before it becomes a completed
+        // receipt. The model response is never itself permission to execute.
+        if(operation==='orchestrator_chat'&&input.delegateWork===true&&
+          !['technical','none'].includes(reply.delegation))
+          throw Error('orchestrator_jarvis_decision_unconfirmed');
+        let reviewDecision=null;
+        if(reviewSource){
+          try{
+            reviewDecision=interpretGPTWorkReview(reply.content,{
+              runId:reviewSource.runId,observedAnswer:reviewSource.observedAnswer});
+          }catch(error){
+            // A completed Groq reply rejected by our local review contract is
+            // a terminal invalid response, NOT an unknown transport outcome.
+            // Unexpected Store/session/authorization errors remain uncertain.
+            const codes={gpt_review_invalid_json:'groq_review_invalid_json',
+              gpt_review_invalid_evidence:'groq_review_invalid_evidence',
+              gpt_review_invalid_acceptance:'groq_review_invalid_evidence',
+              gpt_review_invalid_next_step:'groq_review_invalid_next_step'};
+            const code=codes[String(error?.message||'')];
+            if(!code)throw error;
+            const invalid=Error(code);
+            invalid.orchestratorFailureCode=code;
+            invalid.orchestratorRequestOutcome='response_invalid';
+            throw invalid;
+          }
+        }
+        return this.transaction(()=>{
+          let proposalActionId=null;
+          if(prepareWork) {
+            const proposal=validateWorkProposal(reply.proposal);
+            proposalActionId=this.store.beginAction(task.id,null,'orchestrator.work-proposal',reserved.commandId,
+              {projectId:input.projectId,orchestratorId:owner.id,actorId:context.actorId,clientId:context.clientId,proposal});
+            this.store.requestApproval(task.id,proposalActionId,'Revisar nova frente e rascunho; nenhum envio ao GPT');
+          }
+          let delegation=null;
+          if(operation==='orchestrator_chat'&&input.delegateWork===true){
+            if(reply.delegation==='none')delegation={status:'not_needed'};
+            else {
+              // One explicit UI command authorizes at most the existing two-send
+              // technical mission. Groq only classifies; it cannot create
+              // grants or dispatch through an unrecognized model reply.
+              this.db.exec('SAVEPOINT jarvis_delegation');
+              try {
+                const editing=classifyExistingSiteChange(input.content);
+                const site=editing?latestSiteWork(this.store,input.projectId,input.orchestratorId):null;
+                if(editing&&!site)throw Error('orchestrator_site_to_edit_not_available');
+                const accepted=this.autonomous.start(context,{
+                  projectId:input.projectId,orchestratorId:input.orchestratorId,
+                  mission:input.content,mode:'technical',directUserPrompt:true,
+                  ...(site?{resumeSiteTaskId:site.taskId}:{}),
+                  requestId:'jarvis_'+reserved.commandId
+                });
+                this.db.exec('RELEASE SAVEPOINT jarvis_delegation');
+                delegation={status:'accepted',missionId:accepted.missionId};
+              } catch {
+                this.db.exec('ROLLBACK TO SAVEPOINT jarvis_delegation');
+                this.db.exec('RELEASE SAVEPOINT jarvis_delegation');
+                delegation={status:'blocked'};
+              }
+            }
+          }
+          // The coordinator's internal routing wording is not a user reply.
+          // Report only what the App actually accepted. A model cannot claim
+          // a send, an artifact or a completed run by composing prose.
+          const userReply=delegation?.status==='accepted'
+            ?'Vou cuidar disso.'
+            :delegation?.status==='blocked'
+              ?'Não consegui iniciar essa tarefa. Confira a conexão e o arquivo do projeto para continuar.'
+              :reply.content;
+          if(!reviewSource)this.store.appendMessage(task.id,'assistant',userReply);
+          return this.finish(reserved.commandId,{taskId:task.id,responseObserved:true,
+            ...(delegation?{delegation}:{}),
+            ...(reviewSource?{reviewRunId:reviewSource.runId}:{}),
+            ...(proposalActionId?{proposalActionId}:{}),
+            ...(reviewDecision?{reviewDecision}:{}),
+            proposalsExecuted:0,provider:reply.provider||'groq',...(analysisContext?{analysis:{workCount:analysisContext.works.length,
+              messageCount:analysisContext.works.reduce((n,work)=>n+work.messages.length,0)}}:{})});
+        });
+      }
+      // Existing runTask can return an error result instead of throwing.
+      requireConfirmedChatReceipt(reply);
+      const canonicalRun=this.db.prepare('SELECT status FROM runs WHERE id=? AND task_id=?').get(reply.runId,task.id);
+      if(canonicalRun?.status!=='succeeded')throw Error('orchestrator_effect_unconfirmed');
+      return this.transaction(()=>{
+        const result={taskId:task.id,runId:reply.runId,responseObserved:true,effectVerified:false,
+          provider:'chatgpt_web',
+          ...(reserved.sendActionId?{sendActionId:reserved.sendActionId,approvalId:reserved.approvalId}:{})};
+        if(reserved.sendActionId){
+          this.db.prepare('UPDATE action_ledger SET run_id=? WHERE id=?').run(reply.runId,reserved.sendActionId);
+          this.store.finishAction(task.id,reserved.sendActionId,'succeeded',result);
+        }
+        return this.finish(reserved.commandId,result);
+      });
+    } catch(error) {
+      // The pause transaction may have sealed the accepted Groq receipt while
+      // the model was in flight. Preserve it instead of trying to finish twice.
+      if(!usesProvider&&this.db.prepare('SELECT status FROM lab_command_receipts WHERE id=?')
+        .get(reserved.commandId)?.status!=='running')
+        return this.getReceipt(context,reserved.commandId);
+      // Coordinator and work-chat transports are distinct and never silently
+      // substitute for each other after any rejection or uncertain outcome.
+      const failure=error;
+      // Only an explicit pre-submit disposition from the provider executor is
+      // retryable. Missing/invalid evidence remains uncertain and quarantined.
+      const notSubmitted=usesProvider&&failure?.providerDeliveryState==='not_submitted';
+      const failureCode=/^[a-z][a-z0-9_]{1,80}$/i.test(String(failure?.providerFailureCode||''))
+        ?String(failure.providerFailureCode):'provider_send_unconfirmed';
+      const coordinatorCode=!usesProvider&&/^(?:groq|chatgpt)_[a-z0-9_]{1,64}$/.test(String(failure?.orchestratorFailureCode||''))
+        ?String(failure.orchestratorFailureCode):null;
+      const coordinatorOutcome=!usesProvider&&['rejected','response_invalid'].includes(failure?.orchestratorRequestOutcome)
+        ?failure.orchestratorRequestOutcome:null;
+      const coordinatorRejected=Boolean(coordinatorCode&&coordinatorOutcome);
+      const coordinatorHttpStatus=coordinatorCode&&Number.isSafeInteger(failure?.orchestratorHttpStatus)
+        ?failure.orchestratorHttpStatus:null;
+      // Model termination diagnostics are not model output: persist only
+      // allowlisted enum values and bounded token counts in this receipt.
+      const hasFinishDetails=coordinatorRejected&&[
+        'groq_incomplete_response','groq_response_filtered','groq_unexpected_tool_call'
+      ].includes(coordinatorCode);
+      const finishReason=hasFinishDetails&&['length','content_filter','tool_calls',
+        'function_call','unknown'].includes(failure?.orchestratorFinishReason)
+        ?failure.orchestratorFinishReason:null;
+      const completionTokens=hasFinishDetails&&Number.isSafeInteger(failure?.orchestratorCompletionTokens)&&
+        failure.orchestratorCompletionTokens>=0&&failure.orchestratorCompletionTokens<=1000000
+        ?failure.orchestratorCompletionTokens:null;
+      const completionBudget=hasFinishDetails&&Number.isSafeInteger(failure?.orchestratorCompletionBudget)&&
+        failure.orchestratorCompletionBudget>=1&&failure.orchestratorCompletionBudget<=1000000
+        ?failure.orchestratorCompletionBudget:null;
+      const result={taskId:task.id,
+        ...(reviewSource?{reviewRunId:reviewSource.runId}:{}),
+        reason:notSubmitted?'provider_not_submitted':coordinatorRejected?'coordinator_request_failed':'execution_unconfirmed',
+        ...(notSubmitted?{providerStage:String(failure?.providerFailureStage||'unknown'),failureCode}:{}),
+        ...(coordinatorCode?{failureCode:coordinatorCode}:{}),...(coordinatorHttpStatus!==null?{httpStatus:coordinatorHttpStatus}:{}),
+        ...(finishReason?{finishReason}:{}),...(completionTokens!==null?{completionTokens}:{}),
+        ...(completionBudget!==null?{completionBudget}:{}),...(reserved.sendActionId?{
+        sendActionId:reserved.sendActionId,approvalId:reserved.approvalId}:{})};
+      this.transaction(()=>{
+        if(reserved.sendActionId)this.store.finishAction(task.id,reserved.sendActionId,notSubmitted?'failed':'indeterminate',result);
+        this.finish(reserved.commandId,result,notSubmitted||coordinatorRejected?'failed':'uncertain');
+      });
+      this.requireAccess(context,operation,input.projectId);
+      return this.getReceipt(context,reserved.commandId);
+    }
+  }
+}

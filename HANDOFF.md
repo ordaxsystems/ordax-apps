@@ -2,13 +2,13 @@
 
 ## Prioridade atual do Orchestrator — decisão 2026-11-01
 
-Contrato canônico: [Orchestrator dedicado a um único projeto, Administração Geral Groq e coordenação iniciada sem prompt](prototypes/ordax-orchestrator/docs/ORCHESTRATOR-CANONICAL-PRODUCT.md). É a direção obrigatória para qualquer próxima IA. A antiga abordagem Project-First com vários projetos simultâneos e conversa GPT principal, descrita no histórico abaixo, foi **substituída** como experiência de produto; código multi-projeto e dados existentes permanecem até migração testada. O estado funcional depende de manifesto, CI, transportes, grants e provas reais — não inferir autonomia 24 h.
+Contrato canônico: [Orchestrator dedicado a um único projeto, Administração Geral Groq e coordenação iniciada sem prompt](forge/docs/ORCHESTRATOR-CANONICAL-PRODUCT.md). É a direção obrigatória para qualquer próxima IA. A antiga abordagem Project-First com vários projetos simultâneos e conversa GPT principal, descrita no histórico abaixo, foi **substituída** como experiência de produto; código multi-projeto e dados existentes permanecem até migração testada. O estado funcional depende de manifesto, CI, transportes, grants e provas reais — não inferir autonomia 24 h.
 
 ## Atualização Orchestrator Project-First (decisão 2026-10-21) — histórico subordinado
 
 A arquitetura final é **missão vinculada a projeto e workspace autorizado**, acompanhando snapshots/diffs/Git/testes via owners canônicos e usando provedores quando necessário. Pela prioridade revisada pelo proprietário em 2026-10-22, a primeira etapa é projeto → URL GitHub remota → conversa persistente pela API existente → tarefa pelo executor ChatGPT existente. Groq recebe somente a URL, sem conteúdo do repositório; o GPT deve usar uma integração GitHub realmente disponível e parar se faltar acesso. Workspace local, watcher e serviço headless ficam para fases posteriores. Nada disso está concluído integralmente.
 
-**Para Codex e implementadores:** começar em [`prototypes/ordax-orchestrator/CODEX-HANDOFF.md`](prototypes/ordax-orchestrator/CODEX-HANDOFF.md); seguir [RFC](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-ARCHITECTURE.md) e [plano M0–M7](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md) como arquitetura de destino. Owner Apps para produto, Runtime para ações locais futuras, Platform para MCP/grants e conectores, OS para Intelligence/contratos; sem duplicação. PR #268 foi mesclada em main. Este bloco atualiza somente a prioridade do Orchestrator, sem alterar os handoffs históricos de Studio/Notes.
+**Para Codex e implementadores:** começar em [`forge/CODEX-HANDOFF.md`](forge/CODEX-HANDOFF.md); seguir [RFC](forge/docs/PROJECT-FIRST-ARCHITECTURE.md) e [plano M0–M7](forge/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md) como arquitetura de destino. Owner Apps para produto, Runtime para ações locais futuras, Platform para MCP/grants e conectores, OS para Intelligence/contratos; sem duplicação. PR #268 foi mesclada em main. Este bloco atualiza somente a prioridade do Orchestrator, sem alterar os handoffs históricos de Studio/Notes.
 
 ---
 

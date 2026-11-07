@@ -1,0 +1,218 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {Store} from '../src/store.mjs';
+import {OrchestratorService} from '../src/orchestrator-service.mjs';
+import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
+
+const RESOURCE='resource_fixture_987654321',DEVICE='device_fixture_1';
+const OBSERVED_AT=new Date().toISOString();
+function fixture(t,port=null) {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-workspace-scope-'));
+  const file=path.join(dir,'work.sqlite');
+  const store=new Store(file);
+  const context={actorId:'owner-fixture',clientId:'lab-fixture',workspaceSessionId:store.getWorkspaceSession().id};
+  let allowed=true,counter=0;
+  const authorize=({context:c})=>allowed&&c===context;
+  const service=new OrchestratorService({store,workspacePort:port,authorize});
+  t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true});});
+  const invoke=(op,data={},ctx=context)=>service.invoke(ctx,op,{
+    ...(!ORCHESTRATOR_TOOLS.find(t=>t.operation===op).readOnly?{requestId:'req_'+(++counter)}:{}),...data
+  });
+  return {file,store,service,context,invoke,setAllowed:v=>{allowed=v;}};
+}
+async function project(f,name='Projeto A') {
+  return (await f.invoke('project_create',{name})).result.projectId;
+}
+function trustedPort() {
+  let permitted=true,reads=0,checks=0;
+  return {
+    setPermitted(v){permitted=v;},
+    get reads(){return reads;},get checks(){return checks;},
+    async verifyBinding({context,deviceId,resourceId}) {
+      checks++;
+      return {authorized:permitted,projectId:context.projectId,deviceId,resourceId,
+        actorId:context.actorId,clientId:context.clientId,workspaceSessionId:context.workspaceSessionId};
+    },
+    async snapshot({deviceId,resourceId}) {
+      reads++;
+      return {authorized:true,deviceId,resourceId,state:'connected',
+        revision:'rev_25',observedAt:OBSERVED_AT,
+        fileCount:8,changedCount:1,git:{isRepository:true,branch:'test/fixture',head:'abcdef1234'},
+        path:'C:\\private\\DO_NOT_EXPOSE',files:[{content:'SECRET_NEVER_PRINT'}]};
+    }
+  };
+}
+test('no Runtime workspace port: report unavailable, never read filesystem or bind',async t=>{
+  const f=fixture(t),projectId=await project(f);
+  const status=await f.invoke('workspace_status',{projectId});
+  assert.equal(status.available,false);
+  assert.equal(status.state,'capability_unavailable');
+  assert.equal(status.filesRead,0);assert.equal(status.filesWritten,0);
+  await assert.rejects(f.invoke('workspace_bind',{projectId,deviceId:DEVICE,resourceId:RESOURCE}),
+    /workspace_capability_unavailable/);
+  assert.deepEqual((await f.invoke('workspace_status',{projectId})).bindings,[]);
+});
+test('a verified opaque Runtime resource attaches once; read-only snapshot excludes paths and file contents',async t=>{
+  const port=trustedPort(),f=fixture(t,port),projectId=await project(f);
+  const requestId='same_binding';
+  const input={projectId,deviceId:DEVICE,resourceId:RESOURCE,requestId};
+  const receipt=await f.invoke('workspace_bind',input);
+  assert.equal(receipt.status,'succeeded');
+  assert.equal(receipt.result.created,true);
+  assert.deepEqual(await f.invoke('workspace_bind',input),receipt);
+  assert.equal((await f.invoke('workspace_status',{projectId})).bindings.length,1);
+  const result=await f.invoke('workspace_snapshot',{projectId,bindingId:receipt.result.bindingId});
+  assert.deepEqual(result,{bindingId:receipt.result.bindingId,state:'connected',verified:true,
+    revision:'rev_25',observedAt:OBSERVED_AT,
+    fileCount:8,changedCount:1,git:{isRepository:true,branch:'test/fixture',head:'abcdef1234'}});
+  assert.ok(!JSON.stringify(result).includes('SECRET_NEVER_PRINT'));
+  assert.ok(!JSON.stringify(result).includes('private'));
+  assert.equal(port.reads,1);
+  assert.equal(port.checks,3,'binding, before snapshot and after snapshot use the same Runtime authority');
+});
+
+test('idempotent binding returns historical receipt without repeating Runtime verification or granting current access',async t=>{
+  const port=trustedPort(),f=fixture(t,port),projectId=await project(f);
+  const input={requestId:'one_durable_binding',projectId,deviceId:DEVICE,resourceId:RESOURCE};
+  const receipt=await f.invoke('workspace_bind',input);
+  assert.equal(receipt.status,'succeeded');
+  assert.equal(port.checks,1);
+  port.setPermitted(false);
+  assert.deepEqual(await f.invoke('workspace_bind',input),receipt);
+  assert.equal(port.checks,1,'exact duplicate command must not re-contact Runtime');
+  await assert.rejects(f.invoke('workspace_bind',{...input,resourceId:'resource_other_987654321'}),
+    /orchestrator_request_conflict/);
+  assert.equal(port.checks,1,'requestId conflict must not trigger any grant check');
+  await assert.rejects(f.invoke('workspace_bind',{...input,requestId:'fresh_binding'}),
+    /workspace_grant_unverified/);
+  assert.equal(port.checks,2,'a NEW binding must revalidate Runtime grant');
+  await assert.rejects(f.invoke('workspace_snapshot',{
+    projectId,bindingId:receipt.result.bindingId}),/workspace_grant_unverified/);
+  assert.equal(port.reads,0,'an old successful receipt never authorizes a new snapshot');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='workspace_bind'").get().n,1);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('project isolation, foreign identity, arbitrary paths and forged grant are rejected',async t=>{
+  const port=trustedPort(),f=fixture(t,port),a=await project(f,'A'),b=await project(f,'B');
+  const result=await f.invoke('workspace_bind',{projectId:a,deviceId:DEVICE,resourceId:RESOURCE});
+  const bindingId=result.result.bindingId;
+  await assert.rejects(f.invoke('workspace_snapshot',{projectId:b,bindingId}),/workspace_binding_unavailable/);
+  await assert.rejects(f.invoke('workspace_bind',{projectId:b,deviceId:DEVICE,resourceId:'C:\\Users\\Downloads'}),/orchestrator_invalid_input/);
+  await assert.rejects(f.invoke('workspace_bind',{projectId:b,deviceId:DEVICE,resourceId:'resource_fake'}),/orchestrator_invalid_input/);
+  assert.equal((await f.invoke('workspace_status',{projectId:b})).bindings.length,0);
+  await assert.rejects(f.invoke('workspace_snapshot',{projectId:a,bindingId}, {...f.context,actorId:'attacker'}),/orchestrator_access_denied/);
+  assert.equal(port.reads,0);
+});
+test('revoked grant never serves a stale binding snapshot; loss of Runtime reports capability unavailable',async t=>{
+  const port=trustedPort(),f=fixture(t,port),projectId=await project(f);
+  const {result}=await f.invoke('workspace_bind',{projectId,deviceId:DEVICE,resourceId:RESOURCE});
+  port.setPermitted(false);
+  await assert.rejects(f.invoke('workspace_snapshot',{projectId,bindingId:result.bindingId}),/workspace_grant_unverified/);
+  assert.equal(port.reads,0);
+  const noPort=new OrchestratorService({store:f.store,authorize:({context:c})=>c===f.context});
+  assert.equal((await noPort.invoke(f.context,'workspace_status',{projectId})).state,'capability_unavailable');
+  const offline=await noPort.invoke(f.context,'workspace_snapshot',{projectId,bindingId:result.bindingId});
+  assert.equal(offline.state,'capability_unavailable');assert.equal(offline.verified,false);
+});
+test('revocation during awaited grant verification prevents persistence and receipts',async t=>{
+  let release,started;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const entered=new Promise(resolve=>{started=resolve;});
+  const port=trustedPort();
+  const verify=port.verifyBinding;
+  port.verifyBinding=async input=>{started();await gate;return verify(input);};
+  const f=fixture(t,port),projectId=await project(f);
+  const promise=f.invoke('workspace_bind',{projectId,deviceId:DEVICE,resourceId:RESOURCE});
+  await entered;f.setAllowed(false);release();
+  await assert.rejects(promise,/orchestrator_access_denied/);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_project_workspaces').get().n,0);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='workspace_bind'").get().n,0);
+});
+
+test('Runtime grant revoked during an awaited snapshot never releases stale metadata',async t=>{
+  const port=trustedPort(),f=fixture(t,port),projectId=await project(f);
+  const {result}=await f.invoke('workspace_bind',{projectId,deviceId:DEVICE,resourceId:RESOURCE});
+  let release,started;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const entered=new Promise(resolve=>{started=resolve;});
+  const original=port.snapshot;
+  port.snapshot=async input=>{started();await gate;return original(input);};
+  const pending=f.invoke('workspace_snapshot',{projectId,bindingId:result.bindingId});
+  await entered;
+  port.setPermitted(false);
+  release();
+  await assert.rejects(pending,/workspace_grant_unverified/);
+  assert.equal(port.reads,1,'remote read was in flight; its metadata was not accepted');
+  assert.equal(port.checks,3,'grant was verified again after remote snapshot returned');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('local authorization revoked during initial grant verification prevents snapshot read',async t=>{
+  const port=trustedPort(),f=fixture(t,port),projectId=await project(f);
+  const {result}=await f.invoke('workspace_bind',{projectId,deviceId:DEVICE,resourceId:RESOURCE});
+  let release,started;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const entered=new Promise(resolve=>{started=resolve;});
+  const original=port.verifyBinding;
+  port.verifyBinding=async input=>{started();await gate;return original(input);};
+  const pending=f.invoke('workspace_snapshot',{projectId,bindingId:result.bindingId});
+  await entered;
+  f.setAllowed(false);
+  release();
+  await assert.rejects(pending,/orchestrator_access_denied/);
+  assert.equal(port.reads,0,'denied context may not start Runtime snapshot');
+});
+
+test('local authorization revoked while final grant verification waits prevents metadata disclosure',async t=>{
+  const port=trustedPort(),f=fixture(t,port),projectId=await project(f);
+  const {result}=await f.invoke('workspace_bind',{projectId,deviceId:DEVICE,resourceId:RESOURCE});
+  let release,started,attempts=0;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const entered=new Promise(resolve=>{started=resolve;});
+  const original=port.verifyBinding;
+  port.verifyBinding=async input=>{
+    attempts++;
+    if(attempts===2){started();await gate;}
+    return original(input);
+  };
+  const pending=f.invoke('workspace_snapshot',{projectId,bindingId:result.bindingId});
+  await entered;
+  f.setAllowed(false);
+  release();
+  await assert.rejects(pending,/orchestrator_access_denied/);
+  assert.equal(attempts,2,'both before and after snapshot must verify');
+  assert.equal(port.reads,1,'local revocation happened after the Runtime snapshot read');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('malformed Runtime snapshot is rejected, including unverified Git/provenance',async t=>{
+  const port=trustedPort(),f=fixture(t,port),projectId=await project(f);
+  const {result}=await f.invoke('workspace_bind',{projectId,deviceId:DEVICE,resourceId:RESOURCE});
+  port.snapshot=async()=>({authorized:true,deviceId:DEVICE,resourceId:RESOURCE,state:'connected',
+    revision:'../../secret',observedAt:'yesterday',fileCount:2,changedCount:1,
+    git:{isRepository:true,branch:'main',head:'nohash'}});
+  await assert.rejects(f.invoke('workspace_snapshot',{projectId,bindingId:result.bindingId}),/workspace_snapshot_invalid/);
+});
+
+test('stale or future-dated Runtime workspace observations never become verified',async t=>{
+  const port=trustedPort(),f=fixture(t,port),projectId=await project(f);
+  const {result}=await f.invoke('workspace_bind',{projectId,deviceId:DEVICE,resourceId:RESOURCE});
+  const original=port.snapshot;
+  for(const skew of [-60*60*1000,60*60*1000]){
+    port.snapshot=async input=>({...await original(input),
+      observedAt:new Date(Date.now()+skew).toISOString()});
+    await assert.rejects(
+      f.invoke('workspace_snapshot',{projectId,bindingId:result.bindingId}),
+      /workspace_snapshot_stale/);
+  }
+  // A fresh snapshot remains usable under the same three-step authority gate.
+  port.snapshot=original;
+  const fresh=await f.invoke('workspace_snapshot',{projectId,bindingId:result.bindingId});
+  assert.equal(fresh.verified,true);
+  assert.equal(fresh.observedAt,OBSERVED_AT);
+  assert.equal(fresh.fileCount,8);
+});

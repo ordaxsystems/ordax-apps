@@ -1,12 +1,12 @@
 # Prioridade atual do OrdaX Orchestrator — 2026-11-01
 
-**SSOT de direção:** [Orchestrator — contrato autônomo/instância única](prototypes/ordax-orchestrator/docs/ORCHESTRATOR-CANONICAL-PRODUCT.md). Uma instância = um projeto; Administrador Geral Groq é entrada principal; após conectar e **Iniciar** pode realizar diagnóstico sem prompt, definir missões e coordenar executores por repo **somente nos gates autorizados**. O usuário pode direcionar a qualquer momento. O plano antigo multi-projeto e "GPT Web como chat principal" abaixo é **histórico e não deve orientar novas implementações**. Envio GPT é um canal distinto e não implícito. Nada nesta decisão habilita sozinho GPT autônomo, Runtime/grants ou 24 h.
+**SSOT de direção:** [Orchestrator — contrato autônomo/instância única](forge/docs/ORCHESTRATOR-CANONICAL-PRODUCT.md). Uma instância = um projeto; Administrador Geral Groq é entrada principal; após conectar e **Iniciar** pode realizar diagnóstico sem prompt, definir missões e coordenar executores por repo **somente nos gates autorizados**. O usuário pode direcionar a qualquer momento. O plano antigo multi-projeto e "GPT Web como chat principal" abaixo é **histórico e não deve orientar novas implementações**. Envio GPT é um canal distinto e não implícito. Nada nesta decisão habilita sozinho GPT autônomo, Runtime/grants ou 24 h.
 
 ## Direção Project-First do OrdaX Orchestrator — decisão do proprietário (2026-10-21; histórico)
 
 ### Alvo de continuidade 24h (2026-10-23)
 
-O produto deve retomar etapas limitadas sem depender de um turno ou da janela do ChatGPT. GPT é o provedor principal quando houver uma rota autorizada; Groq pode assumir uma nova etapa pelo mesmo Model Router após falha confirmada e a partir do mesmo checkpoint. OrdaX MCP/Runtime continuam sendo a fronteira de ferramentas e efeitos; Platform mantém grants/receipts; Scheduler, Background Runtime e Intelligence existentes no OS compõem a continuidade. Esses blocos ainda não estão integrados para autonomia: o OS declara scheduler/background e providers externos desativados, Runtime não chama modelos e o Groq atual do Lab roda no Electron. **Não há autonomia 24h implementada.** A sequência, os owners e o gate estão no [plano Project-First existente](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md#composição-de-autonomia-contínua--alvo-posterior-sem-serviço-paralelo).
+O produto deve retomar etapas limitadas sem depender de um turno ou da janela do ChatGPT. GPT é o provedor principal quando houver uma rota autorizada; Groq pode assumir uma nova etapa pelo mesmo Model Router após falha confirmada e a partir do mesmo checkpoint. OrdaX MCP/Runtime continuam sendo a fronteira de ferramentas e efeitos; Platform mantém grants/receipts; Scheduler, Background Runtime e Intelligence existentes no OS compõem a continuidade. Esses blocos ainda não estão integrados para autonomia: o OS declara scheduler/background e providers externos desativados, Runtime não chama modelos e o Groq atual do Lab roda no Electron. **Não há autonomia 24h implementada.** A sequência, os owners e o gate estão no [plano Project-First existente](forge/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md#composição-de-autonomia-contínua--alvo-posterior-sem-serviço-paralelo).
 
 ### Prioridade revisada: GitHub remoto antes de workspace local (2026-10-22)
 
@@ -37,10 +37,10 @@ ou execução sem evidência.
 **Arquitetura final autorizada:** o OrdaX Orchestrator gerencia projetos reais, acompanha Git/alterações/testes e usa o GPT como ferramenta, sem duplicar Runtime. Para acesso local, consome capacidades tipadas do owner **ordax-runtime** e grants dos owners **ordax-platform/OS**. A ordem atual é remota primeiro, conforme a decisão de 2026-10-22 acima; binding local, watcher, executor de missão e autonomia permanecem fases posteriores, ainda não concluídas.
 
 **Primeiro gate atual:** criar/vincular URL GitHub remota, manter a conversa principal no executor GPT Web já existente e encaminhar o destino remoto sem inventar acesso ou efeito. Groq permanece opcional e não lê GitHub. Integração GitHub autenticada do App depende do contrato público do Platform, sem OAuth ou token store duplicado. PR Apps [#268](https://github.com/ordaxsystems/ordax-apps/pull/268) foi mesclada; preservar Flow/Grátis e envio VESTE incerto. Fontes:
-[RFC](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-ARCHITECTURE.md),
-[plano M0–M7](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md),
-[handoff Codex](prototypes/ordax-orchestrator/CODEX-HANDOFF.md),
-[aceite VESTE](prototypes/ordax-orchestrator/docs/VESTE-PROJECT-FIRST-E2E.md).
+[RFC](forge/docs/PROJECT-FIRST-ARCHITECTURE.md),
+[plano M0–M7](forge/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md),
+[handoff Codex](forge/CODEX-HANDOFF.md),
+[aceite VESTE](forge/docs/VESTE-PROJECT-FIRST-E2E.md).
 Os incrementos de chat/alpha.10 descritos abaixo são **histórico e fundação**, não conclusão dessa arquitetura.
 
 ## Prova real de continuidade ChatGPT Web — 2026-10-25
@@ -57,8 +57,8 @@ Limites: sessão observada como `session_present`, identidade/conta `not_verifie
 nenhuma troca real de conta, projeto VESTE, GitHub, workspace Runtime/Platform,
 site, pacote instalável ou execução 24 h foi comprovada. Esta evidência é um gate
 do transporte Web experimental em Electron; **não** fecha R0 remoto nem o aceite
-de VESTE. Detalhes e IDs estão no [handoff](prototypes/ordax-orchestrator/CODEX-HANDOFF.md)
-e no [roteiro E2E](prototypes/ordax-orchestrator/docs/VESTE-PROJECT-FIRST-E2E.md).
+de VESTE. Detalhes e IDs estão no [handoff](forge/CODEX-HANDOFF.md)
+e no [roteiro E2E](forge/docs/VESTE-PROJECT-FIRST-E2E.md).
 
 ## Snapshot local para handoff entre conversas — 2026-10-25
 
@@ -72,7 +72,7 @@ versão, hash e tamanho, e indica `deliveryState=not_attached`.
 
 `npm run validate` passou com **511/511 testes**, incluindo três novos testes de
 determinismo, escopo de fontes, isolamento entre Tasks e limite de tamanho. O
-E2E GPT Web 9+1 registrado em [VESTE E2E 3.4](prototypes/ordax-orchestrator/docs/VESTE-PROJECT-FIRST-E2E.md)
+E2E GPT Web 9+1 registrado em [VESTE E2E 3.4](forge/docs/VESTE-PROJECT-FIRST-E2E.md)
 continuou sem anexo: o contexto inline foi suficiente e não demonstrou benefício
 de arquivo.
 
@@ -96,7 +96,7 @@ somente o orçamento de observação: idle de três minutos renovado por conteú
 novo, teto absoluto de quinze minutos e os mesmos gates de término. Aceite:
 resposta com progresso ultrapassa três minutos; parada/limite absoluto continuam
 incertos; nenhum replay. Não representa site validado, release ou autonomia 24h.
-[Evidências e limites](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-VESTE-REAL-2026-10-21.md).
+[Evidências e limites](forge/docs/audits/ORCHESTRATOR-VESTE-REAL-2026-10-21.md).
 
 ## Continuidade solicitada — primeiro envio aprovado no Orchestrator
 
@@ -106,7 +106,7 @@ revalidados, ledgers e recibo duráveis antes do transporte. Primeiro envio
 somente, sem replay em falha/reinício. 366 testes locais aprovados. Contrato
 host Runtime v1 permanece com sete leituras; catálogo local tem 19 ferramentas.
 Sem alterar Flow/Grátis, instalar, chamar modelos reais ou ativar 24h.
-[Escopo, riscos, aceite e gate real](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-FIRST-SEND-2026-10-21.md).
+[Escopo, riscos, aceite e gate real](forge/docs/audits/ORCHESTRATOR-FIRST-SEND-2026-10-21.md).
 
 ## Continuidade solicitada — propostas de frentes no Orchestrator Lab
 
@@ -115,7 +115,7 @@ Owner Apps; alpha.6 usa o mesmo OrchestratorService/Store e action/approval
 ledgers para preparar uma frente via API e criar Task+rascunho somente após
 revisão nativa. Não cria outro executor/Memory/Identity, não altera Flow/Grátis
 0.4.12 nem habilita envio ao GPT, MCP externo, instalação ou autonomia 24h.
-[Aceite, limites e provas](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-WORK-PROPOSALS-2026-10-21.md).
+[Aceite, limites e provas](forge/docs/audits/ORCHESTRATOR-WORK-PROPOSALS-2026-10-21.md).
 
 # URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS
 
@@ -130,7 +130,7 @@ de autonomia real. Runtime #182 contém cliente/launcher e teste Windows ampliad
 workflow Apps fixa o commit desse candidato e exige renovação no Electron
 empacotado. Registro/provenance, OAuth/grants reais, MCP público e supervisor
 contínuo continuam pendentes. Mesmas PRs; sem instalação ou envio ao GPT.
-[Contrato, riscos e aceite](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-LEASE-RENEWAL-2026-10-21.md).
+[Contrato, riscos e aceite](forge/docs/audits/ORCHESTRATOR-LEASE-RENEWAL-2026-10-21.md).
 
 ## Continuidade comprovada — launcher gerenciado do Lab (2026-10-21)
 
@@ -144,7 +144,7 @@ Runtime `23601f3f9764ea8c4ed226155adac6c3bb84f6f8`: 301 testes Windows / uma
 exclusão preexistente, Linux/SDK mínimo aprovados. Fixtures CI não concedem
 cadastro ou autoridade Product. Vínculo do registro/provenance, OAuth/grants,
 MCP público e lease/24h continuam pendentes. Mesmas PRs draft #268 e Runtime #182.
-[Contrato e evidências](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-RUNTIME-HOST-2026-10-21.md).
+[Contrato e evidências](forge/docs/audits/ORCHESTRATOR-RUNTIME-HOST-2026-10-21.md).
 
 ## Continuidade solicitada — canal privado Runtime/Orchestrator (2026-10-21)
 
@@ -160,7 +160,7 @@ Runtime: 13 testes novos + 25 Gateway locais; contratos Windows/Linux/SDK mínim
 aprovados na [PR #182](https://github.com/ordaxsystems/ordax-runtime/pull/182).
 A prova host usa fixture de autorização, sem grant Product real. Nenhuma nova autoridade OAuth/grant, canal
 público ou ativação: launcher gerenciado e publicação continuam Platform/Runtime.
-[Owners, contrato e aceite](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-RUNTIME-HOST-2026-10-21.md).
+[Owners, contrato e aceite](forge/docs/audits/ORCHESTRATOR-RUNTIME-HOST-2026-10-21.md).
 
 ## Incremento solicitado — Orchestrator Lab e MCP sem visão (2026-10-21)
 
@@ -173,7 +173,7 @@ continuam Platform/Runtime; nenhum novo backend de identidade, inferência globa
 ou executor de dispositivo foi criado. Testes locais iniciais: 330 produto e
 38 bootstrap; gate App-only Windows empacotado adicionado, resultado consultar
 no commit. Conector externo/24h/autonomia permanecem pendentes.
-[Owner, contratos, limites, riscos e aceite](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-MCP-APP-CONTRACT-2026-10-21.md).
+[Owner, contratos, limites, riscos e aceite](forge/docs/audits/ORCHESTRATOR-MCP-APP-CONTRACT-2026-10-21.md).
 
 ## Frente P0 — Agentic Apps / Semantic UI / Test Runtime (2026-10-15)
 
