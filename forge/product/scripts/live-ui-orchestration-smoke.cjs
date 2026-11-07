@@ -176,7 +176,7 @@ let cleanupFailurePhase=null;
       if(initialize.error)throw Error('mcp_initialization_failed');
       await api.orchestratorMcp({jsonrpc:'2.0',method:'notifications/initialized'});
       const catalog=await api.orchestratorMcp({jsonrpc:'2.0',id:2,method:'tools/list'});
-      const command={jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'orchestrator_work_create',arguments:{
+      const command={jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'forge_work_create',arguments:{
         requestId:'app-only-work-once',projectId:p,orchestratorId:o,title:'Frente criada pelo MCP'}}};
       const first=await api.orchestratorMcp(command);
       const repeated=await api.orchestratorMcp({...command,id:4});
@@ -186,8 +186,8 @@ let cleanupFailurePhase=null;
       const missionWork=works.works.find(work=>work.title==='Primeira frente');
       const missionTask=missionWork?await api.getTask(missionWork.id):null;
       return {projectId:p,toolCount:catalog.result.tools.length,
-        continuationAvailable:catalog.result.tools.some(t=>t.name==='orchestrator_continuity_status'&&t.annotations?.readOnlyHint===true)&&
-          catalog.result.tools.some(t=>t.name==='orchestrator_continuity_proposals_set'&&t.annotations?.readOnlyHint===false),
+        continuationAvailable:catalog.result.tools.some(t=>t.name==='forge_continuity_status'&&t.annotations?.readOnlyHint===true)&&
+          catalog.result.tools.some(t=>t.name==='forge_continuity_proposals_set'&&t.annotations?.readOnlyHint===false),
         commandSucceeded:first.result.structuredContent.status==='succeeded',
         idempotent:JSON.stringify(first.result)===JSON.stringify(repeated.result),
         workCount:works.works.length,workId:works.works[0]?.id,coordinatorMessages:messages.messages.length,
