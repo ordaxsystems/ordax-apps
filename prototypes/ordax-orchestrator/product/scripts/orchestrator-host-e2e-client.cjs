@@ -76,8 +76,9 @@ async function verifyHostFixture({child,root,profile,exchange}) {
     // The Runtime host sees the SAME two projects the Electron app just
     // created, and project isolation survives a real sidebar switch.
     const alternateWorks=await exchange(request('work_list',{projectId:alternate.id}));
-    if(alternateWorks.ok!==true||alternateWorks.result?.works?.length!==1||
-      alternateWorks.result.works[0].title!=='Primeira frente')
+    // The second project was created with the GPT-first one-click action:
+    // it must remain blank, without a fabricated Work or provider send.
+    if(alternateWorks.ok!==true||alternateWorks.result?.works?.length!==0)
       throw Error('host_shared_project_missing');
     const works=await exchange(request('work_list',{projectId}));
     const workRows=works.result?.works||[];
