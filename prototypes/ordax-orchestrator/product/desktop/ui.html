@@ -86,14 +86,14 @@
             <button id="projectDeleteSubmit" type="submit">Excluir projeto definitivamente</button>
           </form>
         </details>
-        <div class="nav-section-heading orchestrator-heading"><span>Administração</span><button id="addOrchestrator" class="nav-add" type="button" aria-label="Novo orquestrador">+</button></div>
-        <div id="orchestratorNavList" class="nav-item-list" aria-label="Lista de orquestradores"></div>
-        <select id="orchestratorSelect" class="native-state-control" aria-label="Selecionar administrador do projeto" title="Administrador do projeto"><option value="">Selecione um orquestrador</option></select>
-        <details id="orchestratorSetup" class="nav-setup"><summary>Novo orquestrador</summary>
+        <div class="nav-section-heading orchestrator-heading"><span>Administração</span><button id="addOrchestrator" class="nav-add" type="button" aria-label="Novo administrador">+</button></div>
+        <div id="orchestratorNavList" class="nav-item-list" aria-label="Lista de administradores"></div>
+        <select id="orchestratorSelect" class="native-state-control" aria-label="Selecionar administrador do projeto" title="Administrador do projeto"><option value="">Selecione um administrador</option></select>
+        <details id="orchestratorSetup" class="nav-setup"><summary>Novo administrador</summary>
           <form id="newOrchestratorForm" hidden>
             <label for="orchestratorName">Nome</label><input id="orchestratorName" maxlength="140" required />
             <label for="missionInput">Missão e instruções</label><textarea id="missionInput" maxlength="4000" rows="3" required></textarea>
-            <button type="submit">Criar orquestrador</button>
+            <button type="submit">Criar administrador</button>
           </form>
         </details>
         </details>
@@ -148,7 +148,7 @@
     </aside>
 
     <section class="chat-column">
-      <section id="orchestrationPanel" class="orchestration-panel" hidden aria-label="Conversa com o orquestrador">
+      <section id="orchestrationPanel" class="orchestration-panel" hidden aria-label="Conversa com o Forjador">
         <header class="coordinator-head">
           <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><span class="route-kicker" id="coordinatorRouteLabel">FORJADOR</span><h2 id="orchestratorTitle">Conversa</h2><p id="orchestratorMission"></p></div></div>
           <div class="coordinator-head-actions">
@@ -384,7 +384,7 @@
         <article class="execution-mission-card">
           <div class="execution-mission-label"><span class="execution-mission-icon" aria-hidden="true">◎</span><span>Missão atual</span><span id="executionMissionBadge" class="execution-badge" data-state="idle">Sem missão ativa</span></div>
           <h3 id="executionMissionTitle">Nenhuma missão técnica selecionada</h3>
-          <p id="executionMissionDetail">Os estados serão apresentados conforme os registros do Orchestrator.</p>
+          <p id="executionMissionDetail">Os estados serão apresentados conforme os registros do Forge.</p>
           <div class="execution-mission-metrics"><span><strong id="executionWorkCount">0</strong> frentes</span><span><strong id="executionRunningCount">0</strong> em execução</span><span><strong id="executionReviewCount">0</strong> a revisar</span></div>
         </article>
         <section class="execution-monitor-section" aria-label="Frentes e executores observados">

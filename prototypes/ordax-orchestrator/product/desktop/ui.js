@@ -1188,7 +1188,7 @@ async function saveTaskRename(event) {
 async function createTask() {
   if(orchestrationUi?.hasProject()) {
     try {await orchestrationUi.createWork();await loadTasks();}
-    catch {$('#orchestrationNotice').textContent='Selecione ou configure um orquestrador para criar o trabalho.';}
+    catch {$('#orchestrationNotice').textContent='Selecione ou configure um administrador para criar o trabalho.';}
     return;
   }
   const task = await window.ordax.createTask(`Nova conversa ${new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}`);

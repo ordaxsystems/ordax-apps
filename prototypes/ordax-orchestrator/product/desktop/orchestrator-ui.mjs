@@ -345,7 +345,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   function renderOrchestratorNavigation() {
     const list=$('orchestratorNavList');list.replaceChildren();
     if(!projectId){const empty=document.createElement('p');empty.className='nav-empty';empty.textContent='Selecione um projeto.';list.append(empty);return;}
-    if(!orchestrators.length){const empty=document.createElement('p');empty.className='nav-empty';empty.textContent='Adicione um orquestrador para começar.';list.append(empty);return;}
+    if(!orchestrators.length){const empty=document.createElement('p');empty.className='nav-empty';empty.textContent='Adicione um administrador para começar.';list.append(empty);return;}
     for(const item of orchestrators){
       const button=document.createElement('button');button.type='button';button.className='nav-item orchestrator-nav-item';
       button.textContent=item.name;button.dataset.orchestratorId=item.id;
@@ -952,7 +952,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('projectDeleteName').focus();
   });
   $('addOrchestrator').addEventListener('click',()=>{
-    if(!projectId){status('Selecione ou crie um projeto antes de adicionar um orquestrador.');return;}
+    if(!projectId){status('Selecione ou crie um projeto antes de adicionar um administrador.');return;}
     $('forgeProjectAdvanced').open=true;
     $('orchestratorSetup').open=true;$('orchestratorName').focus();
   });
@@ -1106,7 +1106,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   async function refreshContinuityStatus() {
     const p=projectId,o=orchestratorId;
-    if(!p||!o){$('continuityToggle').disabled=true;$('continuityProposalsToggle').disabled=true;$('continuityFollowupPrepare').hidden=true;$('continuityFollowupPrepare').disabled=true;$('continuityState').textContent='Selecione um orquestrador.';return;}
+    if(!p||!o){$('continuityToggle').disabled=true;$('continuityProposalsToggle').disabled=true;$('continuityFollowupPrepare').hidden=true;$('continuityFollowupPrepare').disabled=true;$('continuityState').textContent='Selecione um administrador.';return;}
     const [result,engineStatus]=await Promise.all([
       call('continuity_status',{projectId:p,orchestratorId:o}),
       call('status').catch(()=>null)
@@ -1164,7 +1164,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(generation!==orchestratorRefreshGeneration||p!==projectId)return [];
     orchestrators=result.orchestrators;
     if(!orchestrators.some(o=>o.id===orchestratorId))orchestratorId=orchestrators[0]?.id||null;
-    options($('orchestratorSelect'),orchestrators,'Selecione um orquestrador');
+    options($('orchestratorSelect'),orchestrators,'Selecione um administrador');
     $('orchestratorSelect').value=orchestratorId||'';
     const selected=orchestrators.find(o=>o.id===orchestratorId);
     const selectedId=selected?.id||null;
@@ -1471,7 +1471,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   $('orchestratorSelect').addEventListener('change',async()=>{
     const previous=orchestratorId,next=$('orchestratorSelect').value||null;
     if(previous===next)return;
-    try{await flushCoordinatorDraft();}catch{$('orchestratorSelect').value=previous||'';status('O rascunho do chat central não foi salvo; o orquestrador atual foi mantido.');return;}
+    try{await flushCoordinatorDraft();}catch{$('orchestratorSelect').value=previous||'';status('O rascunho do chat central não foi salvo; o administrador atual foi mantido.');return;}
     orchestratorId=next;clearProjectPreflight();
     try{await refreshOrchestrators();if(chatTaskId)await showCoordinator();
       else await onNavigationChange?.({view:'home',projectId,orchestratorId,taskId:null});
@@ -1596,7 +1596,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       if(receipt.status!=='succeeded'||p!==projectId)return;
       orchestratorId=receipt.result.orchestratorId;
       $('newOrchestratorForm').reset();$('orchestratorSetup').open=false;
-      await refreshOrchestrators();await showCoordinator();status('Orquestrador configurado.');
+      await refreshOrchestrators();await showCoordinator();status('Administrador configurado.');
     });
   });
   $('openOrchestrator').addEventListener('click',()=>{void showCoordinator().catch(error);});
@@ -1819,7 +1819,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(button.disabled||!projectId||!orchestratorId)return;
     const p=projectId,o=orchestratorId;
     const mission=$('coordinatorPrompt').value.trim();
-    if(!mission){status('Descreva a missão única no campo do orquestrador.');$('coordinatorPrompt').focus();return;}
+    if(!mission){status('Descreva a missão única no campo do Forjador.');$('coordinatorPrompt').focus();return;}
     $('startAutonomousStory').disabled=true;$('startAutonomousDialogue').disabled=true;
     $('startAutonomousTechnical').disabled=true;
     try {
@@ -1886,7 +1886,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       catch{setCoordinatorDraftState('Não foi possível confirmar o rascunho salvo. Ele foi preservado e nenhuma proposta foi enviada.');return;}
       if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
       const content=draft?.content;
-      if(!content){status('Descreva no campo de mensagem a frente que o orquestrador deve preparar.');$('coordinatorPrompt').focus();return;}
+      if(!content){status('Descreva no campo de mensagem a frente que o administrador deve preparar.');$('coordinatorPrompt').focus();return;}
       status('A IA está preparando uma proposta de frente para sua revisão…');
       try {
         const receipt=await command('orchestrator_prepare',{projectId:p,orchestratorId:o,content,draftRevision:draft.draftRevision});
