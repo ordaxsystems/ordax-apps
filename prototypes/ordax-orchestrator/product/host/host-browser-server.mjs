@@ -5,6 +5,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 
 const SESSION_COOKIE_AGE_SECONDS = 60 * 60 * 24 * 30;
 const MAX_BROWSER_SESSIONS = 8;
+const RECLAIM_IDLE_BROWSER_SESSION_MS = 60 * 60 * 1000; // Reclaim only under capacity pressure.
 const MAX_REQUEST_BYTES = 4 * 1024 * 1024;
 const STATIC_FILES = new Map([
   ['/',['desktop/ui.html','text/html; charset=utf-8']],
@@ -117,7 +118,7 @@ function sanitizeResult(value) {
   return result;
 }
 
-export function createHostBrowserServer({productRoot,assetsRoot,invoke,readAsset,onChatGPTCallback=async()=>{},onShutdown=()=>{}}) {
+export function createHostBrowserServer({productRoot,assetsRoot,invoke,readAsset,onChatGPTCallback=async()=>{},onShutdown=()=>{},clock=Date.now}) {
   if(typeof invoke!=='function')throw new TypeError('host_browser_invoke_required');
   const root=path.resolve(productRoot);
   const sessions=new Map();
@@ -128,8 +129,8 @@ export function createHostBrowserServer({productRoot,assetsRoot,invoke,readAsset
   function authenticated(req) {
     const token=cookieValue(req.headers.cookie,'ordax_host_session');
     const lastSeen=sessions.get(token);
-    if(!lastSeen||Date.now()-lastSeen>SESSION_COOKIE_AGE_SECONDS*1000){sessions.delete(token);return null;}
-    sessions.set(token,Date.now());
+    if(!lastSeen||clock()-lastSeen>SESSION_COOKIE_AGE_SECONDS*1000){sessions.delete(token);return null;}
+    sessions.set(token,clock());
     return token;
   }
   const server=http.createServer(async(req,res)=>{
@@ -162,9 +163,14 @@ export function createHostBrowserServer({productRoot,assetsRoot,invoke,readAsset
       // The browser creates its local session through same-origin JSON. Every
       // write requires the exact loopback Origin and JSON content type, so a
       // lost first Set-Cookie response can be retried without broadening CORS.
-      for(const [token,lastSeen] of sessions)if(Date.now()-lastSeen>SESSION_COOKIE_AGE_SECONDS*1000)sessions.delete(token);
+      if(sessions.size>=MAX_BROWSER_SESSIONS){
+        // Lost browser tabs have no close handshake. Recover their slots without
+        // invalidating recently active sessions or shortening their cookie life.
+        for(const [token,lastSeen] of sessions)
+          if(clock()-lastSeen>RECLAIM_IDLE_BROWSER_SESSION_MS)sessions.delete(token);
+      }
       if(sessions.size>=MAX_BROWSER_SESSIONS)return json(res,429,{error:'host_session_limit'});
-      const session=randomBytes(32).toString('base64url');sessions.set(session,Date.now());
+      const session=randomBytes(32).toString('base64url');sessions.set(session,clock());
       return json(res,200,{ok:true},{'Set-Cookie':sessionCookie(session)});
     }
 

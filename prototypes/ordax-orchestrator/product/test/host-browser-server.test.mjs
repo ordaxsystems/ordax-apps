@@ -77,6 +77,29 @@ test('host requires same-origin browser bootstrap and recovers a browser session
   } finally {await server.close();}
 });
 
+test('host reclaims idle browser slots under pressure but preserves active sessions',async()=>{
+  let now=1_000_000;
+  const server=createHostBrowserServer({productRoot,assetsRoot:path.join(productRoot,'data','assets'),invoke:async()=>null,clock:()=>now});
+  const {origin}=await server.listen();
+  const create=()=>fetch(origin+'/api/session',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'});
+  try {
+    const cookies=[];
+    for(let i=0;i<8;i++){
+      const response=await create();
+      assert.equal(response.status,200);
+      cookies.push(response.headers.get('set-cookie').split(';',1)[0]);
+    }
+    assert.equal((await create()).status,429,'active sessions retain their capacity');
+    now+=45*60_000;
+    const keep=await fetch(origin+'/api/session',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookies[0]},body:'{}'});
+    assert.equal(keep.status,200);
+    now+=20*60_000;
+    assert.equal((await create()).status,200,'idle slots are reclaimed');
+    assert.equal((await fetch(origin+'/api/session',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookies[0]},body:'{}'})).status,200);
+    assert.equal((await fetch(origin+'/api/invoke',{headers:{Cookie:cookies[1]}})).status,401,'reclaimed token has no access');
+  }finally{await server.close();}
+});
+
 test('ChatGPT callback is bound to the host cookie and redirects without exposing its authorization code',async()=>{
   let received=null;
   const server=createHostBrowserServer({productRoot,assetsRoot:path.join(productRoot,'data','assets'),invoke:async()=>null,
