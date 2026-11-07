@@ -51,5 +51,8 @@ test('Forge MCP advertises its operating protocol as discovery, not as a new gra
   await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
   const list=await mcp.handle({jsonrpc:'2.0',id:2,method:'tools/list'});
   assert.equal(list.result.tools.some(x=>x.name==='orchestrator_project_context'),true);
-  assert.equal(list.result.tools.some(x=>/file_write|shell_exec/.test(x.name)),false);
+  // Typed project file writes are now explicitly supported; this is NOT a
+  // blanket computer shell grant and still requires a verified project binding.
+  assert.equal(list.result.tools.some(x=>/shell_exec/.test(x.name)),false);
+  assert.equal(list.result.tools.some(x=>x.name==='orchestrator_project_file_write'),true);
 });

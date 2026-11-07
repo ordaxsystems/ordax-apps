@@ -1364,8 +1364,12 @@ test('MCP initialize/discovery/call use exactly the same App service and persist
   assert.equal(init.result.serverInfo.title,'OrdaX Forge');
   await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
   const tools=(await rpc('tools/list')).result.tools;
-  assert.equal(tools.length,ORCHESTRATOR_TOOLS.length);
-  assert.deepEqual(new Set(tools.map(tool=>tool.name)),new Set(ORCHESTRATOR_TOOLS.map(tool=>tool.name)));
+  // The GPT-first direct send is native UI-only; it must not be recursively
+  // advertised to a GPT client through the Forge's own MCP adapter.
+  const exposed=ORCHESTRATOR_TOOLS.filter(tool=>tool.operation!=='forjador_send');
+  assert.equal(tools.length,exposed.length);
+  assert.deepEqual(new Set(tools.map(tool=>tool.name)),new Set(exposed.map(tool=>tool.name)));
+  assert.equal(tools.some(tool=>tool.name==='orchestrator_forjador_send'),false);
   assert.ok(tools.some(tool=>tool.name==='orchestrator_continuity_status'&&tool.annotations.readOnlyHint===true));
   assert.ok(tools.some(tool=>tool.name==='orchestrator_continuity_set'&&tool.annotations.readOnlyHint===false));
   assert.ok(tools.every(tool=>tool.inputSchema.additionalProperties===false));

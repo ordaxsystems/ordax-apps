@@ -22,7 +22,9 @@ test('staged candidate projects never resolve into the owner Windows Documents f
 });
 
 function fixture(t){
-  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'forge-owner-roots-'));
+  // CI's Windows temporary directory may be reached through a junction.
+  // Build fixtures under the real physical root: production refuses reparse aliases.
+  const temp=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'forge-owner-roots-')));
   t.after(()=>fs.rmSync(temp,{recursive:true,force:true}));
   const store=new Store(':memory:');
   t.after(()=>store.close());
