@@ -3,7 +3,7 @@ import { calculatorMessages } from "./i18n/messages.mjs";
 
 const COMPONENT_RUNTIME_SCHEMA = "ordax.component-runtime/1";
 const SURFACE_RENDER_LIFECYCLE_SCHEMA = "ordax.surface-render-lifecycle/5";
-const CALCULATOR_VERSION = "0.2.0";
+const CALCULATOR_VERSION = "0.2.1";
 const STYLESHEET_URL = new URL("../assets/calculator.css", import.meta.url).href;
 
 function assertLifecycle(value) {
@@ -118,7 +118,9 @@ function render(root, lifecycle, previous = null) {
       input.value = input.value.slice(0, -1);
     } else if (value === "calculate") {
       calculate();
-    } else {
+    } else if (input.value.length + value.length <= input.maxLength) {
+      // Programmatic keypad input bypasses HTML maxlength. Keep the exact
+      // parser bound before appending; never display a value we cannot parse.
       input.value += value;
     }
     input.focus();

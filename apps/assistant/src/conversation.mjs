@@ -196,6 +196,9 @@ export function createAssistantConversationRuntime({
     schema: ASSISTANT_CONVERSATION_SCHEMA,
     state,
     messages,
+    // Monotonic, non-authoritative scope fence for local UI drafts. The
+    // canonical conversation alone decides whether Account/Space/Profile changed.
+    scopeRevision: scopeGeneration,
     lastError,
     authority: "none",
     toolExecution: false,
@@ -290,6 +293,9 @@ export function createAssistantConversationRuntime({
       const intelligenceSnapshot = validateIntelligenceSnapshot(intelligence.getSnapshot());
       if (intelligenceSnapshot.state !== "ready") {
         state = runtimeState(intelligenceSnapshot);
+        // Readiness is verified by the existing Intelligence port; an
+        // unavailable endpoint is not a completed or rejected model response.
+        lastError = state === "unavailable" ? "provider-unavailable" : null;
         publish();
         throw new Error("Ordax Intelligence is not ready");
       }
@@ -311,6 +317,7 @@ export function createAssistantConversationRuntime({
       discardRequested = false;
       let wasDiscarded = false;
       let timedOut = false;
+      let responseCommitted = false;
       state = "busy";
       lastError = null;
       publish();
@@ -347,6 +354,7 @@ export function createAssistantConversationRuntime({
           engineId: response.engineId,
           modelId: response.modelId,
         });
+        responseCommitted = true;
         state = boundMemoryTurn === null
           ? runtimeState(validateIntelligenceSnapshot(intelligence.getSnapshot()))
           : "busy";
@@ -398,11 +406,17 @@ export function createAssistantConversationRuntime({
           wasDiscarded = true;
           throw new Error("Assistant response discarded");
         }
+        // A submission without a verified response is not a completed
+        // conversation turn. Never replay it into a later model context or
+        // duplicate it when the user explicitly sends the retained draft.
+        if (!responseCommitted) {
+          messages = Object.freeze(messages.filter((message) => message.id !== submittedMessage.id));
+        }
         state = runtimeState(validateIntelligenceSnapshot(intelligence.getSnapshot()));
-        // A UI timeout is not proof of engine failure. Keep the verified
-        // readiness so the user may retry without restarting the Desktop.
-        if (state === "ready" && !timedOut) state = "error";
-        lastError = timedOut ? "response-timeout" : "response-failed";
+        // A failed client wait is not evidence that a ready provider is broken.
+        // Keep its verified readiness, but never automatically resend.
+        lastError = timedOut ? "response-timeout"
+          : state === "unavailable" ? "provider-unavailable" : "response-failed";
         publish();
         throw new Error(timedOut ? "Assistant response timed out" : "Assistant response failed");
       } finally {

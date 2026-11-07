@@ -1,6 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { componentRuntime } from "../src/runtime.mjs";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve, join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+// The exact same behavioral tests run both against source and against the
+// verified ZIP extracted by the canonical app-package receiver. No test
+// runtime is substituted for production module bytes.
+const packaged = Object.hasOwn(process.env, "ORDAX_CALCULATOR_VERIFIED_PACKAGE_ROOT");
+const rootDir = packaged
+  ? resolve(process.env.ORDAX_CALCULATOR_VERIFIED_PACKAGE_ROOT || "")
+  : null;
+if (packaged && !process.env.ORDAX_CALCULATOR_VERIFIED_PACKAGE_ROOT) {
+  throw new Error("Packaged Calculator proof requires an explicit extracted root");
+}
+const runtimeUrl = packaged
+  ? pathToFileURL(join(rootDir, "system/apps/calculator/src/runtime.mjs")).href
+  : new URL("../src/runtime.mjs", import.meta.url).href;
+const { componentRuntime } = await import(runtimeUrl);
 
 // Narrow test-only DOM implementation: validates public surface port use,
 // user events and cleanup. NOT a browser renderer, OrdaX host or sandbox.
@@ -216,6 +233,64 @@ test("Subscription failure rolls back mounted UI, events and stylesheet", async 
     componentRuntime.mount({ root, surfaceLifecycle: port.surfaceLifecycle }),
     /subscription denied/,
   );
+  assert.equal(root.children.length, 0);
+  assert.equal(document.head.children.length, 0);
+});
+
+
+test("Calculator runtime and CSS resolve from the actual extracted component-slot package", () => {
+  assert.equal(componentRuntime.schema, "ordax.component-runtime/1");
+  assert.equal(componentRuntime.componentId, "calculator");
+  assert.equal(componentRuntime.version, "0.2.1");
+  const css = new URL("../assets/calculator.css", runtimeUrl);
+  assert.equal(css.protocol, "file:");
+  assert.equal(existsSync(css), true, "runtime CSS must ship alongside module bytes");
+  if (!packaged) return;
+  const base = join(rootDir, "system/apps/calculator");
+  const manifest = JSON.parse(readFileSync(join(base, "app.json"), "utf8"));
+  // Compatibility is a separately verified release descriptor, not a ZIP
+  // member. Reading it from the canonical candidate keeps roles distinct.
+  const compatibilityPath = process.env.ORDAX_CALCULATOR_COMPATIBILITY_PATH;
+  assert.ok(compatibilityPath, "canonical compatibility descriptor required");
+  const compatibility = JSON.parse(readFileSync(compatibilityPath, "utf8"));
+  const presentation = JSON.parse(readFileSync(join(base, "presentation/manifest.json"), "utf8"));
+  assert.equal(manifest.id, "calculator");
+  assert.equal(manifest.owner, "ordaxsystems/ordax-apps");
+  assert.equal(manifest.releaseMode, "component-slot");
+  assert.equal(manifest.version, componentRuntime.version);
+  assert.equal(compatibility.componentVersion, manifest.version);
+  assert.deepEqual(compatibility.requires, [
+    { id: "ordax.localization", minMajor: 2, maxMajor: 2, optional: false },
+    { id: "ordax.surface-render-lifecycle", minMajor: 5, maxMajor: 5, optional: false },
+  ]);
+  assert.equal(presentation.appId, manifest.id);
+  assert.equal(presentation.appVersion, manifest.version);
+  assert.equal(presentation.authority, "none");
+});
+
+test("Keypad honors the parser limit and cannot grow an unparseable expression", async () => {
+  const document = testDocument();
+  const root = document.createElement("main");
+  const port = testPublicSurface();
+  const instance = await componentRuntime.mount({ root, surfaceLifecycle: port.surfaceLifecycle });
+  const { input, output, grid } = calculatorNodes(root);
+  input.value = "7".repeat(512);
+  press(grid, "2");
+  press(grid, "sqrt(");
+  assert.equal(input.value.length, 512);
+  assert.equal(input.value, "7".repeat(512));
+  input.value = "7".repeat(511);
+  press(grid, "2");
+  assert.equal(input.value.length, 512);
+  press(grid, "+");
+  assert.equal(input.value.length, 512);
+  press(grid, "clear");
+  press(grid, "7");
+  press(grid, "+");
+  press(grid, "2");
+  press(grid, "calculate");
+  assert.equal(output.textContent, "9");
+  instance.destroy();
   assert.equal(root.children.length, 0);
   assert.equal(document.head.children.length, 0);
 });

@@ -276,6 +276,59 @@ jobs:
             --artifacts-root "$out/artifacts" \
             --out-root "$out/store-artifact-bundle.protocol-proof"
 
+          # Exercise the SAME content-addressed transport with a CI-only
+          # test-signed catalog. This is NOT a production signing ceremony.
+          "$verifier" sign-store-catalog \
+            --publication "$out/store.catalog-publication-v2.protocol-proof.json" \
+            --private-key "$secrets_dir/runtime-components-private.pem" \
+            --trust "$out/runtime-components-ci-trust.json" \
+            --key-id ordax-runtime-components-v1 \
+            --out "$out/.ci-test-store-envelope.json"
+
+          python3 tools/app-package/materialize_store_artifact_bundle.py \
+            --publication "$out/store.catalog-publication-v2.protocol-proof.json" \
+            --artifacts-root "$out/artifacts" \
+            --envelope "$out/.ci-test-store-envelope.json" \
+            --trust "$out/runtime-components-ci-trust.json" \
+            --verifier "$verifier" \
+            --out-root "$out/.ci-test-signed-https-root"
+
+          "$verifier" verify-store-catalog \
+            --envelope "$out/.ci-test-signed-https-root/catalog-envelope.json" \
+            --trust "$out/runtime-components-ci-trust.json" \
+            --out "$out/.ci-test-reverified-catalog.json"
+
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "ordax-store-catalog-proof"
+          http_root = root / ".ci-test-signed-https-root"
+          layout = json.loads((http_root / "store-artifact-layout.json").read_text())
+          verified = json.loads((root / ".ci-test-reverified-catalog.json").read_text())
+          envelope = (http_root / "catalog-envelope.json").read_bytes()
+          assert verified["state"] == "ready"
+          assert verified["authority"] == "none"
+          assert verified["source"]["repository"] == "ordaxsystems/ordax-apps"
+          assert layout["signedCatalog"]["envelopeSha256"] == hashlib.sha256(envelope).hexdigest()
+          assert layout["signedCatalog"]["catalogSha256"] == verified["catalogSha256"]
+          assert layout["signedCatalog"]["productionPublicationAuthorized"] is False
+          for entry in verified["entries"]:
+              for role in ("package", "release", "compatibility", "componentEnvelope"):
+                  identity = entry["artifacts"][role]
+                  digest = identity["sha256"]
+                  blob = (http_root / "sha256" / digest[:2] / digest).read_bytes()
+                  assert len(blob) == identity["size"]
+                  assert hashlib.sha256(blob).hexdigest() == digest
+          print("STORE_SIGNED_HTTPS_TRANSPORT_CI_ONLY=PASS")
+          PY
+          # Test-signed bytes must NEVER be uploaded as an official handoff.
+          rm -rf "$out/.ci-test-signed-https-root"
+          rm -f "$out/.ci-test-store-envelope.json" "$out/.ci-test-reverified-catalog.json"
+          test ! -e "$out/.ci-test-signed-https-root"
+          test ! -e "$out/.ci-test-store-envelope.json"
+
           rm -f "$secrets_dir/runtime-components-private.pem"
           test ! -e "$secrets_dir/runtime-components-private.pem"
           test -z "$(find "$secrets_dir" -type f -print -quit)"
@@ -291,6 +344,17 @@ jobs:
           test -f "$out/artifacts/assistant/assistant.runtime-component-envelope.json"
           python3 tools/prove_assistant_packaged_mount.py \
             --verified-candidate-dir "$out/artifacts/assistant"
+
+      - name: Prove Calculator 0.2.1 mounts from the existing verified Store ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-store-catalog-proof"
+          # Reuse the exact package and Ed25519 test envelope validated above.
+          # Neither signature authority nor a Windows installer is created.
+          test -f "$out/artifacts/calculator/calculator.runtime-component-envelope.json"
+          python3 tools/prove_calculator_packaged_mount.py \
+            --verified-candidate-dir "$out/artifacts/calculator"
 
       - name: Assert catalog boundaries remain authority-free
         run: |

@@ -1,7 +1,7 @@
 {
   "schema": "ordax.app-presentation-manifest/1",
   "appId": "calculator",
-  "appVersion": "0.2.0",
+  "appVersion": "0.2.1",
   "authority": "none",
   "sourceLocale": "pt-BR",
   "description": "Calcule expressões matemáticas locais sem depender de rede.",

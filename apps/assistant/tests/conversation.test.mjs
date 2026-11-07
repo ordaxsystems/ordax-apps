@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { projectAssistantResultCanvas } from "../src/ui/result-view-model.mjs";
 
 import {
   INTELLIGENCE_PORT_SCHEMA,
@@ -351,6 +352,39 @@ test("Assistant binds its transcript to the account and active Space, including 
   conversation.dispose();
 });
 
+test("Assistant exposes the same canonical scope revision for safe unsent drafts", () => {
+  const scope = scopePorts("account-a", "space-a");
+  const conversation = createBoundConversationRuntime({
+    identitySessionPort: scope.identity,
+    spaceSelectionPort: scope.spaceSelection,
+    profileActivationStatePort: scope.profileActivation,
+  });
+  const initial = conversation.getSnapshot().scopeRevision;
+  assert.equal(Number.isSafeInteger(initial), true);
+
+  // Token/display-name refresh is not a new owner or Space.
+  scope.identity.setSnapshot({ state: "signed-in", subjectId: "account-a", displayName: "Novo nome" });
+  assert.equal(conversation.getSnapshot().scopeRevision, initial);
+  scope.spaceSelection.setSnapshot(selectedSpace("account-a", "space-a"));
+  assert.equal(conversation.getSnapshot().scopeRevision, initial);
+
+  scope.spaceSelection.setSnapshot(selectedSpace("account-a", "space-b"));
+  assert.equal(conversation.getSnapshot().scopeRevision, initial + 1);
+  scope.profileActivation.setSnapshot({
+    schema: "ordax.profile-activation-state/1", revision: 1,
+    persistence: "session", spaces: [],
+  });
+  assert.equal(conversation.getSnapshot().scopeRevision, initial + 2);
+
+  scope.identity.setSnapshot({ state: "signed-in", subjectId: "account-b", displayName: "Outra conta" });
+  assert.equal(conversation.getSnapshot().scopeRevision, initial + 3);
+  scope.spaceSelection.setSnapshot(selectedSpace("account-b", "space-c"));
+  assert.equal(conversation.getSnapshot().scopeRevision, initial + 4);
+  conversation.clear();
+  assert.equal(conversation.getSnapshot().scopeRevision, initial + 4, "Clearing messages is not a scope change");
+  conversation.dispose();
+});
+
 test("Assistant invalidates history when the active Profile revision changes", async () => {
   const scope = scopePorts("account-a", "space-a");
   const intelligence = intelligencePort();
@@ -669,7 +703,7 @@ test("Native Aura bounds waiting, reports timeout and observes late upstream fai
   assert.equal(snapshot.inferencePending, false);
   assert.equal(snapshot.lastError, "response-timeout");
   assert.equal(snapshot.state, "ready", "a presentation timeout does not prove that the model is unavailable");
-  assert.deepEqual(snapshot.messages.map(entry => entry.text), ["consulta demorada"]);
+  assert.deepEqual(snapshot.messages, [], "unconfirmed timeout must not become an answered turn");
   lateReject(Error("late upstream failure"));
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(conversation.getSnapshot().lastError, "response-timeout");
@@ -680,6 +714,68 @@ test("Native Aura bounds waiting, reports timeout and observes late upstream fai
   await conversation.send("tentar novamente");
   assert.equal(conversation.getSnapshot().lastError, null);
   assert.equal(conversation.getSnapshot().messages.at(-1).text, "resposta válida");
+  conversation.dispose();
+});
+
+test("Aura preserves retry eligibility after inference failure without duplicating a sent user turn", async () => {
+  const intelligence = intelligencePort();
+  const original = intelligence.respond.bind(intelligence);
+  let fail = true;
+  intelligence.respond = (request) => {
+    if (fail) {
+      intelligence.requests.push(request);
+      return Promise.reject(new Error("local inference failed"));
+    }
+    return original(request);
+  };
+  const conversation = createAssistantConversationRuntime({ intelligencePort: intelligence });
+  await assert.rejects(conversation.send("texto para recuperar"), /response failed/);
+  const failed = conversation.getSnapshot();
+  assert.equal(failed.lastError, "response-failed");
+  assert.equal(failed.state, "ready", "ready provider should still allow an explicitly requested new attempt");
+  assert.deepEqual(failed.messages, [], "an unconfirmed turn cannot pollute the next inference context");
+  assert.equal(projectAssistantResultCanvas(failed).state, "failed");
+  assert.deepEqual(projectAssistantResultCanvas(failed).blocks, []);
+  await Promise.resolve();
+  assert.equal(intelligence.requests.length, 1, "no automatic retry on failure");
+  fail = false;
+  await conversation.send("texto para recuperar");
+  assert.equal(intelligence.requests.length, 2);
+  assert.deepEqual(intelligence.requests[1].context, []);
+  assert.deepEqual(conversation.getSnapshot().messages.map(x => x.role), ["user", "assistant"]);
+  assert.equal(conversation.getSnapshot().lastError, null);
+  conversation.dispose();
+});
+
+test("Aura distinguishes an unavailable Intelligence port and recovers only after its official ready snapshot", async () => {
+  const intelligence = intelligencePort();
+  intelligence.respond = (request) => {
+    intelligence.requests.push(request);
+    // "degraded" is the canonical Intelligence port's unavailable state.
+    intelligence.setState("degraded");
+    return Promise.reject(new Error("provider disconnected"));
+  };
+  const conversation = createAssistantConversationRuntime({ intelligencePort: intelligence });
+  await assert.rejects(conversation.send("não perder"), /response failed/);
+  assert.equal(conversation.getSnapshot().lastError, "provider-unavailable");
+  assert.equal(conversation.getSnapshot().state, "unavailable");
+  assert.deepEqual(conversation.getSnapshot().messages, []);
+  await assert.rejects(conversation.send("não reenviar"), /not ready/);
+  assert.equal(intelligence.requests.length, 1);
+  intelligence.setState("ready");
+  assert.equal(conversation.getSnapshot().state, "ready");
+  assert.equal(conversation.getSnapshot().lastError, "provider-unavailable", "warning persists until verified success or manual clearing");
+  intelligence.respond = (request) => {
+    intelligence.requests.push(request);
+    return Promise.resolve({
+      schema: INTELLIGENCE_RESPONSE_SCHEMA, text: "recuperado",
+      engineId: "llama.cpp", modelId: "qwen-test", authority: "none",
+    });
+  };
+  await conversation.send("não perder");
+  assert.equal(intelligence.requests.length, 2);
+  assert.equal(conversation.getSnapshot().lastError, null);
+  assert.equal(conversation.getSnapshot().messages.length, 2);
   conversation.dispose();
 });
 

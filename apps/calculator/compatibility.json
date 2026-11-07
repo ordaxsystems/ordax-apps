@@ -1,7 +1,7 @@
 {
   "schema": "ordax.component-compatibility/1",
   "componentId": "calculator",
-  "componentVersion": "0.2.0",
+  "componentVersion": "0.2.1",
   "provides": [
     {
       "id": "ordax.component-runtime",
@@ -22,11 +22,6 @@
       "optional": false
     }
   ],
-  "state": {
-    "id": "ordax.calculator-stateless",
-    "writeVersion": 1,
-    "readableFrom": 1,
-    "readableThrough": 1
-  },
+  "state": null,
   "authority": "none"
 }
