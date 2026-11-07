@@ -20,6 +20,7 @@ function fixture(t) {
   const service=new OrchestratorService({store,fileBroker:files,
     authorize:({context:who})=>who===context});
   let now=Date.now(),revoked=null;
+  const scopeRevisions=new Map();
   const transport=createForgeLoopbackMcp({
     createMcp:({projectId,allowedOperations})=>createOrchestratorMcp({
       service,getContext:()=>context,allowedProjectId:projectId,allowedOperations}),
@@ -28,12 +29,14 @@ function fixture(t) {
       try{service.requireAccess(context,'project_file_read',projectId);return true;}
       catch{return false;}
     },
+    projectScope:projectId=>scopeRevisions.get(projectId)??projectId,
     clock:()=>now
   });
   t.after(()=>transport.stop());
   const project=async name=>(await service.invoke(context,'project_quick_create',
     {creationNonce:name,requestId:'req_'+name})).result.projectId;
   return {transport,project,files,advance:ms=>{now+=ms;},
+    changeVerifiedScope:(id,scope)=>scopeRevisions.set(id,scope),
     revokeAuthority:id=>{revoked=id;}};
 }
 
@@ -102,6 +105,40 @@ test('one MCP localhost listener serves independently authorized projects withou
   assert.equal(stopped.running,false);
 });
 
+
+test('workspace rebinding never revives old MCP tokens even after a new owner approval',async t=>{
+  const f=fixture(t),a=await f.project('rebind_a'),b=await f.project('rebind_b');
+  const first=await f.transport.start(a);
+  const second=f.transport.addProject(b);
+  const initA=await request(first.endpoint,first.token,null,initialize);
+  const initB=await request(second.endpoint,second.token,null,initialize);
+  assert.equal(initA.status,200);
+  assert.equal(initB.status,200);
+  await request(first.endpoint,first.token,initA.session,notify);
+  await request(second.endpoint,second.token,initB.session,notify);
+  // Owner replaces the verified folder; a later reapproval uses the same
+  // project ID but must never restore access to the previous folder bearer.
+  f.changeVerifiedScope(a,'sha256-new-owner-verified-workspace');
+  assert.deepEqual(f.transport.status().scopes,[b]);
+  assert.equal(f.transport.localGrant(a),null);
+  assert.equal((await request(first.endpoint,first.token,initA.session,
+    invoke(31,'forge_discover'))).status,401);
+  const goodB=await request(second.endpoint,second.token,initB.session,
+    invoke(32,'forge_discover'));
+  assert.equal(goodB.body.result.structuredContent.projectId,b);
+  // Explicit Owner approval creates a different grant for the new scope.
+  const renewed=f.transport.addProject(a);
+  assert.notEqual(renewed.token,first.token);
+  assert.equal((await request(renewed.endpoint,first.token,null,initialize)).status,401);
+  assert.equal((await request(renewed.endpoint,renewed.token,initA.session,
+    invoke(33,'forge_discover'))).status,404);
+  const initNew=await request(renewed.endpoint,renewed.token,null,initialize);
+  assert.equal(initNew.status,200);
+  await request(renewed.endpoint,renewed.token,initNew.session,notify);
+  const newDiscovery=await request(renewed.endpoint,renewed.token,initNew.session,
+    invoke(34,'forge_discover'));
+  assert.equal(newDiscovery.body.result.structuredContent.projectId,a);
+});
 
 test('opt-in credentials can restore the same local MCP address after process restart',async t=>{
   const f=fixture(t),a=await f.project('secure-reconnect');

@@ -43,13 +43,25 @@ async function bodyJson(req) {
 // Disabled until explicit owner action in the Electron settings panel.
 // One listener, distinct owner-approved tokens and immutable project-scoped sessions.
 // No remote listening, auto-connect, browser origins, persistence or OAuth claim.
-export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.now}={}) {
+export function createForgeLoopbackMcp({createMcp,authorizeProject,
+  projectScope=projectId=>projectId,clock=Date.now}={}) {
   if(typeof createMcp!=='function'||typeof authorizeProject!=='function'||
-     typeof clock!=='function')throw Error('forge_mcp_transport_ports_required');
+     typeof projectScope!=='function'||typeof clock!=='function')
+    throw Error('forge_mcp_transport_ports_required');
   let server=null,port=null;
   const sessions=new Map(),grants=new Map();
   const bound=()=>server?.listening===true;
-  const valid=grant=>Boolean(grant)&&grants.get(grant.projectId)===grant;
+  const captureScope=projectId=>{
+    const fingerprint=projectScope(projectId);
+    if(typeof fingerprint!=='string'||!fingerprint||fingerprint.length>4096)
+      throw Error('forge_mcp_project_scope_invalid');
+    return fingerprint;
+  };
+  const valid=grant=>{
+    if(!grant||grants.get(grant.projectId)!==grant)return false;
+    try{return captureScope(grant.projectId)===grant.scopeFingerprint;}
+    catch{return false;}
+  };
   const authorizedGrants=()=>[...grants.values()].filter(valid);
   const active=()=>bound()&&authorizedGrants().length>0;
   const status=()=>{
@@ -158,6 +170,7 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.no
           (resumeToken!==null&&(typeof resumeToken!=='string'||!TOKEN.test(resumeToken))))
         throw Error('forge_mcp_resume_connection_invalid');
       const grant={projectId:requestedProjectId,
+        scopeFingerprint:captureScope(requestedProjectId),
         token:resumeToken??randomBytes(32).toString('base64url'),startedAt:clock()};
       grants.clear();grants.set(requestedProjectId,grant);
       sessions.clear();
@@ -194,6 +207,7 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.no
       for(const [id,entry] of sessions)
         if(entry.grant.projectId===requestedProjectId)sessions.delete(id);
       const grant={projectId:requestedProjectId,
+        scopeFingerprint:captureScope(requestedProjectId),
         token:resumeToken??randomBytes(32).toString('base64url'),startedAt:clock()};
       grants.set(requestedProjectId,grant);
       return {...status(),token:grant.token,projectId:grant.projectId};
@@ -201,7 +215,7 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,clock=Date.no
     // Not exposed through IPC or status; Main uses this to seal credentials.
     localGrant(requestedProjectId){
       const grant=grants.get(requestedProjectId);
-      if(!bound()||!grant)return null;
+      if(!bound()||!valid(grant))return null;
       return {projectId:grant.projectId,token:grant.token,port};
     },
     async revokeProject(requestedProjectId){

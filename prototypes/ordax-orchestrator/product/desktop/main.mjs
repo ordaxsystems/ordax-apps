@@ -1260,7 +1260,10 @@ const forgeLocalMcp=createForgeLoopbackMcp({
       'project_file_read',projectId);
       return forgeMcpTrusted.isTrusted(projectId);
     }catch{return false;}
-  }
+  },
+  // Tokens are bound to the verified workspace identity at issue time.
+  // Reapproving a changed folder can never revive an old bearer/session.
+  projectScope:projectId=>forgeMcpTrusted.scopeHash(projectId)
 });
 orchestratorService.autonomous.setNotifier(()=>notifyOrchestratorChanged());
 orchestratorService.recoverInterruptedCommands();

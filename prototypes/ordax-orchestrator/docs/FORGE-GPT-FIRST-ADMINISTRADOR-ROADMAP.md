@@ -70,6 +70,14 @@ históricos, não instruções de implementação. A realidade de cada funcional
   inicializar outra com o token ainda autorizado. Regressão comprovou
   capacidade cheia (409), recuperação de órfãs, preservação da sessão viva
   e continuidade da concessão sem novo consentimento.
+  **Escopo do bearer fixado (07/11/2026):** cada token MCP registra uma
+  impressão da pasta verificada do projeto no momento da concessão. A
+  validação é feita em todas as solicitações e consultas de grant: uma
+  mudança de pasta invalida o token e sua sessão anterior mesmo se o Owner
+  aprovar a nova pasta depois. A aprovação renovada cria um token novo;
+  o grant de outro projeto no mesmo listener permanece utilizável. Teste
+  direcionado com dois projetos prova a não reanimação do bearer antigo,
+  ausência de acesso cruzado e recuperação apenas por novo consentimento.
   **Continuidade atual:** a confiança autorizada pelo Owner é registrada
   por projeto na tabela `forge_mcp_owner_approvals` do SQLite existente,
   sem guardar segredos. Na próxima ativação do mesmo projeto, o Forge
