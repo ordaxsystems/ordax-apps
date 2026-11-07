@@ -43,6 +43,36 @@ test('official tunnel launcher is outbound-only, project scoped and leaks no sec
   assert.equal(s.publicStatus.projectId,id);
 });
 
+test('official legacy and namespaced tunnel IDs are preserved unchanged',()=>{
+  const valid=[
+    tunnelId,
+    'tunnel_'+'z9'.repeat(16),
+    'tunnel_ab12_'+'z9'.repeat(16),
+    'tunnel_9x7b_'+'a1'.repeat(16)
+  ];
+  for(const targetId of valid){
+    const value=validateForgeTunnelTarget({projectId:id,tunnelId:targetId,endpoint});
+    assert.equal(value.tunnelId,targetId);
+    const launch=makeForgeOfficialTunnelLaunch({...input(),tunnelId:targetId});
+    assert.equal(launch.args[1],'--control-plane.tunnel-id='+targetId);
+    assert.equal(launch.publicStatus.tunnelId,targetId);
+  }
+  const invalid=[
+    'tunnel_'+'a'.repeat(31),'tunnel_'+'a'.repeat(33),
+    'tunnel_ab1_'+'a'.repeat(32),'tunnel_abcde_'+'a'.repeat(32),
+    'tunnel_ab_12_'+'a'.repeat(32),
+    'tunnel_AB12_'+'a'.repeat(32),
+    'tunnel_ab12_'+'A'.repeat(32),
+    'tunnel_ab12_'+'a'.repeat(31)+'-',
+    'tunnel_ab12_'+'a'.repeat(32)+'?x=1',
+    'tunnel_µb12_'+'a'.repeat(32),
+    'tunnel_ab12_'+'a'.repeat(32)+'\n'
+  ];
+  for(const targetId of invalid)
+    assert.throws(()=>validateForgeTunnelTarget({projectId:id,tunnelId:targetId,endpoint}),
+      /identifier_invalid/);
+});
+
 test('tunnel preparation refuses unapproved, unscoped, unsafe or public targets',()=>{
   const good=input();
   for(const patch of [

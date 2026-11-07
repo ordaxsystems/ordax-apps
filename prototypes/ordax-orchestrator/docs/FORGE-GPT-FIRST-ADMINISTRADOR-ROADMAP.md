@@ -96,6 +96,15 @@ históricos, não instruções de implementação. A realidade de cada funcional
   parâmetros externos, binários não correspondentes e autorização ausente.
   A preparação é intencionalmente inativa; não inicia novo processo sem
   consentimento, binário oficial, tunnel_id e chave de Runtime válidos.
+  **Compatibilidade de ID corrigida (07/11/2026):** preservar sem alteração
+  os dois formatos oficiais do `tunnel-client`: `tunnel_<32 caracteres
+  alfanuméricos minúsculos>` e `tunnel_<namespace de 4>_<32 caracteres
+  alfanuméricos minúsculos>`. A validação anterior aceitava apenas dígitos
+  hexadecimais no ID legado. Agora rejeita tamanho incorreto, caracteres
+  não ASCII, namespace de comprimento indevido e lixo após o identificador.
+  Testes com ambos os formatos passam; CLI Windows v0.0.20 aceitou o
+  namespaced de teste e bloqueou somente por falta de runtime key, sem
+  acesso remoto. Não assumir que um ID aceito é um túnel existente/autorizado.
   **Cliente oficial instalado e verificado em 06/11/2026:** release
   `openai/tunnel-client v0.0.20` (Windows amd64), baixado diretamente do
   GitHub oficial; SHA-256 do ZIP conferido contra release e SHA256SUMS,
