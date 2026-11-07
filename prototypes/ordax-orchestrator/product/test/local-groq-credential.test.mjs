@@ -19,7 +19,7 @@ test('Groq key is namespaced to the Host identity and remains available to a new
   assert.equal(first.secureStorageAvailable(),true);
   assert.equal(await first.read(),null);
   assert.deepEqual(await first.save(` ${key} `),{saved:true,persistence:'os_credential_vault'});
-  assert.deepEqual([...osVault.values.keys()],['br.com.ordax.orchestrator.groq-api:host:'+hostId]);
+  assert.deepEqual([...osVault.values.keys()],['br.com.ordax.forge.groq-api:host:'+hostId]);
 
   const reopened=createHostGroqCredential({hostId,credentialStore:osVault});
   assert.equal(await reopened.read(),key);

@@ -47,7 +47,7 @@ test('native Work Surface has separate transient WebContentsView with no IPC or 
   assert.match(source,/win\.contentView\.addChildView\(view\)/);
   assert.match(source,/win\.contentView\.removeChildView\(view\)/);
   assert.doesNotMatch(source,/preload\s*:/);
-  assert.doesNotMatch(source,/persist:ordax-orchestrator-lab-chatgpt/);
+  assert.doesNotMatch(source,/persist:ordax-forge-chatgpt/);
   assert.match(main,/readVerifiedHtmlPreview\(payload\)/);
   assert.match(main,/interactiveHtmlPreview\.open\(proof\)/);
   assert.match(main,/requireTrustedSupervisorRenderer\(event\)/);

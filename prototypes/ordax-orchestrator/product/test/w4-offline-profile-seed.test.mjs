@@ -19,7 +19,7 @@ test('W4 offline seed creates only synthetic interrupted and completed Runs, exa
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-w4-offline-seed-'));
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const profile=path.join(root,'candidate-userdata-v0.2.0-alpha.2');
- const dbPath=path.join(profile,'OrdaX','OrchestratorLab','data','ordax-orchestrator-lab.sqlite');
+ const dbPath=path.join(profile,'OrdaX','Forge','data','ordax-forge.sqlite');
  const first=spawn(profile);
  assert.equal(first.error,undefined,`offline seed subprocess did not complete: ${first.error?.code||'unknown_error'}`);
  assert.equal(first.status,0,first.stderr.slice(0,350));

@@ -58,7 +58,7 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
           return result(id,{protocolVersion:supported.includes(p.protocolVersion)?p.protocolVersion:supported[0],
             capabilities:{tools:{listChanged:false},resources:{subscribe:false,listChanged:false}},
             // Protocol name is stable across the rebrand; MCP title is user-facing.
-            serverInfo:{name:'ordax-orchestrator-lab',title:PRODUCT_NAME,version},
+            serverInfo:{name:'ordax-forge',title:PRODUCT_NAME,version},
             instructions:ORCHESTRATOR_CONTRACT+'. '+(scoped?FORGE_SCOPED_MCP_INSTRUCTIONS:FORGE_MCP_INSTRUCTIONS)+
               (scoped?' Authorized project: '+allowedProjectId+'.':'')});
         }

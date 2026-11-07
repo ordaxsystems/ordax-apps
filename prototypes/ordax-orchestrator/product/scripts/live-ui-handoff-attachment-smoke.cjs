@@ -187,7 +187,7 @@ async function main(){
     const attachment=provenanceEvent?.payload?.context_attachment;
     const staged=labStagedLocalAppData();
     const {resolveTaskHandoffRoot}=await import('../src/task-handoff-file.mjs');
-    const handoffRoot=resolveTaskHandoffRoot({tempRoot:os.tmpdir(),userRoot:path.join(staged,'OrdaX','OrchestratorLab')});
+    const handoffRoot=resolveTaskHandoffRoot({tempRoot:os.tmpdir(),userRoot:path.join(staged,'OrdaX','Forge')});
     const tempFile=attachment?.filename?path.join(handoffRoot,attachment.filename):null;
     const databaseQuickCheck=db.prepare('PRAGMA quick_check').get().quick_check;
     const evidence={

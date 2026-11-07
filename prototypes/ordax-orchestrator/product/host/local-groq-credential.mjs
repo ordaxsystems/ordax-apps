@@ -1,6 +1,6 @@
 import {isValidGroqKey} from '../src/groq-key-contract.mjs';
 
-const SERVICE='br.com.ordax.orchestrator.groq-api';
+const SERVICE='br.com.ordax.forge.groq-api';
 const ACCOUNT_PREFIX='host:';
 
 /**

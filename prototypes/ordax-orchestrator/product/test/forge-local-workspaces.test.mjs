@@ -9,7 +9,7 @@ import {ForgeProjectFiles} from '../src/forge-project-files.mjs';
 import {ForgeLocalWorkspaces,resolveForgeWorkspaceDocumentsDirectory} from '../src/forge-local-workspaces.mjs';
 
 test('staged candidate projects never resolve into the owner Windows Documents folder',()=>{
-  const userRoot=path.join(os.tmpdir(),'candidate-userdata-v1.0.0-alpha.42','OrdaX','OrchestratorLab');
+  const userRoot=path.join(os.tmpdir(),'candidate-userdata-v1.0.0-alpha.42','OrdaX','Forge');
   const windowsDocuments=path.join(os.tmpdir(),'owner-real-Documents');
   assert.equal(resolveForgeWorkspaceDocumentsDirectory({staged:false,userRoot,windowsDocuments}),
     path.resolve(windowsDocuments));

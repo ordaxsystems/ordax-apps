@@ -10,7 +10,7 @@ const TOKEN_URL=ISSUER+'/api/accounts/oauth/token';
 const RESOURCE='https://api.openai.com/v1';
 const PLAN_SCOPE='chatgpt.tokens.use.direct';
 const REQUIRED_SCOPES=new Set(['openid','email','profile','offline_access','resource.invoke',PLAN_SCOPE]);
-const SERVICE='br.com.ordax.orchestrator.chatgpt-plan';
+const SERVICE='br.com.ordax.forge.chatgpt-plan';
 const ACCOUNT_PREFIX='host:';
 const MAX_JSON_BYTES=1024*1024;
 

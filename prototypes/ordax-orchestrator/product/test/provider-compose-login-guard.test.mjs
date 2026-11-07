@@ -69,7 +69,7 @@ test('fresh provider chat recovery preserves the Task and is blocked for unsafe 
 });
 
 test('Electron uses existing persistent isolated Chromium partition; never stores provider password',()=>{
-  assert.match(worker,/this\.partition = 'persist:ordax-orchestrator-lab-chatgpt'/);
+  assert.match(worker,/this\.partition = 'persist:ordax-forge-chatgpt'/);
   assert.match(worker,/this\.session = session\.fromPartition\(this\.partition\)/);
   assert.match(worker,/this\.view = createView\(this\.partition\)/);
   assert.match(html,/O OrdaX não salva sua senha/);

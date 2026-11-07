@@ -28,7 +28,7 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
   const resolvedDataRoot=path.resolve(dataRoot);
   const assetsRoot=path.join(resolvedDataRoot,'assets');
   fs.mkdirSync(assetsRoot,{recursive:true});
-  const store=new Store(path.join(resolvedDataRoot,'ordax-orchestrator-lab.sqlite'));
+  const store=new Store(path.join(resolvedDataRoot,'ordax-forge.sqlite'));
   const recoveredRuns=store.recoverInterruptedRuns();
   store.updateWorkspaceMetadata({last_started_at:new Date().toISOString(),recovered_runs_on_start:recoveredRuns,
     sqlite_open_retries:store.openRetryCount,execution_surface:'node_host'});

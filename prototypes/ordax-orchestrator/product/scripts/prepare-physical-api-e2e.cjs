@@ -11,12 +11,12 @@ const expectedArchive='3e8c4bf5653a8ed1df6ca39f0ea4162280206cd0d781e6edf05d1de52
 (async()=>{
   if(process.platform!=='win32'||typeof WebSocket!=='function')throw Error('physical_windows_node_required');
   const base=path.resolve(process.argv[2]||'');
-  const allowed=path.join(process.env.LOCALAPPDATA,'OrdaX','OrchestratorLabDevCandidates','alpha4-98cb566');
+  const allowed=path.join(process.env.LOCALAPPDATA,'OrdaX','ForgeDevCandidates','alpha4-98cb566');
   if(base.toLowerCase()!==allowed.toLowerCase())throw Error('physical_candidate_path_rejected');
   if(hash(path.join(base,'candidate.zip'))!==expectedArchive)throw Error('physical_archive_mismatch');
   const receipt=JSON.parse(fs.readFileSync(path.join(base,'package','orchestrator-e2e-build.json'),'utf8'));
   if(receipt.schema!=='ordax.lab.unsigned-e2e-candidate.v1'||receipt.checkout_sha!==expectedSource||
-    receipt.app_id!=='br.com.ordax.orchestrator.lab'||receipt.file!=='OrdaX-Orchestrator-Lab-0.2.0-alpha.4.exe')
+    receipt.app_id!=='br.com.ordax.forge'||receipt.file!=='OrdaX-Forge-0.2.0-alpha.4.exe')
     throw Error('physical_receipt_mismatch');
   const exe=path.join(base,'package',receipt.file);
   if(hash(exe)!==receipt.sha256)throw Error('physical_executable_mismatch');
@@ -68,7 +68,7 @@ const expectedArchive='3e8c4bf5653a8ed1df6ca39f0ea4162280206cd0d781e6edf05d1de52
     const state=await evaluate(`(async()=>({proof:await window.ordax.labBuildProof(),profile:await window.ordax.labProfileProof(),
       appMode:document.documentElement.dataset.ordaxView,
       configured:(await window.ordax.coordinatorChatStatus()).configured===true}))()`);
-    const expectedProfile=createHash('sha256').update(path.join(profile,'OrdaX','OrchestratorLab').toLowerCase()).digest('hex');
+    const expectedProfile=createHash('sha256').update(path.join(profile,'OrdaX','Forge').toLowerCase()).digest('hex');
     if(!state.proof?.verified||state.proof.sourceCommit!==expectedSource||state.proof.contentDigest!==receipt.runtime_content_digest||
       state.profile?.fingerprint!==expectedProfile||state.appMode!=='app')throw Error('physical_runtime_identity_mismatch');
     const setup=await evaluate(`(async()=>{

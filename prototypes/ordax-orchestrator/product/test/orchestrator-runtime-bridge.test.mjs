@@ -10,7 +10,7 @@ function fixture(onInvoke){
   const build={verified:true,status:'verified',sourceCommit:'a'.repeat(40),contentDigest:'b'.repeat(64)};
   const bootstrap={schema:RUNTIME_BRIDGE_SCHEMA,type:'bootstrap',sessionId:randomUUID(),
     key:randomBytes(32).toString('base64'),ownerUserId:randomUUID(),clientId:'oauth-fixture-client',
-    deviceId:randomUUID(),grantId:randomUUID(),capability:'orchestrator.app_read',expiresAt:now+60000,
+    deviceId:randomUUID(),grantId:randomUUID(),capability:'forge.app_read',expiresAt:now+60000,
     expectedCommit:build.sourceCommit,expectedDigest:build.contentDigest,expectedProfile:'c'.repeat(64)};
   bridge=createOrchestratorRuntimeBridge({workspaceSessionId:'session_test',buildProof:build,
     profileFingerprint:bootstrap.expectedProfile,clock:()=>now,

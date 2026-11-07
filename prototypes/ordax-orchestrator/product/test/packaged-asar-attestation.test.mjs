@@ -22,7 +22,7 @@ function fixture(t,entry='desktop/bootstrap.mjs') {
   for(const dir of ['desktop','src','supervisor'])
     fs.mkdirSync(path.join(source,dir),{recursive:true});
   fs.writeFileSync(path.join(source,'package.json'),
-    JSON.stringify({name:'ordax-orchestrator-lab',version:'0.2.0-alpha.2',main:entry}));
+    JSON.stringify({name:'ordax-forge',version:'0.2.0-alpha.2',main:entry}));
   fs.writeFileSync(path.join(source,'desktop','bootstrap.mjs'),'await import("./main.mjs");\n');
   fs.writeFileSync(path.join(source,'desktop','main.mjs'),'export const main=true;\n');
   fs.writeFileSync(path.join(source,'desktop','worker-preload.bundle.cjs'),

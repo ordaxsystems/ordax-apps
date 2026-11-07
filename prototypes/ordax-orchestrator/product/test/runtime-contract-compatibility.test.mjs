@@ -7,7 +7,7 @@ import {validateRuntimeContract} from '../scripts/check-runtime-contract.mjs';
 const clone=value=>structuredClone(value);
 const readTools=ORCHESTRATOR_TOOLS.filter(tool=>tool.readOnly).slice(0,2);
 function fixture() {
-  const runtimeContract={schema:ORCHESTRATOR_CONTRACT,appId:'br.com.ordax.orchestrator.lab',authority:'none',tools:clone(readTools)};
+  const runtimeContract={schema:ORCHESTRATOR_CONTRACT,appId:'br.com.ordax.forge',authority:'none',tools:clone(readTools)};
   const contractBytes=Buffer.from(JSON.stringify(runtimeContract)+'\n');
   const runtimeContractSha256=createHash('sha256').update(contractBytes).digest('hex');
   const compatibilityPin={schema:'ordax.orchestrator-runtime-compatibility/1',runtimeRepository:'ordaxsystems/ordax-runtime',

@@ -19,20 +19,20 @@ const stage=argv=>resolveLabUserRoot({argv,localAppData:path.resolve(os.tmpdir()
 
 test('normal OrdaX App without staged flags keeps its existing private Lab root',()=>{
   assert.deepEqual(stage(['electron','app']),{
-    userRoot:path.resolve(os.tmpdir(),'ordinary-appdata','OrdaX','OrchestratorLab'),staged:false
+    userRoot:path.resolve(os.tmpdir(),'ordinary-appdata','OrdaX','Forge'),staged:false
   });
 });
 
 test('unpacked candidate cannot attach to the installed owner profile',()=>{
-  const candidateExe=String.raw`C:\build\dist\candidate-5bb2b5e\win-unpacked\OrdaX Orchestrator Lab.exe`;
-  const installedExe=String.raw`C:\Users\owner\AppData\Local\Programs\OrdaX Orchestrator Lab\OrdaX Orchestrator Lab.exe`;
-  const portableExe=String.raw`C:\Users\owner\AppData\Local\Temp\portable\OrdaX Orchestrator Lab.exe`;
+  const candidateExe=String.raw`C:\build\dist\candidate-5bb2b5e\win-unpacked\OrdaX Forge.exe`;
+  const installedExe=String.raw`C:\Users\owner\AppData\Local\Programs\OrdaX Forge\OrdaX Forge.exe`;
+  const portableExe=String.raw`C:\Users\owner\AppData\Local\Temp\portable\OrdaX Forge.exe`;
   const ordinary=path.resolve(os.tmpdir(),'ordinary-appdata');
   const resolve=(executablePath,argv)=>resolveLabUserRoot({executablePath,argv,localAppData:ordinary});
   assert.throws(()=>resolve(candidateExe,['candidate']),/lab_candidate_requires_staged_profile/);
   assert.throws(()=>resolve(candidateExe,['candidate',approved,flag]),/lab_staged_profile_explicit_binding_required/);
   assert.deepEqual(resolve(candidateExe,['candidate',approved,flag,debug]),{
-    userRoot:path.join(candidate,'OrdaX','OrchestratorLab'),staged:true
+    userRoot:path.join(candidate,'OrdaX','Forge'),staged:true
   });
   assert.equal(resolve(installedExe,['installed']).staged,false);
   assert.equal(resolve(portableExe,['portable']).staged,false);
@@ -55,7 +55,7 @@ test('explicit staged profile path is authoritative, and fingerprint is stable',
   const parallel=stage(['electron','app',parallelDebug,approved,flag]);
   assert.deepEqual(parallel,profile);
   assert.equal(profile.staged,true);
-  assert.equal(profile.userRoot,path.join(candidate,'OrdaX','OrchestratorLab'));
+  assert.equal(profile.userRoot,path.join(candidate,'OrdaX','Forge'));
   assert.match(labProfileFingerprint(profile.userRoot),/^[a-f0-9]{64}$/);
   assert.equal(labProfileFingerprint(profile.userRoot),labProfileFingerprint(profile.userRoot));
   if(process.platform==='win32')

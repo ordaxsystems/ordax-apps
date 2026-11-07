@@ -8,8 +8,8 @@ if(!['9445','9446'].includes(requestedPort))throw new Error('lab_e2e_debug_port_
 const DEBUG_PORT=requestedPort;
 const DEBUG_URL='http://127.0.0.1:'+DEBUG_PORT+'/json/list';
 const PRODUCT_TITLE=require('../package.json').build.productName;
-const LAB_ID='OrchestratorLab';
-const DB_FILENAME='ordax-orchestrator-lab.sqlite';
+const LAB_ID='Forge';
+const DB_FILENAME='ordax-forge.sqlite';
 
 // Live smoke scripts are never allowed to attach to the original Gratis,
 // a non-staged Lab profile, or an arbitrary Chrome debug endpoint.

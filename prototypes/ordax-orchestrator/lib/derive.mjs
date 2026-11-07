@@ -36,7 +36,7 @@ export function deriveSourceFile(relative, original, lock) {
     pkg.build.productName = lock.targetIdentity.productName;
     pkg.build.files = ['desktop/**/*','src/*.mjs','supervisor/**/*','package.json'];
     pkg.build.win.executableName = lock.targetIdentity.productName;
-    pkg.build.win.artifactName = 'OrdaX-Orchestrator-Lab-' + '$' + '{version}.exe';
+    pkg.build.win.artifactName = 'OrdaX-Forge-' + '$' + '{version}.exe';
     return Buffer.from(JSON.stringify(pkg, null, 2) + '\n');
   }
   if (relative === 'package-lock.json') {
@@ -55,29 +55,29 @@ export function deriveSourceFile(relative, original, lock) {
   let text = bytes.toString('utf8');
   if (relative === 'desktop/main.mjs') {
     text = replaceExact(text, "app.setName('OrdaX Gratis')",
-      "app.setName('OrdaX Orchestrator Lab')");
+      "app.setName('OrdaX Forge')");
     text = replaceExact(text, "const userRoot = path.join(localAppData, 'OrdaX', 'Gratis');",
-      "const userRoot = path.join(localAppData, 'OrdaX', 'OrchestratorLab');");
+      "const userRoot = path.join(localAppData, 'OrdaX', 'Forge');");
     text = replaceExact(text, "'ordax-gratis.sqlite'",
-      "'ordax-orchestrator-lab.sqlite'");
+      "'ordax-forge.sqlite'");
     text = replaceExact(text, "title: 'OrdaX Gratis'",
-      "title: 'OrdaX Orchestrator Lab'");
+      "title: 'OrdaX Forge'");
     text = replaceExact(text, "appendSwitch('remote-debugging-port', '9444')",
       "appendSwitch('remote-debugging-port', '9445')");
   }
   if (relative === 'desktop/embedded-worker.mjs') {
     text = replaceExact(text,
       "process.env.ORDAX_CHATGPT_PARTITION || 'persist:ordax-gratis-chatgpt'",
-      "'persist:ordax-orchestrator-lab-chatgpt'");
+      "'persist:ordax-forge-chatgpt'");
   }
   if (relative === 'desktop/ui.html') {
     text = replaceExact(text, '<title>OrdaX Gratis</title>',
-      '<title>OrdaX Orchestrator Lab</title>');
+      '<title>OrdaX Forge</title>');
     text = replaceExact(text, 'Gratis • memória local',
-      'Orchestrator Lab • memória isolada');
+      'Forge • memória isolada');
   }
   if (relative === 'test/desktop-contract.test.mjs') {
-    text = replaceExact(text, "['\"]Gratis/", "['\"]OrchestratorLab/");
+    text = replaceExact(text, "['\"]Gratis/", "['\"]Forge/");
     text = replaceExact(text,
       "assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','package.json']);",
       "assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','supervisor/**/*','package.json']);");
@@ -98,11 +98,11 @@ export function assertDerivedIdentity(contents, lock) {
   assert.equal(pkg.build?.appId, lock.targetIdentity.appId);
   assert.equal(pkg.build?.productName, lock.targetIdentity.productName);
   assert.deepEqual(pkg.build?.files, ['desktop/**/*','src/*.mjs','supervisor/**/*','package.json']);
-  assert.ok(main.includes("const userRoot = path.join(localAppData, 'OrdaX', 'OrchestratorLab');"));
-  assert.ok(main.includes("new Store(path.join(dataRoot, 'ordax-orchestrator-lab.sqlite'))"));
-  assert.ok(worker.includes("'persist:ordax-orchestrator-lab-chatgpt'"));
+  assert.ok(main.includes("const userRoot = path.join(localAppData, 'OrdaX', 'Forge');"));
+  assert.ok(main.includes("new Store(path.join(dataRoot, 'ordax-forge.sqlite'))"));
+  assert.ok(worker.includes("'persist:ordax-forge-chatgpt'"));
   assert.ok(!worker.includes('ORDAX_CHATGPT_PARTITION'));
-  assert.ok(html.includes('<title>OrdaX Orchestrator Lab</title>'));
+  assert.ok(html.includes('<title>OrdaX Forge</title>'));
   for (const [path, text] of [['package.json', JSON.stringify(pkg)],
     ['desktop/main.mjs', main], ['desktop/embedded-worker.mjs', worker]]) {
     for (const forbidden of lock.forbiddenSourceIdentityRuntime) {

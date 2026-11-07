@@ -18,18 +18,17 @@ test('commercial brand SSOT matches Electron package and static HTML entry',()=>
   assert.match(html,new RegExp('id="productNameHeader">'+PRODUCT_NAME+'</h1>'));
   assert.match(html,new RegExp('id="productNameSettings">'+PRODUCT_NAME+'</h3>'));
 });
-test('rebranding preserves existing technical identity and sole owner profile',()=>{
+test('Forge owns its sole executable, appId and private user profile',()=>{
   assert.equal(packageJson.name,'ordax-forge');
   assert.equal(packageLock.name,packageJson.name);
   assert.equal(packageLock.packages[''].name,packageJson.name);
-  assert.equal(packageJson.build.appId,'br.com.ordax.orchestrator.lab');
-  // The pinned OrdaX Runtime still verifies this physical executable name.
-  // Change it only with the canonical Runtime launcher contract.
-  assert.equal(packageJson.build.win.executableName,'OrdaX Orchestrator Lab');
+  assert.equal(packageJson.build.appId,'br.com.ordax.forge');
+  // The canonical OrdaX Runtime launcher verifies the Forge executable name.
+  assert.equal(packageJson.build.win.executableName,'OrdaX Forge');
   assert.equal(packageJson.build.win.artifactName,'OrdaX-Forge-${version}.exe');
   const binding=fs.readFileSync(path.join(root,'src','lab-profile-binding.mjs'),'utf8');
-  assert.match(binding,/path\.join\(localAppData,'OrdaX','OrchestratorLab'\)/);
+  assert.match(binding,/path\.join\(localAppData,'OrdaX','Forge'\)/);
   const main=fs.readFileSync(path.join(root,'desktop','main.mjs'),'utf8');
   assert.match(main,/app\.setName\(PRODUCT_NAME\)/);
-  assert.match(main,/dataRoot, 'ordax-orchestrator-lab\.sqlite'/);
+  assert.match(main,/dataRoot, 'ordax-forge\.sqlite'/);
 });

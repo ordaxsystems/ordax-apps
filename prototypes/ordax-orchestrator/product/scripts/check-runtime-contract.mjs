@@ -37,7 +37,7 @@ export function validateRuntimeContract({runtimeLock,runtimeContract,contractByt
     runtimeLock.contract!==compatibilityPin.contract||runtimeLock.authority!=='none'||
     runtimeLock.projectionSha256!==compatibilityPin.runtimeContractSha256||digest!==compatibilityPin.runtimeContractSha256||
     runtimeContract?.schema!==appContract||runtimeContract.schema!==runtimeLock.contract||
-    runtimeContract.appId!=='br.com.ordax.orchestrator.lab'||runtimeContract.authority!=='none'||
+    runtimeContract.appId!=='br.com.ordax.forge'||runtimeContract.authority!=='none'||
     JSON.stringify(stable(bytesContract))!==JSON.stringify(stable(runtimeContract))||
     appContract!==compatibilityPin.contract||!Array.isArray(runtimeContract.tools)||!Array.isArray(appTools))
     fail('runtime_contract_pin_mismatch');

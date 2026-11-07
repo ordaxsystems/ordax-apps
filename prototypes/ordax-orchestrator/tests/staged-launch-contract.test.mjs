@@ -15,8 +15,8 @@ test('staged launcher checks canonical owned profile resolver, not obsolete main
   assert.match(launcher, /main\.includes\("app\.setPath\('userData', userRoot\)"\)/);
   assert.match(main, /resolveLabUserRoot\(\{/);
   assert.match(main, /app\.setPath\('userData', userRoot\)/);
-  assert.match(binding, /path\.join\(localAppData,'OrdaX','OrchestratorLab'\)/);
-  assert.doesNotMatch(launcher, /main\.includes\("'OrdaX', 'OrchestratorLab'"\)/);
+  assert.match(binding, /path\.join\(localAppData,'OrdaX','Forge'\)/);
+  assert.doesNotMatch(launcher, /main\.includes\("'OrdaX', 'Forge'"\)/);
 });
 
 test('staged launcher explicitly binds candidate profile and debug port', () => {

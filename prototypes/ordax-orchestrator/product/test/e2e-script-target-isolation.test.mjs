@@ -77,8 +77,8 @@ test('staged AppData requires absolute pinned candidate root and explicit approv
   withStagedEnv(stage,'1',()=>{
     assert.equal(labStagedLocalAppData(),path.resolve(stage));
     assert.equal(labDatabasePath(),
-      path.join(stage,'OrdaX','OrchestratorLab','data','ordax-orchestrator-lab.sqlite'));
-    assert.equal(labLockPath(),path.join(stage,'OrdaX','OrchestratorLab','e2e.lock'));
+      path.join(stage,'OrdaX','Forge','data','ordax-forge.sqlite'));
+    assert.equal(labLockPath(),path.join(stage,'OrdaX','Forge','e2e.lock'));
   });
 });
 
@@ -444,7 +444,7 @@ test('app-mode certification validates the OrdaX shell and embedded ChatGPT pane
 });
 
 test('all live App gates reject a Lab with correct title but a different SQLite profile',async()=>{
-  const expectedProfile=path.join(stage,'OrdaX','OrchestratorLab');
+  const expectedProfile=path.join(stage,'OrdaX','Forge');
   const {labProfileFingerprint}=await import('../src/lab-profile-binding.mjs');
   const app={view:'app',providerPane:'TABLIST',composer:'FORM',prompt:'TEXTAREA',newTask:'BUTTON'};
   const priorLocal=process.env.ORDAX_LAB_E2E_LOCALAPPDATA;

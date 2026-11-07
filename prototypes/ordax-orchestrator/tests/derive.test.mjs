@@ -31,7 +31,7 @@ const html = '<title>OrdaX Gratis</title><p>Gratis • memória local</p>';
 test('source pin and disabled promotion flags are explicit', () => {
   assert.match(lock.commit, /^[a-f0-9]{40}$/);
   assert.equal(lock.repository, 'ordaxsystems/ordax-flow');
-  assert.equal(lock.targetIdentity.appId, 'br.com.ordax.orchestrator.lab');
+  assert.equal(lock.targetIdentity.appId, 'br.com.ordax.forge');
   assert.equal(lock.distributionEnabled, false);
   assert.equal(lock.modelSupervisorEnabled, false);
   assert.equal(lock.externalUserIngressEnabled, false);
@@ -51,32 +51,32 @@ test('tracked-file allowlist excludes git metadata, traversal and secrets', () =
 
 test('fork has isolated appId, userData, SQLite and debugging port', () => {
   const p = JSON.parse(text('package.json', JSON.stringify(pkg)));
-  assert.equal(p.build.appId, 'br.com.ordax.orchestrator.lab');
-  assert.equal(p.build.productName, 'OrdaX Orchestrator Lab');
-  assert.equal(p.name, 'ordax-orchestrator-lab');
+  assert.equal(p.build.appId, 'br.com.ordax.forge');
+  assert.equal(p.build.productName, 'OrdaX Forge');
+  assert.equal(p.name, 'ordax-forge');
   assert.equal(p.version, lock.productVersion.version);
   assert.deepEqual(p.build.files, ['desktop/**/*','src/*.mjs','supervisor/**/*','package.json']);
-  assert.equal(p.build.win.artifactName, 'OrdaX-Orchestrator-Lab-' + '$' + '{version}.exe');
+  assert.equal(p.build.win.artifactName, 'OrdaX-Forge-' + '$' + '{version}.exe');
   const m = text('desktop/main.mjs', main);
-  assert.match(m, /app\.setName\('OrdaX Orchestrator Lab'\)/);
-  assert.match(m, /'OrdaX', 'OrchestratorLab'/);
-  assert.match(m, /'ordax-orchestrator-lab\.sqlite'/);
+  assert.match(m, /app\.setName\('OrdaX Forge'\)/);
+  assert.match(m, /'OrdaX', 'Forge'/);
+  assert.match(m, /'ordax-forge\.sqlite'/);
   assert.doesNotMatch(m, /'OrdaX', 'Gratis'|ordax-gratis\.sqlite|9444/);
   assert.match(m, /9445/);
 });
 
 test('fork cannot use Gratis session even if legacy env variable is present', () => {
   const w = text('desktop/embedded-worker.mjs', worker);
-  assert.equal(w, "this.partition = 'persist:ordax-orchestrator-lab-chatgpt';");
+  assert.equal(w, "this.partition = 'persist:ordax-forge-chatgpt';");
   assert.doesNotMatch(w, /ORDAX_CHATGPT_PARTITION|ordax-gratis-chatgpt/);
 });
 
 test('UI and desktop-contract fixture use new lab identity', () => {
   assert.equal(text('desktop/ui.html', html),
-    '<title>OrdaX Orchestrator Lab</title><p>Orchestrator Lab • memória isolada</p>');
+    '<title>OrdaX Forge</title><p>Forge • memória isolada</p>');
   const assertion = 'assert.match(main, /OrdaX[\'"], [\'"]Gratis/);\n' +
     "assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','package.json']);";
-  assert.match(text('test/desktop-contract.test.mjs', assertion), /OrchestratorLab/);
+  assert.match(text('test/desktop-contract.test.mjs', assertion), /Forge/);
 });
 
 test('import fails closed if pinned source drifts', () => {
@@ -111,12 +111,12 @@ test('lab-only supervisor overlay is fail-closed and does not import old Flow pr
   const miniMain = [
     "import { app, BrowserWindow, ipcMain, protocol, net } from 'electron';",
     "import path from 'node:path';",
-    "app.setName('OrdaX Orchestrator Lab');",
+    "app.setName('OrdaX Forge');",
     "const singleInstanceLock = app.requestSingleInstanceLock();",
     "const here = path.dirname(fileURLToPath(import.meta.url));",
     "const root = path.resolve(here, '..');",
     "const localAppData = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || root, 'AppData', 'Local');",
-    "const userRoot = path.join(localAppData, 'OrdaX', 'OrchestratorLab');",
+    "const userRoot = path.join(localAppData, 'OrdaX', 'Forge');",
     "app.setPath('userData', userRoot);",
     "app.whenReady().then(async () => {"
   ].join('\n');
