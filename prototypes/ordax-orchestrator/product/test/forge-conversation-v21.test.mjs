@@ -16,7 +16,7 @@ test('central Forge UI has a single optional tools menu, not permanent diagnosti
     assert.ok(js.includes("'"+id+"'"));
   }
   assert.match(js,/advancedContent\.append\(node\)/);
-  assert.match(js,/coordinatorTransport'\)\.hidden=coordinatorAvailable/);
+  assert.match(js,/coordinatorTransport'\)\.hidden=orchestratorChatAvailable/);
   assert.match(css,/forge-coordinator-advanced-content\{/);
   assert.match(css,/forge-coordinator-advanced:not\(\[open\]\)>/);
 });
