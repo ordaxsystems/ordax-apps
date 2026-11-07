@@ -62,14 +62,20 @@ históricos, não instruções de implementação. A realidade de cada funcional
   tokens. A ponte HTTPS remota com consentimento ainda está pendente.
   Não criar processos MCP nem URLs separados para cada projeto.
   **Recuperação de sessões ociosas implementada (07/11/2026):** no máximo
-  oito sessões HTTP MCP ativas; se um cliente abandonar sua sessão sem
+  64 sessões HTTP MCP ativas; se um cliente abandonar sua sessão sem
   `DELETE`, o Forge recupera apenas sessões com mais de uma hora sem
-  atividade **quando uma nona sessão solicita vaga**. Sessões utilizadas
+  atividade **quando uma nova sessão solicita vaga**. Sessões utilizadas
   recentemente não são eliminadas e a autorização Owner/token do projeto
   NÃO recebe prazo. Uma sessão abandonada retorna 404 e o cliente pode
   inicializar outra com o token ainda autorizado. Regressão comprovou
   capacidade cheia (409), recuperação de órfãs, preservação da sessão viva
   e continuidade da concessão sem novo consentimento.
+  **Capacidade sem teto artificial para conversas:** Host Browser e MCP usam
+  limites independentes de 64 sessões simultâneas. O Host recupera sessões
+  ociosas por mais de uma hora apenas sob pressão, preservando conexões SSE
+  abertas; handshakes MCP paralelos reservam vaga antes da execução assíncrona.
+  Esses limites não restringem projetos, tarefas, histórico ou conversas
+  persistidos no SQLite.
   **Escopo do bearer fixado (07/11/2026):** cada token MCP registra uma
   impressão da pasta verificada do projeto no momento da concessão. A
   validação é feita em todas as solicitações e consultas de grant: uma

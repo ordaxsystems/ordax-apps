@@ -4,7 +4,7 @@ import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 
 const SESSION_COOKIE_AGE_SECONDS = 60 * 60 * 24 * 30;
-const MAX_BROWSER_SESSIONS = 8;
+const MAX_BROWSER_SESSIONS = 64;
 const RECLAIM_IDLE_BROWSER_SESSION_MS = 60 * 60 * 1000; // Reclaim only under capacity pressure.
 const MAX_REQUEST_BYTES = 4 * 1024 * 1024;
 const STATIC_FILES = new Map([
@@ -167,7 +167,9 @@ export function createHostBrowserServer({productRoot,assetsRoot,invoke,readAsset
         // Lost browser tabs have no close handshake. Recover their slots without
         // invalidating recently active sessions or shortening their cookie life.
         for(const [token,lastSeen] of sessions)
-          if(clock()-lastSeen>RECLAIM_IDLE_BROWSER_SESSION_MS)sessions.delete(token);
+          if(clock()-lastSeen>RECLAIM_IDLE_BROWSER_SESSION_MS&&
+            ![...streams].some(client=>client.session===token&&!client.res.destroyed))
+            sessions.delete(token);
       }
       if(sessions.size>=MAX_BROWSER_SESSIONS)return json(res,429,{error:'host_session_limit'});
       const session=randomBytes(32).toString('base64url');sessions.set(session,clock());
@@ -197,7 +199,7 @@ export function createHostBrowserServer({productRoot,assetsRoot,invoke,readAsset
       res.write('retry: 2000\n\n');
       const client={session,res};streams.add(client);
       const heartbeat=setInterval(()=>{if(!res.destroyed)res.write(': keepalive\n\n');},15000);
-      req.on('close',()=>{clearInterval(heartbeat);streams.delete(client);});
+      res.on('close',()=>{clearInterval(heartbeat);streams.delete(client);});
       return;
     }
 
@@ -256,7 +258,8 @@ export function createHostBrowserServer({productRoot,assetsRoot,invoke,readAsset
     publish(name,payload) {
       if(!EVENT_NAMES.has(name))return;
       const frame=`event: ${name}\ndata: ${JSON.stringify(sanitizeResult(payload))}\n\n`;
-      for(const client of streams)if(!client.res.destroyed)client.res.write(frame);
+      for(const client of streams)
+        if(!client.res.destroyed&&sessions.has(client.session))client.res.write(frame);
     },
     confirm({title,message,detail,approveLabel='Confirmar',cancelLabel='Cancelar'},{timeoutMs=120000}={}) {
       if(closed||streams.size===0)return Promise.resolve(false);

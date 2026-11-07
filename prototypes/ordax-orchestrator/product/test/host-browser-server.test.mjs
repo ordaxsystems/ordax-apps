@@ -84,7 +84,7 @@ test('host reclaims idle browser slots under pressure but preserves active sessi
   const create=()=>fetch(origin+'/api/session',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'});
   try {
     const cookies=[];
-    for(let i=0;i<8;i++){
+    for(let i=0;i<64;i++){
       const response=await create();
       assert.equal(response.status,200);
       cookies.push(response.headers.get('set-cookie').split(';',1)[0]);
@@ -98,6 +98,31 @@ test('host reclaims idle browser slots under pressure but preserves active sessi
     assert.equal((await fetch(origin+'/api/session',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookies[0]},body:'{}'})).status,200);
     assert.equal((await fetch(origin+'/api/invoke',{headers:{Cookie:cookies[1]}})).status,401,'reclaimed token has no access');
   }finally{await server.close();}
+});
+
+test('a live browser event stream keeps its session during capacity recovery',async()=>{
+  let now=1_000_000;
+  const server=createHostBrowserServer({productRoot,assetsRoot:path.join(productRoot,'data','assets'),invoke:async()=>null,clock:()=>now});
+  const {origin}=await server.listen();
+  const create=()=>fetch(origin+'/api/session',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'});
+  let reader;
+  try {
+    const first=await create();
+    assert.equal(first.status,200);
+    const cookie=first.headers.get('set-cookie').split(';',1)[0];
+    const stream=await fetch(origin+'/api/events',{headers:{Cookie:cookie}});
+    reader=stream.body.getReader();
+    await reader.read();
+    for(let i=1;i<64;i++)assert.equal((await create()).status,200);
+    now+=61*60_000;
+    assert.equal((await create()).status,200,'abandoned sessions yield a free slot');
+    const recovered=await fetch(origin+'/api/session',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookie},body:'{}'});
+    assert.equal(recovered.status,200);
+    assert.equal(recovered.headers.get('set-cookie').split(';',1)[0],cookie);
+    server.publish('orchestrator-changed',{source:'continuity'});
+    const frame=new TextDecoder().decode((await reader.read()).value||new Uint8Array());
+    assert.match(frame,/event: orchestrator-changed/);
+  }finally{await reader?.cancel().catch(()=>{});await server.close();}
 });
 
 test('ChatGPT callback is bound to the host cookie and redirects without exposing its authorization code',async()=>{

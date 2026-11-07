@@ -10,7 +10,7 @@ const MAX_RESPONSE_BYTES=450_000;
 const ID=/^project_[a-zA-Z0-9-]{1,100}$/;
 const SESSION=/^[0-9a-f-]{36}$/;
 const TOKEN=/^[A-Za-z0-9_-]{40,128}$/;
-const MAX_MCP_SESSIONS=8;
+const MAX_MCP_SESSIONS=64;
 const RECLAIM_IDLE_SESSION_MS=60*60_000; // Capacity pressure only, never a grant TTL.
 // Owner approval lives for the running Forge process, not a fixed 30-minute
 // wall clock. Credentials remain RAM-only, scoped and revoked on stop/exit.
@@ -50,6 +50,7 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
     throw Error('forge_mcp_transport_ports_required');
   let server=null,port=null;
   const sessions=new Map(),grants=new Map();
+  let pendingInitializations=0;
   const bound=()=>server?.listening===true;
   const captureScope=projectId=>{
     const fingerprint=projectScope(projectId);
@@ -116,13 +117,13 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
         // Dead clients sometimes disappear without sending DELETE. Reclaim
         // only sessions inactive for over an hour AND only when all slots
         // are full. Active sessions and their per-project grants survive.
-        if(sessions.size>=MAX_MCP_SESSIONS){
+        if(sessions.size+pendingInitializations>=MAX_MCP_SESSIONS){
           const now=clock();
           for(const [id,entry] of sessions){
             if(!valid(entry.grant)||now-entry.lastActivity>RECLAIM_IDLE_SESSION_MS)
               sessions.delete(id);
           }
-          if(sessions.size>=MAX_MCP_SESSIONS)
+          if(sessions.size+pendingInitializations>=MAX_MCP_SESSIONS)
             return json(res,409,{error:'forge_mcp_session_limit'});
         }
         newSessionId=randomUUID();
@@ -141,7 +142,10 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
       // Project authority is revalidated for every request, not just approval.
       if(!authorizeProject(grant.projectId))
         return json(res,403,{error:'forge_mcp_project_revoked'});
-      const result=await session.handle(message);
+      if(newSessionId)pendingInitializations++; // Reserve capacity before asynchronous MCP handshake.
+      let result;
+      try{result=await session.handle(message);}
+      finally{if(newSessionId)pendingInitializations--;}
       if(newSessionId){
         if(!result?.result?.protocolVersion)return json(res,400,{error:'forge_mcp_initialize_rejected'});
         sessions.set(newSessionId,{handler:session,grant,lastActivity:clock()});

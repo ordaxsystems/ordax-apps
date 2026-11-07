@@ -107,14 +107,14 @@ test('MCP reclaims abandoned sessions only when full and preserves active sessio
   const projectId=await f.makeProject('session_slots');
   const ready=await f.transport.start(projectId);
   const sessions=[];
-  for(let i=0;i<8;i++){
+  for(let i=0;i<64;i++){
     const start=await rpc(ready.endpoint,ready.token,null,{...initialize,id:100+i});
     assert.equal(start.status,200);
     assert.ok(start.session);
     sessions.push(start.session);
   }
-  assert.equal(f.transport.status().sessions,8);
-  // Never displace a recent/active session just because a ninth client asks.
+  assert.equal(f.transport.status().sessions,64);
+  // Never displace a recent/active session just because a 65th client asks.
   const full=await rpc(ready.endpoint,ready.token,null,{...initialize,id:199});
   assert.equal(full.status,409);
   assert.equal(full.payload.error,'forge_mcp_session_limit');
@@ -137,6 +137,18 @@ test('MCP reclaims abandoned sessions only when full and preserves active sessio
   assert.equal(f.transport.status().expiresAt,null);
   const newlyActive=await rpc(ready.endpoint,ready.token,replacement.session,notify);
   assert.equal(newlyActive.status,202);
+});
+
+test('parallel MCP handshakes respect the 64-session capacity without oversubscription',async t=>{
+  const f=fixture(t);
+  const projectId=await f.makeProject('parallel_session_slots');
+  const ready=await f.transport.start(projectId);
+  const responses=await Promise.all(Array.from({length:96},(_,i)=>
+    rpc(ready.endpoint,ready.token,null,{...initialize,id:300+i})));
+  assert.equal(responses.filter(result=>result.status===200).length,64);
+  assert.equal(responses.filter(result=>result.status===409&&
+    result.payload.error==='forge_mcp_session_limit').length,32);
+  assert.equal(f.transport.status().sessions,64);
 });
 
 test('local MCP remains usable beyond 30 minutes until explicit revocation or Forge shutdown',async t=>{
