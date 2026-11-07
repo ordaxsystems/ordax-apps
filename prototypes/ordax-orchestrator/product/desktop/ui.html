@@ -38,7 +38,7 @@
         <span class="workspace-modes-caption">Áreas do projeto</span>
         <button id="openOrchestrator" class="workspace-mode workspace-mode-coordinator" type="button" aria-pressed="false" disabled>
           <span class="workspace-mode-symbol" aria-hidden="true">◇</span>
-          <span class="workspace-mode-copy"><strong>Forjador</strong><small id="coordinatorNavProvider">Coordenação Groq do projeto</small></span>
+          <span class="workspace-mode-copy"><strong>Forjador</strong><small id="coordinatorNavProvider">Conversa principal · GPT</small></span>
           <span class="workspace-mode-arrow" aria-hidden="true">↗</span>
         </button>
         <button id="openWorks" class="workspace-mode workspace-mode-gpt" type="button" aria-pressed="false" aria-controls="orchestratorWorkRail" aria-expanded="false" disabled>
@@ -263,6 +263,7 @@
       <p id="orchestrationNotice" class="orchestration-notice" role="status" aria-live="polite"></p>
       <section id="taskPanel" class="task-panel hidden">
         <header class="task-head">
+          <button id="taskBackToForjador" class="task-back-forjador" type="button" aria-label="Voltar ao chat do Forjador" title="Voltar ao Forjador">← Forjador</button>
           <div class="task-identity">
             <div class="task-avatar">✦</div>
             <div>

@@ -1195,9 +1195,23 @@ const orchestratorKernel=createOrchestratorKernel({
   provider:{busy:()=>Boolean(liveRun||worker?.active||providerScheduler?.snapshot().pendingTasks),
     ready:async()=>{assertProviderSendReadiness(await worker.health());return true;},
     send:async({taskId,content,draftRevision,taskKind,authorSource='human'})=>{
-      const execution=await enqueueExecution(taskId,runWorker=>runTask(taskId,content,{
-        newSession:false,draftRevision,allowCoordinatorTask:taskKind==='orchestrator',authorSource
-      },runWorker));
+      // No provider interaction may occur before beginProviderRun commits a
+      // canonical Run. If the Run count did not change, a rejected preflight
+      // is PROVABLY not submitted and must not quarantine the project as an
+      // uncertain GPT delivery. Actual attempted sends remain fail-closed.
+      const countRuns=()=>store.db.prepare('SELECT COUNT(*) AS n FROM runs WHERE task_id=?')
+        .get(taskId)?.n??0;
+      const runsBefore=countRuns();
+      let execution;
+      try{
+        execution=await enqueueExecution(taskId,runWorker=>runTask(taskId,content,{
+          newSession:false,draftRevision,allowCoordinatorTask:taskKind==='orchestrator',authorSource
+        },runWorker));
+      }catch(error){
+        if(!error?.providerDeliveryState&&countRuns()===runsBefore)
+          throw normalizeProviderFailure(error,{stage:'preflight'});
+        throw error;
+      }
       // Completion is the ONLY automatic capture trigger. An interrupted
       // Run, model proposal, failed send or historical recovery never triggers
       // a download, and a missing official file card never becomes a result.

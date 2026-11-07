@@ -1056,12 +1056,21 @@ function clearLinkedReplyRecovery() {
   if(text)text.textContent='';
 }
 
+$('#taskBackToForjador').addEventListener('click',()=>{
+  if(!orchestrationUi?.hasOrchestrator?.())return;
+  void orchestrationUi.showCoordinator().catch(()=>{
+    $('#orchestrationNotice').textContent='Não foi possível voltar à conversa principal. Nenhum envio foi realizado.';
+  });
+});
 async function openTask(id) {
   clearLinkedReplyRecovery();
   $('#runReviewActions').classList.add('hidden');
   $('#runReviewState').textContent='';
   orchestrationUi?.hide();
-  document.body.classList.remove('orchestrator-focus','orchestrator-rail-open');
+  // A GPT activity is a view inside the SAME V2 Forge workbench, not an old
+  // independent application shell. Preserve the three columns and right tabs.
+  document.body.classList.add('orchestrator-focus','forge-task-focus');
+  document.body.classList.remove('orchestrator-rail-open');
   $('#contextRail').classList.remove('open');
   $('#orchestratorWorkRail').hidden=true;
   if (id !== currentTaskId) flushDraft();
@@ -1736,6 +1745,7 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
     if(currentTaskId && (ids?!ids.has(currentTaskId):allTasks.find(t=>t.id===currentTaskId)?.lab_binding)) {
       flushDraft();currentTaskId=null;currentTask=null;navigationEpoch++;
       $('#taskPanel').classList.add('hidden');$('#empty').classList.remove('hidden');
+      document.body.classList.remove('forge-task-focus');
       syncComposerAvailability();
     }
     try {await loadTasks();}
@@ -1748,6 +1758,7 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
   onOpenWork:async id=>{await loadTasks();await openTask(id);},
   onShowCoordinator:async()=>{
     document.body.classList.add('orchestrator-focus');
+    document.body.classList.remove('forge-task-focus');
     setWorkspaceRoute('coordinator');
     $('#orchestratorWorkRail').hidden=false;
     // The Forjador is the main chat; execution is the initial right tab.

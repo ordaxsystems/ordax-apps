@@ -1372,7 +1372,19 @@ export class OrchestratorService {
       this.task(input.projectId,orch.chat_task_id,'orchestrator');
     const owner=orch||this.orchestrator(input.projectId,task.orchestrator_id);
     if(isWorkSend)this.assertDependenciesSatisfied(input.projectId,task.id);
-    if(isForjadorSend)this.assertProviderTaskAvailable(task.id,{allowCoordinator:true});
+    if(isForjadorSend){
+      this.assertProviderTaskAvailable(task.id,{allowCoordinator:true});
+      // The UI has already persisted revision N. Validate it before reserving
+      // a command; the physical executor must consume revision N+1.
+      if(sendInput.draftRevision!=null){
+        const draft=this.store.getTaskDraft(task.id);
+        if(draft.draft_revision!==sendInput.draftRevision||
+           draft.draft.trim()!==String(sendInput.content||'').trim())
+          throw Error('task_draft_revision_conflict');
+        if(!Number.isSafeInteger(sendInput.draftRevision+1))
+          throw Error('invalid_task_draft_revision');
+      }
+    }
     const repositoryUrl=this.projectRepositoryUrl(input.projectId);
     if(owner.status==='paused')throw Error('orchestrator_paused');
     const port=usesProvider?this.provider:this.coordinator;
@@ -1511,7 +1523,10 @@ export class OrchestratorService {
       // Fresh authorization immediately before a potentially external effect.
       this.requireAccess(context,operation,input.projectId);
       const reply=await port.send({taskId:task.id,content:usesProvider?providerContent:content,
-        draftRevision:sendInput.draftRevision??null,
+        // Work sends already supply the next revision. Forjador sends carry
+        // the saved current revision and must clear it at N+1 atomically.
+        draftRevision:isForjadorSend&&sendInput.draftRevision!=null
+          ?sendInput.draftRevision+1:sendInput.draftRevision??null,
         taskKind:isForjadorSend?'orchestrator':isWorkSend?'work':null,
         authorSource:isForjadorSend?'orchestrator':'human',
         mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork,

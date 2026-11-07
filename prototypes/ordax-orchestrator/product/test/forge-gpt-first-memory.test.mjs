@@ -24,14 +24,14 @@ test('Forjador routes direct to GPT once, persists canonical reply, and never ca
   let calls=0,ports=null;let f=null;
   const provider={send:async args=>{
     calls++;ports=args;
-    f.store.appendMessage(args.taskId,'user',args.content);
-    const runId=f.store.startRun(args.taskId);
+    const {runId}=f.store.beginProviderRun(args.taskId,args.content,{draftRevision:args.draftRevision,authorSource:args.authorSource});
     f.store.appendMessage(args.taskId,'assistant','Olá! Como posso ajudar?');
     f.store.finishRun(args.taskId,runId);
     return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
   }};
   f=fixture(t,provider);
   const created=(await f.call('project_quick_create',{creationNonce:'gptfirst'})).result;
+  f.store.setDraft(created.chatTaskId,'Bom dia',1);
   const payload={projectId:created.projectId,orchestratorId:created.orchestratorId,
     content:'Bom dia',draftRevision:1,requestId:'forjador_first'};
   const first=await f.service.invoke(f.context,'forjador_send',payload);
@@ -42,6 +42,9 @@ test('Forjador routes direct to GPT once, persists canonical reply, and never ca
   assert.equal(ports.taskId,created.chatTaskId);
   assert.equal(ports.taskKind,'orchestrator');
   assert.equal(ports.authorSource,'orchestrator');
+  assert.equal(ports.draftRevision,2);
+  assert.equal(f.store.getTaskDraft(created.chatTaskId).draft,'');
+  assert.equal(f.store.getTaskDraft(created.chatTaskId).draft_revision,2);
   assert.equal(f.getGroqCalls(),0);
   const repeated=await f.service.invoke(f.context,'forjador_send',payload);
   assert.deepEqual(repeated,first);

@@ -30,11 +30,12 @@ test('host serves only the current UI allowlist with a restrictive browser polic
     const css=await fs.readFile(path.join(productRoot,'desktop','ui.css'),'utf8');
     assert.match(ui,/<footer class="left-footer">[\s\S]*<details id="hostBrowserControls" class="host-browser-controls"[\s\S]*<\/footer>/);
     assert.doesNotMatch(css,/\.host-browser-controls\{position:fixed/);
-    // The Work rail is nested inside contextPanel. A selector that hides
-    // contextPanel would make the real work list invisible in coordinator mode.
+    // The Work rail shares the right-hand tabbed workspace with execution,
+    // preview, files and provider; a hidden contextPanel must never mask them.
     assert.ok(ui.indexOf('id="contextPanel"')<ui.indexOf('id="orchestratorWorkRail"'));
-    assert.match(css,/body\.orchestrator-focus #contextRail>:not\(#contextPanel\)\{display:none!important\}/);
-    assert.match(css,/body\.orchestrator-focus #contextPanel\{display:flex!important;overflow:hidden;padding:0\}/);
+    assert.match(css,/body\.orchestrator-focus #contextRail>\.right-pane-tabs\{\s*display:grid!important/);
+    assert.match(css,/body\.orchestrator-focus #contextRail>#contextPanel:not\(\[hidden\]\)\{display:flex!important\}/);
+    assert.match(css,/body\.orchestrator-focus #contextRail>#contextPanel\[hidden\]\{display:none!important\}/);
     assert.match(css,/body\.orchestrator-focus #contextPanel>:not\(#orchestratorWorkRail\)\{display:none!important\}/);
     assert.doesNotMatch(css,/#contextRail>:not\(#orchestratorWorkRail\)/);
     assert.match(css,/\.app-settings-dialog\{width:min\(900px/);
