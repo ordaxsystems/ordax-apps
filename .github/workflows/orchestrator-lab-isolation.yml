@@ -1,4 +1,4 @@
-name: OrdaX Orchestrator Lab Isolation
+name: OrdaX Forge — Windows and Isolation
 
 concurrency:
   group: ordax-orchestrator-${{ github.event.pull_request.number || github.ref }}
@@ -211,7 +211,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $dist = 'prototypes/ordax-orchestrator/product/dist'
-          $candidates = @(Get-ChildItem -LiteralPath $dist -File -Filter 'OrdaX-Orchestrator-Lab-*.exe')
+          $candidates = @(Get-ChildItem -LiteralPath $dist -File -Filter 'OrdaX-Forge-*.exe')
           if ($candidates.Count -ne 1) { throw 'e2e_portable_candidate_not_unique' }
           $file = $candidates[0]
           $packagedProofFile = Join-Path $dist 'orchestrator-packaged-proof.json'
@@ -279,9 +279,9 @@ jobs:
       - name: Upload short-lived unsigned Windows E2E candidate
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: ordax-orchestrator-unsigned-e2e-${{ github.sha }}
+          name: ordax-forge-unsigned-e2e-${{ github.sha }}
           path: |
-            prototypes/ordax-orchestrator/product/dist/OrdaX-Orchestrator-Lab-*.exe
+            prototypes/ordax-orchestrator/product/dist/OrdaX-Forge-*.exe
             prototypes/ordax-orchestrator/product/dist/orchestrator-e2e-build.json
             prototypes/ordax-orchestrator/product/dist/orchestrator-packaged-proof.json
           retention-days: 3
@@ -293,7 +293,7 @@ jobs:
       - name: Upload coherent unpacked Windows Dev install candidate
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: ordax-orchestrator-windows-dev-${{ github.sha }}
+          name: ordax-forge-windows-dev-${{ github.sha }}
           path: |
             prototypes/ordax-orchestrator/product/dist/win-unpacked/**
             prototypes/ordax-orchestrator/product/dist/orchestrator-windows-install.json
