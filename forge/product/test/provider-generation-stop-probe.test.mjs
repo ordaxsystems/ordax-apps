@@ -128,3 +128,55 @@ test('feedback completion cannot be inferred from absent Stop, partial, hidden o
     actions:finishedToolbar(),stop:true
   }).responseCompletionObserved,false);
 });
+
+function observedCurrentChatGPTToolbar({actions=[],markerCount=1,stop=false}={}) {
+  // The physical November 7 ChatGPT DOM has a MarkdownRoot, sibling
+  // selection-message marker and a shared ancestor toolbar without turn IDs.
+  const group={
+    parentElement:null,
+    querySelectorAll(selector) {
+      if(selector==='[data-chatgpt-selection-message-id]')
+        return Array.from({length:markerCount},()=>({}));
+      if(selector==='button,[role="button"]')return actions;
+      return [];
+    }
+  };
+  const assistant={
+    parentElement:group,closest:()=>null,
+    hasAttribute:()=>false,querySelector:()=>null,querySelectorAll:()=>[]
+  };
+  const document={querySelectorAll(selector) {
+    if(selector.includes('stop-button'))return stop?[element({testId:'stop-button'})]:[];
+    if(selector.includes('[data-message-role="assistant"]'))return [assistant];
+    return [];
+  }};
+  const window={getComputedStyle:node=>({display:'block',visibility:'visible',opacity:'1',...node.style})};
+  return new Function('document','window',
+    `return ${providerResponseControlStateExpression}`)(document,window);
+}
+
+const currentChatGPTToolbar=()=>[
+  element({label:'Copiar'}),
+  element({label:'Avaliar resposta'}),
+  element({label:'Ler em voz alta'}),
+  element({label:'Compartilhar'})
+];
+
+test('physical ChatGPT toolbar completes one uniquely marked last assistant answer',()=>{
+  assert.deepEqual(observedCurrentChatGPTToolbar({actions:currentChatGPTToolbar()}),
+    {generationStopVisible:false,responseCompletionObserved:true});
+});
+
+test('physical toolbar fallback rejects unmarked, multiple, partial, hidden or still generating answers',()=>{
+  const actions=currentChatGPTToolbar();
+  assert.equal(observedCurrentChatGPTToolbar({actions,markerCount:0}).responseCompletionObserved,false);
+  assert.equal(observedCurrentChatGPTToolbar({actions,markerCount:2}).responseCompletionObserved,false);
+  assert.equal(observedCurrentChatGPTToolbar({actions:actions.slice(0,3)}).responseCompletionObserved,false);
+  assert.equal(observedCurrentChatGPTToolbar({
+    actions:[actions[0],actions[1],element({label:'Ler em voz alta',hidden:true}),actions[3]]
+  }).responseCompletionObserved,false);
+  assert.equal(observedCurrentChatGPTToolbar({
+    actions:[element({label:'Copiar mensagem'}),...actions.slice(1)]
+  }).responseCompletionObserved,false);
+  assert.equal(observedCurrentChatGPTToolbar({actions,stop:true}).responseCompletionObserved,false);
+});

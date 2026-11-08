@@ -33,9 +33,23 @@ function providerFinishedAssistantToolbar(latestAssistant, isVisible) {
   const turn = latestAssistant.closest(
     '[data-testid="conversation-turn"],[data-testid^="conversation-turn-"],[data-turn-id]'
   ) || latestAssistant.closest('[data-message-author-role="assistant"],[data-message-role="assistant"]');
-  if (!turn || typeof turn.querySelectorAll !== 'function') return false;
-  const actions = new Set();
-  for (const control of turn.querySelectorAll('button,[role="button"]')) {
+  const scopedTurns=[];
+  if(turn && typeof turn.querySelectorAll==='function')scopedTurns.push(turn);
+  else {
+    // Current ChatGPT Web renders message and action groups without turn
+    // test IDs. Require exactly one assistant message marker in a bounded
+    // ancestor before inspecting its toolbar; never scan the page globally.
+    for(let ancestor=latestAssistant,depth=0;ancestor&&depth<10;
+      ancestor=ancestor.parentElement,depth++) {
+      if(typeof ancestor.querySelectorAll!=='function')continue;
+      const markers=ancestor.querySelectorAll('[data-chatgpt-selection-message-id]').length;
+      if(markers>1)break;
+      if(markers===1)scopedTurns.push(ancestor);
+    }
+  }
+  for(const candidateTurn of scopedTurns) {
+    const actions=new Set();
+    for(const control of candidateTurn.querySelectorAll('button,[role="button"]')) {
     if (!isVisible(control)) continue;
     const testId = String(control.getAttribute('data-testid') || '').trim().toLowerCase();
     const label = String(control.getAttribute('aria-label') ||
@@ -43,14 +57,26 @@ function providerFinishedAssistantToolbar(latestAssistant, isVisible) {
     if (testId === 'copy-turn-action-button' ||
       /^(?:copiar(?: resposta| mensagem)?|copy(?: response| message)?)$/.test(label))
       actions.add('copy');
+    if(testId==='copy-turn-action-button'||/^(?:copiar|copy)$/.test(label))
+      actions.add('finalCopy');
     if (testId === 'good-response-turn-action-button' ||
       /^(?:boa resposta|good response|gostei|thumbs up)$/.test(label))
       actions.add('good');
     if (testId === 'bad-response-turn-action-button' ||
       /^(?:resposta ruim|bad response|n[aã]o gostei|thumbs down)$/.test(label))
       actions.add('bad');
+      // The current first-party UI consolidates both rating buttons into
+      // one "Avaliar resposta" action and only displays final read/share tools
+      // after finishing a turn. All three must be scoped, visible and present.
+      if(/^(?:avaliar resposta|rate response|rate answer)$/.test(label))actions.add('rate');
+      if(/^(?:ler em voz alta|read aloud)$/.test(label))actions.add('read');
+      if(/^(?:compartilhar|share)$/.test(label))actions.add('share');
+    }
+    if((actions.has('copy') && actions.has('good') && actions.has('bad')) ||
+      (actions.has('finalCopy') && actions.has('rate') &&
+        actions.has('read') && actions.has('share')))return true;
   }
-  return actions.has('copy') && actions.has('good') && actions.has('bad');
+  return false;
 }
 
 export function providerHasObservedCompletion({
