@@ -49,6 +49,12 @@ históricos, não instruções de implementação. A realidade de cada funcional
   Binários, grandes arquivos, terminal, Git e testes reais requerem
   capacidades tipadas próprias, não acesso shell genérico improvisado.
 
+### Prioridade de integração no desenvolvimento (2026-11-08)
+
+- **Primeiro, OrdaX MCP já conectado:** operar e homologar o Forge Windows por `computer.windows`, terminal, arquivos e ações físicas autorizadas do OrdaX MCP, em perfil DEV isolado; não pedir ao usuário IDs, caminhos ou comandos já disponíveis pelas ferramentas.
+- **Forge MCP próprio depois:** o servidor local que já existe permanece no código e nos testes, mas não criar nem registrar agora outro plugin ou túnel externo do ChatGPT. Só conectar o Forge como plugin independente depois do ciclo E2E real de projeto, GPT, arquivos, recibos, memória e retomada.
+- **Não confundir autoridades:** OrdaX MCP acessa o computador; o Forge mantém seu SQLite e os grants dos projetos. O controle via OrdaX não concede acesso arbitrário ao MCP interno do Forge e não comprova uma chamada GPT→Forge MCP remoto.
+
 ### Produto e interfaces
 
 - **Um aplicativo Forge e um Runtime de arquivos interno:** reutilizar o
