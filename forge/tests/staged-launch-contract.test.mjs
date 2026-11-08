@@ -7,6 +7,17 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 
+test('staged launcher verifies the current Forge identity without treating immutable import provenance as live identity', () => {
+  const launcher = read('scripts/start-lab.mjs');
+  const lock = JSON.parse(read('source-lock.json'));
+  const pkg = JSON.parse(read('product/package.json'));
+  const provenance = JSON.parse(read('product/OWNED-SOURCE.json'));
+  assert.equal(pkg.build.appId, lock.targetIdentity.appId);
+  assert.notEqual(provenance.product.appId, pkg.build.appId);
+  assert.match(launcher, /pkg\.build\?\.appId !== lock\.targetIdentity\.appId/);
+  assert.doesNotMatch(launcher, /owned\.product\?\.appId !== lock\.targetIdentity\.appId/);
+});
+
 test('staged launcher checks canonical owned profile resolver, not obsolete main inline path', () => {
   const launcher = read('scripts/start-lab.mjs');
   const main = read('product/desktop/main.mjs');
