@@ -1,7 +1,7 @@
 'use strict';
 // Actual Chromium render/interaction QA for one Forge-created physical HTML file.
 const assert=require('node:assert/strict');
-const fs=require('node:fs'),path=require('node:path'),http=require('node:http');
+const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),net=require('node:net');
 const {spawn}=require('node:child_process');
 const {pathToFileURL}=require('node:url');
 const {labStagedLocalAppData}=require('./e2e-lab-target.cjs');
@@ -26,9 +26,16 @@ async function target(){
   });
 }
 async function main(){
+  // Never attach to a pre-existing browser or debug somebody else's session.
+  const portProbe=net.createServer();
+  await new Promise((resolve,reject)=>{
+    portProbe.once('error',()=>reject(Error('qa_debug_port_occupied')));
+    portProbe.listen(PORT,'127.0.0.1',resolve);
+  });
+  await new Promise((resolve,reject)=>portProbe.close(error=>error?reject(error):resolve()));
   const profile=path.join(staging,'edge-cdp-site-qa');
   const browser=spawn(edge,['--headless=new','--disable-gpu','--no-first-run',
-    '--no-default-browser-check','--remote-allow-origins=*','--remote-debugging-port='+PORT,
+    '--no-default-browser-check','--remote-debugging-address=127.0.0.1','--remote-debugging-port='+PORT,
     '--user-data-dir='+profile,'about:blank'],{windowsHide:true,stdio:'ignore'});
   let ws;
   try{

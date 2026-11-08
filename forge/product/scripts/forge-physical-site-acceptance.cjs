@@ -80,9 +80,21 @@ async function main(){
       const physical=fs.readFileSync(path.join(workspace.path,'index.html'));
       assert.equal(file.content,html);assert.equal(file.sha256,sha(physical));
       const db=new DatabaseSync(labDatabasePath(),{readOnly:true});
-      let integrity;try{integrity=db.prepare('PRAGMA quick_check').get().quick_check;}finally{db.close();}
+      let integrity,receipts,binding;
+      try{
+        integrity=db.prepare('PRAGMA quick_check').get().quick_check;
+        receipts=db.prepare('SELECT operation,status FROM lab_command_receipts WHERE project_id=?').all(projectId);
+        binding=db.prepare('SELECT canonical_root FROM forge_local_project_roots WHERE project_id=?').get(projectId);
+      }finally{db.close();}
       assert.equal(integrity,'ok');
-      console.log(JSON.stringify({phase,projectId,persisted:true,workspacePath:workspace.path,bytes:physical.length,sha256:file.sha256,sqlite:integrity}));return;
+      assert.equal(path.resolve(binding.canonical_root),path.resolve(workspace.path));
+      assert.ok(receipts.filter(r=>r.operation==='project_file_write'&&r.status==='succeeded').length>=2);
+      assert.ok(receipts.every(r=>r.status==='succeeded'));
+      const localMcp=await ui.evaluate('window.ordax.forgeLocalMcpStatus()');
+      assert.equal(localMcp.running,false,'forge_staged_mcp_listener_not_revoked');
+      console.log(JSON.stringify({phase,projectId,persisted:true,workspacePath:workspace.path,
+        bytes:physical.length,sha256:file.sha256,sqlite:integrity,receiptCount:receipts.length,
+        bindingVerified:true,loopbackStopped:true}));return;
     }
     console.error('FORGE_E2E_NATIVE_OWNER_CONSENT_REQUIRED');
     const grant=await ui.evaluate("window.ordax.forgeLocalMcpStart("+JSON.stringify(projectId)+")");
