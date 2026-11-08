@@ -58,6 +58,16 @@ test('failed Forjador send exposes the existing linked-thread recovery, never a 
   assert.match(ui,/inspectLinkedThread'\)\.addEventListener\('click'/);
   assert.match(html,/id="confirmLinkedReplyRecovery"/);
 });
+test('read-only recovery and artifact receipts remain visible in the focused Forge task',()=>{
+  const css=read('ui.css'),html=read('ui.html');
+  assert.match(css,/body\.orchestrator-focus\.forge-task-focus \.composer-hint\{display:none!important\}/);
+  for(const id of ['linkedThreadStatus','htmlArtifactStatus']) {
+    assert.match(html,new RegExp('id="'+id+'" class="composer-hint"'));
+    assert.ok(css.includes('#'+id+':not(:empty)'),id+' missing nonempty visibility rule');
+  }
+  assert.match(css,/#htmlArtifactStatus:not\(:empty\)\{display:block!important\}/);
+});
+
 test('conversation keeps one canonical textarea and one submit route',()=>{
   const html=read('ui.html'),js=read('orchestrator-ui.mjs');
   assert.equal((html.match(/id="coordinatorPrompt"/g)||[]).length,1);

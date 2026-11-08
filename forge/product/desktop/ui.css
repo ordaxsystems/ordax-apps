@@ -1423,6 +1423,10 @@ body.orchestrator-focus.forge-task-focus #send{
   background:#e8ad90;color:#2d1e17;min-height:43px;border-radius:11px
 }
 body.orchestrator-focus.forge-task-focus .composer-hint{display:none!important}
+/* The task-specific verification and artifact receipts are evidence, not
+   decorative composer hints. Never hide a non-empty recovery result. */
+body.orchestrator-focus.forge-task-focus #linkedThreadStatus:not(:empty),
+body.orchestrator-focus.forge-task-focus #htmlArtifactStatus:not(:empty){display:block!important}
 body.orchestrator-focus.forge-task-focus #composerConnection{
   width:min(100%,790px);margin:0 auto 10px
 }
