@@ -167,6 +167,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
   let projectRefreshGeneration=0,orchestratorRefreshGeneration=0,autonomousRefreshGeneration=0;
+  let coordinatorRecoveryRevision=0;
   let workspaceInspectionGeneration=0,workspacePortAvailable=false;
   let lastPresentedMissionStatusKey=null;
   let coordinatorOpen=false,coordinatorAvailable=false,orchestratorChatAvailable=false,coordinatorDraftCommitAvailable=false;
@@ -1309,13 +1310,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   async function renderCoordinator() {
     if(!projectId||!chatTaskId)return;
     const p=projectId,t=chatTaskId,o=orchestratorId;
-    const [page,{proposals},engineStatus,chatTask]=await Promise.all([
+    const recoveryRevision=++coordinatorRecoveryRevision;
+    const [page,{proposals},engineStatus]=await Promise.all([
       call('work_messages',{projectId:p,taskId:t,limit:50}),
       call('proposals_list',{projectId:p,orchestratorId:o}),
-      call('status').catch(()=>null),
-      api.getTask(t).catch(()=>null)
+      call('status').catch(()=>null)
     ]);
-    if(p!==projectId||t!==chatTaskId)return;
+    if(p!==projectId||t!==chatTaskId||o!==orchestratorId)return;
     const box=$('coordinatorMessages'),recoveryNotice=$('coordinatorRecoveryNotice');
     // Preserve the one result node while rebuilding chat history. Removing it
     // before refreshAutonomousDialogue would make the ID unresolvable.
@@ -1329,10 +1330,16 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     // The Forjador's own ChatGPT Task was previously reachable only through
     // hidden Work navigation. Reuse the canonical Task inspection and explicit
     // read-only reply recovery; never create a second delivery/retry route.
-    const needsReplyRecovery=Boolean(chatTask?.chat_url &&
-      ['failed','interrupted'].includes(chatTask?.latest_run?.status));
-    recoveryNotice.classList.toggle('hidden',uncertainCommands===0&&!needsReplyRecovery);
-    if(needsReplyRecovery) {
+    // Optional read-only Task lookup must not hold the project-switch/chat
+    // rendering lane. Revalidate the selection and render revision before
+    // exposing the existing recovery route; old IPC replies are discarded.
+    void api.getTask(t).then(chatTask=>{
+      if(recoveryRevision!==coordinatorRecoveryRevision||
+        p!==projectId||t!==chatTaskId||o!==orchestratorId)return;
+      const needsReplyRecovery=Boolean(chatTask?.chat_url &&
+        ['failed','interrupted'].includes(chatTask?.latest_run?.status));
+      if(!needsReplyRecovery)return;
+      recoveryNotice.classList.remove('hidden');
       const recoveryLink=document.createElement('button');
       recoveryLink.type='button';
       recoveryLink.className='mini-secondary';
@@ -1349,7 +1356,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         }
       });
       recoveryNotice.append(recoveryLink);
-    }
+    }).catch(()=>{ /* A missing inspection affordance never blocks project navigation. */ });
     if(page.has_more) {
       const note=document.createElement('p');
       note.textContent='Exibindo as 50 mensagens mais recentes. O histórico anterior permanece salvo.';

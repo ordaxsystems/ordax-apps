@@ -42,6 +42,12 @@ test('failed Forjador send exposes the existing linked-thread recovery, never a 
   const end=js.indexOf('if(page.has_more)',begin);
   assert.ok(begin>0&&end>begin);
   const recovery=js.slice(begin,end);
+  // The optional recovery lookup must never block a project switch or chat
+  // render, nor expose a stale button after selecting another project.
+  const renderer=js.slice(js.indexOf('async function renderCoordinator()'),end);
+  assert.match(renderer,/void api\.getTask\(t\)\.then\(/);
+  assert.doesNotMatch(renderer.split('Promise\.all([')[1]?.split(']);')[0]||'',/api\.getTask/);
+  assert.match(renderer,/recoveryRevision!==coordinatorRecoveryRevision/);
   assert.match(recovery,/chatTask\?\.chat_url/);
   assert.match(recovery,/chatTask\?\.latest_run\?\.status/);
   assert.match(recovery,/\['failed','interrupted'\]/);
