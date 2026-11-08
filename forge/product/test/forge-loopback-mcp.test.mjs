@@ -102,6 +102,48 @@ test('loopback MCP requires explicit token and keeps tools inside one project',a
   await assert.rejects(fetch(endpoint),/fetch failed|ECONNREFUSED/);
 });
 
+test('real HTTP MCP exposes scoped work identity and messages without allowing cross-project reads',async t=>{
+  const f=fixture(t);
+  const a=(await f.service.invoke(f.context,'mission_create',{
+    requestId:'work_scope_a',name:'Project A',mission:'Create site A'
+  })).result;
+  const b=(await f.service.invoke(f.context,'mission_create',{
+    requestId:'work_scope_b',name:'Project B',mission:'Create site B'
+  })).result;
+  const ready=await f.transport.start(a.projectId);
+  const init=await rpc(ready.endpoint,ready.token,null,initialize);
+  assert.equal(init.status,200);
+  assert.match(init.payload.result.instructions,/forge_work_list/);
+  assert.doesNotMatch(init.payload.result.instructions,/orchestrator_forge_discover/);
+  await rpc(ready.endpoint,ready.token,init.session,notify);
+  const tools=(await rpc(ready.endpoint,ready.token,init.session,
+    {jsonrpc:'2.0',id:60,method:'tools/list'})).payload.result.tools;
+  for(const name of ['forge_work_list','forge_work_get','forge_work_messages']){
+    const tool=tools.find(item=>item.name===name);
+    assert.ok(tool,'typed project work read missing: '+name);
+    assert.equal(tool.annotations.readOnlyHint,true);
+    assert.ok(!Object.hasOwn(tool.inputSchema.properties,'projectId'));
+  }
+  const list=await rpc(ready.endpoint,ready.token,init.session,call(61,'work_list',{}));
+  assert.equal(list.status,200);
+  assert.equal(list.payload.result.structuredContent.works.length,1);
+  assert.equal(list.payload.result.structuredContent.works[0].id,a.taskId);
+  const work=await rpc(ready.endpoint,ready.token,init.session,
+    call(62,'work_get',{taskId:a.taskId}));
+  assert.equal(work.payload.result.structuredContent.id,a.taskId);
+  const messages=await rpc(ready.endpoint,ready.token,init.session,
+    call(63,'work_messages',{taskId:a.taskId,limit:10}));
+  assert.equal(messages.status,200);
+  assert.ok(Array.isArray(messages.payload.result.structuredContent.messages));
+  const forbidden=await rpc(ready.endpoint,ready.token,init.session,
+    call(64,'work_get',{taskId:b.taskId}));
+  assert.equal(forbidden.payload.result.isError,true);
+  assert.ok(!JSON.stringify(forbidden.payload).includes('Create site B'));
+  const spoofed=await rpc(ready.endpoint,ready.token,init.session,
+    call(65,'work_list',{projectId:b.projectId}));
+  assert.equal(spoofed.payload.error.code,-32602);
+});
+
 test('MCP reclaims abandoned sessions only when full and preserves active sessions and grants',async t=>{
   const f=fixture(t);
   const projectId=await f.makeProject('session_slots');

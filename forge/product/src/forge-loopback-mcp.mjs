@@ -3,7 +3,10 @@ import {randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
 
 export const FORGE_LOCAL_MCP_OPERATIONS=Object.freeze([
   'forge_discover','project_context','project_memory','project_administrator_snapshot','project_handoff',
-  'project_files_status','project_files_list','project_file_read','project_file_write'
+  'project_files_status','project_files_list','project_file_read','project_file_write',
+  // Bounded, project-bound work inspection is needed for a tool-using GPT to
+  // reference actual task IDs and messages, never invent them from chat text.
+  'work_list','work_get','work_messages'
 ]);
 const MAX_REQUEST_BYTES=180_000;
 const MAX_RESPONSE_BYTES=450_000;
