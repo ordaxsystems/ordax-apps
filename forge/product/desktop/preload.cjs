@@ -14,6 +14,11 @@ contextBridge.exposeInMainWorld('ordax', {
   forgeLocalMcpStop: () => ipcRenderer.invoke('ordax:forge:local-mcp:stop'),
   forgeOfficialTunnelStart: input => ipcRenderer.invoke('ordax:forge:tunnel:start',input),
   forgeOfficialTunnelStop: () => ipcRenderer.invoke('ordax:forge:tunnel:stop'),
+  onForgeOfficialTunnelChanged: callback => {
+    const listener=()=>callback();
+    ipcRenderer.on('ordax:forge:tunnel:changed',listener);
+    return ()=>ipcRenderer.removeListener('ordax:forge:tunnel:changed',listener);
+  },
   forgeWorkspaceStatus: projectId => ipcRenderer.invoke('ordax:forge:workspace:status',projectId),
   forgeWorkspaceCreate: projectId => ipcRenderer.invoke('ordax:forge:workspace:create',projectId),
   forgeWorkspaceChoose: projectId => ipcRenderer.invoke('ordax:forge:workspace:choose',projectId),

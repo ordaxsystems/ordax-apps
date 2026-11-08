@@ -19,14 +19,14 @@ let mcpBusy=false;
 let lastMcpStatus=null;
 function syncTunnelControls(){
   const session=lastMcpStatus?.officialTunnelSession;
-  const running=session?.processRunning===true;
+  const running=session?.state&&session.state!=='stopped';
   if(officialTunnelStart)officialTunnelStart.disabled=mcpBusy||running||
     !lastMcpStatus?.officialTunnel?.installed||
     !lastMcpStatus?.scopes?.includes(mcpProject?.value)||
     !officialTunnelId?.value?.trim()||!officialTunnelKey?.value||
     typeof api?.forgeOfficialTunnelStart!=='function';
   if(officialTunnelStop)officialTunnelStop.disabled=mcpBusy||!running||
-    typeof api?.forgeOfficialTunnelStop!=='function';
+    session?.state==='stopping'||typeof api?.forgeOfficialTunnelStop!=='function';
 }
 const api=window.ordax;
 const usable=typeof api?.forgeLocalMcpStatus==='function'&&
@@ -59,7 +59,11 @@ async function refreshMcp(){
     lastMcpStatus=status;
     syncTunnelControls();
     if(officialTunnelState){
-      officialTunnelState.textContent=status.officialTunnelSession?.processRunning
+      officialTunnelState.textContent=status.officialTunnelSession?.state==='starting'
+        ?'Iniciando cliente oficial; conexão GPT Web ainda não verificada.'
+        :status.officialTunnelSession?.state==='stopping'
+          ?'Encerrando cliente oficial; conexão GPT Web ainda não verificada.'
+          :status.officialTunnelSession?.processRunning
         ?'Cliente de túnel iniciado para o projeto autorizado. Conexão e chamadas GPT Web ainda não comprovadas.'
         :status.officialTunnel?.installed
           ?'Cliente oficial OpenAI '+status.officialTunnel.clientVersion+
@@ -99,6 +103,8 @@ async function refreshMcp(){
     lastMcpStatus=null;
     syncTunnelControls();
     hideSecret();
+    if(officialTunnelState)
+      officialTunnelState.textContent='Estado do túnel indisponível; conexão GPT Web não comprovada.';
     setState('Não foi possível verificar o MCP local.');
     if(mcpStart)mcpStart.disabled=true;
     if(mcpStop)mcpStop.disabled=true;
@@ -195,6 +201,12 @@ officialTunnelStop?.addEventListener('click',async()=>{
 mcpProject?.addEventListener('change',()=>{hideSecret();void refreshMcp();});
 localMcpElement('settingsTabConnections')?.addEventListener('click',()=>{void loadProjects();});
 localMcpElement('openAppSettings')?.addEventListener('click',()=>{void loadProjects();});
+// The official client can terminate after a successful spawn (e.g. rejected
+// remote credentials). Refresh from trusted IPC, never infer connection from
+// process creation and never display credentials in an event payload.
+if(typeof api?.onForgeOfficialTunnelChanged==='function'){
+  api.onForgeOfficialTunnelChanged(()=>{if(!mcpBusy)void refreshMcp();});
+}
 localMcpElement('appSettingsDialog')?.addEventListener('close',()=>{
   hideSecret();
   if(officialTunnelKey)officialTunnelKey.value='';

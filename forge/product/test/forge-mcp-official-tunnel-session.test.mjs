@@ -92,6 +92,46 @@ test('cancel during startup cannot silently mark a late process as running',asyn
   candidate.emit('exit',0);
   assert.equal(control.status().state,'stopped');
 });
+test('tunnel lifecycle notifies the UI on spontaneous exit without exposing credentials',async()=>{
+  const observed=[];let child;
+  const controller=createForgeOfficialTunnelSession({
+    onChange:state=>observed.push(state),
+    spawnClient:()=>{
+      child=new EventEmitter();child.kill=()=>true;
+      queueMicrotask(()=>child.emit('spawn'));
+      return child;
+    }
+  });
+  await controller.start(config);
+  assert.deepEqual(observed.map(s=>s.state),['starting','running']);
+  child.emit('exit',1);
+  assert.deepEqual(observed.map(s=>s.state),['starting','running','stopped']);
+  assert.equal(observed.at(-1).processRunning,false);
+  assert.equal(observed.at(-1).remoteChatGptConnected,false);
+  assert.equal(observed.at(-1).chatGptCallVerified,false);
+  const serialized=JSON.stringify(observed);
+  assert.equal(serialized.includes(config.controlPlaneKey),false);
+  assert.equal(serialized.includes(config.bearerToken),false);
+});
+
+test('tunnel UI subscription receives lifecycle changes through credential-free IPC',async()=>{
+  const fs=await import('node:fs');
+  const {fileURLToPath}=await import('node:url');
+  const root=fileURLToPath(new URL('../desktop/',import.meta.url));
+  const main=fs.readFileSync(root+'main.mjs','utf8');
+  const preload=fs.readFileSync(root+'preload.cjs','utf8');
+  const ui=fs.readFileSync(root+'forge-local-mcp-ui.js','utf8');
+  assert.match(main,/onChange:.*emitRendererEvent\('ordax:forge:tunnel:changed'\)/);
+  assert.match(preload,/onForgeOfficialTunnelChanged: callback/);
+  assert.match(preload,/ipcRenderer\.removeListener\('ordax:forge:tunnel:changed'/);
+  assert.match(ui,/onForgeOfficialTunnelChanged\(\(\)=>\{if\(!mcpBusy\)void refreshMcp\(\)/);
+  assert.match(ui,/session\.state!=='stopped'/);
+  assert.match(ui,/session\?\.state==='stopping'/);
+  assert.match(ui,/officialTunnelSession\?\.state==='starting'/);
+  assert.match(ui,/officialTunnelSession\?\.state==='stopping'/);
+  assert.match(ui,/Estado do túnel indisponível/);
+});
+
 test('invalid controls cannot spawn or persist any token',async()=>{
   const f=fixture();
   await assert.rejects(f.control.start({...config,controlPlaneKey:'bad'}),/credentials_unavailable/);

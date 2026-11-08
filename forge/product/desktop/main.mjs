@@ -1263,7 +1263,9 @@ const forgeMcpTrusted=new ForgeMcpOwnerTrust({store,
 const forgeMcpResume=new ForgeMcpSecureResume({store,ownerTrust:forgeMcpTrusted,
   secureStorage:safeStorage});
 let forgeMcpResumeError=null;
-const forgeOfficialTunnel=createForgeOfficialTunnelSession();
+const forgeOfficialTunnel=createForgeOfficialTunnelSession({
+  onChange:()=>emitRendererEvent('ordax:forge:tunnel:changed')
+});
 const forgeLocalMcp=createForgeLoopbackMcp({
   createMcp:({projectId,allowedOperations})=>createOrchestratorMcp({
     service:orchestratorService,getContext:()=>localOrchestratorContext,
