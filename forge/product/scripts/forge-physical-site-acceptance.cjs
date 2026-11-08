@@ -115,7 +115,11 @@ async function main(){
       assert.equal(discovered.workspace.externalFolderAuthorized,true);
       const works=data(await rpc(endpoint,token,sid,call(5,'forge_work_list',{})));
       assert.ok(works.works.length>0);
-      const writeId='forge_site_physical_index_'+(phase==='revise'?'nav_v2_':'v1_')+projectId.slice(-36).replaceAll('-','');
+      // Idempotency keys name exact content revisions, not a fixed 'v2'.
+      // Reusing an old request ID for different bytes must fail closed.
+      const writeId=phase==='revise'
+        ?'forge_site_revision_'+sha(Buffer.from(html,'utf8')).slice(0,24)
+        :'forge_site_physical_index_v1';
       const previous=phase==='revise'
         ?data(await rpc(endpoint,token,sid,call(35,'forge_project_file_read',{path:'index.html'})))
         :null;

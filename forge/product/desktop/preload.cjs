@@ -19,6 +19,11 @@ contextBridge.exposeInMainWorld('ordax', {
     ipcRenderer.on('ordax:forge:tunnel:changed',listener);
     return ()=>ipcRenderer.removeListener('ordax:forge:tunnel:changed',listener);
   },
+  onForgeProjectFileChanged: callback => {
+    const listener=(_event,payload)=>callback(payload);
+    ipcRenderer.on('ordax:forge:project-file:changed',listener);
+    return ()=>ipcRenderer.removeListener('ordax:forge:project-file:changed',listener);
+  },
   forgeWorkspaceStatus: projectId => ipcRenderer.invoke('ordax:forge:workspace:status',projectId),
   forgeWorkspaceCreate: projectId => ipcRenderer.invoke('ordax:forge:workspace:create',projectId),
   forgeWorkspaceChoose: projectId => ipcRenderer.invoke('ordax:forge:workspace:choose',projectId),

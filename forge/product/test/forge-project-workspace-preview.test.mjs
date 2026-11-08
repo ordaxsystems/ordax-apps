@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const ui=fs.readFileSync(path.join(here,'../desktop/ui.js'),'utf8');
-const start=ui.indexOf('async function refreshForgeProjectHtmlPreview(){');
+const start=ui.indexOf('async function refreshForgeProjectHtmlPreview({force=false}={}){');
 const end=ui.indexOf('async function refreshVerifiedWorkSurface(taskId){',start);
 assert.ok(start>=0&&end>start,'local preview uses existing right-rail frame');
 const fn=ui.slice(start,end);
@@ -18,7 +18,7 @@ const HASH='a'.repeat(64);
 function harness({workspace={projectId:PROJECT,configured:true,verified:true},
   file={projectId:PROJECT,path:'index.html',content:HTML,bytes:HTML.length,sha256:HASH,verified:'local_readback'}}={}){
   const calls=[];
-  let selected=PROJECT;
+  let selected=PROJECT,latest=file,latestWorkspace=workspace;
   const elements=new Map();
   const el=name=>{
     if(!elements.has(name))elements.set(name,{hidden:name==='#workSurfacePreview',
@@ -27,18 +27,20 @@ function harness({workspace={projectId:PROJECT,configured:true,verified:true},
   };
   const env={
     window:{ordax:{
-      forgeWorkspaceStatus:async id=>{calls.push(['status',id]);return workspace;},
-      orchestratorInvoke:async(operation,input)=>{calls.push([operation,input]);return file;},
+      forgeWorkspaceStatus:async id=>{calls.push(['status',id]);return await latestWorkspace;},
+      orchestratorInvoke:async(operation,input)=>{calls.push([operation,input]);return await latest;},
       openInteractivePreview:()=>{throw Error('native_browser_not_authorized_for_project_file');}
     }},
     orchestrationUi:{getProjectId:()=>selected},
     document:{body:{classList:{add(){}}}},
     buildStaticPreviewSource:html=>'<meta data-csp="verified">'+html,
-    queueWorkSurfaceBounds:()=>{},$:el
+    queueWorkSurfaceBounds:()=>{},$:el,
+    clearWorkSurfacePreview:()=>{el('#workSurfacePreview').hidden=true;el('#workSurfaceFrame').srcdoc=undefined;el('#workSurfaceRefresh').hidden=true;}
   };
   const globals="let activeRightPane='preview',workSurfacePreviewEpoch=0,workSurfacePreviewKey=null,workSurfacePreviewTaskId=null,workSurfaceInteractiveActive=false;";
   vm.runInNewContext(globals+fn+"globalThis.refresh=refreshForgeProjectHtmlPreview;",env);
-  return {refresh:env.refresh,el,calls,select:id=>selected=id};
+  return {refresh:env.refresh,el,calls,select:id=>selected=id,
+    setFile:value=>latest=value,setWorkspace:value=>latestWorkspace=value};
 }
 
 test('project index.html with verified binding appears in the existing right Preview tab',async()=>{
@@ -55,7 +57,40 @@ test('project index.html with verified binding appears in the existing right Pre
   assert.equal(h.calls[1][0],'project_file_read');
   assert.equal(h.calls[1][1].projectId,PROJECT);
   assert.equal(h.calls[1][1].path,'index.html');
-  assert.match(ui,/if\(name==='preview'\)void refreshForgeProjectHtmlPreview\(\)/);
+  assert.match(ui,/if\(name==='preview'\)void refreshForgeProjectHtmlPreview\(\{force:true\}\)/);
+});
+
+test('local Preview re-reads a new verified revision without switching tabs',async()=>{
+  const h=harness();
+  await h.refresh();
+  const first=h.el('#workSurfaceFrame').srcdoc;
+  h.setFile({projectId:PROJECT,path:'index.html',content:HTML.replace('Vereda Cafe','Vereda Atualizado'),
+    bytes:HTML.length+7,sha256:'b'.repeat(64),verified:'local_readback'});
+  await h.refresh({force:true});
+  assert.notEqual(h.el('#workSurfaceFrame').srcdoc,first);
+  assert.match(h.el('#workSurfaceFrame').srcdoc,/Vereda Atualizado/);
+  assert.equal(h.el('#workSurfacePreview').hidden,false);
+  assert.equal(h.el('#workSurfaceRefresh').hidden,false);
+  assert.match(ui,/onForgeProjectFileChanged\?\.\(payload=>/);
+});
+
+test('revoked workspace clears an already displayed local Preview',async()=>{
+  const h=harness();
+  await h.refresh();
+  assert.equal(h.el('#workSurfacePreview').hidden,false);
+  h.setWorkspace({projectId:PROJECT,configured:false,verified:false});
+  await h.refresh({force:true});
+  assert.equal(h.el('#workSurfacePreview').hidden,true);
+  assert.equal(h.el('#workSurfaceFrame').srcdoc,undefined);
+});
+
+test('a bad new file cannot leave the previous verified HTML displayed',async()=>{
+  const h=harness();
+  await h.refresh();
+  h.setFile({projectId:PROJECT,path:'index.html',content:HTML,
+    bytes:HTML.length,sha256:'bad',verified:'unknown'});
+  await h.refresh({force:true});
+  assert.equal(h.el('#workSurfacePreview').hidden,true);
 });
 
 test('unverified workspace never grants Preview read',async()=>{

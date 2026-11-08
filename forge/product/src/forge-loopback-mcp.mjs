@@ -47,9 +47,10 @@ async function bodyJson(req) {
 // One listener, distinct owner-approved tokens and immutable project-scoped sessions.
 // No remote listening, auto-connect, browser origins, persistence or OAuth claim.
 export function createForgeLoopbackMcp({createMcp,authorizeProject,
-  projectScope=projectId=>projectId,clock=Date.now}={}) {
+  projectScope=projectId=>projectId,clock=Date.now,onProjectFileChanged=()=>{}}={}) {
   if(typeof createMcp!=='function'||typeof authorizeProject!=='function'||
-     typeof projectScope!=='function'||typeof clock!=='function')
+     typeof projectScope!=='function'||typeof clock!=='function'||
+     typeof onProjectFileChanged!=='function')
     throw Error('forge_mcp_transport_ports_required');
   let server=null,port=null;
   const sessions=new Map(),grants=new Map();
@@ -149,6 +150,15 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
       let result;
       try{result=await session.handle(message);}
       finally{if(newSessionId)pendingInitializations--;}
+      // Notify only after a successful, authorized local index.html write.
+      // The renderer learns the project ID, never file bytes or bearer tokens.
+      if(message.method==='tools/call'&&
+         message.params?.name==='forge_project_file_write'&&
+         message.params?.arguments?.path==='index.html'&&
+         result?.result?.isError!==true&&
+         result?.result?.structuredContent?.status==='succeeded'){
+        try{onProjectFileChanged(grant.projectId);}catch{} // UI failure never invalidates the write receipt.
+      }
       if(newSessionId){
         if(!result?.result?.protocolVersion)return json(res,400,{error:'forge_mcp_initialize_rejected'});
         sessions.set(newSessionId,{handler:session,grant,lastActivity:clock()});

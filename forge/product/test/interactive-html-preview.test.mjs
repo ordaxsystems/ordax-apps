@@ -95,8 +95,8 @@ test('Work Surface version history re-verifies each asset and never promotes an 
   assert.ok(start>0&&end>start);
   const elements=new Map();
   for(const id of ['#workSurfaceVersionBar','#workSurfacePreview','#workSurfaceFilename',
-    '#workSurfaceProof','#workSurfaceStatus','#workSurfaceModeToggle'])
-    elements.set(id,{hidden:true,textContent:'',style:{}});
+    '#workSurfaceProof','#workSurfaceStatus','#workSurfaceModeToggle','#workSurfaceRefresh'])
+    elements.set(id,{hidden:true,textContent:'',style:{},addEventListener(){}});
   const select={options:[],value:'',
     replaceChildren(){this.options=[];},
     append(option){this.options.push(option);}};

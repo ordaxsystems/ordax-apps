@@ -150,6 +150,7 @@ function clearWorkSurfacePreview(){
   frame.style.visibility='visible';
   $('#workSurfaceModeToggle').textContent='Interativo';
   $('#workSurfaceModeToggle').disabled=false;
+  $('#workSurfaceRefresh').hidden=true;
   queueWorkSurfaceBounds();
   $('#workSurfaceStatus').textContent='Nenhum HTML verificado disponível neste projeto.';
   const placeholder=$('#previewPanel .preview-state-card');
@@ -158,20 +159,23 @@ function clearWorkSurfacePreview(){
 // Local MCP-created project files are not GPT assistant attachments. Show one
 // verified project index.html without granting arbitrary paths or promoting it
 // to an AI-delivered artifact. Reuse the same sandboxed, no-network iframe.
-async function refreshForgeProjectHtmlPreview(){
-  if(activeRightPane!=='preview'||!$('#workSurfacePreview').hidden)return;
+async function refreshForgeProjectHtmlPreview({force=false}={}){
+  if(activeRightPane!=='preview')return;
   const projectId=orchestrationUi?.getProjectId?.()||null;
   if(!projectId)return;
-  const epoch=workSurfacePreviewEpoch;
+  const localKey='workspace:'+projectId+':';
+  const existing=$('#workSurfacePreview').hidden!==true;
+  if(existing&&!(force&&workSurfacePreviewKey?.startsWith(localKey)))return;
+  const epoch=++workSurfacePreviewEpoch;
   const current=()=>epoch===workSurfacePreviewEpoch&&
     activeRightPane==='preview'&&
     projectId===orchestrationUi?.getProjectId?.()&&
-    $('#workSurfacePreview').hidden;
+    ($('#workSurfacePreview').hidden||workSurfacePreviewKey?.startsWith(localKey));
   try{
     const workspace=await window.ordax.forgeWorkspaceStatus(projectId);
     if(!current())return;
     if(workspace?.projectId!==projectId||workspace?.configured!==true||
-       workspace?.verified!==true)return;
+       workspace?.verified!==true)throw Error('forge_preview_workspace_not_verified');
     const file=await window.ordax.orchestratorInvoke('project_file_read',{
       projectId,path:'index.html'
     });
@@ -183,9 +187,9 @@ async function refreshForgeProjectHtmlPreview(){
     const source=buildStaticPreviewSource(file.content);
     const frame=$('#workSurfaceFrame');
     frame.setAttribute('sandbox','');
-    frame.srcdoc=source;
+    if(workSurfacePreviewKey!==localKey+file.sha256)frame.srcdoc=source;
     frame.style.visibility='visible';
-    workSurfacePreviewKey='workspace:'+projectId+':'+file.sha256;
+    workSurfacePreviewKey=localKey+file.sha256;
     workSurfacePreviewTaskId=null;
     workSurfaceInteractiveActive=false;
     $('#workSurfaceVersionBar').hidden=true;
@@ -193,6 +197,7 @@ async function refreshForgeProjectHtmlPreview(){
     $('#workSurfaceProof').textContent='Arquivo local verificado · '+file.bytes+' bytes';
     $('#workSurfaceModeToggle').textContent='Somente visual';
     $('#workSurfaceModeToggle').disabled=true;
+    $('#workSurfaceRefresh').hidden=false;
     $('#workSurfaceStatus').textContent=
       'index.html da pasta autorizada do projeto. Prévia visual isolada: scripts, rede e formulários bloqueados. Não é uma resposta GPT nem um site publicado.';
     $('#workSurfacePreview').hidden=false;
@@ -202,6 +207,7 @@ async function refreshForgeProjectHtmlPreview(){
     queueWorkSurfaceBounds();
   }catch{
     if(!current())return;
+    if(!$('#workSurfacePreview').hidden)clearWorkSurfacePreview();
     $('#workSurfaceStatus').textContent=
       'Nenhum index.html autorizado e verificável nesta pasta do projeto.';
   }
@@ -269,6 +275,8 @@ async function refreshVerifiedWorkSurface(taskId){
     }
     $('#workSurfaceFilename').textContent=proof.filename||'index.html';
     $('#workSurfaceProof').textContent='Arquivo verificado · '+proof.bytes+' bytes';
+    $('#workSurfaceRefresh').hidden=true;
+    $('#workSurfaceModeToggle').disabled=false;
     $('#workSurfaceStatus').textContent=isHistorical
       ?'Versão anterior selecionada, somente leitura. Nenhum arquivo foi restaurado ou publicado.'
       :currentAsset
@@ -329,6 +337,9 @@ async function refreshVerifiedWorkSurface(taskId){
     $('#workSurfaceStatus').textContent='Não foi possível verificar a prévia. Nenhuma mensagem foi enviada ao GPT.';
   }
 }
+$('#workSurfaceRefresh').addEventListener('click',()=>{
+  void refreshForgeProjectHtmlPreview({force:true});
+});
 $('#workSurfaceVersion').addEventListener('change',()=>{
   const taskId=workSurfacePreviewTaskId;
   if(!taskId||taskId!==workSurfaceVersionTaskId)return;
@@ -447,7 +458,7 @@ async function selectRightPane(name) {
   queueProviderBounds();
   queueWorkSurfaceBounds();
   if(name==='files')void refreshForgeFilesPanel();
-  if(name==='preview')void refreshForgeProjectHtmlPreview();
+  if(name==='preview')void refreshForgeProjectHtmlPreview({force:true});
 }
 let forgeFilesInspectionGeneration=0;
 async function refreshForgeFilesPanel(){
@@ -1826,6 +1837,12 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
 });
 const savedNavigation=workspace?.metadata?.navigation;
 await orchestrationUi.start({restoreNavigation:savedNavigation});
+window.ordax.onForgeProjectFileChanged?.(payload=>{
+  if(typeof payload?.projectId!=='string'||
+     payload.projectId!==orchestrationUi?.getProjectId?.()||
+     activeRightPane!=='preview')return;
+  void refreshForgeProjectHtmlPreview({force:true});
+});
 void refreshForgeFilesPanel();
 await loadTasks();
 // Executor conversations are inspectable through Missões, not a startup

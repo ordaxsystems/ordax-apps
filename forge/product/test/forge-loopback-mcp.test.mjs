@@ -9,7 +9,7 @@ import {ForgeProjectFiles} from '../src/forge-project-files.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {createForgeLoopbackMcp} from '../src/forge-loopback-mcp.mjs';
 
-function fixture(t) {
+function fixture(t,{onProjectFileChanged=()=>{}}={}) {
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'forge-loopback-'));
   t.after(()=>fs.rmSync(temp,{recursive:true,force:true}));
   const store=new Store(':memory:');
@@ -27,7 +27,7 @@ function fixture(t) {
     authorizeProject:projectId=>{
       try{service.requireAccess(context,'project_file_read',projectId);return true;}
       catch{return false;}
-    },clock:()=>now
+    },clock:()=>now,onProjectFileChanged
   });
   t.after(()=>transport.stop());
   return {store,service,context,transport,makeProject,advance:delta=>{now+=delta;}};
@@ -100,6 +100,34 @@ test('loopback MCP requires explicit token and keeps tools inside one project',a
   await f.transport.stop();
   assert.equal(f.transport.status().running,false);
   await assert.rejects(fetch(endpoint),/fetch failed|ECONNREFUSED/);
+});
+
+test('authorized index.html MCP writes notify owner UI after receipt, without exposing data',async t=>{
+  const changed=[];
+  const f=fixture(t,{onProjectFileChanged:id=>changed.push(id)});
+  const projectId=await f.makeProject('preview_changed');
+  const ready=await f.transport.start(projectId);
+  const initial=await rpc(ready.endpoint,ready.token,null,initialize);
+  await rpc(ready.endpoint,ready.token,initial.session,notify);
+  const good=await rpc(ready.endpoint,ready.token,initial.session,
+    call(20,'project_file_write',{path:'index.html',content:'<!doctype html><h1>Updated</h1>',
+      requestId:'preview_index_1'}));
+  assert.equal(good.payload.result.structuredContent.status,'succeeded');
+  assert.deepEqual(changed,[projectId]);
+  const other=await rpc(ready.endpoint,ready.token,initial.session,
+    call(21,'project_file_write',{path:'assets/css.css',content:'h1{color:green}',
+      requestId:'preview_css_1'}));
+  assert.equal(other.payload.result.structuredContent.status,'succeeded');
+  assert.deepEqual(changed,[projectId]);
+  const invalid=await rpc(ready.endpoint,ready.token,initial.session,
+    call(22,'project_file_write',{projectId:'project_other',path:'index.html',
+      content:'invalid',requestId:'preview_wrong_project'}));
+  assert.equal(invalid.payload.error.code,-32602);
+  assert.deepEqual(changed,[projectId]);
+  const unknown=await rpc(ready.endpoint,'wrong',initial.session,
+    call(23,'project_file_write',{path:'index.html',content:'invalid',requestId:'bad_token'}));
+  assert.equal(unknown.status,401);
+  assert.deepEqual(changed,[projectId]);
 });
 
 test('real HTTP MCP exposes scoped work identity and messages without allowing cross-project reads',async t=>{
