@@ -149,10 +149,62 @@ function clearWorkSurfacePreview(){
   frame.removeAttribute('srcdoc');
   frame.style.visibility='visible';
   $('#workSurfaceModeToggle').textContent='Interativo';
+  $('#workSurfaceModeToggle').disabled=false;
   queueWorkSurfaceBounds();
   $('#workSurfaceStatus').textContent='Nenhum HTML verificado disponível neste projeto.';
   const placeholder=$('#previewPanel .preview-state-card');
   if(placeholder)placeholder.hidden=false;
+}
+// Local MCP-created project files are not GPT assistant attachments. Show one
+// verified project index.html without granting arbitrary paths or promoting it
+// to an AI-delivered artifact. Reuse the same sandboxed, no-network iframe.
+async function refreshForgeProjectHtmlPreview(){
+  if(activeRightPane!=='preview'||!$('#workSurfacePreview').hidden)return;
+  const projectId=orchestrationUi?.getProjectId?.()||null;
+  if(!projectId)return;
+  const epoch=workSurfacePreviewEpoch;
+  const current=()=>epoch===workSurfacePreviewEpoch&&
+    activeRightPane==='preview'&&
+    projectId===orchestrationUi?.getProjectId?.()&&
+    $('#workSurfacePreview').hidden;
+  try{
+    const workspace=await window.ordax.forgeWorkspaceStatus(projectId);
+    if(!current())return;
+    if(workspace?.projectId!==projectId||workspace?.configured!==true||
+       workspace?.verified!==true)return;
+    const file=await window.ordax.orchestratorInvoke('project_file_read',{
+      projectId,path:'index.html'
+    });
+    if(!current())return;
+    if(file?.projectId!==projectId||file?.path!=='index.html'||
+       file?.verified!=='local_readback'||typeof file.content!=='string'||
+       !/^[a-f0-9]{64}$/.test(file.sha256)||!Number.isSafeInteger(file.bytes)||
+       file.bytes<40||file.bytes>65536)throw Error('forge_preview_project_file_unverified');
+    const source=buildStaticPreviewSource(file.content);
+    const frame=$('#workSurfaceFrame');
+    frame.setAttribute('sandbox','');
+    frame.srcdoc=source;
+    frame.style.visibility='visible';
+    workSurfacePreviewKey='workspace:'+projectId+':'+file.sha256;
+    workSurfacePreviewTaskId=null;
+    workSurfaceInteractiveActive=false;
+    $('#workSurfaceVersionBar').hidden=true;
+    $('#workSurfaceFilename').textContent='index.html';
+    $('#workSurfaceProof').textContent='Arquivo local verificado · '+file.bytes+' bytes';
+    $('#workSurfaceModeToggle').textContent='Somente visual';
+    $('#workSurfaceModeToggle').disabled=true;
+    $('#workSurfaceStatus').textContent=
+      'index.html da pasta autorizada do projeto. Prévia visual isolada: scripts, rede e formulários bloqueados. Não é uma resposta GPT nem um site publicado.';
+    $('#workSurfacePreview').hidden=false;
+    const placeholder=$('#previewPanel .preview-state-card');
+    if(placeholder)placeholder.hidden=true;
+    document.body.classList.add('work-surface-active');
+    queueWorkSurfaceBounds();
+  }catch{
+    if(!current())return;
+    $('#workSurfaceStatus').textContent=
+      'Nenhum index.html autorizado e verificável nesta pasta do projeto.';
+  }
 }
 async function refreshVerifiedWorkSurface(taskId){
   const epoch=++workSurfacePreviewEpoch;
@@ -395,6 +447,7 @@ async function selectRightPane(name) {
   queueProviderBounds();
   queueWorkSurfaceBounds();
   if(name==='files')void refreshForgeFilesPanel();
+  if(name==='preview')void refreshForgeProjectHtmlPreview();
 }
 let forgeFilesInspectionGeneration=0;
 async function refreshForgeFilesPanel(){
@@ -1741,6 +1794,7 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
   onScopeChange:async ids=>{
     clearWorkSurfacePreview();
     void refreshForgeFilesPanel();
+    if(activeRightPane==='preview')void refreshForgeProjectHtmlPreview();
     scopedTaskIds=ids;
     if(currentTaskId && (ids?!ids.has(currentTaskId):allTasks.find(t=>t.id===currentTaskId)?.lab_binding)) {
       flushDraft();currentTaskId=null;currentTask=null;navigationEpoch++;
