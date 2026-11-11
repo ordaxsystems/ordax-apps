@@ -155,6 +155,11 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
       // Never publish a result or re-register a session after authority ended.
       if(!bound()||!valid(grant)||!authorizeProject(grant.projectId))
         return json(res,403,{error:'forge_mcp_project_revoked'});
+      // DELETE may close just this MCP session while an async tool is
+      // running. The project grant can remain valid for other sessions, but
+      // the closed session must not receive a late result or persist state.
+      if(!newSessionId&&sessions.get(sessionId)?.handler!==session)
+        return json(res,404,{error:'forge_mcp_session_unavailable'});
       // Notify the owner UI after any authorized file write. Only the project
       // identity is delivered, never the file contents or bearer token.
       if(message.method==='tools/call'&&

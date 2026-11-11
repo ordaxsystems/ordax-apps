@@ -362,3 +362,50 @@ test('a late MCP result cannot leak after the owner revokes a project',async t=>
   assert.equal(transport.status().running,false);
   assert.equal(transport.status().sessions,0);
 });
+
+test('closing an MCP session cancels an in-flight reply on that session',async t=>{
+  const projectId='project_closed-session-response';
+  let release,entered;
+  const inside=new Promise(resolve=>{entered=resolve;});
+  const gate=new Promise(resolve=>{release=resolve;});
+  const transport=createForgeLoopbackMcp({
+    authorizeProject:project=>project===projectId,
+    createMcp:()=>({handle:async message=>{
+      if(message.method==='initialize')
+        return {jsonrpc:'2.0',id:message.id,result:{protocolVersion:'2025-06-18'}};
+      if(message.method==='tools/call'){
+        entered();
+        await gate;
+        return {jsonrpc:'2.0',id:message.id,
+          result:{secret:'must_never_escape_after_session_delete'}};
+      }
+      return null;
+    }})
+  });
+  t.after(()=>transport.stop());
+  const started=await transport.start(projectId);
+  const handshake=await rpc(started.endpoint,started.token,null,initialize);
+  assert.equal(handshake.status,200);
+  assert.ok(handshake.session);
+  const pending=rpc(started.endpoint,started.token,handshake.session,
+    call(99,'project_file_read',{path:'index.html'}));
+  await inside;
+  const closed=await fetch(started.endpoint,{
+    method:'DELETE',headers:{
+      Authorization:'Bearer '+started.token,
+      'Mcp-Session-Id':handshake.session
+    }
+  });
+  assert.equal(closed.status,200);
+  // Session DELETE must not revoke this project's independently authorized
+  // transport; another handshake can proceed while the old call is pending.
+  const next=await rpc(started.endpoint,started.token,null,initialize);
+  assert.equal(next.status,200);
+  assert.notEqual(next.session,handshake.session);
+  release();
+  const reply=await pending;
+  assert.equal(reply.status,404);
+  assert.equal(reply.payload.error,'forge_mcp_session_unavailable');
+  assert.equal(JSON.stringify(reply).includes('must_never_escape'),false);
+  assert.equal(transport.status().sessions,1);
+});
