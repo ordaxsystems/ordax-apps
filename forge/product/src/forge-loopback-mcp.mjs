@@ -24,6 +24,7 @@ function constantMatch(candidate,expected){
   return a.length===b.length&&timingSafeEqual(a,b);
 }
 function json(res,status,value,headers={}) {
+  if(res.destroyed||res.writableEnded)return;
   const raw=JSON.stringify(value);
   res.writeHead(status,{'Content-Type':'application/json; charset=utf-8',
     'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers});
@@ -177,6 +178,7 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
         return json(res,413,{error:'forge_mcp_response_too_large'});
       return json(res,200,result,newSessionId?{'Mcp-Session-Id':newSessionId}:{});
     }catch{
+      if(res.destroyed||res.writableEnded)return;
       if(!res.headersSent)return json(res,500,{error:'forge_mcp_unavailable'});
       res.destroy();
     }
@@ -278,7 +280,12 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
           resolve();
         };
         const close=()=>{
-          try{old.close(()=>done());}catch{done();}
+          try{
+            // Stop accepting first; then terminate outstanding HTTP sockets.
+            // close() alone waits indefinitely for a stalled MCP tool.
+            old.close(()=>done());
+            old.closeAllConnections();
+          }catch{done();}
         };
         const onListening=()=>close();
         const onError=()=>done();

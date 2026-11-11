@@ -354,10 +354,17 @@ test('a late MCP result cannot leak after the owner revokes a project',async t=>
   await inside;
   const revoking=transport.revokeProject(projectId);
   release();
-  const reply=await pending;
+  // Immediate owner revocation can close the socket before sending 403.
+  // Both outcomes are fail-closed: no delayed result reaches the caller.
+  const reply=await pending.catch(error=>{
+    assert.match(String(error),/fetch failed|socket|closed/i);
+    return null;
+  });
   await revoking;
-  assert.equal(reply.status,403);
-  assert.equal(reply.payload.error,'forge_mcp_project_revoked');
+  if(reply){
+    assert.equal(reply.status,403);
+    assert.equal(reply.payload.error,'forge_mcp_project_revoked');
+  }
   assert.equal(JSON.stringify(reply).includes('must_never_escape'),false);
   assert.equal(transport.status().running,false);
   assert.equal(transport.status().sessions,0);
@@ -408,4 +415,44 @@ test('closing an MCP session cancels an in-flight reply on that session',async t
   assert.equal(reply.payload.error,'forge_mcp_session_unavailable');
   assert.equal(JSON.stringify(reply).includes('must_never_escape'),false);
   assert.equal(transport.status().sessions,1);
+});
+
+test('disabling MCP closes an unresponsive active HTTP request promptly',async t=>{
+  const projectId='project_shutdown-long-call';
+  let release,entered;
+  const inside=new Promise(resolve=>{entered=resolve;});
+  const gate=new Promise(resolve=>{release=resolve;});
+  const transport=createForgeLoopbackMcp({
+    authorizeProject:project=>project===projectId,
+    createMcp:()=>({handle:async message=>{
+      if(message.method==='initialize')
+        return {jsonrpc:'2.0',id:message.id,result:{protocolVersion:'2025-06-18'}};
+      if(message.method==='tools/call'){
+        entered();
+        await gate;
+        return {jsonrpc:'2.0',id:message.id,result:{secret:'late-after-stop'}};
+      }
+      return null;
+    }})
+  });
+  t.after(()=>transport.stop());
+  const started=await transport.start(projectId);
+  const handshake=await rpc(started.endpoint,started.token,null,initialize);
+  const pending=rpc(started.endpoint,started.token,handshake.session,
+    call(112,'project_file_read',{path:'index.html'})).catch(()=>null);
+  await inside;
+  const shuttingDown=transport.stop();
+  const completed=await Promise.race([
+    shuttingDown.then(()=>true),
+    new Promise(resolve=>setTimeout(()=>resolve(false),1000))
+  ]);
+  // Release the fake long-running task in either case so test teardown
+  // cannot leave a listener or an unresolved promise behind.
+  release();
+  const reply=await pending;
+  await shuttingDown;
+  assert.equal(completed,true,'owner_stop_waited_for_unresponsive_mcp_tool');
+  assert.equal(reply?.payload?.result?.secret,undefined);
+  assert.equal(transport.status().running,false);
+  assert.equal(transport.status().sessions,0);
 });
