@@ -52,10 +52,25 @@ async function main(){
     if(phase==='preflight'){
       const state=await ui.evaluate("(async()=>{const s=await window.ordax.providerStatus();return {authState:s?.auth_state||'unknown',composerReady:s?.composer_ready===true,healthObserved:s?.health_observed===true};})()");
       const engine=await ui.evaluate("window.ordax.orchestratorInvoke('status',{})");
+      const tunnel=await ui.evaluate("window.ordax.forgeLocalMcpStatus()");
+      // DEV uses a segregated LOCALAPPDATA. Do not borrow binaries or keys
+      // from the operational profile or claim its client is installed here.
+      assert.equal(typeof tunnel.officialTunnel?.installed,'boolean');
+      assert.equal(tunnel.officialTunnelSession?.state,'stopped');
+      assert.equal(tunnel.officialTunnelSession?.clientReady,false);
+      assert.equal(tunnel.officialTunnelSession?.clientReadiness,'not_observed');
+      assert.equal(tunnel.officialTunnelSession?.remoteChatGptConnected,false);
+      assert.equal(tunnel.officialTunnelSession?.chatGptCallVerified,false);
       console.log(JSON.stringify({phase,staged:true,provider:state,
         coordinatorAvailable:engine.coordinatorAvailable===true,
         providerExecutionAvailable:engine.providerExecutionAvailable===true,
-        uncertainCommands:engine.uncertainCommands,activeRuns:engine.activeRuns}));return;
+        uncertainCommands:engine.uncertainCommands,activeRuns:engine.activeRuns,
+        tunnel:{installed:tunnel.officialTunnel.installed,
+          clientVersion:tunnel.officialTunnel.clientVersion,
+          state:tunnel.officialTunnelSession.state,
+          clientReadiness:tunnel.officialTunnelSession.clientReadiness,
+          clientReady:tunnel.officialTunnelSession.clientReady,
+          remoteChatGptConnected:false,chatGptCallVerified:false}}));return;
     }
     if(phase==='create'){
       const nonce=crypto.randomBytes(7).toString('hex'),name='Vereda Café E2E '+nonce.slice(0,7);

@@ -1376,9 +1376,12 @@ registerUiHandler('ordax:forge:workspace:migrate',async(event,projectId)=>{
 });
 // Local MCP is explicitly enabled only from the trusted Electron settings UI.
 // Activation returns a one-time bearer token; status never returns it.
-registerUiHandler('ordax:forge:local-mcp:status',event=>{
+registerUiHandler('ordax:forge:local-mcp:status',async event=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
+  // /readyz is a local readiness observation, never proof that GPT Web
+  // connected or invoked a tool. Nothing is probed before Owner approval.
+  await forgeOfficialTunnel.inspectReadiness();
   return {...forgeLocalMcp.status(),trustedProjects:forgeMcpTrusted.trustedProjects(),
     officialTunnel:inspectForgeOfficialTunnelClient(),
     officialTunnelSession:forgeOfficialTunnel.status(),

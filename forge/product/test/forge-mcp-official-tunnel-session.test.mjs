@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
-import {createForgeOfficialTunnelSession} from '../src/forge-mcp-official-tunnel-session.mjs';
+import {createForgeOfficialTunnelSession,probeForgeTunnelReadiness} from '../src/forge-mcp-official-tunnel-session.mjs';
 
 const projectId='project_aaaaaaaa-1111-4444-8888-111111111111';
 const tunnelId='tunnel_'+('abcdef0123456789'.repeat(2));
@@ -9,9 +9,9 @@ const config={projectId,tunnelId,endpoint:'http://127.0.0.1:60252/mcp',
   bearerToken:'B'.repeat(43),controlPlaneKey:'sk-'+'C'.repeat(40),
   executablePath:'C:\\AppData\\OrdaX\\tunnel-client.exe',
   platform:'win32',ownerApproved:true,inheritedEnv:{}};
-function fixture(){
+function fixture({readinessProbe}={}){
   const calls=[];let active=null;
-  const control=createForgeOfficialTunnelSession({spawnClient:(command,args,opts)=>{
+  const control=createForgeOfficialTunnelSession({readinessProbe,spawnClient:(command,args,opts)=>{
     const child=new EventEmitter();
     child.kill=()=>{child.killed=true;child.emit('exit',0);return true;};
     active=child;
@@ -25,6 +25,7 @@ test('tunnel stays off until owner explicitly starts one verified project',async
   const f=fixture();
   assert.deepEqual(f.control.status(),{
     state:'stopped',processRunning:false,projectId:null,tunnelId:null,
+    clientReady:false,clientReadiness:'not_observed',
     remoteChatGptConnected:false,chatGptCallVerified:false,autostart:false
   });
   await assert.rejects(f.control.start({...config,ownerApproved:false}),/owner_approval_required/);
@@ -129,6 +130,9 @@ test('tunnel UI subscription receives lifecycle changes through credential-free 
   assert.match(ui,/session\?\.state==='stopping'/);
   assert.match(ui,/officialTunnelSession\?\.state==='starting'/);
   assert.match(ui,/officialTunnelSession\?\.state==='stopping'/);
+  assert.match(main,/await forgeOfficialTunnel\.inspectReadiness\(\)/);
+  assert.match(ui,/officialTunnelSession\?\.clientReadiness==='not_ready'/);
+  assert.match(ui,/officialTunnelSession\?\.clientReady/);
   assert.match(ui,/Estado do túnel indisponível/);
 });
 
@@ -138,4 +142,79 @@ test('invalid controls cannot spawn or persist any token',async()=>{
   await assert.rejects(f.control.start({...config,endpoint:'https://evil.example/mcp'}),/endpoint_invalid/);
   assert.equal(f.calls.length,0);
   assert.equal(f.control.status().state,'stopped');
+});
+
+test('readyz probes only the verified child URL on loopback, without side effects',async()=>{
+  const observed=[];
+  const probe=url=>probeForgeTunnelReadiness({
+    urlFile:'health.url',readFile:()=>url,
+    request:async target=>{observed.push(target);return {status:200};}
+  });
+  assert.equal(await probe('http://127.0.0.1:48521'),'ready');
+  assert.deepEqual(observed,['http://127.0.0.1:48521/readyz']);
+  for(const invalid of [
+    'https://127.0.0.1:48521','http://localhost:48521',
+    'http://127.0.0.2:48521','http://127.0.0.1:48521/mcp',
+    'http://127.0.0.1:48521?admin=1','http://127.0.0.1:80',
+    'http://user:password@127.0.0.1:48521','http://example.com:48521',
+    'http://127.0.0.1:48521/readyz\\nhttp://evil.example'
+  ])assert.equal(await probe(invalid),'unverified',invalid);
+  assert.equal(observed.length,1,'unsafe URLs never trigger a fetch');
+  assert.equal(await probeForgeTunnelReadiness({
+    urlFile:'missing.url',readFile:()=>{throw Error('ENOENT');}
+  }),'not_observed');
+  assert.equal(await probeForgeTunnelReadiness({
+    urlFile:'health.url',readFile:()=> 'http://127.0.0.1:48521',
+    request:async()=>({status:503})
+  }),'not_ready');
+  assert.equal(await probeForgeTunnelReadiness({
+    urlFile:'health.url',readFile:()=> 'http://127.0.0.1:48521',
+    request:async()=>{throw Error('offline');}
+  }),'unverified');
+});
+
+test('real client readyz is distinct from a ChatGPT workspace call and resets on exit',async()=>{
+  const f=fixture({readinessProbe:async()=> 'ready'});
+  const started=await f.control.start(config);
+  assert.equal(started.clientReady,false);
+  assert.equal(started.remoteChatGptConnected,false);
+  assert.equal(f.calls[0].args.some(arg=>arg.startsWith('--health.url-file=')),true);
+  const observed=await f.control.inspectReadiness();
+  assert.equal(observed.clientReadiness,'ready');
+  assert.equal(observed.clientReady,true);
+  assert.equal(observed.remoteChatGptConnected,false);
+  assert.equal(observed.chatGptCallVerified,false);
+  f.child.emit('exit',0);
+  assert.equal(f.control.status().clientReady,false);
+  assert.equal(f.control.status().clientReadiness,'not_observed');
+});
+
+test('late health response cannot re-mark a closed tunnel as ready',async()=>{
+  let release;
+  const f=fixture({readinessProbe:()=>new Promise(resolve=>{release=resolve;})});
+  await f.control.start(config);
+  const pending=f.control.inspectReadiness();
+  f.child.emit('exit',1);
+  release('ready');
+  const after=await pending;
+  assert.equal(after.state,'stopped');
+  assert.equal(after.clientReady,false);
+  assert.equal(after.remoteChatGptConnected,false);
+});
+
+test('real loopback readyz is observed without opening any remote tunnel',async t=>{
+  const {createServer}=await import('node:http');
+  let statusCode=503;
+  const server=createServer((request,response)=>{
+    if(request.url!=='/readyz'){response.writeHead(404);return response.end();}
+    response.writeHead(statusCode);response.end(statusCode===200?'ready':'not ready');
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(()=>new Promise(resolve=>server.close(resolve)));
+  const url='http://127.0.0.1:'+server.address().port;
+  const input={urlFile:'health.url',readFile:()=>url};
+  assert.equal(await probeForgeTunnelReadiness(input),'not_ready');
+  statusCode=200;
+  assert.equal(await probeForgeTunnelReadiness(input),'ready');
+  assert.equal((await probeForgeTunnelReadiness({...input,readFile:()=>url+'/mcp'})),'unverified');
 });

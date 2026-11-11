@@ -30,7 +30,7 @@ export function validateForgeTunnelTarget({projectId,endpoint,tunnelId}={}){
 
 export function makeForgeOfficialTunnelLaunch({
   projectId,endpoint,tunnelId,bearerToken,controlPlaneKey,
-  executablePath,ownerApproved=false,platform=process.platform,
+  executablePath,healthUrlFile=null,ownerApproved=false,platform=process.platform,
   inheritedEnv=process.env
 }={}){
   const target=validateForgeTunnelTarget({projectId,endpoint,tunnelId});
@@ -39,6 +39,11 @@ export function makeForgeOfficialTunnelLaunch({
   if(typeof executablePath!=='string'||!path.win32.isAbsolute(executablePath)||
     path.win32.basename(executablePath).toLowerCase()!=='tunnel-client.exe')
     throw Error('forge_tunnel_official_executable_required');
+  if(healthUrlFile!==null&&
+     (typeof healthUrlFile!=='string'||
+      (!path.win32.isAbsolute(healthUrlFile)&&!path.posix.isAbsolute(healthUrlFile))||
+      path.win32.basename(healthUrlFile).toLowerCase()!=='health.url'))
+    throw Error('forge_tunnel_health_url_file_invalid');
   if(typeof bearerToken!=='string'||!BEARER.test(bearerToken)||
     typeof controlPlaneKey!=='string'||controlPlaneKey.length<20||
     controlPlaneKey.length>512||
@@ -59,7 +64,8 @@ export function makeForgeOfficialTunnelLaunch({
     '--mcp.server-url=url='+endpoint,
     '--mcp.extra-headers='+HEADER_REF,
     '--mcp.discovery-extra-headers='+HEADER_REF,
-    '--health.listen-addr=127.0.0.1:0'
+    '--health.listen-addr=127.0.0.1:0',
+    ...(healthUrlFile?['--health.url-file='+healthUrlFile]:[])
   ];
   const publicStatus=Object.freeze({
     projectId:target.projectId,tunnelId:target.tunnelId,

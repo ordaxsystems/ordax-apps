@@ -43,6 +43,19 @@ test('official tunnel launcher is outbound-only, project scoped and leaks no sec
   assert.equal(s.publicStatus.projectId,id);
 });
 
+test('health URL file is private process configuration, never remote readiness proof',()=>{
+  const healthUrlFile='C:\\Users\\tester\\AppData\\Local\\Temp\\forge-unique\\health.url';
+  const result=makeForgeOfficialTunnelLaunch({...input(),healthUrlFile});
+  assert.equal(result.args.at(-1),'--health.url-file='+healthUrlFile);
+  assert.equal(result.publicStatus.runtimeReady,false);
+  assert.equal(result.publicStatus.remoteChatGptConnected,false);
+  assert.equal(JSON.stringify(result.args).includes(input().controlPlaneKey),false);
+  for(const candidate of ['health.url','..\\health.url','https://other.example/health.url',
+    'C:\\Users\\tester\\health.txt'])
+    assert.throws(()=>makeForgeOfficialTunnelLaunch({...input(),healthUrlFile:candidate}),
+      /health_url_file_invalid/);
+});
+
 test('official legacy and namespaced tunnel IDs are preserved unchanged',()=>{
   const valid=[
     tunnelId,

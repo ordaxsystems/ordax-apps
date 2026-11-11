@@ -63,8 +63,12 @@ async function refreshMcp(){
         ?'Iniciando cliente oficial; conexão GPT Web ainda não verificada.'
         :status.officialTunnelSession?.state==='stopping'
           ?'Encerrando cliente oficial; conexão GPT Web ainda não verificada.'
+          :status.officialTunnelSession?.processRunning&&status.officialTunnelSession?.clientReady
+        ?'Cliente oficial pronto no Windows (/readyz=200). Conexão GPT Web e chamada MCP ainda não comprovadas.'
+          :status.officialTunnelSession?.processRunning&&status.officialTunnelSession?.clientReadiness==='not_ready'
+        ?'Cliente oficial ativo, mas ainda não pronto (/readyz=503). GPT Web não conectado.'
           :status.officialTunnelSession?.processRunning
-        ?'Cliente de túnel iniciado para o projeto autorizado. Conexão e chamadas GPT Web ainda não comprovadas.'
+        ?'Cliente oficial iniciado; prontidão /readyz ainda não verificada. GPT Web não conectado.'
         :status.officialTunnel?.installed
           ?'Cliente oficial OpenAI '+status.officialTunnel.clientVersion+
             ' instalado e verificado. GPT Web não conectado; faltam autorização e permissões do workspace.'
@@ -212,4 +216,13 @@ localMcpElement('appSettingsDialog')?.addEventListener('close',()=>{
   if(officialTunnelKey)officialTunnelKey.value='';
   syncTunnelControls();
 });
+// Inspect only the approved client's own health while Settings is open.
+// A 200 readyz never means the remote GPT has called a Forge tool.
+let readinessPollPending=false;
+setInterval(async()=>{
+  if(readinessPollPending||mcpBusy||!lastMcpStatus?.officialTunnelSession?.processRunning||
+    !localMcpElement('appSettingsDialog')?.open)return;
+  readinessPollPending=true;
+  try{await refreshMcp();}finally{readinessPollPending=false;}
+},3000);
 void loadProjects();
