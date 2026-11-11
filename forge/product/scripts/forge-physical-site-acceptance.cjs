@@ -8,7 +8,7 @@ const {acquireE2ELock}=require('./e2e-lock.cjs');
 acquireE2ELock('forge-site-physical-e2e');
 if(process.env.ORDAX_FORGE_PHYSICAL_E2E_APPROVED!=='1')throw Error('physical_e2e_owner_approval_required');
 const phase=process.argv[2]||'preflight',projectId=process.argv[3]||'';
-if(!['preflight','create','local-site','local-revise','files','files-refresh','files-switch','preview','site','revise','verify','verify-local'].includes(phase))throw Error('invalid_phase');
+if(!['preflight','create','local-site','local-revise','files','files-refresh','files-switch','gpt-scope','gpt-turn','gpt-diagnose','preview','site','revise','verify','verify-local'].includes(phase))throw Error('invalid_phase');
 const html=fs.readFileSync(path.join(__dirname,'forge-site-e2e-fixture.html'),'utf8');
 const sha=s=>crypto.createHash('sha256').update(s).digest('hex');
 async function connect(){
@@ -52,6 +52,15 @@ async function main(){
     if(phase==='preflight'){
       const state=await ui.evaluate("(async()=>{const s=await window.ordax.providerStatus();return {authState:s?.auth_state||'unknown',composerReady:s?.composer_ready===true,healthObserved:s?.health_observed===true};})()");
       const engine=await ui.evaluate("window.ordax.orchestratorInvoke('status',{})");
+      const controls=await ui.evaluate(`(()=>{
+        const get=id=>document.getElementById(id);
+        return {projectSelected:!!get('projectSelect')?.value,
+          forjadorSendEnabled:get('coordinatorSend')?.disabled===false,
+          forjadorPromptEnabled:get('coordinatorPrompt')?.disabled===false,
+          workComposerEnabled:get('send')?.disabled===false,
+          loginButtonVisible:!!get('composerLogin')&&!get('composerLogin').hidden,
+          providerTab:get('providerPaneTab')?.getAttribute('aria-selected')};
+      })()`);
       const tunnel=await ui.evaluate("window.ordax.forgeLocalMcpStatus()");
       // DEV uses a segregated LOCALAPPDATA. Do not borrow binaries or keys
       // from the operational profile or claim its client is installed here.
@@ -61,7 +70,7 @@ async function main(){
       assert.equal(tunnel.officialTunnelSession?.clientReadiness,'not_observed');
       assert.equal(tunnel.officialTunnelSession?.remoteChatGptConnected,false);
       assert.equal(tunnel.officialTunnelSession?.chatGptCallVerified,false);
-      console.log(JSON.stringify({phase,staged:true,provider:state,
+      console.log(JSON.stringify({phase,staged:true,provider:state,controls,
         coordinatorAvailable:engine.coordinatorAvailable===true,
         providerExecutionAvailable:engine.providerExecutionAvailable===true,
         uncertainCommands:engine.uncertainCommands,activeRuns:engine.activeRuns,
@@ -90,6 +99,110 @@ async function main(){
     const workspace=await ui.evaluate("window.ordax.forgeWorkspaceStatus("+JSON.stringify(projectId)+")");
     assert.equal(workspace.verified,true);assert.equal(workspace.configured,true);
     assert.ok(fs.statSync(workspace.path).isDirectory());
+    if(phase==='gpt-turn'){
+      // ONE real provider submission on an existing isolated DEV project.
+      // Stable requestId ensures any future inspection cannot replay a turn.
+      const owners=await ui.evaluate("window.ordax.orchestratorInvoke('orchestrators_list',"+
+        JSON.stringify({projectId})+")");
+      assert.equal(owners?.orchestrators?.length,1,'gpt_e2e_owner_scope_ambiguous');
+      const owner=owners.orchestrators[0];
+      assert.equal(owner.status,'ready','gpt_e2e_owner_paused');
+      const provider=await ui.evaluate("window.ordax.providerStatus()");
+      const engine=await ui.evaluate("window.ordax.orchestratorInvoke('status',{})");
+      const {providerComposeAvailability}=await import('../src/provider-compose-availability.mjs');
+      const availability=providerComposeAvailability(provider);
+      assert.equal(availability.allowed,true,'gpt_e2e_session_not_ready_'+availability.reason);
+      assert.equal(engine.providerExecutionAvailable,true,'gpt_e2e_transport_unavailable');
+      assert.equal(engine.uncertainCommands,0,'gpt_e2e_uncertain_commands_present');
+      assert.equal(engine.activeRuns,0,'gpt_e2e_active_run_present');
+      const before=await ui.evaluate("window.ordax.orchestratorInvoke('work_messages',"+
+        JSON.stringify({projectId,taskId:owner.chat_task_id,limit:50})+")");
+      const requestId='forge_gpt_e2e_one_shot_'+sha(projectId).slice(0,16);
+      const prompt='Teste técnico único do OrdaX Forge DEV isolado. Responda somente: FORGE_TEST_OK.';
+      const receipt=await ui.evaluate("window.ordax.orchestratorInvoke('forjador_send',"+
+        JSON.stringify({projectId,orchestratorId:owner.id,content:prompt,requestId})+")",180000);
+      const after=await ui.evaluate("window.ordax.orchestratorInvoke('work_messages',"+
+        JSON.stringify({projectId,taskId:owner.chat_task_id,limit:50})+")");
+      const status=await ui.evaluate("window.ordax.orchestratorInvoke('status',{})");
+      const db=new DatabaseSync(labDatabasePath(),{readOnly:true});
+      let integrity;
+      try{integrity=db.prepare('PRAGMA quick_check').get().quick_check;}
+      finally{db.close();}
+      assert.equal(integrity,'ok','gpt_e2e_database_integrity_failed');
+      console.log(JSON.stringify({phase,projectId,staged:true,
+        receipt:{status:receipt?.status,commandId:receipt?.commandId||null,
+          provider:receipt?.result?.provider||null,
+          deliveryObserved:receipt?.result?.deliveryObserved===true,
+          responseObserved:receipt?.result?.responseObserved===true,
+          effectVerified:receipt?.result?.effectVerified===true,
+          requiresReconciliation:receipt?.requiresReconciliation===true},
+        beforeMessages:before?.messages?.length??null,
+        afterMessages:after?.messages?.length??null,
+        sqliteQuickCheck:integrity,
+        uncertainCommands:status?.uncertainCommands,
+        activeRuns:status?.activeRuns,
+        oneShot:true,automaticRetries:0}));
+      return;
+    }
+    if(phase==='gpt-diagnose'){
+      const commandId=process.argv[4]||'';
+      assert.match(commandId,/^command_[a-f0-9-]{36}$/,'gpt_diagnostic_command_id_required');
+      const receipt=await ui.evaluate("window.ordax.orchestratorInvoke('command_get',"+
+        JSON.stringify({commandId})+")");
+      const provider=await ui.evaluate("window.ordax.providerStatus()");
+      const db=new DatabaseSync(labDatabasePath(),{readOnly:true});
+      let columns,record,integrity;
+      try{
+        integrity=db.prepare('PRAGMA quick_check').get().quick_check;
+        columns=db.prepare('PRAGMA table_info(lab_command_receipts)').all().map(x=>x.name);
+        record=db.prepare('SELECT * FROM lab_command_receipts WHERE id=?').get(commandId);
+      }finally{db.close();}
+      assert.equal(record?.project_id,projectId,'gpt_diagnostic_scope_mismatch');
+      const failureKeys=['status','error','error_code','error_message','reason','failure_reason','failure_code','last_error'];
+      const failure={};
+      for(const key of failureKeys){
+        if(record&&record[key]!=null)failure[key]=String(record[key]).slice(0,240);
+      }
+      console.log(JSON.stringify({phase,projectId,staged:true,commandId,
+        receiptKeys:Object.keys(receipt||{}),receiptStatus:receipt?.status||null,
+        receiptResultKeys:Object.keys(receipt?.result||{}),
+        receiptProviderFailure:{reason:String(receipt?.result?.reason||'').slice(0,220),
+          stage:String(receipt?.result?.providerStage||'').slice(0,120),
+          code:String(receipt?.result?.failureCode||'').slice(0,140)},
+        receiptFailure:typeof receipt?.error==='string'?receipt.error.slice(0,240):null,
+        receiptReason:typeof receipt?.reason==='string'?receipt.reason.slice(0,240):null,
+        database:{integrity,columns,failure},
+        provider:{authState:provider?.auth_state||'unknown',
+          composerReady:provider?.composer_ready===true,
+          verificationRequired:provider?.verification_required===true,
+          healthObserved:provider?.health_observed===true,
+          healthPending:provider?.health_pending===true},
+        providerMessagesSent:0}));
+      return;
+    }
+    if(phase==='gpt-scope'){
+      // Read-only inventory of one disposable Forge project, no GPT submission.
+      const ctx=await ui.evaluate("window.ordax.orchestratorInvoke('project_context',"+
+        JSON.stringify({projectId})+")");
+      const owners=await ui.evaluate("window.ordax.orchestratorInvoke('orchestrators_list',"+
+        JSON.stringify({projectId})+")");
+      const provider=await ui.evaluate("window.ordax.providerStatus()");
+      const selected=await ui.evaluate(`(()=>{
+        const select=document.getElementById('projectSelect');
+        return {selected:select?.value||null,
+          forjadorSendEnabled:document.getElementById('coordinatorSend')?.disabled===false,
+          taskComposerEnabled:document.getElementById('send')?.disabled===false};
+      })()`);
+      console.log(JSON.stringify({phase,projectId,staged:true,
+        contextKeys:Object.keys(ctx||{}),
+        ownerShape:Array.isArray(owners)?'array':Object.keys(owners||{}),
+        ownersCount:Array.isArray(owners)?owners.length:Array.isArray(owners?.orchestrators)?owners.orchestrators.length:null,
+        ownerIds:(Array.isArray(owners)?owners:owners?.orchestrators||[]).map(x=>({id:x.id,taskId:x.chat_task_id,status:x.status})),
+        provider:{authState:provider?.auth_state||'unknown',
+          composerReady:provider?.composer_ready===true,
+          verificationRequired:provider?.verification_required===true},
+        selected,gptMessagesSubmitted:0}));return;
+    }
     if(phase==='local-site'){
       // Exercise the already authorized project workspace without approving MCP.
       const requestId='forge_local_site_'+sha(html).slice(0,24);

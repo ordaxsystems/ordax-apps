@@ -1462,6 +1462,9 @@ async function refreshProvider() {
       email:status.chatgpt_plan_email||hostChatGPTPlan.email};
     syncChatGPTPlanPanel();
     composeAvailability = providerComposeAvailability(status,{hostMode:window.ordaxHost?.hostMode===true});
+    // Share the single observed GPT health with the Forjador chat. A ready
+    // textarea is not an authenticated session or permission to submit.
+    orchestrationUi?.setProviderHealth?.(status);
     syncComposerAvailability();
     const verification = status.verification_required;
     const authenticating = status.auth_state === 'authenticating';
