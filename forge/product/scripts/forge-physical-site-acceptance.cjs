@@ -8,7 +8,7 @@ const {acquireE2ELock}=require('./e2e-lock.cjs');
 acquireE2ELock('forge-site-physical-e2e');
 if(process.env.ORDAX_FORGE_PHYSICAL_E2E_APPROVED!=='1')throw Error('physical_e2e_owner_approval_required');
 const phase=process.argv[2]||'preflight',projectId=process.argv[3]||'';
-if(!['preflight','create','local-site','local-revise','files','files-refresh','files-switch','gpt-scope','gpt-turn','gpt-diagnose','preview','site','revise','verify','verify-local'].includes(phase))throw Error('invalid_phase');
+if(!['preflight','create','local-site','local-revise','files','files-refresh','files-switch','gpt-scope','gpt-turn','gpt-diagnose','gpt-verify','gpt-browser-check','preview','site','revise','verify','verify-local'].includes(phase))throw Error('invalid_phase');
 const html=fs.readFileSync(path.join(__dirname,'forge-site-e2e-fixture.html'),'utf8');
 const sha=s=>crypto.createHash('sha256').update(s).digest('hex');
 async function connect(){
@@ -101,7 +101,18 @@ async function main(){
     assert.ok(fs.statSync(workspace.path).isDirectory());
     if(phase==='gpt-turn'){
       // ONE real provider submission on an existing isolated DEV project.
-      // Stable requestId ensures any future inspection cannot replay a turn.
+      // An explicit fresh request ID is required; previous attempts cannot
+      // be replayed accidentally by running this script again.
+      const requestId=process.argv[4]||'';
+      assert.match(requestId,/^forge_gpt_e2e_[A-Za-z0-9_-]{8,100}$/,
+        'gpt_e2e_explicit_unique_request_id_required');
+      // Check before looking at provider readiness: a replay is forbidden
+      // even if the browser was signed out or the session changed.
+      const beforeDb=new DatabaseSync(labDatabasePath(),{readOnly:true});
+      try{
+        assert.equal(beforeDb.prepare('SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id=?').get(requestId).n,0,
+          'gpt_e2e_request_already_used_no_replay');
+      }finally{beforeDb.close();}
       const owners=await ui.evaluate("window.ordax.orchestratorInvoke('orchestrators_list',"+
         JSON.stringify({projectId})+")");
       assert.equal(owners?.orchestrators?.length,1,'gpt_e2e_owner_scope_ambiguous');
@@ -117,12 +128,18 @@ async function main(){
       assert.equal(engine.activeRuns,0,'gpt_e2e_active_run_present');
       const before=await ui.evaluate("window.ordax.orchestratorInvoke('work_messages',"+
         JSON.stringify({projectId,taskId:owner.chat_task_id,limit:50})+")");
-      const requestId='forge_gpt_e2e_one_shot_'+sha(projectId).slice(0,16);
       const prompt='Teste técnico único do OrdaX Forge DEV isolado. Responda somente: FORGE_TEST_OK.';
       const receipt=await ui.evaluate("window.ordax.orchestratorInvoke('forjador_send',"+
         JSON.stringify({projectId,orchestratorId:owner.id,content:prompt,requestId})+")",180000);
+      assert.equal(receipt?.status,'succeeded','gpt_e2e_send_not_confirmed');
+      assert.equal(receipt?.result?.provider,'chatgpt_web');
+      assert.equal(receipt?.result?.responseObserved,true);
+      assert.notEqual(receipt?.result?.effectVerified,true);
       const after=await ui.evaluate("window.ordax.orchestratorInvoke('work_messages',"+
         JSON.stringify({projectId,taskId:owner.chat_task_id,limit:50})+")");
+      assert.equal(after?.messages?.at(-1)?.role,'assistant');
+      assert.equal(after?.messages?.at(-1)?.content?.trim(),'FORGE_TEST_OK',
+        'gpt_e2e_reply_mismatch');
       const status=await ui.evaluate("window.ordax.orchestratorInvoke('status',{})");
       const db=new DatabaseSync(labDatabasePath(),{readOnly:true});
       let integrity;
@@ -132,10 +149,11 @@ async function main(){
       console.log(JSON.stringify({phase,projectId,staged:true,
         receipt:{status:receipt?.status,commandId:receipt?.commandId||null,
           provider:receipt?.result?.provider||null,
-          deliveryObserved:receipt?.result?.deliveryObserved===true,
+          deliveryObserved:receipt?.result?.deliveryObserved??null,
           responseObserved:receipt?.result?.responseObserved===true,
           effectVerified:receipt?.result?.effectVerified===true,
           requiresReconciliation:receipt?.requiresReconciliation===true},
+        requestId,runId:receipt?.result?.runId||null,
         beforeMessages:before?.messages?.length??null,
         afterMessages:after?.messages?.length??null,
         sqliteQuickCheck:integrity,
@@ -143,6 +161,72 @@ async function main(){
         activeRuns:status?.activeRuns,
         oneShot:true,automaticRetries:0}));
       return;
+    }
+    if(phase==='gpt-verify'){
+      // Restart-safe, READ-ONLY acceptance: no provider send or state change.
+      const commandId=process.argv[4]||'',expectedRunId=process.argv[5]||'';
+      assert.match(commandId,/^command_[a-f0-9-]{36}$/);
+      assert.match(expectedRunId,/^run_[a-f0-9-]{36}$/);
+      const receipt=await ui.evaluate("window.ordax.orchestratorInvoke('command_get',"+
+        JSON.stringify({commandId})+")");
+      assert.equal(receipt?.status,'succeeded','gpt_restart_receipt_missing');
+      assert.equal(receipt?.result?.runId,expectedRunId,'gpt_restart_run_mismatch');
+      assert.equal(receipt?.result?.provider,'chatgpt_web');
+      assert.equal(receipt?.result?.responseObserved,true);
+      assert.notEqual(receipt?.result?.effectVerified,true);
+      const db=new DatabaseSync(labDatabasePath(),{readOnly:true});
+      let run,messages,integrity,receipts;
+      try{
+        run=db.prepare('SELECT id,task_id,status,completed_at,error FROM runs WHERE id=?').get(expectedRunId);
+        assert.ok(run,'gpt_restart_run_missing');
+        messages=db.prepare('SELECT role,content FROM messages WHERE task_id=? ORDER BY sequence').all(run.task_id);
+        receipts=db.prepare('SELECT COUNT(*) n FROM lab_command_receipts WHERE id=? AND project_id=?').get(commandId,projectId).n;
+        integrity=db.prepare('PRAGMA quick_check').get().quick_check;
+      }finally{db.close();}
+      assert.equal(integrity,'ok');
+      assert.equal(receipts,1,'gpt_restart_receipt_wrong_project');
+      assert.equal(run.status,'succeeded');
+      assert.equal(run.error,null);
+      assert.deepEqual(messages.map(m=>m.role),['user','assistant']);
+      assert.equal(messages[1].content.trim(),'FORGE_TEST_OK');
+      const history=await ui.evaluate("window.ordax.orchestratorInvoke('work_messages',"+
+        JSON.stringify({projectId,taskId:run.task_id,limit:50})+")");
+      assert.equal(history?.messages?.length,2,'gpt_restart_history_missing');
+      assert.equal(history.messages[1].role,'assistant');
+      assert.equal(history.messages[1].content?.trim(),'FORGE_TEST_OK');
+      const active=await ui.evaluate("window.ordax.orchestratorInvoke('status',{})");
+      assert.equal(active.activeRuns,0);
+      assert.equal(active.uncertainCommands,0);
+      // Verify the normal Forjador pane, not just direct SQLite/API reads.
+      // This changes selection only; it never submits a provider message.
+      const uiHistory=await ui.evaluate(`(async()=>{
+        const target=${JSON.stringify(projectId)};
+        const select=document.getElementById('projectSelect');
+        if(![...select.options].some(o=>o.value===target))
+          return {projectFound:false,historyVisible:false};
+        if(select.value!==target){
+          select.value=target;
+          select.dispatchEvent(new Event('change',{bubbles:true}));
+        }
+        let visible=false;
+        for(let i=0;i<120;i++){
+          visible=select.value===target&&
+            document.getElementById('orchestrationPanel').hidden===false&&
+            document.getElementById('coordinatorMessages').textContent.includes('FORGE_TEST_OK');
+          if(visible)break;
+          await new Promise(resolve=>setTimeout(resolve,100));
+        }
+        return {projectFound:true,historyVisible:visible,selected:select.value,
+          messageNodes:document.getElementById('coordinatorMessages').childElementCount};
+      })()`,17000);
+      assert.equal(uiHistory.historyVisible,true,'gpt_restart_forjador_history_not_visible');
+      console.log(JSON.stringify({phase,projectId,staged:true,commandId,
+        uiHistory,runId:run.id,runStatus:run.status,completedAt:run.completed_at,
+        messageRoles:messages.map(m=>m.role),
+        assistantReplyConfirmed:messages[1].content.trim()==='FORGE_TEST_OK',
+        sqliteQuickCheck:integrity,activeRuns:active.activeRuns,
+        uncertainCommands:active.uncertainCommands,
+        receiptCount:receipts,automaticRetries:0,providerMessagesSent:0}));return;
     }
     if(phase==='gpt-diagnose'){
       const commandId=process.argv[4]||'';
@@ -179,6 +263,26 @@ async function main(){
           healthPending:provider?.health_pending===true},
         providerMessagesSent:0}));
       return;
+    }
+    if(phase==='gpt-browser-check'){
+      const before=await ui.evaluate("window.ordax.providerStatus()");
+      const observed=await ui.evaluate(`(async()=>{
+        document.getElementById('providerPaneTab').click();
+        await new Promise(resolve=>setTimeout(resolve,1200));
+        const status=await window.ordax.providerStatus();
+        return {authState:status.auth_state,composerReady:status.composer_ready===true,
+          healthObserved:status.health_observed===true,
+          healthPending:status.health_pending===true,
+          verificationRequired:status.verification_required===true,
+          pageState:status.page_state,
+          providerVisible:document.getElementById('providerPaneTab').getAttribute('aria-selected')==='true',
+          providerAccessProblem:status.provider_access_problem||null};
+      })()`,12000);
+      console.log(JSON.stringify({phase,projectId,staged:true,
+        before:{authState:before?.auth_state,composerReady:before?.composer_ready===true,
+          healthObserved:before?.health_observed===true,pageState:before?.page_state,
+          healthPending:before?.health_pending===true},
+        observed,gptMessagesSubmitted:0}));return;
     }
     if(phase==='gpt-scope'){
       // Read-only inventory of one disposable Forge project, no GPT submission.
