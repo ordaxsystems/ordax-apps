@@ -461,7 +461,7 @@ async function selectRightPane(name) {
   if(name==='preview')void refreshForgeProjectHtmlPreview({force:true});
 }
 let forgeFilesInspectionGeneration=0,forgeFilesReadGeneration=0;
-let forgeFilesProjectId=null,forgeFilesDirectory='';
+let forgeFilesProjectId=null,forgeFilesDirectory='',forgeFilesSelectedPath=null;
 const forgeFileSafeName=name=>typeof name==='string'&&
   /^[A-Za-z0-9][A-Za-z0-9._ -]{0,79}$/.test(name)&&
   !name.endsWith('.')&&!name.endsWith(' ')&&
@@ -479,22 +479,27 @@ async function refreshForgeFilesPanel(){
   if(projectId!==forgeFilesProjectId){
     forgeFilesProjectId=projectId;
     forgeFilesDirectory='';
+    forgeFilesSelectedPath=null;
   }
   const directory=forgeFilesDirectory;
+  const selectedProjectId=$('#projectSelect')?.value||null;
   const state=$('#forgeFilesState'),stateTitle=$('#forgeFilesStateTitle');
   $('#forgeFilesProjectName').textContent=projectId
     ?($('#activeProjectName')?.textContent||'Arquivos do projeto'):'Arquivos';
   const browser=$('#forgeFilesBrowser'),entries=$('#forgeFilesEntries');
   browser.hidden=true;entries.replaceChildren();clearForgeFileReader();
-  if(!projectId){
-    stateTitle.textContent='Selecione um projeto';
-    state.textContent='Crie ou abra um projeto na coluna esquerda. Nenhuma pasta será criada por esta tela.';
+  if(!projectId||selectedProjectId!==projectId){
+    stateTitle.textContent=selectedProjectId?'Alterando projeto…':'Selecione um projeto';
+    state.textContent=selectedProjectId
+      ?'Aguardando a confirmação da troca de projeto. Nenhum arquivo anterior será exibido.'
+      :'Crie ou abra um projeto na coluna esquerda. Nenhuma pasta será criada por esta tela.';
     return;
   }
   stateTitle.textContent='Verificando pasta…';
   state.textContent='Consultando somente a pasta autorizada do projeto.';
   const current=()=>generation===forgeFilesInspectionGeneration&&
-    projectId===orchestrationUi?.getProjectId?.();
+    projectId===orchestrationUi?.getProjectId?.()&&
+    projectId===($('#projectSelect')?.value||null);
   try{
     const binding=await window.ordax.forgeWorkspaceStatus(projectId);
     if(!current())return;
@@ -517,6 +522,7 @@ async function refreshForgeFilesPanel(){
     $('#forgeFilesDirectory').textContent='/'+directory;
     $('#forgeFilesUp').disabled=!directory;
     browser.hidden=false;
+    let restoreFileButton=null;
     if(items.length===0){
       const li=document.createElement('li');
       li.textContent='Esta pasta está vazia.';
@@ -535,14 +541,17 @@ async function refreshForgeFilesPanel(){
       detail.textContent=folder?'Pasta':file&&selectable?item.bytes+' bytes':'Não disponível';
       button.append(name,detail);li.append(button);entries.append(li);
       if(!selectable)continue;
+      const relative=directory?directory+'/'+item.name:item.name;
+      if(file&&relative===forgeFilesSelectedPath)restoreFileButton=button;
       button.addEventListener('click',async()=>{
         if(!current())return;
-        const relative=directory?directory+'/'+item.name:item.name;
         if(folder){
+          forgeFilesSelectedPath=null;
           forgeFilesDirectory=relative;
           void refreshForgeFilesPanel();
           return;
         }
+        forgeFilesSelectedPath=relative;
         clearForgeFileReader();
         const readGeneration=forgeFilesReadGeneration;
         const reader=$('#forgeFilesReader');
@@ -569,6 +578,10 @@ async function refreshForgeFilesPanel(){
         }
       });
     }
+    // After a verified write, keep the selected file open and re-read its
+    // current bytes. Missing or non-readable files are never kept on screen.
+    if(restoreFileButton)restoreFileButton.click();
+    else forgeFilesSelectedPath=null;
   }catch{
     if(!current())return;
     browser.hidden=true;
@@ -576,8 +589,21 @@ async function refreshForgeFilesPanel(){
     state.textContent='Não foi possível conferir esta pasta e seus arquivos. Nenhum conteúdo foi carregado ou alterado.';
   }
 }
+$('#projectSelect').addEventListener('change',()=>{
+  // Close any previous project's file immediately, before asynchronous
+  // navigation or draft persistence can expose stale content in the rail.
+  if(($('#projectSelect').value||null)===forgeFilesProjectId)return;
+  ++forgeFilesInspectionGeneration;
+  forgeFilesProjectId=null;forgeFilesDirectory='';forgeFilesSelectedPath=null;
+  $('#forgeFilesBrowser').hidden=true;
+  $('#forgeFilesEntries').replaceChildren();
+  clearForgeFileReader();
+  $('#forgeFilesStateTitle').textContent='Verificando projeto…';
+  $('#forgeFilesState').textContent='O arquivo anterior foi fechado. A nova pasta será verificada.';
+});
 $('#forgeFilesUp').addEventListener('click',()=>{
   if(!forgeFilesDirectory)return;
+  forgeFilesSelectedPath=null;
   forgeFilesDirectory=forgeFilesDirectory.split('/').slice(0,-1).join('/');
   void refreshForgeFilesPanel();
 });
@@ -1897,8 +1923,9 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
     // Refreshing works within one project must not erase a verified Preview.
     if(projectChanged||previewOutOfScope)clearWorkSurfacePreview();
     scopedProjectId=nextProjectId;
-    // A work-list refresh must not discard an open file in the same project.
-    if(projectChanged)void refreshForgeFilesPanel();
+    // Do not reinitialize a verified Files view if navigation already loaded
+    // this project before the work-list callback finished.
+    if(projectChanged&&nextProjectId!==forgeFilesProjectId)void refreshForgeFilesPanel();
     if(projectChanged&&activeRightPane==='preview')void refreshForgeProjectHtmlPreview();
     scopedTaskIds=ids;
     if(currentTaskId && (ids?!ids.has(currentTaskId):allTasks.find(t=>t.id===currentTaskId)?.lab_binding)) {

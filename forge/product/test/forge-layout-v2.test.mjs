@@ -55,6 +55,10 @@ test('project creation stays canonical and Files displays only verified owner-bo
   assert.match(ui,/orchestratorInvoke\('project_file_read'/);
   assert.match(ui,/content\?\.verified!=='local_readback'/);
   assert.match(ui,/\$\('#forgeFilesReaderContent'\)\.textContent=content\.content/);
+  assert.match(ui,/forgeFilesSelectedPath=relative/);
+  assert.match(ui,/restoreFileButton\)restoreFileButton\.click\(\)/);
+  assert.match(ui,/selectedProjectId!==projectId/);
+  assert.match(ui,/forgeFilesReaderContent'\)\.textContent=''/);
   assert.doesNotMatch(ui,/orchestratorInvoke\('workspace_status',\{projectId\}\)/);
   assert.equal((html.match(/id="newProjectForm"/g)||[]).length,1);
   assert.equal((html.match(/id="coordinatorComposer"/g)||[]).length,1);
