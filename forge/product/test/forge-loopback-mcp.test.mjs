@@ -299,3 +299,66 @@ test('Forge MCP discovers its own rules, authorized project and live state witho
   });
   assert.equal(unknown.payload.error.code,-32002);
 });
+
+test('parallel start requests cannot create an orphaned MCP listener',async t=>{
+  const f=fixture(t);
+  const a=await f.makeProject('parallel_start_a');
+  const b=await f.makeProject('parallel_start_b');
+  const first=f.transport.start(a);
+  const second=f.transport.start(b);
+  await assert.rejects(second,/forge_mcp_start_in_progress/);
+  const started=await first;
+  assert.equal(started.scope,a);
+  assert.deepEqual(f.transport.status().scopes,[a]);
+  const init=await rpc(started.endpoint,started.token,null,initialize);
+  assert.equal(init.status,200);
+  await f.transport.stop();
+  assert.equal(f.transport.status().running,false);
+  await assert.rejects(fetch(started.endpoint),/fetch failed|ECONNREFUSED/);
+  const newStart=await f.transport.start(b);
+  assert.deepEqual(newStart.scopes,[b]);
+  await f.transport.stop();
+});
+
+test('stop during pending MCP listen cancels startup without restoring access',async t=>{
+  const f=fixture(t);
+  const a=await f.makeProject('cancel_start_a');
+  const start=f.transport.start(a);
+  const stopped=f.transport.stop();
+  await assert.rejects(start,/forge_mcp_start_cancelled/);
+  await stopped;
+  assert.equal(f.transport.status().running,false);
+  assert.deepEqual(f.transport.status().scopes,[]);
+  const restarted=await f.transport.start(a);
+  assert.equal(restarted.running,true);
+  await f.transport.stop();
+});
+
+test('a late MCP result cannot leak after the owner revokes a project',async t=>{
+  const projectId='project_delayed-revocation';
+  let release,entered;
+  const inside=new Promise(resolve=>{entered=resolve;});
+  const gate=new Promise(resolve=>{release=resolve;});
+  const transport=createForgeLoopbackMcp({
+    authorizeProject:project=>project===projectId,
+    createMcp:()=>({handle:async()=>{
+      entered();
+      await gate;
+      return {jsonrpc:'2.0',id:1,result:{protocolVersion:'2025-06-18',
+        secret:'must_never_escape_after_revoke'}};
+    }})
+  });
+  t.after(()=>transport.stop());
+  const started=await transport.start(projectId);
+  const pending=rpc(started.endpoint,started.token,null,initialize);
+  await inside;
+  const revoking=transport.revokeProject(projectId);
+  release();
+  const reply=await pending;
+  await revoking;
+  assert.equal(reply.status,403);
+  assert.equal(reply.payload.error,'forge_mcp_project_revoked');
+  assert.equal(JSON.stringify(reply).includes('must_never_escape'),false);
+  assert.equal(transport.status().running,false);
+  assert.equal(transport.status().sessions,0);
+});
