@@ -45,8 +45,13 @@ export class ForgeMcpOwnerTrust {
       'SELECT 1 FROM forge_mcp_owner_approvals WHERE project_id=? AND workspace_session_id=? AND scope_hash=?'
     ).get(projectId,session.id,this.scopeHash(projectId)));
   }
-  trust(projectId){
+  trust(projectId,{expectedScopeHash=null}={}){
     const session=this.project(projectId);
+    const currentScopeHash=this.scopeHash(projectId);
+    // The Owner approved the scope shown BEFORE a native confirmation.
+    // A moved/rebound workspace must not inherit consent mid-dialog.
+    if(expectedScopeHash!==null&&expectedScopeHash!==currentScopeHash)
+      throw Error('forge_mcp_consent_scope_changed');
     this.db.prepare(`INSERT INTO forge_mcp_owner_approvals
       (project_id,workspace_session_id,scope_hash,approved_at)
       VALUES(?,?,?,?)
@@ -54,7 +59,7 @@ export class ForgeMcpOwnerTrust {
         workspace_session_id=excluded.workspace_session_id,
         scope_hash=excluded.scope_hash,
         approved_at=excluded.approved_at`
-    ).run(projectId,session.id,this.scopeHash(projectId),this.store.now());
+    ).run(projectId,session.id,currentScopeHash,this.store.now());
     return {projectId,trusted:true,credentialsPersisted:false};
   }
   revoke(projectId){

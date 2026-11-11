@@ -1393,13 +1393,17 @@ registerUiHandler('ordax:forge:local-mcp:start',async(event,projectId)=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
   orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
+  const consentScopeHash=forgeMcpTrusted.scopeHash(projectId);
   if(!forgeMcpTrusted.isTrusted(projectId)&&
       !await confirmInActiveUi({title:'Habilitar MCP Forge local',
     message:'Confiar neste projeto para futuras conexões MCP locais até revogar?',
     detail:'Conexão exclusiva a 127.0.0.1, chave temporária, vale até revogar ou fechar o Forge; a chave permanece somente na memória e a confiança fica no SQLite sem tokens. Permite leitura e escrita somente no workspace atual deste projeto, quando vinculado e verificado. Não concede acesso a outras pastas, não publica na internet e não conecta automaticamente ao GPT Web.',
     approveLabel:'Confiar e habilitar'}))return {running:false,declined:true};
+  orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
+  if(forgeMcpTrusted.scopeHash(projectId)!==consentScopeHash)
+    throw Error('forge_mcp_consent_scope_changed');
   const previouslyTrusted=forgeMcpTrusted.isTrusted(projectId);
-  if(!previouslyTrusted)forgeMcpTrusted.trust(projectId);
+  if(!previouslyTrusted)forgeMcpTrusted.trust(projectId,{expectedScopeHash:consentScopeHash});
   try{
     const saved=forgeMcpResume.recover().find(grant=>grant.projectId===projectId);
     return {...await forgeLocalMcp.start(projectId,saved
@@ -1414,14 +1418,18 @@ registerUiHandler('ordax:forge:local-mcp:add',async(event,projectId)=>{
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
   orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
   if(!forgeLocalMcp.status().running)throw Error('forge_mcp_not_active');
+  const consentScopeHash=forgeMcpTrusted.scopeHash(projectId);
   if(!forgeMcpTrusted.isTrusted(projectId)&&
       !await confirmInActiveUi({title:'Autorizar projeto no MCP Forge',
     message:'Confiar também neste projeto para futuras conexões MCP locais?',
     detail:'O servidor local permanece na mesma porta. Este projeto terá token e sessões exclusivos até revogação ou fechamento do Forge. A autorização não inclui outros projetos, não publica na internet e não conecta automaticamente ao GPT Web.',
     approveLabel:'Confiar neste projeto'}))return {declined:true};
   orchestratorService.requireAccess(localOrchestratorContext,'project_file_read',projectId);
+  if(forgeMcpTrusted.scopeHash(projectId)!==consentScopeHash)
+    throw Error('forge_mcp_consent_scope_changed');
+  if(!forgeLocalMcp.status().running)throw Error('forge_mcp_not_active');
   const previouslyTrusted=forgeMcpTrusted.isTrusted(projectId);
-  if(!previouslyTrusted)forgeMcpTrusted.trust(projectId);
+  if(!previouslyTrusted)forgeMcpTrusted.trust(projectId,{expectedScopeHash:consentScopeHash});
   try{
     const saved=forgeMcpResume.recover().find(grant=>grant.projectId===projectId);
     return {...forgeLocalMcp.addProject(projectId,saved?.port===forgeLocalMcp.localGrant(
