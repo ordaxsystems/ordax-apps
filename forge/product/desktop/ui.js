@@ -557,6 +557,7 @@ function syncProviderLoginAction(status) {
 let observerMode = 'auto';
 let allTasks = [];
 let scopedTaskIds = null;
+let scopedProjectId = null;
 let orchestrationUi = null;
 let providerRefreshPending = false;
 let composeAvailability = { allowed:false, reason:'unverified' };
@@ -1803,9 +1804,15 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
     catch {$('#orchestrationNotice').textContent='A navegação atual não foi salva para o próximo início.';return false;}
   },
   onScopeChange:async ids=>{
-    clearWorkSurfacePreview();
+    const nextProjectId=orchestrationUi?.getProjectId?.()||null;
+    const projectChanged=nextProjectId!==scopedProjectId;
+    const previewOutOfScope=Boolean(workSurfacePreviewTaskId&&
+      (!ids||!ids.has(workSurfacePreviewTaskId)));
+    // Refreshing works within one project must not erase a verified Preview.
+    if(projectChanged||previewOutOfScope)clearWorkSurfacePreview();
+    scopedProjectId=nextProjectId;
     void refreshForgeFilesPanel();
-    if(activeRightPane==='preview')void refreshForgeProjectHtmlPreview();
+    if(projectChanged&&activeRightPane==='preview')void refreshForgeProjectHtmlPreview();
     scopedTaskIds=ids;
     if(currentTaskId && (ids?!ids.has(currentTaskId):allTasks.find(t=>t.id===currentTaskId)?.lab_binding)) {
       flushDraft();currentTaskId=null;currentTask=null;navigationEpoch++;

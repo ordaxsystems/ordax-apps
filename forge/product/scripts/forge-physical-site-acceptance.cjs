@@ -8,7 +8,7 @@ const {acquireE2ELock}=require('./e2e-lock.cjs');
 acquireE2ELock('forge-site-physical-e2e');
 if(process.env.ORDAX_FORGE_PHYSICAL_E2E_APPROVED!=='1')throw Error('physical_e2e_owner_approval_required');
 const phase=process.argv[2]||'preflight',projectId=process.argv[3]||'';
-if(!['preflight','create','site','revise','verify'].includes(phase))throw Error('invalid_phase');
+if(!['preflight','create','local-site','local-revise','preview','site','revise','verify','verify-local'].includes(phase))throw Error('invalid_phase');
 const html=fs.readFileSync(path.join(__dirname,'forge-site-e2e-fixture.html'),'utf8');
 const sha=s=>crypto.createHash('sha256').update(s).digest('hex');
 async function connect(){
@@ -75,10 +75,95 @@ async function main(){
     const workspace=await ui.evaluate("window.ordax.forgeWorkspaceStatus("+JSON.stringify(projectId)+")");
     assert.equal(workspace.verified,true);assert.equal(workspace.configured,true);
     assert.ok(fs.statSync(workspace.path).isDirectory());
-    if(phase==='verify'){
+    if(phase==='local-site'){
+      // Exercise the already authorized project workspace without approving MCP.
+      const requestId='forge_local_site_'+sha(html).slice(0,24);
+      const receipt=await ui.evaluate('window.ordax.orchestratorInvoke(\'project_file_write\','+
+        JSON.stringify({projectId,path:'index.html',content:html,requestId})+')');
+      assert.equal(receipt.status,'succeeded');
+      const read=await ui.evaluate('window.ordax.orchestratorInvoke(\'project_file_read\','+
+        JSON.stringify({projectId,path:'index.html'})+')');
+      const physical=fs.readFileSync(path.join(workspace.path,'index.html'));
+      assert.equal(read.content,html);assert.equal(read.sha256,sha(physical));
+      console.log(JSON.stringify({phase,projectId,workspacePath:workspace.path,
+        bytes:physical.length,sha256:read.sha256,receipt:receipt.status,
+        commandId:receipt.commandId,method:'owner_bound_local_project_file_write',
+        mcpGrantUsed:false,gptTurnCompleted:false}));return;
+    }
+    if(phase==='local-revise'){
+      // Verify that a normal project write updates the SAME right-hand Preview.
+      const updated=html.replace('Vereda Café — Encontros com sabor','Vereda Café — Prévia revisada 2');
+      assert.notEqual(updated,html,'site_fixture_revision_missing');
+      const previous=await ui.evaluate('window.ordax.orchestratorInvoke(\'project_file_read\','+
+        JSON.stringify({projectId,path:'index.html'})+')');
+      assert.equal(previous.verified,'local_readback');
+      const requestId='forge_local_revision_'+sha(updated).slice(0,24);
+      const receipt=await ui.evaluate('window.ordax.orchestratorInvoke(\'project_file_write\','+
+        JSON.stringify({projectId,path:'index.html',content:updated,
+          expectedSha256:previous.sha256,requestId})+')');
+      assert.equal(receipt.status,'succeeded');
+      const read=await ui.evaluate('window.ordax.orchestratorInvoke(\'project_file_read\','+
+        JSON.stringify({projectId,path:'index.html'})+')');
+      assert.equal(read.content,updated);
+      assert.equal(read.sha256,sha(fs.readFileSync(path.join(workspace.path,'index.html'))));
+      const visual=await ui.evaluate(`(async()=>{
+        let updated=false;
+        for(let i=0;i<70;i++){
+          const frame=document.getElementById('workSurfaceFrame');
+          updated=frame?.srcdoc?.includes('Prévia revisada 2')===true&&
+            document.getElementById('workSurfacePreview').hidden===false&&
+            document.getElementById('previewPanel').hidden===false;
+          if(updated)break;
+          await new Promise(resolve=>setTimeout(resolve,120));
+        }
+        return {updated,selected:document.getElementById('projectSelect').value,
+          rightTab:document.getElementById('previewPaneTab').getAttribute('aria-selected')};
+      })()`,12000);
+      assert.equal(visual.updated,true,'local_write_did_not_refresh_right_preview');
+      assert.equal(visual.selected,projectId);
+      console.log(JSON.stringify({phase,projectId,receipt:receipt.status,
+        bytes:Buffer.byteLength(updated),sha256:read.sha256,
+        previewLiveUpdated:true,method:'owner_bound_local_project_file_write',mcpGrantUsed:false}));return;
+    }
+    if(phase==='preview'){
+      const state=await ui.evaluate(`(async()=>{
+        const target=${JSON.stringify(projectId)};
+        const select=document.getElementById('projectSelect');
+        if(!select||![...select.options].some(option=>option.value===target))
+          return {error:'project_not_in_selector'};
+        select.value=target;
+        select.dispatchEvent(new Event('change',{bubbles:true}));
+        document.getElementById('previewPaneTab').click();
+        let ready=false;
+        for(let i=0;i<75;i++){
+          const panel=document.getElementById('workSurfacePreview');
+          const frame=document.getElementById('workSurfaceFrame');
+          ready=select.value===target&&panel.hidden===false&&
+            document.getElementById('previewPanel').hidden===false&&
+            frame.getAttribute('sandbox')===''&&frame.srcdoc.includes('Vereda');
+          if(ready)break;
+          await new Promise(resolve=>setTimeout(resolve,160));
+        }
+        return {ready,selected:select.value,previewVisible:!document.getElementById('workSurfacePreview').hidden,
+          rightTab:document.getElementById('previewPaneTab').getAttribute('aria-selected'),
+          filename:document.getElementById('workSurfaceFilename').textContent,
+          previewBytes:document.getElementById('workSurfaceFrame').srcdoc.length};
+      })()`,20000);
+      assert.equal(state.ready,true,'physical_right_preview_not_rendered');
+      assert.equal(state.selected,projectId);
+      assert.equal(state.rightTab,'true');
+      assert.equal(state.filename,'index.html');
+      console.log(JSON.stringify({phase,projectId,staged:true,...state,
+        mcpGrantUsed:false,gptTurnCompleted:false}));return;
+    }
+    if(phase==='verify'||phase==='verify-local'){
       const file=await ui.evaluate("window.ordax.orchestratorInvoke('project_file_read',"+JSON.stringify({projectId,path:'index.html'})+")");
       const physical=fs.readFileSync(path.join(workspace.path,'index.html'));
-      assert.equal(file.content,html);assert.equal(file.sha256,sha(physical));
+      const revisions=phase==='verify-local'?[html,
+        html.replace('Vereda Café — Encontros com sabor','Vereda Café — Prévia revisada'),
+        html.replace('Vereda Café — Encontros com sabor','Vereda Café — Prévia revisada 2')]:[html];
+      assert.ok(revisions.includes(file.content),'site_content_mismatch');
+      assert.equal(file.sha256,sha(physical));
       const db=new DatabaseSync(labDatabasePath(),{readOnly:true});
       let integrity,receipts,binding;
       try{
@@ -88,7 +173,7 @@ async function main(){
       }finally{db.close();}
       assert.equal(integrity,'ok');
       assert.equal(path.resolve(binding.canonical_root),path.resolve(workspace.path));
-      assert.ok(receipts.filter(r=>r.operation==='project_file_write'&&r.status==='succeeded').length>=2);
+      assert.ok(receipts.filter(r=>r.operation==='project_file_write'&&r.status==='succeeded').length>=(phase==='verify-local'?1:2));
       assert.ok(receipts.every(r=>r.status==='succeeded'));
       const localMcp=await ui.evaluate('window.ordax.forgeLocalMcpStatus()');
       assert.equal(localMcp.running,false,'forge_staged_mcp_listener_not_revoked');
