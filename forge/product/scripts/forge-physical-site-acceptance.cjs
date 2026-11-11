@@ -8,7 +8,7 @@ const {acquireE2ELock}=require('./e2e-lock.cjs');
 acquireE2ELock('forge-site-physical-e2e');
 if(process.env.ORDAX_FORGE_PHYSICAL_E2E_APPROVED!=='1')throw Error('physical_e2e_owner_approval_required');
 const phase=process.argv[2]||'preflight',projectId=process.argv[3]||'';
-if(!['preflight','create','local-site','local-revise','preview','site','revise','verify','verify-local'].includes(phase))throw Error('invalid_phase');
+if(!['preflight','create','local-site','local-revise','files','preview','site','revise','verify','verify-local'].includes(phase))throw Error('invalid_phase');
 const html=fs.readFileSync(path.join(__dirname,'forge-site-e2e-fixture.html'),'utf8');
 const sha=s=>crypto.createHash('sha256').update(s).digest('hex');
 async function connect(){
@@ -124,6 +124,96 @@ async function main(){
       console.log(JSON.stringify({phase,projectId,receipt:receipt.status,
         bytes:Buffer.byteLength(updated),sha256:read.sha256,
         previewLiveUpdated:true,method:'owner_bound_local_project_file_write',mcpGrantUsed:false}));return;
+    }
+    if(phase==='files'){
+      const original=await ui.evaluate(`(async()=>{
+        const target=${JSON.stringify(projectId)};
+        const select=document.getElementById('projectSelect');
+        if(![...select.options].some(option=>option.value===target))
+          return {ready:false,reason:'project_missing'};
+        select.value=target;
+        select.dispatchEvent(new Event('change',{bubbles:true}));
+        document.getElementById('filesPaneTab').click();
+        let ready=false;
+        for(let i=0;i<80;i++){
+          ready=select.value===target&&
+            document.getElementById('filesPanel').hidden===false&&
+            document.getElementById('forgeFilesBrowser').hidden===false&&
+            [...document.querySelectorAll('#forgeFilesEntries button')]
+              .some(button=>button.textContent.includes('index.html'));
+          if(ready)break;
+          await new Promise(resolve=>setTimeout(resolve,140));
+        }
+        // Wait for the project-switch hydration to settle before clicking the
+        // current entry, rather than an entry from a transient earlier list.
+        await new Promise(resolve=>setTimeout(resolve,900));
+        const file=[...document.querySelectorAll('#forgeFilesEntries button')]
+          .find(button=>button.textContent.includes('index.html'));
+        file?.click();
+        let read=false;
+        for(let i=0;i<60;i++){
+          read=document.getElementById('forgeFilesReaderContent').textContent.includes('Vereda')&&
+            document.getElementById('forgeFilesReaderProof').textContent.includes('SHA-256');
+          if(read)break;
+          await new Promise(resolve=>setTimeout(resolve,120));
+        }
+        return {ready,read,tab:document.getElementById('filesPaneTab').getAttribute('aria-selected'),
+          title:document.getElementById('forgeFilesStateTitle').textContent,
+          fileName:document.getElementById('forgeFilesReaderName').textContent,
+          readBytes:document.getElementById('forgeFilesReaderContent').textContent.length,
+          proof:document.getElementById('forgeFilesReaderProof').textContent};
+      })()`,25000);
+      assert.equal(original.ready,true,'forge_files_physical_root_unavailable');
+      assert.equal(original.read,true,'forge_files_physical_index_read_unavailable');
+      assert.equal(original.fileName,'index.html');
+      const text='Forge Files Windows E2E: nested UTF-8 readback.\n';
+      const requestId='forge_files_e2e_'+sha(text).slice(0,24);
+      const receipt=await ui.evaluate('window.ordax.orchestratorInvoke(\'project_file_write\','+
+        JSON.stringify({projectId,path:'docs/README.txt',content:text,requestId})+')');
+      assert.equal(receipt.status,'succeeded');
+      const nested=await ui.evaluate(`(async()=>{
+        let folder=null;
+        for(let i=0;i<60;i++){
+          folder=[...document.querySelectorAll('#forgeFilesEntries button')]
+            .find(button=>button.textContent.includes('docs'));
+          if(folder&&!folder.disabled)break;
+          await new Promise(resolve=>setTimeout(resolve,120));
+        }
+        folder?.click();
+        let file=null;
+        for(let i=0;i<60;i++){
+          file=[...document.querySelectorAll('#forgeFilesEntries button')]
+            .find(button=>button.textContent.includes('README.txt'));
+          if(file&&document.getElementById('forgeFilesDirectory').textContent==='/docs')break;
+          await new Promise(resolve=>setTimeout(resolve,120));
+        }
+        file?.click();
+        let verified=false;
+        for(let i=0;i<60;i++){
+          verified=document.getElementById('forgeFilesReaderContent').textContent
+            .includes('nested UTF-8 readback')&&
+            document.getElementById('forgeFilesReaderProof').textContent.includes('SHA-256');
+          if(verified)break;
+          await new Promise(resolve=>setTimeout(resolve,120));
+        }
+        const directory=document.getElementById('forgeFilesDirectory').textContent;
+        document.getElementById('forgeFilesUp').click();
+        let returned=false;
+        for(let i=0;i<60;i++){
+          returned=document.getElementById('forgeFilesDirectory').textContent==='/'&&
+            [...document.querySelectorAll('#forgeFilesEntries button')]
+              .some(button=>button.textContent.includes('index.html'));
+          if(returned)break;
+          await new Promise(resolve=>setTimeout(resolve,120));
+        }
+        return {folder:!!folder,nestedFile:!!file,verified,directory,returned};
+      })()`,30000);
+      assert.equal(nested.verified,true,'forge_files_nested_read_not_verified');
+      assert.equal(nested.returned,true,'forge_files_navigation_did_not_restore_root');
+      const physical=fs.readFileSync(path.join(workspace.path,'docs','README.txt'),'utf8');
+      assert.equal(physical,text);
+      console.log(JSON.stringify({phase,projectId,staged:true,root:original,
+        nested,sha256:sha(physical),receipt:receipt.status,mcpGrantUsed:false}));return;
     }
     if(phase==='preview'){
       const state=await ui.evaluate(`(async()=>{

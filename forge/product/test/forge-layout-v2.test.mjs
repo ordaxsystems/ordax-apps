@@ -42,16 +42,20 @@ test('existing canonical preview moves to Preview and the GPT browser stays isol
   assert.match(js,/window\.ordax\.setChatVisible\(visible\)/);
 });
 
-test('project creation stays canonical and Files never fabricates an explorer',()=>{
+test('project creation stays canonical and Files displays only verified owner-bound contents',()=>{
   const html=read('ui.html'),ui=read('ui.js'),orchestration=read('orchestrator-ui.mjs');
   assert.match(html,/<details id="forgeProjectAdvanced"/);
   assert.match(html,/id="quickNewProject"/);
   assert.match(orchestration,/\$\('forgeProjectAdvanced'\)\.open=true/);
   assert.match(html,/id="projectNavList"/);
-  assert.match(html,/id="forgeFilesRefresh"/);
-  assert.match(html,/id="forgeFilesState"/);
-  assert.match(ui,/orchestratorInvoke\('workspace_status',\{projectId\}\)/);
-  assert.match(ui,/Nenhum arquivo foi lido ou alterado/);
+  for(const id of ['forgeFilesRefresh','forgeFilesState','forgeFilesBrowser',
+    'forgeFilesEntries','forgeFilesUp','forgeFilesReaderContent'])assert.match(html,new RegExp('id="'+id+'"'));
+  assert.match(ui,/window\.ordax\.forgeWorkspaceStatus\(projectId\)/);
+  assert.match(ui,/orchestratorInvoke\('project_files_list',\{projectId,directory\}\)/);
+  assert.match(ui,/orchestratorInvoke\('project_file_read'/);
+  assert.match(ui,/content\?\.verified!=='local_readback'/);
+  assert.match(ui,/\$\('#forgeFilesReaderContent'\)\.textContent=content\.content/);
+  assert.doesNotMatch(ui,/orchestratorInvoke\('workspace_status',\{projectId\}\)/);
   assert.equal((html.match(/id="newProjectForm"/g)||[]).length,1);
   assert.equal((html.match(/id="coordinatorComposer"/g)||[]).length,1);
 });

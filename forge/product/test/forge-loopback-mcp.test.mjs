@@ -102,7 +102,7 @@ test('loopback MCP requires explicit token and keeps tools inside one project',a
   await assert.rejects(fetch(endpoint),/fetch failed|ECONNREFUSED/);
 });
 
-test('authorized index.html MCP writes notify owner UI after receipt, without exposing data',async t=>{
+test('authorized MCP file writes notify owner UI after receipt, without exposing data',async t=>{
   const changed=[];
   const f=fixture(t,{onProjectFileChanged:id=>changed.push(id)});
   const projectId=await f.makeProject('preview_changed');
@@ -118,16 +118,16 @@ test('authorized index.html MCP writes notify owner UI after receipt, without ex
     call(21,'project_file_write',{path:'assets/css.css',content:'h1{color:green}',
       requestId:'preview_css_1'}));
   assert.equal(other.payload.result.structuredContent.status,'succeeded');
-  assert.deepEqual(changed,[projectId]);
+  assert.deepEqual(changed,[projectId,projectId]);
   const invalid=await rpc(ready.endpoint,ready.token,initial.session,
     call(22,'project_file_write',{projectId:'project_other',path:'index.html',
       content:'invalid',requestId:'preview_wrong_project'}));
   assert.equal(invalid.payload.error.code,-32602);
-  assert.deepEqual(changed,[projectId]);
+  assert.deepEqual(changed,[projectId,projectId]);
   const unknown=await rpc(ready.endpoint,'wrong',initial.session,
     call(23,'project_file_write',{path:'index.html',content:'invalid',requestId:'bad_token'}));
   assert.equal(unknown.status,401);
-  assert.deepEqual(changed,[projectId]);
+  assert.deepEqual(changed,[projectId,projectId]);
 });
 
 test('real HTTP MCP exposes scoped work identity and messages without allowing cross-project reads',async t=>{

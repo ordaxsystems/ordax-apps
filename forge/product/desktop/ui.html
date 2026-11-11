@@ -400,6 +400,15 @@
       <section id="filesPanel" class="right-pane-panel forge-files-panel" role="tabpanel" aria-labelledby="filesPaneTab" hidden>
         <div class="forge-files-heading"><span class="eyebrow">WORKSPACE DO PROJETO</span><h2 id="forgeFilesProjectName">Arquivos</h2><button id="forgeFilesRefresh" class="mini-secondary" type="button" aria-label="Atualizar estado do workspace">↻ Atualizar</button></div>
         <div class="forge-files-empty" role="status" aria-live="polite"><span aria-hidden="true">▤</span><strong id="forgeFilesStateTitle">Sem pasta vinculada</strong><p id="forgeFilesState">Os arquivos aparecerão quando o Forge tiver um workspace real autorizado. Nenhuma pasta foi criada por esta tela.</p></div>
+        <div id="forgeFilesBrowser" class="forge-files-browser" hidden>
+          <div class="forge-files-location"><button id="forgeFilesUp" class="mini-secondary" type="button" disabled>← Voltar</button><code id="forgeFilesDirectory">/</code></div>
+          <ul id="forgeFilesEntries" class="forge-files-entries" aria-label="Arquivos reais do projeto"></ul>
+          <section id="forgeFilesReader" class="forge-files-reader" hidden aria-label="Arquivo selecionado, somente leitura">
+            <strong id="forgeFilesReaderName"></strong>
+            <p id="forgeFilesReaderProof"></p>
+            <pre id="forgeFilesReaderContent"></pre>
+          </section>
+        </div>
         <button id="forgeFilesConnections" class="mini-secondary" type="button">Ver conexões</button>
       </section>
       <div id="contextPanel" class="right-pane-panel context-panel" role="tabpanel" aria-labelledby="contextPaneTab" hidden>

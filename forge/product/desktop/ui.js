@@ -460,41 +460,127 @@ async function selectRightPane(name) {
   if(name==='files')void refreshForgeFilesPanel();
   if(name==='preview')void refreshForgeProjectHtmlPreview({force:true});
 }
-let forgeFilesInspectionGeneration=0;
+let forgeFilesInspectionGeneration=0,forgeFilesReadGeneration=0;
+let forgeFilesProjectId=null,forgeFilesDirectory='';
+const forgeFileSafeName=name=>typeof name==='string'&&
+  /^[A-Za-z0-9][A-Za-z0-9._ -]{0,79}$/.test(name)&&
+  !name.endsWith('.')&&!name.endsWith(' ')&&
+  name!=='.'&&name!=='..'&&!/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\\..*)?$/i.test(name);
+function clearForgeFileReader(){
+  ++forgeFilesReadGeneration;
+  $('#forgeFilesReader').hidden=true;
+  $('#forgeFilesReaderName').textContent='';
+  $('#forgeFilesReaderProof').textContent='';
+  $('#forgeFilesReaderContent').textContent='';
+}
 async function refreshForgeFilesPanel(){
   const generation=++forgeFilesInspectionGeneration;
   const projectId=orchestrationUi?.getProjectId?.()||null;
-  const title=$('#forgeFilesProjectName');
-  const state=$('#forgeFilesState');
-  const stateTitle=$('#forgeFilesStateTitle');
-  title.textContent=projectId
-    ?($('#activeProjectName')?.textContent||'Arquivos do projeto')
-    :'Arquivos';
+  if(projectId!==forgeFilesProjectId){
+    forgeFilesProjectId=projectId;
+    forgeFilesDirectory='';
+  }
+  const directory=forgeFilesDirectory;
+  const state=$('#forgeFilesState'),stateTitle=$('#forgeFilesStateTitle');
+  $('#forgeFilesProjectName').textContent=projectId
+    ?($('#activeProjectName')?.textContent||'Arquivos do projeto'):'Arquivos';
+  const browser=$('#forgeFilesBrowser'),entries=$('#forgeFilesEntries');
+  browser.hidden=true;entries.replaceChildren();clearForgeFileReader();
   if(!projectId){
     stateTitle.textContent='Selecione um projeto';
-    state.textContent='Crie ou abra um projeto pela coluna esquerda. Nenhuma pasta é criada automaticamente nesta etapa do frontend.';
+    state.textContent='Crie ou abra um projeto na coluna esquerda. Nenhuma pasta será criada por esta tela.';
     return;
   }
-  stateTitle.textContent='Verificando workspace…';
-  state.textContent='Consultando somente o vínculo autorizado deste projeto.';
+  stateTitle.textContent='Verificando pasta…';
+  state.textContent='Consultando somente a pasta autorizada do projeto.';
+  const current=()=>generation===forgeFilesInspectionGeneration&&
+    projectId===orchestrationUi?.getProjectId?.();
   try{
-    const response=await window.ordax.orchestratorInvoke('workspace_status',{projectId});
-    if(generation!==forgeFilesInspectionGeneration||projectId!==orchestrationUi?.getProjectId?.())return;
-    const snapshot=response?.result?.workspace||response?.result||response;
-    const bindings=Array.isArray(snapshot?.bindings)?snapshot.bindings:[];
-    if(snapshot?.available===true&&bindings.length>0){
-      stateTitle.textContent='Workspace registrado';
-      state.textContent=bindings.length+' vínculo(s) encontrado(s). A leitura e edição de arquivos ainda exigem ferramentas e permissões verificadas; nenhum conteúdo foi carregado.';
-    }else{
-      stateTitle.textContent='Sem pasta autorizada';
-      state.textContent='O projeto existe no Forge, mas ainda não há workspace acessível. A próxima etapa integrará a criação e abertura de pastas reais.';
+    const binding=await window.ordax.forgeWorkspaceStatus(projectId);
+    if(!current())return;
+    if(binding?.projectId!==projectId||binding?.configured!==true||
+       binding?.verified!==true){
+      stateTitle.textContent='Pasta não verificada';
+      state.textContent='Vincule ou repare a pasta do projeto em Conexões. Nenhum arquivo foi lido ou alterado.';
+      return;
+    }
+    const response=await window.ordax.orchestratorInvoke('project_files_list',{projectId,directory});
+    if(!current())return;
+    if(response?.projectId!==projectId||response?.directory!==directory||
+       response?.exists!==true||!Array.isArray(response.entries))
+      throw Error('forge_files_listing_unverified');
+    const items=response.entries.slice(0,100);
+    stateTitle.textContent='Pasta verificada';
+    state.textContent=items.length+' item(ns) nesta pasta'+
+      (response.truncated?' · lista limitada aos primeiros 100':'')+
+      '. Conteúdo consultado somente sob solicitação.';
+    $('#forgeFilesDirectory').textContent='/'+directory;
+    $('#forgeFilesUp').disabled=!directory;
+    browser.hidden=false;
+    if(items.length===0){
+      const li=document.createElement('li');
+      li.textContent='Esta pasta está vazia.';
+      entries.append(li);
+    }
+    for(const item of items){
+      const valid=forgeFileSafeName(item?.name);
+      const folder=item?.kind==='directory',file=item?.kind==='file';
+      const selectable=valid&&(folder||(file&&Number.isSafeInteger(item.bytes)&&
+        item.bytes>=0&&item.bytes<=65536));
+      const li=document.createElement('li'),button=document.createElement('button');
+      button.type='button';button.disabled=!selectable;
+      const name=document.createElement('span'),detail=document.createElement('small');
+      name.className='forge-file-name';
+      name.textContent=(folder?'▸ ':file?'▤ ':'⊘ ')+String(item?.name||'Sem nome');
+      detail.textContent=folder?'Pasta':file&&selectable?item.bytes+' bytes':'Não disponível';
+      button.append(name,detail);li.append(button);entries.append(li);
+      if(!selectable)continue;
+      button.addEventListener('click',async()=>{
+        if(!current())return;
+        const relative=directory?directory+'/'+item.name:item.name;
+        if(folder){
+          forgeFilesDirectory=relative;
+          void refreshForgeFilesPanel();
+          return;
+        }
+        clearForgeFileReader();
+        const readGeneration=forgeFilesReadGeneration;
+        const reader=$('#forgeFilesReader');
+        $('#forgeFilesReaderName').textContent=relative;
+        $('#forgeFilesReaderProof').textContent='Lendo arquivo verificado…';
+        reader.hidden=false;
+        try{
+          const content=await window.ordax.orchestratorInvoke('project_file_read',{
+            projectId,path:relative
+          });
+          if(!current()||readGeneration!==forgeFilesReadGeneration)return;
+          if(content?.projectId!==projectId||content?.path!==relative||
+             content?.verified!=='local_readback'||typeof content.content!=='string'||
+             !Number.isSafeInteger(content.bytes)||content.bytes<0||
+             content.bytes>65536||!/^[a-f0-9]{64}$/.test(content.sha256))
+            throw Error('forge_file_read_unverified');
+          $('#forgeFilesReaderProof').textContent=
+            'Somente leitura · '+content.bytes+' bytes · SHA-256 '+content.sha256.slice(0,12)+'…';
+          $('#forgeFilesReaderContent').textContent=content.content;
+        }catch{
+          if(!current()||readGeneration!==forgeFilesReadGeneration)return;
+          $('#forgeFilesReaderProof').textContent='Leitura bloqueada ou arquivo alterado.';
+          $('#forgeFilesReaderContent').textContent='';
+        }
+      });
     }
   }catch{
-    if(generation!==forgeFilesInspectionGeneration)return;
-    stateTitle.textContent='Workspace não verificado';
-    state.textContent='Não foi possível consultar a conexão do projeto. Nenhum arquivo foi lido ou alterado.';
+    if(!current())return;
+    browser.hidden=true;
+    stateTitle.textContent='Arquivos não verificados';
+    state.textContent='Não foi possível conferir esta pasta e seus arquivos. Nenhum conteúdo foi carregado ou alterado.';
   }
 }
+$('#forgeFilesUp').addEventListener('click',()=>{
+  if(!forgeFilesDirectory)return;
+  forgeFilesDirectory=forgeFilesDirectory.split('/').slice(0,-1).join('/');
+  void refreshForgeFilesPanel();
+});
 $('#forgeFilesRefresh').addEventListener('click',()=>void refreshForgeFilesPanel());
 $('#forgeFilesConnections').addEventListener('click',()=>openAppSettings('connections'));
 function persistWorkspaceNavigation({view,taskId=null,projectId,orchestratorId}={}) {
@@ -1811,7 +1897,8 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
     // Refreshing works within one project must not erase a verified Preview.
     if(projectChanged||previewOutOfScope)clearWorkSurfacePreview();
     scopedProjectId=nextProjectId;
-    void refreshForgeFilesPanel();
+    // A work-list refresh must not discard an open file in the same project.
+    if(projectChanged)void refreshForgeFilesPanel();
     if(projectChanged&&activeRightPane==='preview')void refreshForgeProjectHtmlPreview();
     scopedTaskIds=ids;
     if(currentTaskId && (ids?!ids.has(currentTaskId):allTasks.find(t=>t.id===currentTaskId)?.lab_binding)) {
@@ -1846,9 +1933,9 @@ const savedNavigation=workspace?.metadata?.navigation;
 await orchestrationUi.start({restoreNavigation:savedNavigation});
 window.ordax.onForgeProjectFileChanged?.(payload=>{
   if(typeof payload?.projectId!=='string'||
-     payload.projectId!==orchestrationUi?.getProjectId?.()||
-     activeRightPane!=='preview')return;
-  void refreshForgeProjectHtmlPreview({force:true});
+     payload.projectId!==orchestrationUi?.getProjectId?.())return;
+  if(activeRightPane==='preview')void refreshForgeProjectHtmlPreview({force:true});
+  if(activeRightPane==='files')void refreshForgeFilesPanel();
 });
 void refreshForgeFilesPanel();
 await loadTasks();

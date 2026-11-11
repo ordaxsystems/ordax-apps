@@ -150,11 +150,10 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
       let result;
       try{result=await session.handle(message);}
       finally{if(newSessionId)pendingInitializations--;}
-      // Notify only after a successful, authorized local index.html write.
-      // The renderer learns the project ID, never file bytes or bearer tokens.
+      // Notify the owner UI after any authorized file write. Only the project
+      // identity is delivered, never the file contents or bearer token.
       if(message.method==='tools/call'&&
          message.params?.name==='forge_project_file_write'&&
-         message.params?.arguments?.path==='index.html'&&
          result?.result?.isError!==true&&
          result?.result?.structuredContent?.status==='succeeded'){
         try{onProjectFileChanged(grant.projectId);}catch{} // UI failure never invalidates the write receipt.

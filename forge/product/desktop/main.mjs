@@ -1518,10 +1518,10 @@ registerUiHandler('ordax:orchestrator:invoke',async(event,payload)=>{
     forgeOfficialTunnel.stop();
   const receipt=await orchestratorService.invoke(localOrchestratorContext,payload?.operation,payload?.input??{});
   let result=withDeletedProjectAssetCleanup(receipt,scope);
-  // The same verified-file event drives the existing Preview for both local
-  // project writes and loopback MCP writes; never send HTML or bearer data.
+  // One verified-file notification refreshes the existing Files and Preview
+  // panels after a successful write, without sending any bytes or bearer data.
   if(payload?.operation==='project_file_write'&&receipt?.status==='succeeded'&&
-      payload?.input?.path==='index.html'&&typeof payload?.input?.projectId==='string')
+      typeof payload?.input?.projectId==='string')
     emitRendererEvent('ordax:forge:project-file:changed',{projectId:payload.input.projectId});
   // New projects receive a real workspace at the Windows Documents known
   // folder. The DB project survives a filesystem failure, but the UI must
