@@ -98,3 +98,27 @@ test('file broker rejects traversal, reserved names, other projects and arbitrar
     assert.equal(fs.existsSync(path.join(outside,'escape.txt')),false);
   }
 });
+
+test('missing owner-bound folder is a definitive rejected write, not an uncertain disk effect',async t=>{
+  const base=fs.mkdtempSync(path.join(os.tmpdir(),'forge-missing-owner-folder-'));
+  t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
+  const store=new Store(':memory:');t.after(()=>store.close());
+  const context={actorId:'owner',clientId:'desktop',workspaceSessionId:store.getWorkspaceSession().id};
+  const service=new OrchestratorService({store,
+    fileBroker:new ForgeProjectFiles({
+      root:path.join(base,'private'),workspaceLookup:()=>null,requireOwnerBinding:true
+    }),authorize:({context:c})=>c===context});
+  const project=(await service.invoke(context,'project_quick_create',{
+    creationNonce:'missing_owner_binding',requestId:'missing_owner_project'
+  })).result.projectId;
+  await assert.rejects(service.invoke(context,'project_file_write',{
+    projectId:project,path:'index.html',content:'must not appear',
+    requestId:'missing_owner_file_write'
+  }),/forge_workspace_binding_required/);
+  const receipt=store.db.prepare('SELECT status,result FROM lab_command_receipts WHERE request_id=?')
+    .get('missing_owner_file_write');
+  assert.equal(receipt.status,'failed','pre-effect rejection must not stay uncertain');
+  assert.equal(JSON.parse(receipt.result).reason,'forge_workspace_binding_required');
+  assert.equal(fs.existsSync(path.join(base,'private',project,'index.html')),false);
+  assert.equal(store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});

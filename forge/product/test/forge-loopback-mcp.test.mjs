@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -455,4 +456,77 @@ test('disabling MCP closes an unresponsive active HTTP request promptly',async t
   assert.equal(reply?.payload?.result?.secret,undefined);
   assert.equal(transport.status().running,false);
   assert.equal(transport.status().sessions,0);
+});
+
+test('owner-bound MCP write creates a real file with SHA readback and durable receipt',async t=>{
+  const folder=fs.mkdtempSync(path.join(os.tmpdir(),'forge-owner-mcp-proof-'));
+  const databasePath=path.join(folder,'forge.sqlite');
+  const store=new Store(databasePath);
+  // Release SQLite's Windows file handles before removing this disposable DB.
+  t.after(()=>{
+    try{store.close();}
+    finally{fs.rmSync(folder,{recursive:true,force:true,maxRetries:8,retryDelay:100});}
+  });
+  const context={actorId:'owner',clientId:'desktop',workspaceSessionId:store.getWorkspaceSession().id};
+  const bindings=new Map();
+  const broker=new ForgeProjectFiles({root:path.join(folder,'private'),
+    requireOwnerBinding:true,workspaceLookup:id=>bindings.get(id)||null});
+  const service=new OrchestratorService({store,fileBroker:broker,
+    authorize:({context:c})=>c===context});
+  const project=(await service.invoke(context,'project_quick_create',{
+    creationNonce:'owner_mcp_proof',requestId:'owner_mcp_project'
+  })).result.projectId;
+  const foreign=(await service.invoke(context,'project_quick_create',{
+    creationNonce:'foreign_mcp_proof',requestId:'foreign_mcp_project'
+  })).result.projectId;
+  const authorizedFolder=path.join(folder,'actual-project');
+  fs.mkdirSync(authorizedFolder);
+  bindings.set(project,authorizedFolder); // isolated test grant, never a product owner approval
+  let notifications=0;
+  const transport=createForgeLoopbackMcp({
+    authorizeProject:id=>id===project,
+    onProjectFileChanged:id=>{assert.equal(id,project);notifications++;},
+    createMcp:({projectId,allowedOperations})=>createOrchestratorMcp({
+      service,getContext:()=>context,allowedProjectId:projectId,allowedOperations
+    })
+  });
+  t.after(()=>transport.stop());
+  const ready=await transport.start(project);
+  assert.equal(ready.remoteChatGptConnected,false);
+  const init=await rpc(ready.endpoint,ready.token,null,initialize);
+  assert.equal(init.status,200);
+  await rpc(ready.endpoint,ready.token,init.session,notify);
+  const content='<!doctype html><main>Forge owner-bound verification</main>\n';
+  const params={path:'index.html',content,requestId:'owner_mcp_verified_write'};
+  const wrote=await rpc(ready.endpoint,ready.token,init.session,call(300,'project_file_write',params));
+  const receipt=wrote.payload?.result?.structuredContent;
+  assert.equal(wrote.status,200);
+  assert.equal(receipt.status,'succeeded');
+  assert.equal(receipt.result.verified,true);
+  assert.equal(receipt.result.verification,'sha256_readback');
+  assert.equal(receipt.result.source,'forge_owner_bound_workspace');
+  const read=await rpc(ready.endpoint,ready.token,init.session,
+    call(301,'project_file_read',{path:'index.html'}));
+  assert.equal(read.payload.result.structuredContent.content,content);
+  assert.equal(read.payload.result.structuredContent.sha256,receipt.result.sha256);
+  assert.equal(fs.readFileSync(path.join(authorizedFolder,'index.html'),'utf8'),content);
+  assert.equal(notifications,1);
+  const replay=await rpc(ready.endpoint,ready.token,init.session,call(302,'project_file_write',params));
+  assert.equal(replay.payload.result.structuredContent.commandId,receipt.commandId);
+  assert.equal(fs.readdirSync(authorizedFolder).length,1);
+  const wrong=await rpc(ready.endpoint,ready.token,init.session,
+    call(303,'project_file_read',{projectId:foreign,path:'index.html'}));
+  assert.equal(wrong.payload.error.code,-32602);
+  // A separate read-only SQLite connection confirms the receipt is durable,
+  // rather than merely remaining in the service's in-memory state.
+  const reopened=new DatabaseSync(databasePath,{readOnly:true});
+  try{
+    const disk=reopened.prepare('SELECT status,result FROM lab_command_receipts WHERE id=?')
+      .get(receipt.commandId);
+    assert.equal(disk.status,'succeeded');
+    assert.equal(JSON.parse(disk.result).sha256,receipt.result.sha256);
+    assert.equal(reopened.prepare('PRAGMA quick_check').get().quick_check,'ok');
+  }finally{reopened.close();}
+  await transport.stop();
+  assert.equal(transport.status().running,false);
 });
