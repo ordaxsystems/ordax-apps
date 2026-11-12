@@ -16,6 +16,14 @@ export function createResponseObservationBudget({now=()=>performance.now()}={}) 
         lastProgress=now();signature=nextSignature;
       }
     },
+    // The verified, visible Stop-generation control means the provider is
+    // still executing even when a tool call has produced no user text yet.
+    // It extends only the idle budget; the fifteen-minute hard bound remains.
+    observeGenerating(generating) {
+      if(generating!==true || !active())return false;
+      lastProgress=now();
+      return true;
+    },
     active
   });
 }

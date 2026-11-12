@@ -900,6 +900,10 @@ body.orchestrator-focus #orchestratorWorkRail{display:flex!important;padding:18p
 .execution-badge[data-state="blocked"]{border-color:#864d4d;color:#ebaaa3;background:#352323}
 .execution-mission-card h3{margin:16px 0 8px;font-size:16px;line-height:1.35;overflow-wrap:anywhere}
 .execution-mission-card p{margin:0;color:var(--muted);font-size:11px;line-height:1.6;overflow-wrap:anywhere}
+.execution-autonomy-controls{display:grid;gap:7px;margin-top:13px;padding-top:12px;border-top:1px solid var(--border-soft)}
+.execution-autonomy-controls>button{width:fit-content;max-width:100%;white-space:normal;text-align:left;line-height:1.35}
+.execution-autonomy-controls>small{font-size:11px;line-height:1.4;color:var(--muted)}
+.execution-autonomy-controls>small.execution-automation-state{font-weight:650;color:var(--text)}
 .execution-mission-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-top:15px;padding-top:14px;border-top:1px solid #473b37}
 .execution-mission-metrics span{display:grid;gap:3px;color:var(--muted);font-size:10px}
 .execution-mission-metrics strong{font-size:20px;color:var(--text);font-variant-numeric:tabular-nums}

@@ -24,7 +24,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import {HTML_ARTIFACT_LIMIT_BYTES,validateHtmlArtifactName} from '../src/provider-html-artifact.mjs';
-import {classifyProviderMcpSelection} from '../src/provider-mcp-selection.mjs';
+import {classifyProviderMcpSelection,requireSelectedMcpForPrompt} from '../src/provider-mcp-selection.mjs';
 import { fileURLToPath } from 'node:url';
 import { classifyProviderContextAttachmentObservation, selectProviderContextFileInput, PROVIDER_CONTEXT_FILE_INPUT_SELECTOR, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
 
@@ -998,6 +998,9 @@ export class EmbeddedChatWorker {
     if(typeof onMcpSelectionObserved==='function'){
       try{await onMcpSelectionObserved(selection);}catch{/* optional observation */}
     }
+    // No app selected means no authorized GPT->MCP tool path. Block BEFORE
+    // submission intent and provider send, preserving the unsent composer.
+    requireSelectedMcpForPrompt(prompt,selection);
 
     // Wait until React renders a usable submit control before attempting
     // exactly one standards-based form submission. No fallback clicks.
@@ -1497,6 +1500,11 @@ export class EmbeddedChatWorker {
           }
           continue;
         }
+        // A verified user turn can legitimately spend several minutes in
+        // MCP/tool execution without streaming text. A visible Stop control
+        // is activity, never completion or a tool-effect receipt.
+        if(snap.mode==='direct' && snap.latestUserText && snap.generationStopVisible===true)
+          responseBudget.observeGenerating(true);
         let candidate = snap.messages.at(-1) || null;
         const freshVisualImages = (snap.images || []).filter(image => image?.src && !beforeImages.has(image.src));
         if (snap.mode === 'direct' && candidate?.id) {

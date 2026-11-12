@@ -16,6 +16,20 @@ test('a progressing code answer survives three minutes but has a hard fifteen mi
   assert.throws(()=>requireObservedCompletion({candidate:{text:'partial'},completed:false}),/completion_unconfirmed/);
 });
 
+test('verified active generation keeps silent MCP work observable but never proves completion',()=>{
+  let time=0;
+  const generating=createResponseObservationBudget({now:()=>time});
+  const unknown=createResponseObservationBudget({now:()=>time});
+  for(time=0;time<900000;time+=60000) {
+    assert.equal(generating.active(),true);
+    assert.equal(generating.observeGenerating(true),true);
+    assert.equal(unknown.observeGenerating(null),false);
+  }
+  assert.equal(generating.active(),false);
+  assert.equal(unknown.active(),false);
+  assert.throws(()=>requireObservedCompletion({candidate:null,completed:false}),/response_not_observed/);
+});
+
 test('repeated partial text and heartbeats do not extend stalled observation',()=>{
   let time=0;
   const budget=createResponseObservationBudget({now:()=>time});
@@ -87,6 +101,7 @@ test('worker gates observedAt behind an explicit completion confirmation',()=>{
   assert.match(loop,/completionConfirmed = true;/);
   assert.match(loop,/requireObservedCompletion\(\{ candidate:latest, completed:completionConfirmed \}\)/);
   assert.ok(loop.indexOf('requireObservedCompletion')<loop.indexOf('const images ='));
+  assert.match(loop,/responseBudget\.observeGenerating\(true\)/);
   assert.match(loop,/const generating = snap\.generationStopVisible === true/);
   assert.match(loop,/snap\.responseCompletionObserved === true \? false : null/);
   assert.match(worker,/responseControlState = \$\{providerResponseControlStateExpression\}/);

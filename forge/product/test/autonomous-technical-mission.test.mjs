@@ -14,7 +14,8 @@ const response='O GPT investigou o código e propôs alterações e testes de re
 const instruction='Revise o resultado observado, defina se continua na conversa ou exige outra frente, e produza provas verificáveis.';
 
 function fixture(t,{first='continue_same_conversation',last='verify_external_effect',providerFailure=null,lateResponseAt=null,groqTruncateReviews=[],groqFilteredReviews=[],groqInvalidEvidenceReviews=[],groqInvalidNextStepReviews=[],holdAfterFirstReview=false,holdProviderBusyAfterFirstSend=false,
-  holdProviderBusyAfterSecondSend=false,maxExpectedSends=2,withHtmlProof=false,missingArtifactPort=false}={}){
+  holdProviderBusyAfterSecondSend=false,maxExpectedSends=2,withHtmlProof=false,missingArtifactPort=false,
+  acceptanceStatus='requires_external_verification'}={}){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-semantic-mission-'));
   const store=new Store(path.join(dir,'canonical.sqlite'));
   t.after(()=>{store.close();fs.rmSync(dir,{force:true,recursive:true})});
@@ -61,7 +62,7 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
       assert.ok([1,2].includes(analysisContext.technicalMission?.step));
       if(analysisContext.technicalMission.step===2) {
         assert.equal(analysisContext.technicalMission.previousAcceptance?.status,
-          'requires_external_verification');
+          acceptanceStatus);
         assert.match(analysisContext.technicalMission.previousAcceptance?.criterion||'',
           /Comprovar que a tarefa/u);
       } else assert.equal(analysisContext.technicalMission.previousAcceptance,null);
@@ -81,7 +82,7 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
         observedExcerpt:groqInvalidEvidenceReviews.includes(reviews)
           ?'A saída GPT comprovou uma implantação inexistente.':quote,
         acceptance:{criterion:'Comprovar que a tarefa produziu efeitos externos verificaveis',
-          status:'requires_external_verification',observedExcerpt:quote},
+          status:acceptanceStatus,observedExcerpt:quote},
         nextPrompt:requiresNext
           ?(maxExpectedSends>2&&reviews>=2
             ?instruction+' Próxima etapa independente '+reviews+': verifique a nova evidência do projeto.'
@@ -453,6 +454,56 @@ test('two-send budget is a hard stop even if Groq requests further corrections',
   assert.equal(m.questionFinal,instruction);
   assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
   assert.equal((await f.service.autonomous.tick(f.context)).state,'idle');
+});
+
+test('continuous technical execution is off by default and stops at external verification',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',last:'continue_same_conversation',
+    maxExpectedSends:4}),ids=await f.setup();
+  assert.equal(f.service.autonomous.status(f.context,ids).continuousExecutionEnabled,false);
+  await f.start(ids);
+  const result=await f.wait(ids);
+  assert.equal(result.state,'budget_exhausted');
+  const enabled=await f.call('autonomous_continuous_set',{...ids,enabled:true});
+  assert.equal(enabled.result.enabled,true);
+  assert.equal(f.service.autonomous.status(f.context,ids).continuousExecutionEnabled,true);
+  const newService=new OrchestratorService({store:f.store,coordinator:f.coordinator,provider:f.provider,
+    authorize:({context:c})=>c===f.context});
+  assert.equal(newService.autonomous.status(f.context,ids).continuousExecutionEnabled,true);
+  const blocked=await newService.autonomous.tick(f.context);
+  assert.equal(blocked.state,'awaiting_verified_progress');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:2,sends:2});
+  const disabled=await f.call('autonomous_continuous_set',{...ids,enabled:false});
+  assert.equal(disabled.result.enabled,false);
+  assert.equal((await newService.autonomous.tick(f.context)).state,'idle');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('explicit continuous project consent advances a verified progress review without a third-click limit',async t=>{
+  const f=fixture(t,{first:'continue_same_conversation',last:'continue_same_conversation',
+    acceptanceStatus:'answer_indicates_progress',maxExpectedSends:4}),ids=await f.setup();
+  await f.start(ids);
+  const first=await f.wait(ids);
+  assert.equal(first.state,'budget_exhausted');
+  assert.equal((await f.service.autonomous.tick(f.context)).state,'idle');
+  await f.call('autonomous_continuous_set',{...ids,enabled:true});
+  const advanced=await f.service.autonomous.tick(f.context);
+  assert.equal(advanced.state,'advanced',JSON.stringify({advanced,
+    receipts:f.store.db.prepare("SELECT operation,status FROM lab_command_receipts").all(),
+    missions:f.store.db.prepare("SELECT state,last_error FROM lab_autonomous_dialogues").all()}));
+  assert.equal(advanced.automatic,true);
+  assert.notEqual(advanced.missionId,first.missionId);
+  let second=null;
+  for(let i=0;i<180;i++){
+    const m=f.service.autonomous.status(f.context,ids).mission;
+    if(m.missionId!==first.missionId && m.state==='budget_exhausted'){second=m;break;}
+    await f.service.autonomous.tick(f.context);
+    await new Promise(resolve=>setTimeout(resolve,30));
+  }
+  assert.equal(second?.chainProgress.cycles,2);
+  assert.equal(second?.chainProgress.completedReviews,4);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:4,sends:4});
+  assert.equal(f.store.db.prepare('SELECT count(*) n FROM lab_projects').get().n,1);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
 test('explicit second consent continues the same project through four GPT Runs',async t=>{

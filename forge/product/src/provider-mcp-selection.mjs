@@ -1,3 +1,14 @@
+
+import {mentionWasRequested} from './provider-mcp-mention.mjs';
+
+// A literal @ mention is not the connected ChatGPT app. Never dispatch a
+// tool-dependent task without a selected, visible, scoped app in this composer.
+export function requireSelectedMcpForPrompt(prompt, selection) {
+  if (!mentionWasRequested(prompt)) return false;
+  if (selection?.state !== 'selection_visible' || selection?.selectionObserved !== true)
+    throw new Error('provider_mcp_selection_required');
+  return true;
+}
 // A visual app marker is not an MCP tool receipt, grant or permission.
 // ChatGPT app selection is scoped to a message and must be observed again.
 export function classifyProviderMcpSelection(raw) {
