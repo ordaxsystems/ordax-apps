@@ -459,7 +459,8 @@ test('disabling MCP closes an unresponsive active HTTP request promptly',async t
 });
 
 test('owner-bound MCP write creates a real file with SHA readback and durable receipt',async t=>{
-  const folder=fs.mkdtempSync(path.join(os.tmpdir(),'forge-owner-mcp-proof-'));
+  // Use the physical path, not the Windows runner's possible temp junction.
+  const folder=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'forge-owner-mcp-proof-')));
   const databasePath=path.join(folder,'forge.sqlite');
   const store=new Store(databasePath);
   // Release SQLite's Windows file handles before removing this disposable DB.

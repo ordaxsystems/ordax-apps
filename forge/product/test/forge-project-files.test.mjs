@@ -125,7 +125,8 @@ test('missing owner-bound folder is a definitive rejected write, not an uncertai
 });
 
 test('file receipts survive process restart; interrupted writes remain non-replayable',async t=>{
-  const base=fs.mkdtempSync(path.join(os.tmpdir(),'forge-file-restart-'));
+  // Canonicalize the temp root: Windows CI may mount RUNNER_TEMP via a junction.
+  const base=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'forge-file-restart-')));
   let store=null;
   t.after(()=>{
     try{store?.close();}finally{
