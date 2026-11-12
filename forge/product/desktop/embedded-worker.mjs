@@ -957,7 +957,7 @@ export class EmbeddedChatWorker {
     })()`);
   }
 
-  async #setComposerAndSend(prompt,{onSubmissionIntent=null,onMcpSelectionObserved=null}={}) {
+  async #setComposerAndSend(prompt,{onSubmissionIntent=null,onMcpSelectionObserved=null,requiresMcp=false}={}) {
     const wc = this.view.webContents;
     const initial = await this.#waitForComposer();
     if (initial.text.trim()) throw new Error('chatgpt_draft_present');
@@ -1000,7 +1000,7 @@ export class EmbeddedChatWorker {
     }
     // No app selected means no authorized GPT->MCP tool path. Block BEFORE
     // submission intent and provider send, preserving the unsent composer.
-    requireSelectedMcpForPrompt(prompt,selection);
+    requireSelectedMcpForPrompt(prompt,selection,{requiresMcp});
 
     // Wait until React renders a usable submit control before attempting
     // exactly one standards-based form submission. No fallback clicks.
@@ -1403,7 +1403,7 @@ export class EmbeddedChatWorker {
 
   async sendPrompt({ prompt, chatUrl = null, newSession = false, contextAttachment = null,
     onContextAttachmentObserved = null, onDeliveryObserved = null, onProvisionalProgress = null,
-    onSubmissionIntent = null, onMcpSelectionObserved = null }) {
+    onSubmissionIntent = null, onMcpSelectionObserved = null, requiresMcp = false }) {
     return this.enqueue(async () => {
       const wc = this.view.webContents;
       this.lastFailureMetrics = null;
@@ -1455,7 +1455,7 @@ export class EmbeddedChatWorker {
 
       if(contextAttachment)await this.#attachContextFile(contextAttachment,onContextAttachmentObserved);
       this.#setStage('submit');
-      await this.#setComposerAndSend(promptText,{onSubmissionIntent,onMcpSelectionObserved});
+      await this.#setComposerAndSend(promptText,{onSubmissionIntent,onMcpSelectionObserved,requiresMcp});
       if (!this.streamContext.submittedAt) this.streamContext.submittedAt = Date.now();
 
       // New chats may need time to acquire a canonical permalink. Existing

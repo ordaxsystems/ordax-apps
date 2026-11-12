@@ -1471,7 +1471,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   async function formAction(form,action) {
     const buttons=[...form.querySelectorAll('button')];
     const previous=buttons.map(b=>b.disabled);buttons.forEach(b=>b.disabled=true);
-    try {await action();}catch{error();}finally{buttons.forEach((b,i)=>b.disabled=previous[i]);}
+    try {await action();}catch(cause){
+      if(String(cause?.message||cause).includes('provider_mcp_selection_required'))
+        status('Conecte e selecione OrdaX MCP na conversa GPT para criar arquivos. O pedido não foi enviado e o rascunho foi preservado.');
+      else error();
+    }finally{buttons.forEach((b,i)=>b.disabled=previous[i]);}
   }
   $('inspectWorkspace').addEventListener('click',()=>{
     const p=projectId;if(!p)return;
