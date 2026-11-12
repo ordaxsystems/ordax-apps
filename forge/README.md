@@ -168,9 +168,14 @@ Abra o candidato Windows de teste, crie um projeto e um orquestrador, clique em
 A ativação vale somente para esta sessão do App. O supervisor de tarefas não é
 ativado por esse botão. Não envie sua chave por chat, issue ou log.
 
-Primeiro teste: envie “Responda somente TESTE LOCAL OK”. Confirme a resposta no
-histórico, feche o App, reabra e selecione o mesmo projeto/orquestrador para
-conferir a persistência. Ative o chat novamente para o próximo envio.
+**Política de homologação:** solicitar apenas “responda um código” ou “não use
+ferramentas” NÃO é teste funcional do Forge, mesmo quando a resposta chega.
+Para certificar ferramentas, executar o MCP real na instalação DEV isolada,
+com chamadas HTTP, pasta física, escrita/leitura, SHA-256, recibos no SQLite,
+negações de acesso e continuidade. O executor oficial está em
+`product/scripts/forge-physical-mcp-acceptance.cjs`; respostas do GPT
+sozinhas nunca comprovam operações em arquivos. O chat por API pode ser
+avaliado separadamente com tarefas substantivas e conferência de resultados.
 O artefato é uma prévia local não assinada, sem instalação oficial ou release.
 Uma resposta real exige sua chave e disponibilidade da API Groq; CI não a simula
 como evidência de teste real com sua conta.

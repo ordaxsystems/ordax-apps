@@ -101,7 +101,7 @@ test('current ChatGPT completed feedback toolbar positively confirms the last as
     generationStopVisible:false,finishedAssistantToolbar:true
   }),true);
   assert.equal(responseObservationComplete({
-    candidate:{text:'FORGE_LINK_OK_20261107',complete:true},
+    candidate:{text:'O cardápio contém três produtos e o formulário possui validação de email.',complete:true},
     stable:2,transient:false,generating:false
   }),true);
 });
