@@ -263,7 +263,18 @@ let cleanupFailurePhase=null;
     if(!Array.isArray(alternateWorks)||alternateWorks.length!==0)
       throw Error('project_switch_not_isolated'); // Blank GPT-first project creates no Work or Run.
     phase='project_switch_return_first';
-    await evaluate(`document.querySelector('#projectNavList button').click()`);
+    // Project notifications may rebuild the sidebar after the previous
+    // asynchronous work_list call. Choose the exact project's real button,
+    // never the first transient row or a fabricated selector change.
+    await wait(`(()=>{
+      const selected=document.getElementById('projectSelect')?.value;
+      const button=[...document.querySelectorAll('#projectNavList button')]
+        .find(row=>row.dataset.projectId==='${projectId}');
+      if(selected!=='${secondProjectId}'||!button||button.disabled||
+        document.getElementById('projectSwitcher')?.hidden)return false;
+      button.click();
+      return true;
+    })()`);
     await wait(`document.getElementById('projectSelect').value==='${projectId}'&&
       document.getElementById('activeProjectName').textContent==='Projeto E2E isolado'&&
       !document.getElementById('orchestrationPanel').hidden`);
