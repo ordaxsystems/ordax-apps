@@ -72,6 +72,10 @@ test('local Preview re-reads a new verified revision without switching tabs',asy
   assert.equal(h.el('#workSurfacePreview').hidden,false);
   assert.equal(h.el('#workSurfaceRefresh').hidden,false);
   assert.match(ui,/onForgeProjectFileChanged\?\.\(payload=>/);
+  assert.match(ui,/let externalPreviewInspectionBusy=false/);
+  assert.match(ui,/activeRightPane!=='preview'\|\|document.hidden===true/);
+  assert.match(ui,/refreshForgeProjectHtmlPreview\(\{force:true\}\)\.finally/);
+  assert.match(ui,/\},5000\);/);
 });
 
 test('revoked workspace clears an already displayed local Preview',async()=>{

@@ -1968,6 +1968,18 @@ window.ordax.onForgeProjectFileChanged?.(payload=>{
   if(activeRightPane==='files')void refreshForgeFilesPanel();
 });
 void refreshForgeFilesPanel();
+// External GPT writes through the device OrdaX MCP have no Forge broker
+// callback. Reread only the currently authorized index.html while Preview
+// is visible. Its sandboxed frame changes only when the verified hash changes.
+let externalPreviewInspectionBusy=false;
+setInterval(()=>{
+  if(activeRightPane!=='preview'||document.hidden===true||
+     !orchestrationUi?.getProjectId?.()||externalPreviewInspectionBusy)return;
+  externalPreviewInspectionBusy=true;
+  void refreshForgeProjectHtmlPreview({force:true}).finally(()=>{
+    externalPreviewInspectionBusy=false;
+  });
+},5000);
 await loadTasks();
 // Executor conversations are inspectable through Missões, not a startup
 // destination. Do not open a previously selected GPT Task or re-run its

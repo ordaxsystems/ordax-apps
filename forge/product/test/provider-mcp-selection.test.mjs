@@ -63,11 +63,11 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   assert.match(main,/ordax:provider:mcp-selection/);
   assert.match(preload,/ordax:provider:mcp-selection/);
   assert.match(worker,/classifyProviderMcpSelection/);
-  assert.match(worker,/requireSelectedMcpForPrompt\(prompt,selection,\{requiresMcp\}\)/);
+  assert.match(worker,/requireSelectedMcpForPrompt\(prompt,selection,\{requiresMcp:this\.streamContext\?\.requiresMcp===true\}\)/);
   assert.match(main,/requiresMcpForProjectPrompt\(prompt\)/);
   assert.match(main,/runWorker\.inspectMcpSelectionReadOnly\(\)/);
   assert.ok(main.indexOf('await runWorker.inspectMcpSelectionReadOnly()')<main.indexOf('store.beginProviderRun(taskId'));
-  assert.match(worker,/requiresMcp:mcpWorkRequired|onMcpSelectionObserved,requiresMcp/);
+  assert.match(worker,/requiresMcp:requiresMcp===true/);
   assert.match(worker,/inspectMcpSelectionReadOnly\(\{allowDuringRun:true\}\)/);
   const selectedAt=worker.indexOf('const selection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true})');
   const typedAt=worker.indexOf("if (!recognized) throw new Error('composer_input_not_recognized')");

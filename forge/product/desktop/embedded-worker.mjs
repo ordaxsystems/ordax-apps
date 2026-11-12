@@ -957,7 +957,7 @@ export class EmbeddedChatWorker {
     })()`);
   }
 
-  async #setComposerAndSend(prompt,{onSubmissionIntent=null,onMcpSelectionObserved=null,requiresMcp=false}={}) {
+  async #setComposerAndSend(prompt,{onSubmissionIntent=null,onMcpSelectionObserved=null}={}) {
     const wc = this.view.webContents;
     const initial = await this.#waitForComposer();
     if (initial.text.trim()) throw new Error('chatgpt_draft_present');
@@ -1000,7 +1000,7 @@ export class EmbeddedChatWorker {
     }
     // No app selected means no authorized GPT->MCP tool path. Block BEFORE
     // submission intent and provider send, preserving the unsent composer.
-    requireSelectedMcpForPrompt(prompt,selection,{requiresMcp});
+    requireSelectedMcpForPrompt(prompt,selection,{requiresMcp:this.streamContext?.requiresMcp===true});
 
     // Wait until React renders a usable submit control before attempting
     // exactly one standards-based form submission. No fallback clicks.
@@ -1403,7 +1403,7 @@ export class EmbeddedChatWorker {
 
   async sendPrompt({ prompt, chatUrl = null, newSession = false, contextAttachment = null,
     onContextAttachmentObserved = null, onDeliveryObserved = null, onProvisionalProgress = null,
-    onSubmissionIntent = null, onMcpSelectionObserved = null, requiresMcp = false }) {
+    requiresMcp = false, onSubmissionIntent = null, onMcpSelectionObserved = null }) {
     return this.enqueue(async () => {
       const wc = this.view.webContents;
       this.lastFailureMetrics = null;
@@ -1451,11 +1451,11 @@ export class EmbeddedChatWorker {
       const baseline = signatureFor(beforeLast);
       const baselineReadyAt = Date.now();
       const promptText = String(prompt || '').trim();
-      this.streamContext = { beforeCount, baseline, promptText, beforeImageSources:new Set(beforeImages), currentAssistantMessageId:null, lastSignature:'', firstActivityAt:null, firstDeltaAt:null, firstObserver:null, fastFirstDeltaAt:null, betaFirstDeltaAt:null, submitAttemptAt:null, providerRequestSeenAt:null, submittedAt:null, networkFirstByteAt:null, fastSeen:false, betaSeen:false, fastDelivered:false, fastSuppressed:false, fastSuppressionReason:null, lastDeliveredText:'', lastDeliveredSource:null, prepareStartedAt, healthCompletedAt, draftCheckedAt, conversationReadyAt, observerReadyAt, baselineReadyAt };
+      this.streamContext = { requiresMcp:requiresMcp===true, beforeCount, baseline, promptText, beforeImageSources:new Set(beforeImages), currentAssistantMessageId:null, lastSignature:'', firstActivityAt:null, firstDeltaAt:null, firstObserver:null, fastFirstDeltaAt:null, betaFirstDeltaAt:null, submitAttemptAt:null, providerRequestSeenAt:null, submittedAt:null, networkFirstByteAt:null, fastSeen:false, betaSeen:false, fastDelivered:false, fastSuppressed:false, fastSuppressionReason:null, lastDeliveredText:'', lastDeliveredSource:null, prepareStartedAt, healthCompletedAt, draftCheckedAt, conversationReadyAt, observerReadyAt, baselineReadyAt };
 
       if(contextAttachment)await this.#attachContextFile(contextAttachment,onContextAttachmentObserved);
       this.#setStage('submit');
-      await this.#setComposerAndSend(promptText,{onSubmissionIntent,onMcpSelectionObserved,requiresMcp});
+      await this.#setComposerAndSend(promptText,{onSubmissionIntent,onMcpSelectionObserved});
       if (!this.streamContext.submittedAt) this.streamContext.submittedAt = Date.now();
 
       // New chats may need time to acquire a canonical permalink. Existing
