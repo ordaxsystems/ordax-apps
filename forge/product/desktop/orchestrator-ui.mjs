@@ -1211,6 +1211,17 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const result=await call('autonomous_dialogue_status',{projectId:p,orchestratorId:o}).catch(()=>null);
     if(generation!==autonomousRefreshGeneration||p!==projectId||o!==orchestratorId)return;
     const job=result?.mission;
+    const continuousEnabled=result?.continuousExecutionEnabled===true;
+    const continuousButton=$('autonomousContinuousToggle');
+    continuousButton.disabled=!projectId||!orchestratorId;
+    continuousButton.textContent=continuousEnabled
+      ?'Desativar continuidade automática':'Ativar continuidade automática da missão';
+    $('autonomousContinuousState').textContent=continuousEnabled
+      ?'Ativa neste projeto: novas etapas só são agendadas depois de um Run confirmado, revisão de progresso e ausência de operações incertas. Não concede acesso MCP.'
+      :'Desativada neste projeto. Cada ciclo extra exige autorização manual; nenhum efeito incerto será repetido.';
+    $('executionAutonomyState').textContent=continuousEnabled
+      ?'Continuidade automática habilitada · somente etapas verificáveis'
+      :'Continuidade automática desativada';
     // Keep the previous verified preview while revising. A mission that
     // predates the latest user turn must not remain a highlighted status.
     const superseded=Boolean(job?.createdAt&&result?.lastUserTurnAt&&
@@ -1247,7 +1258,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
           ?'Primeira resposta recebida; outras ações precisam de novo pedido do usuário'
           :'GPT respondeu; verificação externa de alterações/testes é necessária'
         :job.state==='budget_exhausted'
-          ?'Ciclo de dois envios concluído; decisão Groq registrada'+
+          ?'Ciclo de trabalho revisado; decisão Groq registrada'+
             (job.canContinue?'; é possível autorizar outro ciclo':'')
           :job.state==='blocked'
             ?'Missão técnica bloqueada; nenhum envio será repetido'
@@ -1265,7 +1276,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     // receipts; never describe unverified external effects as complete.
     const chain=currentJob?.mode==='technical'?currentJob.chainProgress:null;
     const progress=chain?.cycles
-      ?`Ciclo ${chain.cycles}${chain.truncated?'+':''} · ${chain.completedReviews} revisões GPT confirmadas · teto de ${chain.authorizedGPTSends} envio(s) autorizados · `
+      ?`Ciclo ${chain.cycles}${chain.truncated?'+':''} · ${chain.completedReviews} revisões GPT confirmadas · ${chain.authorizedGPTSends} envios previstos nos ciclos registrados · `
       :'';
     const specialist=currentJob?.mode==='technical'&&currentJob.technicalSpecialist
       ?'Especialista: '+currentJob.technicalSpecialist+' · '
@@ -1460,7 +1471,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   async function formAction(form,action) {
     const buttons=[...form.querySelectorAll('button')];
     const previous=buttons.map(b=>b.disabled);buttons.forEach(b=>b.disabled=true);
-    try {await action();}catch{error();}finally{buttons.forEach((b,i)=>b.disabled=previous[i]);}
+    try {await action();}catch(cause){
+      if(String(cause?.message||cause).includes('provider_mcp_selection_required'))
+        status('Conecte e selecione OrdaX MCP na conversa GPT para criar arquivos. O pedido não foi enviado e o rascunho foi preservado.');
+      else error();
+    }finally{buttons.forEach((b,i)=>b.disabled=previous[i]);}
   }
   $('inspectWorkspace').addEventListener('click',()=>{
     const p=projectId;if(!p)return;
@@ -1882,6 +1897,24 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       await refreshAutonomousDialogue();
     }catch{error();}finally{await refreshAutonomousDialogue();}
   }
+  $('autonomousContinuousToggle').addEventListener('click',async()=>{
+    const button=$('autonomousContinuousToggle');
+    if(button.disabled||!projectId||!orchestratorId)return;
+    const p=projectId,o=orchestratorId;
+    button.disabled=true;
+    try{
+      const snapshot=await call('autonomous_dialogue_status',{projectId:p,orchestratorId:o});
+      if(p!==projectId||o!==orchestratorId)return;
+      const enabled=snapshot?.continuousExecutionEnabled!==true;
+      const receipt=await command('autonomous_continuous_set',{
+        projectId:p,orchestratorId:o,enabled});
+      if(p!==projectId||o!==orchestratorId)return;
+      if(receipt.status==='succeeded')status(enabled
+        ?'Continuidade habilitada. Avança somente após confirmação dos Runs e revisão de progresso; erros e efeitos incertos bloqueiam novos envios.'
+        :'Continuidade desativada. As próximas etapas aguardam autorização.');
+    }catch{error();}
+    finally{if(p===projectId&&o===orchestratorId)await refreshAutonomousDialogue();}
+  });
   $('continueAutonomousTechnical').addEventListener('click',async()=>{
     const button=$('continueAutonomousTechnical');
     if(button.disabled||!projectId||!orchestratorId)return;
@@ -1910,7 +1943,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         projectId:p,orchestratorId:o,sourceMissionId:snapshot.mission.missionId});
       if(p!==projectId||o!==orchestratorId)return;
       if(receipt.status==='succeeded')
-        status('Continuação autorizada: até 2 novos envios GPT, com decisões e recibos canônicos.');
+        status('Próxima etapa autorizada com recibos canônicos. A continuidade automática exige consentimento, revisão e ausência de incerteza.');
     }catch{error();}
     finally{if(p===projectId&&o===orchestratorId)await refreshAutonomousDialogue();}
   });

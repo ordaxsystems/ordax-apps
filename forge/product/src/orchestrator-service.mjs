@@ -355,6 +355,8 @@ export class OrchestratorService {
     }
     this.requireAccess(context,operation,input.projectId||null);
     if(operation==='autonomous_dialogue_status')return this.autonomous.status(context,input);
+    if(operation==='autonomous_continuous_set')return {status:'succeeded',operation,
+      result:this.autonomous.setContinuousExecution(context,input)};
     if(operation==='autonomous_dialogue_start')return {status:'succeeded',operation,result:this.autonomous.start(context,input)};
     if(operation==='autonomous_dialogue_continue')return {status:'succeeded',operation,
       result:this.autonomous.continueTechnical(context,input)};
@@ -896,7 +898,7 @@ export class OrchestratorService {
       const projectId=this.createProjectRecord(UNTITLED_FORGE_PROJECT,'',null,now);
       const orchestratorId='orchestrator_'+randomUUID();
       const chat=this.store.createTask('Forjador');
-      this.db.prepare('INSERT INTO lab_orchestrators VALUES(?,?,?,?,?,?,?)')
+      this.db.prepare('INSERT INTO lab_orchestrators (id,project_id,name,mission,status,chat_task_id,created_at) VALUES(?,?,?,?,?,?,?)')
         .run(orchestratorId,projectId,'Forjador',
           'Conversa de projeto. Entender o pedido do usuário e coordenar apenas ações disponíveis e autorizadas.',
           'ready',chat.id,now);
@@ -928,7 +930,7 @@ export class OrchestratorService {
       const orchestratorId='orchestrator_'+randomUUID();
       const coordinatorName='Orquestrador';
       const coordinator=this.store.createTask(coordinatorName);
-      this.db.prepare('INSERT INTO lab_orchestrators VALUES(?,?,?,?,?,?,?)')
+      this.db.prepare('INSERT INTO lab_orchestrators (id,project_id,name,mission,status,chat_task_id,created_at) VALUES(?,?,?,?,?,?,?)')
         .run(orchestratorId,projectId,coordinatorName,input.mission,'ready',coordinator.id,now);
       this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)')
         .run(coordinator.id,projectId,orchestratorId,'orchestrator');
@@ -995,7 +997,7 @@ export class OrchestratorService {
     if(operation==='orchestrator_create') {
       const orchestratorId='orchestrator_'+randomUUID();
       const chat=this.store.createTask(input.name);
-      this.db.prepare('INSERT INTO lab_orchestrators VALUES(?,?,?,?,?,?,?)')
+      this.db.prepare('INSERT INTO lab_orchestrators (id,project_id,name,mission,status,chat_task_id,created_at) VALUES(?,?,?,?,?,?,?)')
         .run(orchestratorId,input.projectId,input.name,input.mission,'ready',chat.id,now);
       this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)')
         .run(chat.id,input.projectId,orchestratorId,'orchestrator');

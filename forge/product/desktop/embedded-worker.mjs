@@ -24,7 +24,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import {HTML_ARTIFACT_LIMIT_BYTES,validateHtmlArtifactName} from '../src/provider-html-artifact.mjs';
-import {classifyProviderMcpSelection} from '../src/provider-mcp-selection.mjs';
+import {classifyProviderMcpSelection,requireSelectedMcpForPrompt} from '../src/provider-mcp-selection.mjs';
 import { fileURLToPath } from 'node:url';
 import { classifyProviderContextAttachmentObservation, selectProviderContextFileInput, PROVIDER_CONTEXT_FILE_INPUT_SELECTOR, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
 
@@ -998,6 +998,9 @@ export class EmbeddedChatWorker {
     if(typeof onMcpSelectionObserved==='function'){
       try{await onMcpSelectionObserved(selection);}catch{/* optional observation */}
     }
+    // No app selected means no authorized GPT->MCP tool path. Block BEFORE
+    // submission intent and provider send, preserving the unsent composer.
+    requireSelectedMcpForPrompt(prompt,selection,{requiresMcp:this.streamContext?.requiresMcp===true});
 
     // Wait until React renders a usable submit control before attempting
     // exactly one standards-based form submission. No fallback clicks.
@@ -1400,7 +1403,7 @@ export class EmbeddedChatWorker {
 
   async sendPrompt({ prompt, chatUrl = null, newSession = false, contextAttachment = null,
     onContextAttachmentObserved = null, onDeliveryObserved = null, onProvisionalProgress = null,
-    onSubmissionIntent = null, onMcpSelectionObserved = null }) {
+    requiresMcp = false, onSubmissionIntent = null, onMcpSelectionObserved = null }) {
     return this.enqueue(async () => {
       const wc = this.view.webContents;
       this.lastFailureMetrics = null;
@@ -1448,7 +1451,7 @@ export class EmbeddedChatWorker {
       const baseline = signatureFor(beforeLast);
       const baselineReadyAt = Date.now();
       const promptText = String(prompt || '').trim();
-      this.streamContext = { beforeCount, baseline, promptText, beforeImageSources:new Set(beforeImages), currentAssistantMessageId:null, lastSignature:'', firstActivityAt:null, firstDeltaAt:null, firstObserver:null, fastFirstDeltaAt:null, betaFirstDeltaAt:null, submitAttemptAt:null, providerRequestSeenAt:null, submittedAt:null, networkFirstByteAt:null, fastSeen:false, betaSeen:false, fastDelivered:false, fastSuppressed:false, fastSuppressionReason:null, lastDeliveredText:'', lastDeliveredSource:null, prepareStartedAt, healthCompletedAt, draftCheckedAt, conversationReadyAt, observerReadyAt, baselineReadyAt };
+      this.streamContext = { requiresMcp:requiresMcp===true, beforeCount, baseline, promptText, beforeImageSources:new Set(beforeImages), currentAssistantMessageId:null, lastSignature:'', firstActivityAt:null, firstDeltaAt:null, firstObserver:null, fastFirstDeltaAt:null, betaFirstDeltaAt:null, submitAttemptAt:null, providerRequestSeenAt:null, submittedAt:null, networkFirstByteAt:null, fastSeen:false, betaSeen:false, fastDelivered:false, fastSuppressed:false, fastSuppressionReason:null, lastDeliveredText:'', lastDeliveredSource:null, prepareStartedAt, healthCompletedAt, draftCheckedAt, conversationReadyAt, observerReadyAt, baselineReadyAt };
 
       if(contextAttachment)await this.#attachContextFile(contextAttachment,onContextAttachmentObserved);
       this.#setStage('submit');
@@ -1497,6 +1500,11 @@ export class EmbeddedChatWorker {
           }
           continue;
         }
+        // A verified user turn can legitimately spend several minutes in
+        // MCP/tool execution without streaming text. A visible Stop control
+        // is activity, never completion or a tool-effect receipt.
+        if(snap.mode==='direct' && snap.latestUserText && snap.generationStopVisible===true)
+          responseBudget.observeGenerating(true);
         let candidate = snap.messages.at(-1) || null;
         const freshVisualImages = (snap.images || []).filter(image => image?.src && !beforeImages.has(image.src));
         if (snap.mode === 'direct' && candidate?.id) {

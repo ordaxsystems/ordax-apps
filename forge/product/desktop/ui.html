@@ -229,9 +229,9 @@
               <small id="continuityState" role="status">Análise automática desativada. Nunca envia mensagens ao GPT.</small>
               <button id="continuityFollowupPrepare" type="button" class="mini-secondary" hidden disabled>Preparar próximo passo na conversa GPT</button>
               <button id="prepareWork" type="button" class="mini-secondary" disabled>Preparar nova frente</button>
-              <button id="continueAutonomousTechnical" type="button" class="mini-secondary" hidden disabled>Continuar missão técnica · autorizar até 2 novos envios GPT</button>
-              <button id="startAutonomousTechnical" type="button" class="mini-primary" disabled>Iniciar missão técnica com GPT + Groq (até 2 envios)</button>
-              <small id="autonomousDialogueState" role="status" aria-live="polite">Descreva uma missão no campo do coordenador para iniciar. Ela autoriza até dois envios GPT; a próxima decisão depende da resposta observada, sem presumir alterações, testes nem commit.</small>
+              <button id="continueAutonomousTechnical" type="button" class="mini-secondary" hidden disabled>Continuar missão técnica · próximo ciclo seguro</button>
+              <button id="startAutonomousTechnical" type="button" class="mini-primary" disabled>Iniciar missão técnica com GPT + Groq</button>
+              <small id="autonomousDialogueState" role="status" aria-live="polite">Descreva uma missão para iniciar. O GPT executa as etapas autorizadas; novas etapas dependem de progresso revisado, acesso MCP real e ausência de operações incertas.</small>
               <div id="autonomousReviewActions" class="memory-review-actions" aria-label="Revisar conversas da missão" hidden></div>
               <details id="orchestratorExperiments" class="orchestrator-experiments">
                 <summary>Outros testes de coordenação GPT</summary>
@@ -385,6 +385,11 @@
           <div class="execution-mission-label"><span class="execution-mission-icon" aria-hidden="true">◎</span><span>Missão atual</span><span id="executionMissionBadge" class="execution-badge" data-state="idle">Sem missão ativa</span></div>
           <h3 id="executionMissionTitle">Nenhuma missão técnica selecionada</h3>
           <p id="executionMissionDetail">Os estados serão apresentados conforme os registros do Forge.</p>
+          <div class="execution-autonomy-controls">
+            <button id="autonomousContinuousToggle" type="button" class="mini-secondary" disabled>Ativar continuidade automática da missão</button>
+            <small id="executionAutonomyState" class="execution-automation-state" role="status" aria-live="polite">Continuidade automática: desativada</small>
+            <small id="autonomousContinuousState" role="status" aria-live="polite">Desativada. Uma nova etapa GPT exige ação explícita. A ativação não concede acesso ao MCP nem repete resultados incertos.</small>
+          </div>
           <div class="execution-mission-metrics"><span><strong id="executionWorkCount">0</strong> frentes</span><span><strong id="executionRunningCount">0</strong> em execução</span><span><strong id="executionReviewCount">0</strong> a revisar</span></div>
         </article>
         <section class="execution-monitor-section" aria-label="Frentes e executores observados">

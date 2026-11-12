@@ -1249,6 +1249,20 @@ test('asynchronous project and orchestrator refreshes cannot overwrite newer sco
     'scope must still be current before and after the async work-list subscription');
 });
 
+test('continuous project consent is visible once in the real execution pane and scoped to canonical status',()=>{
+  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  const contract=fs.readFileSync(path.join(root,'src','forge-contract.mjs'),'utf8');
+  assert.equal((uiHtml.match(/id="autonomousContinuousToggle"/g)||[]).length,1);
+  assert.ok(uiHtml.indexOf('id="autonomousContinuousToggle"')>
+    uiHtml.indexOf('id="executionOverview"'));
+  assert.match(source,/result\?\.continuousExecutionEnabled===true/);
+  assert.match(source,/command\('autonomous_continuous_set'/);
+  assert.match(source,/if\(p!==projectId\|\|o!==orchestratorId\)return/);
+  assert.match(contract,/\['autonomous_continuous_set'/);
+  assert.match(uiHtml,/id="executionAutonomyState"/);
+  assert.match(uiHtml,/id="autonomousContinuousState"/);
+});
+
 test('coordinator Enter uses exactly one IME-safe keyboard handler',()=>{
   const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.equal((source.match(/\$\('coordinatorPrompt'\)\.addEventListener\('keydown'/g)||[]).length,1);

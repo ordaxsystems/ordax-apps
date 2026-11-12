@@ -9,9 +9,10 @@ import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
 import {technicalMissionPolicy} from './technical-mission-policy.mjs';
 import {normalizedHtmlControlChecks} from './isolated-html-controls.mjs';
 
-// One mission, one owner authorization, ONE canonical Store and existing GPT
-// executor. A mission's consent covers at most two GPT Web submissions.
-// No filesystem/network grants, arbitrary tools, replays or background daemon.
+// One mission and ONE canonical Store/executor. The two-send boundary is an
+// idempotent cycle, NOT the project's lifetime limit. An explicit, revocable
+// project opt-in may schedule another independently verified cycle.
+// No implicit filesystem/network grants, uncertain replays or second runtime.
 const LIMIT=2;
 // These are terminal, known-invalid Groq replies. A single fresh review may
 // be attempted after a restart, never after a running/uncertain receipt.
@@ -51,8 +52,13 @@ export class AutonomousDialogue {
       UNIQUE(workspace_session_id,actor_id,client_id,request_id)
     );
     CREATE INDEX IF NOT EXISTS idx_lab_autonomous_queue ON lab_autonomous_dialogues(state,created_at);`);
-    // Story adds four canonical work Tasks to the SAME mission, Store and
-    // provider; max_gpt_sends=2 remains a per-cycle cap for old profiles.
+    // Continuous execution is a project/coordinator preference on the
+    // canonical owner row, never a second mission database or broker.
+    if(!this.db.prepare('PRAGMA table_info(lab_orchestrators)').all()
+      .some(column=>column.name==='continuous_execution_enabled'))
+      this.db.exec('ALTER TABLE lab_orchestrators ADD COLUMN continuous_execution_enabled INTEGER NOT NULL DEFAULT 0 CHECK(continuous_execution_enabled IN (0,1))');
+    // Story uses its existing four-turn mission; this preference applies
+    // only to technical continuation with independently confirmed Runs.
     if(!this.db.prepare("PRAGMA table_info(lab_autonomous_dialogues)").all().some(x=>x.name==='mode'))
       this.db.exec("ALTER TABLE lab_autonomous_dialogues ADD COLUMN mode TEXT NOT NULL DEFAULT 'dialogue' CHECK(mode IN ('dialogue','story'))");
     // Extend the existing mission ledger in place. Technical missions retain
@@ -439,6 +445,17 @@ export class AutonomousDialogue {
       distinctConfirmedConversations:Boolean(a?.chat_url&&b?.chat_url&&a.chat_url!==b.chat_url),
       lastError:row.last_error,requiresReconciliation:row.state==='reconciliation_required'};
   }
+  setContinuousExecution(context,{projectId,orchestratorId,enabled}){
+    this.service.requireAccess(context,'autonomous_continuous_set',projectId);
+    if(typeof enabled!=='boolean')throw Error('autonomous_continuous_setting_invalid');
+    const owner=this.service.orchestrator(projectId,orchestratorId);
+    const updated=this.service.transaction(()=>this.db.prepare(`UPDATE lab_orchestrators
+      SET continuous_execution_enabled=? WHERE id=? AND project_id=?`).run(
+      enabled?1:0,owner.id,projectId).changes);
+    if(updated!==1)throw Error('autonomous_continuous_owner_changed');
+    this.notify();
+    return {projectId,orchestratorId,enabled,automaticResend:false};
+  }
   status(context,{projectId,orchestratorId}){
     this.service.requireAccess(context,'autonomous_dialogue_status',projectId);
     this.service.orchestrator(projectId,orchestratorId);
@@ -449,7 +466,9 @@ export class AutonomousDialogue {
     const chatTaskId=this.service.orchestrator(projectId,orchestratorId).chat_task_id;
     const lastUserTurn=this.db.prepare("SELECT created_at FROM messages WHERE task_id=? AND role='user' ORDER BY sequence DESC LIMIT 1")
       .get(chatTaskId);
-    return {mission:this.summary(row),lastUserTurnAt:lastUserTurn?.created_at||null};
+    return {mission:this.summary(row),lastUserTurnAt:lastUserTurn?.created_at||null,
+      continuousExecutionEnabled:this.service.orchestrator(projectId,orchestratorId)
+        .continuous_execution_enabled===1};
   }
   start(context,{projectId,orchestratorId,mission,requestId,mode='dialogue',directUserPrompt=false,resumeSiteTaskId=null}) {
     this.service.requireAccess(context,'autonomous_dialogue_start',projectId);
@@ -1068,6 +1087,42 @@ export class AutonomousDialogue {
       {last_error:null});
     return true;
   }
+  advanceContinuousExecution(context){
+    const session=this.store.getWorkspaceSession();
+    if(session?.status!=='active'||session.id!==context?.workspaceSessionId)return {state:'idle'};
+    const row=this.db.prepare(`SELECT a.* FROM lab_autonomous_dialogues a
+      JOIN lab_orchestrators o ON o.id=a.orchestrator_id AND o.project_id=a.project_id
+      WHERE a.workspace_session_id=? AND a.actor_id=? AND a.client_id=?
+        AND a.strategy='semantic' AND o.continuous_execution_enabled=1
+      ORDER BY a.rowid DESC LIMIT 1`).get(session.id,context.actorId,context.clientId);
+    if(!row||row.state!=='budget_exhausted'||this.summary(row)?.canContinue!==true)
+      return {state:'idle'};
+    // Model advice may request endless work; do not auto-schedule without a
+    // confirmed useful prior Run and a positive progress review. External
+    // changes remain unverified until an independent file/tool receipt exists.
+    let decision=null;
+    try{decision=JSON.parse(row.review_b_json||'null');}catch{}
+    if(decision?.acceptance?.status!=='answer_indicates_progress')
+      return {state:'awaiting_verified_progress',missionId:row.id};
+    if(this.db.prepare(`SELECT 1 FROM lab_command_receipts
+      WHERE (project_id=? OR project_id IS NULL) AND status IN ('running','uncertain')
+      LIMIT 1`).get(row.project_id)||
+      this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get())
+      return {state:'reconciliation_required',missionId:row.id};
+    try{
+      const next=this.continueTechnical(context,{projectId:row.project_id,
+        orchestratorId:row.orchestrator_id,sourceMissionId:row.id,
+        requestId:'continuous_'+row.id});
+      return {state:'advanced',missionId:next.missionId,automatic:true};
+    }catch(error){
+      // Any authorization/identity/supersession failure revokes automatic
+      // continuation. Manual review can then decide whether to re-enable it.
+      this.db.prepare(`UPDATE lab_orchestrators SET continuous_execution_enabled=0
+        WHERE id=? AND project_id=?`).run(row.orchestrator_id,row.project_id);
+      this.notify();
+      return {state:'blocked',missionId:row.id,error:boundedError(error)};
+    }
+  }
   async tick(context){
     const session=this.store.getWorkspaceSession();
     if(!context||session?.status!=='active'||session.id!==context.workspaceSessionId)
@@ -1084,7 +1139,11 @@ export class AutonomousDialogue {
       let result={state:'idle'};
       for(let i=0;i<STORY_TURNS*2+2;i++){
         result=await this.step(context);
-        if(result.state!=='advanced')return result;
+        // A scheduler tick may complete one authorized cycle, or schedule
+        // one further cycle; never cascade multiple new consents in a single
+        // tick. The next App tick revalidates authorization and evidence.
+        if(result.state!=='advanced')return result.state==='idle'&&i===0
+          ?this.advanceContinuousExecution(context):result;
       }
       return result;
     }finally{this.inFlight=false;}

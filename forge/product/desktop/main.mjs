@@ -14,6 +14,7 @@ import { testGroqApiKey } from '../src/groq-key-health.mjs';
 import { createLocalGroqCredential } from '../src/local-supervisor-credential.mjs';
 import { createOrchestratorKernel } from '../src/orchestrator-kernel.mjs';
 import {withForjadorMcpMention,mentionWasRequested,FORJADOR_MCP_MENTION} from '../src/provider-mcp-mention.mjs';
+import {requiresMcpForProjectPrompt,requireSelectedMcpForPrompt} from '../src/provider-mcp-selection.mjs';
 import { createProviderAwareTaskOpener, createTaskUiHandlers } from '../src/task-ui-handlers.mjs';
 import { ORCHESTRATOR_TOOLS } from '../src/forge-contract.mjs';
 import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,resolveOrchestratorRuntimeTransport,openOrchestratorRuntimeStreams } from '../src/orchestrator-runtime-bridge.mjs';
@@ -385,12 +386,18 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
     if(providerPrompt.length>16000)throw new Error('task_handoff_prompt_budget_exceeded');
     contextManifest={...contextManifest,maxChars:16000,promptChars:providerPrompt.length,promptSha256:providerPromptDigest(providerPrompt)};
   }
+  const mcpWorkRequired=requiresMcpForProjectPrompt(prompt)||mentionWasRequested(providerPrompt);
   // Authoritative, fresh, read-only readiness gate BEFORE any Task/Run/message
   // mutation or draft clearing. A signed-out/unknown provider creates no Run.
   // Worker.sendPrompt independently checks again immediately before editing.
   try { assertProviderSendReadiness(await runWorker.health()); }
   catch(error) { throw normalizeProviderFailure(error,{stage:'health'}); }
   if(liveRun)throw Error('orchestrator_executor_busy');
+  // A normal request to BUILD a site is MCP work even without @ordax-mcp.
+  // Do not persist a user message or Run when no connected app was selected.
+  // The worker observes again immediately before submit to close the race.
+  if(mcpWorkRequired) requireSelectedMcpForPrompt(providerPrompt,
+    await runWorker.inspectMcpSelectionReadOnly(),{requiresMcp:true});
   const contextAttachment=handoffSnapshot?writeTaskHandoffFile(handoffRoot,handoffSnapshot):null;
   // No provider interaction happens until this atomic transaction commits.
   // The message, draft-clear and Run must never be persisted separately.
@@ -422,6 +429,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       preparedAt:new Date().toISOString(),deliveryObserved:false};
     const result = await runWorker.sendPrompt({
       prompt:providerPrompt,chatUrl:task.chat_url,newSession:conversationPlan.newSession,
+      requiresMcp:mcpWorkRequired,
       contextAttachment,
       onContextAttachmentObserved:receipt=>{
         if(providerViews.runForWorker(runWorker)!==runContext)throw new Error('context_attachment_run_context_changed');

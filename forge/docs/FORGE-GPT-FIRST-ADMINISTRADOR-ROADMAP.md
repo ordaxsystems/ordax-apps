@@ -71,6 +71,74 @@ Estados desejados (não inventar um ledger para isso): aguardando autenticação
 
 **Ler esta seção antes de alterar, testar ou declarar o Forge pronto.** O problema a resolver é a ligação real entre GPT executor, MCP e workspace, mais o acompanhamento honesto e o Administrador opcional. Investigar o código existente e corrigir **a causa raiz no owner**, sem outro MCP, plugin, banco, fila, instalação, plano ou rota alternativa disfarçando execução. Executar primeiro a correção mínima, depois testes proporcionais; só chamar o E2E de aprovado quando a origem GPT e os efeitos forem independemente verificáveis. Não usar projetos de clientes nos testes, não reenviar comandos incertos e não publicar site sem pedido. Registrar o resultado neste **mesmo SSOT** sem manter checklists concorrentes.
 
+## Continuidade, recuperação e UX integradas — decisão canônica (12/11/2026)
+
+Esta seção complementa o contrato E2E anterior e incorpora a decisão do Owner de transformar o Forge em **um ambiente único, profissional e autônomo**, não um chat que conta mensagens. Não criar outro roadmap, aplicativo, MCP, banco ou fila.
+
+### Experiência do MVP, do pedido à entrega
+
+1. A pessoa abre o Forge, cria ou seleciona seu projeto e pede naturalmente um site, app ou sistema. Não precisa escrever `@ordax-mcp`, escolher ferramentas, informar comandos ou preparar arquivos.
+2. **O GPT executor, em sua própria sessão, chama MCP autorizado** para ler/criar/editar/testar arquivos. Se as ferramentas não estiverem disponíveis ou autorizadas naquela sessão, o Forge bloqueia honestamente, sem atribuir a um script externo o trabalho do GPT.
+3. O Forge registra Task/Run, identidade do workspace, chamadas, efeitos, recibos SHA-256 e resultados. **Arquivos e operações confirmadas prevalecem sobre declarações das conversas.**
+4. O supervisor lógico utiliza os mesmos registros para avaliar avanço, planejar próximas etapas, detectar bloqueio, pedir revisão, continuar ou recuperar trabalho. Groq é opcional; não há segunda fonte de verdade nem modelo obrigatório por mensagem.
+5. O desenvolvimento continua quando existe autorização, progresso revisado, capacidade de provedor e nenhuma ação incerta. Dois envios por **ciclo transacional** são proteção interna, jamais limite total de um projeto ou critério de conclusão.
+6. Conversa travada não apaga arquivos nem bloqueia o projeto inteiro. Um sucessor usa estado/recibos/contexto canônicos, reconcilia antes de agir e não repete envio ou escrita incerta.
+7. Conclusão exige arquivos físicos verificados, preview e testes funcionais. Publicar na internet é outro gate.
+
+### Owners e SSOT já existentes
+
+| Responsabilidade | Código canônico | Regra |
+| --- | --- | --- |
+| Projetos/Tasks/Runs/recibos/sessão | `forge/product/src/store.mjs`, `orchestrator-service.mjs`, SQLite atual | Um único registro, nunca espelho na UI |
+| GPT, sessão e observação | `desktop/embedded-worker.mjs`, `src/provider-*.mjs` | Texto enviado não prova resposta, plugin selecionado não prova chamada |
+| MCP, workspaces e arquivos | Broker MCP existente, `forge-local-workspaces.mjs`, `forge-project-files.mjs` | Raiz/consentimento Owner, hashes e efeitos reais |
+| Supervisor/revisão | `autonomous-dialogue.mjs`, `project-coordinator-continuation.mjs`, `lab-continuation.mjs` | Groq opcional e decisões sem grants implícitos |
+| Frontend e navegação | `desktop/ui.html`, `ui.css`, `orchestrator-ui.mjs`, `ui.js` | Renderizar dados canônicos; não simular funcionalidade |
+| Contratos e provas | `src/forge-contract.mjs`, `test/`, este roadmap, `AGENTS.md` | E2E físico tem prioridade sobre eco/mock |
+
+### Execução contínua com autorização única e revogável
+
+- O projeto/coordenador tem consentimento explícito em `lab_orchestrators.continuous_execution_enabled` (no mesmo SQLite). O controle aparece na central de acompanhamento, não apenas em configurações escondidas. Desligar impede agendar novos ciclos; não finge cancelar um Run já enviado.
+- Cada tick do aplicativo **conclui um ciclo ou admite o próximo**. Nunca encadeia várias novas autorizações em uma passagem. A próxima chamada exige sessão, dono, Run/recibo confirmado, decisão de revisão válida, ausência de operações incertas e capacidade real de execução.
+- `verification_required`, falta de progresso confirmado, erro de autorização, falha do provedor ou recibo indeterminado impedem outro envio automático. Revisão Groq de progresso é aconselhamento, **não** prova de efeito externo.
+- O produto **não** encerra o projeto após dois envios. O limite interno de dois do ciclo é um contorno de idempotência herdado do estado atual, não teto total; sucessivos ciclos autorizados preservam Task, conversas, Runs e histórico.
+- Quotas reais GPT/Groq, acesso MCP, autorizações humanas e limites de segurança prevalecem. Não usar atrasos arbitrários, envios duplicados, login inventado ou bypass de consentimento.
+- O timer atual só executa enquanto a instância do aplicativo está viva/residente. **Não declarar 24 h independente** até homologar watchdog, reinício, desbloqueio e recuperação de sessão sem scripts paralelos ou perda da autoridade.
+
+### Organização visual: uma superfície, não oito páginas
+
+- **Esquerda — Projetos/conversas:** criação e seleção claras; sem apps fictícios nem atalhos duplicados.
+- **Centro — Forjador:** pedido natural, mensagens, executor atuante, erro e recuperação sem reenvio; mesma identidade de projeto.
+- **Direita — Acompanhamento, Prévia, Arquivos, GPT e Contexto:** abas contextuais já existentes. Acompanhamento mostra objetivo, Task atual, última ação confirmada, estado dos provedores, continuidade e bloqueios. Arquivos e preview leem o workspace real.
+- **Configurações avançadas:** conexões, Groq opcional, permissões, diretórios e diagnóstico; o botão principal de continuidade fica na central do projeto.
+- Visual profissional: hierarquia, grafite neutro, legibilidade, sidebar compacta, tipografia e espaços consistentes, sem excesso de gradientes, azul genérico, cartões ou telas legadas. **Não criar página/cópia de estado para cada capacidade.**
+- Backend e frontend devem avançar juntos: cada funcionalidade realmente utilizável mostra o estado originado do Store, sem rótulos simulados de “ativo”, “agente em execução” ou “site concluído”.
+
+### Recuperação de conversas e integração segura de trabalho
+
+1. Resposta ausente vira estado **incerto**, preservando prompt, Task, Run e recibo. Consultar a conversa GPT vinculada em leitura antes de tentar outra ação; não repetir por timeout.
+2. Medir progresso com alterações reais, hashes, testes, processos, comandos e recibos. Uma resposta do agente é fonte de contexto, nunca comprovante de gravação ou instalação.
+3. Um agente sucessor recebe objetivo, checkpoint, operações confirmadas, pendências e arquivos; não depende da conversa original. Reavaliar privilégio, escopo e capacidade antes de chamar MCP.
+4. Se duas conversas alterarem código, Git worktrees/revisões internas só entram **quando houver Git real, raiz válida, isolamento, owners e integração com conflitos controlados**. Não duplicar sistema de versionamento nem criar pseudo-PRs por padrão.
+5. Conversa antiga que volta precisa confrontar sua revisão com o estado mais recente. Não fazer merge automático de alterações conflitantes, reexecutar operações incertas ou manter dois agentes gravando na mesma raiz sem locks.
+6. O estado da UI deve mostrar recuperação ou bloqueio reais e permitir revisão, sem uma segunda lista/ledger de tarefas.
+
+### Prioridades e gates sem expansão artificial
+
+**P0 — prova do MVP:** projeto zerado, pedido natural de cafeteria pelo Forge, sessão GPT autenticada, ferramentas MCP realmente acessíveis ao próprio GPT, chamada originada do GPT, arquivos físicos, recibos e SHA-256 atribuíveis, validação HTML/mobile, preview atualizada e correção de um defeito pelo GPT. Nenhum script externo pode copiar a resposta GPT para aprovar o E2E.
+
+**P0 — supervisor e UI sincronizados:** consentimento contínuo durável, estados do processo visíveis na central do projeto, no-progress/espera/bloqueios honestos, reinício sem replay e histórico consultável. Evoluir a UI **na mesma mudança** da função correspondente.
+
+**P1 — resiliência multipasso/multiagente:** handoff de conversas, watchdog, análise de evolução do filesystem, revisão e integração transacional somente após o GPT→MCP real funcionar. Não criar serviços extras ou worktrees para compensar um conector ainda não homologado.
+
+**P1 — limpeza visual orientada por uso:** auditar os IDs/rotas reais em `desktop/ui.html`, remover duplicações/legados comprovados, testar navegação, foco, feedback, contraste e layout menor, sem trocar a arquitetura do Store por cosmética.
+
+### Estado verificado e pendências, sem confundir testes
+
+- **Código local em evolução:** autorização contínua por projeto, passagem segura entre ciclos, observação de geração longa e gate de seleção MCP. Testes dirigidos dessas políticas passam; a instalação operacional precisa receber o artefato oficial antes da prova física dessa revisão.
+- **Ainda não certificado:** GPT executor do Forge invocando MCP na própria sessão e deixando trilha atribuível, administrador operando independentemente e recuperando conversas ao longo de muitas horas, 24 h sem processo residente, Git worktree/merge multiagente e reformulação visual integral. Não anunciar esses resultados antes do E2E.
+- **Critério de aceite final:** site Doce Grão gerado diretamente pelo GPT com MCP; Forge acompanha arquivos, operações e preview; retoma após erro e reinício; supervisor decide a próxima etapa a partir da evidência; nenhuma publicação pública não solicitada. Falta de chamada GPT→MCP **reprova** mesmo com HTML bonito no chat.
+
 ## Decisão arquitetural definitiva — Forge Windows, projetos e MCP (2026-11-06)
 
 **Este é o plano normativo único do Forge V3.** Substitui as antigas direções
