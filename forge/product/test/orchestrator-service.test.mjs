@@ -805,6 +805,24 @@ test('a complete transport receipt belonging to another Task cannot confirm the 
   assert.equal(f.store.getTask(a.w).status,'ready');
 });
 
+test('ordinary GPT Tasks without a project binding pass provider preflight without SQLite null parameters',async t=>{
+  const f=fixture(t);
+  const task=f.store.createTask('GPT Web — conversa independente de projeto');
+  assert.doesNotThrow(()=>f.service.assertProviderTaskAvailable(task.id));
+  assert.throws(()=>f.service.assertProviderTaskAvailable(task.id,{allowCoordinator:true}),
+    /orchestrator_coordinator_task_required/);
+  // The canonical transaction can create a Run without a project grant;
+  // this does not fabricate an external send or relax a linked project's rules.
+  const begun=f.store.beginProviderRun(task.id,'Orçamento com raciocínio real');
+  assert.match(begun.runId,/^run_[a-f0-9-]{36}$/);
+  assert.equal(f.store.db.prepare('SELECT status FROM runs WHERE id=?')
+    .get(begun.runId).status,'running');
+  assert.equal(f.store.db.prepare('SELECT role FROM messages WHERE id=?')
+    .get(begun.userMessage.id).role,'user');
+  f.store.finishRun(task.id,begun.runId);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
 test('in-flight requests do not run twice; pause and a second work cannot bypass the executor',async t=>{
   let resolve,calls=0;
   const gate=new Promise(r=>resolve=r);
