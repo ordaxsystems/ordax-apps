@@ -173,8 +173,11 @@ ferramentas” NÃO é teste funcional do Forge, mesmo quando a resposta chega.
 Para certificar ferramentas, executar o MCP real na instalação DEV isolada,
 com chamadas HTTP, pasta física, escrita/leitura, SHA-256, recibos no SQLite,
 negações de acesso e continuidade. O executor oficial está em
-`product/scripts/forge-physical-mcp-acceptance.cjs`; respostas do GPT
-sozinhas nunca comprovam operações em arquivos. O chat por API pode ser
+`product/scripts/forge-physical-mcp-acceptance.cjs`; execute com `run <runId>`
+novo e explícito em cada rodada DEV. Use `verify <mesmoRunId>` para conferir
+somente arquivos/recibos após reiniciar, sem repetir operações. Reutilizar
+um `runId` já iniciado falha fechado; requer reconciliação, nunca replay.
+Respostas do GPT sozinhas nunca comprovam operações em arquivos. O chat por API pode ser
 avaliado separadamente com tarefas substantivas e conferência de resultados.
 O artefato é uma prévia local não assinada, sem instalação oficial ou release.
 Uma resposta real exige sua chave e disponibilidade da API Groq; CI não a simula

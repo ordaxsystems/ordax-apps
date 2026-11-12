@@ -9,7 +9,12 @@ const {acquireE2ELock}=require('./e2e-lock.cjs');
 acquireE2ELock('forge-mcp-physical-acceptance');
 if(process.env.ORDAX_FORGE_PHYSICAL_E2E_APPROVED!=='1')
   throw Error('forge_mcp_physical_owner_approval_required');
-const suffix='mcp_full_20261111_v1';
+// Explicit run ID separates a NEW physical round from a replay. A previous
+// request ID is never silently reused after an interrupted effect.
+const mode=process.argv[2],suffix=process.argv[3];
+if(!['run','verify'].includes(mode)||typeof suffix!=='string'||
+  !/^[A-Za-z0-9_-]{8,64}$/.test(suffix))
+  throw Error('usage: forge-physical-mcp-acceptance.cjs run|verify <uniqueRunId>');
 const sha=s=>crypto.createHash('sha256').update(s).digest('hex');
 const reqId=kind=>'physical_'+suffix+'_'+kind;
 const init={jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'forge-physical-tools-acceptance',version:'1'}}};
@@ -41,7 +46,39 @@ async function connect(){
   await waitForLabAppMode(evaluate);
   return {evaluate,close:()=>ws.close()};
 }
+async function verifyPersisted(){
+  labStagedLocalAppData(); // Still requires isolated, explicitly approved profile.
+  const db=new DatabaseSync(labDatabasePath(),{readOnly:true});
+  try{
+    const receipt=kind=>db.prepare('SELECT id,status,result,project_id FROM lab_command_receipts WHERE request_id=?')
+      .get(reqId(kind));
+    const mission=receipt('mission');
+    assert.ok(mission,'run_not_found');
+    const projectId=mission.project_id;
+    const work=receipt('work'),first=receipt('write1'),second=receipt('write2');
+    const rows=[mission,work,first,second];
+    assert.ok(rows.every(Boolean),'run_incomplete_reconcile_before_new_round');
+    for(const row of rows){
+      assert.equal(row.status,'succeeded','run_has_uncertain_or_failed_effect');
+      assert.equal(row.project_id,projectId,'cross_project_receipt');
+    }
+    const folder=db.prepare('SELECT canonical_root FROM forge_local_project_roots WHERE project_id=?')
+      .get(projectId)?.canonical_root;
+    assert.ok(folder,'physical_workspace_not_bound');
+    const physical=path.join(folder,'site','index.html');
+    const content=fs.readFileSync(physical,'utf8');
+    const observed=sha(content),expected=JSON.parse(second.result).sha256;
+    assert.equal(observed,expected,'physical_file_sha_mismatch');
+    assert.equal(JSON.parse(first.result).verified,true);
+    assert.equal(JSON.parse(second.result).verified,true);
+    assert.equal(db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+    console.log(JSON.stringify({mode,runId:suffix,status:'verified_after_restart',
+      projectId,receipts:rows.length,physicalFileVerified:true,sha256:observed,
+      sqliteQuickCheck:'ok',providerMessagesSent:0,externalEffectsRepeated:0}));
+  }finally{db.close();}
+}
 async function main(){
+  if(mode==='verify')return verifyPersisted();
   const profile=labStagedLocalAppData();
   const existing=new DatabaseSync(labDatabasePath(),{readOnly:true});
   try{

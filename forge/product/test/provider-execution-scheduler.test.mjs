@@ -138,3 +138,103 @@ test('host calls the SAME scheduler from UI task sends, Groq supervisor and orch
   assert.match(main,/providerViews\.unbindRun\(runWorker,runId\)/);
   assert.match(main,/lanes:\[\{id:'primary',worker\}\]/);
 });
+
+test('bounded physical lane refuses overflow without dropping or duplicating accepted work',async()=>{
+  const scheduler=createProviderExecutionScheduler({
+    lanes:[lane('physical')],maxQueued:2,maxQueueWaitMs:1000
+  });
+  const hold=deferred(),effects=[];
+  const active=scheduler.enqueue('active',async()=>{effects.push('active');await hold.promise;return 'done';});
+  await tick();
+  const queuedA=scheduler.enqueue('queued_a',()=>{effects.push('a');return 'A';});
+  const queuedB=scheduler.enqueue('queued_b',()=>{effects.push('b');return 'B';});
+  await assert.rejects(scheduler.enqueue('overflow',()=>{effects.push('OVERFLOW');}),
+    /provider_scheduler_queue_full/);
+  assert.equal(scheduler.snapshot().queued,2);
+  assert.equal(scheduler.metrics().rejectedFull,1);
+  assert.equal(scheduler.metrics().peakQueued,2);
+  hold.resolve();
+  assert.equal(await active,'done');
+  assert.equal(await queuedA,'A');
+  assert.equal(await queuedB,'B');
+  assert.deepEqual(effects,['active','a','b']);
+  assert.equal(scheduler.snapshot().pendingTasks,0);
+});
+
+test('waiting deadline rejects pre-send only; active uncertain transport is never timed out or retried',async()=>{
+  const scheduler=createProviderExecutionScheduler({
+    lanes:[lane('physical')],maxQueued:2,maxQueueWaitMs:20
+  });
+  const hold=deferred(),effects=[];
+  const active=scheduler.enqueue('active',async()=>{
+    effects.push('real_send');await hold.promise;return 'observed_after_deadline';
+  });
+  await tick(); // ensure the external effect has actually started.
+  const expired=scheduler.enqueue('waiting',()=>{effects.push('forbidden_send');});
+  await assert.rejects(expired,/provider_scheduler_queue_wait_timeout/);
+  assert.equal(scheduler.metrics().expired,1);
+  assert.equal(scheduler.snapshot().active,1,'an active provider call keeps its lane');
+  assert.equal(scheduler.snapshot().queued,0);
+  hold.resolve();
+  assert.equal(await active,'observed_after_deadline');
+  assert.deepEqual(effects,['real_send']);
+  assert.equal(await scheduler.enqueue('waiting',()=> 'new_owner_approved_request'),'new_owner_approved_request');
+  assert.equal(scheduler.metrics().started,2);
+});
+
+test('cancellation is permitted only before dispatch; an in-flight send remains owned by its Run',async()=>{
+  const scheduler=createProviderExecutionScheduler({
+    lanes:[lane('physical')],maxQueued:2,maxQueueWaitMs:1000
+  });
+  const activeAbort=new AbortController(),queuedAbort=new AbortController(),hold=deferred();
+  const effects=[];
+  const active=scheduler.enqueue('active',async()=>{
+    effects.push('provider_called');await hold.promise;return 'real_result';
+  },{signal:activeAbort.signal});
+  await tick();
+  const cancelled=scheduler.enqueue('cancelled',()=>{
+    effects.push('cancelled_provider_called');
+  },{signal:queuedAbort.signal});
+  queuedAbort.abort();
+  await assert.rejects(cancelled,/provider_scheduler_queued_cancelled/);
+  activeAbort.abort(); // No ambiguity: active operations cannot be cancelled here.
+  hold.resolve('released');
+  assert.equal(await active,'real_result');
+  assert.deepEqual(effects,['provider_called']);
+  assert.equal(scheduler.metrics().cancelled,1);
+  assert.equal(scheduler.snapshot().pendingTasks,0);
+  const preAborted=new AbortController();preAborted.abort();
+  await assert.rejects(scheduler.enqueue('pre_aborted',()=>{}, {signal:preAborted.signal}),
+    /provider_scheduler_queued_cancelled/);
+  assert.equal(scheduler.metrics().cancelled,2);
+});
+
+test('shutdown rejects all queued callers and clears deadlines; never cancels active external effects',async()=>{
+  const scheduler=createProviderExecutionScheduler({
+    lanes:[lane('physical')],maxQueued:3,maxQueueWaitMs:25
+  });
+  const hold=deferred(),active=scheduler.enqueue('active',()=>hold.promise);
+  await tick();
+  const a=scheduler.enqueue('a',()=>{throw Error('unexpected_a');});
+  const b=scheduler.enqueue('b',()=>{throw Error('unexpected_b');});
+  assert.equal(scheduler.close(),2);
+  await assert.rejects(a,/provider_scheduler_closed/);
+  await assert.rejects(b,/provider_scheduler_closed/);
+  await new Promise(r=>setTimeout(r,40));
+  assert.equal(scheduler.metrics().expired,0);
+  hold.resolve('receipt');
+  assert.equal(await active,'receipt');
+  assert.equal(scheduler.snapshot().pendingTasks,0);
+});
+
+test('scheduler rejects invalid bounds and never reports unbounded default capacity',()=>{
+  for(const opts of [{maxQueued:0},{maxQueued:5000},{maxQueueWaitMs:0},
+    {maxQueueWaitMs:60*60_000+1},{clock:null}]){
+    assert.throws(()=>createProviderExecutionScheduler({lanes:[lane('one')],...opts}),
+      /provider_scheduler_bounds_invalid/);
+  }
+  const scheduler=createProviderExecutionScheduler({lanes:[lane('one')]});
+  assert.equal(scheduler.metrics().maxQueued,64);
+  assert.equal(scheduler.metrics().maxQueueWaitMs,10*60_000);
+  scheduler.close();
+});
