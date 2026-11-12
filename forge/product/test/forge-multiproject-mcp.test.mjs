@@ -186,7 +186,8 @@ test('independent project grants survive elapsed time but never survive revocati
 });
 
 test('one app MCP token discovers projects and writes only verified owner folders',async t=>{
-  const root=fs.mkdtempSync(path.join(os.tmpdir(),'forge-app-global-mcp-'));
+  // Production rejects reparse roots; test fixtures must use a physical root.
+  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'forge-app-global-mcp-')));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true,maxRetries:5,retryDelay:75}));
   const store=new Store(':memory:');t.after(()=>store.close());
   const context={actorId:'owner',clientId:'desktop',workspaceSessionId:store.getWorkspaceSession().id};
