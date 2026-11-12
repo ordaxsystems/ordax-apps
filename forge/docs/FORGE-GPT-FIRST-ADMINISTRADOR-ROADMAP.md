@@ -1,7 +1,7 @@
 # Forge GPT-first — execução canônica e Administrador de Projeto
 
 Status: **implementação local Windows**, não integrada ao remoto. Owner único: `ordaxsystems/ordax-apps`, `forge`.
-Atualizado: 2026-11-06. **Precedência para direção Forge V3: este plano único > documentos históricos anteriores.** Para afirmações de entrega, código + testes + prova física prevalecem. `ORCHESTRATOR-CANONICAL-PRODUCT.md` permanece apenas como registro histórico do desenho de 01/11.
+Atualizado: 2026-11-11. **Precedência para direção Forge V3: este plano único > documentos históricos anteriores.** Para afirmações de entrega, código + testes + prova física prevalecem. `ORCHESTRATOR-CANONICAL-PRODUCT.md` permanece apenas como registro histórico do desenho de 01/11.
 
 ## Decisão arquitetural definitiva — Forge Windows, projetos e MCP (2026-11-06)
 
@@ -49,23 +49,33 @@ históricos, não instruções de implementação. A realidade de cada funcional
   Binários, grandes arquivos, terminal, Git e testes reais requerem
   capacidades tipadas próprias, não acesso shell genérico improvisado.
 
+### Prioridade de integração no desenvolvimento (2026-11-08)
+
+- **Primeiro, OrdaX MCP já conectado:** operar e homologar o Forge Windows por `computer.windows`, terminal, arquivos e ações físicas autorizadas do OrdaX MCP, em perfil DEV isolado; não pedir ao usuário IDs, caminhos ou comandos já disponíveis pelas ferramentas.
+- **Forge MCP próprio depois:** o servidor local que já existe permanece no código e nos testes, mas não criar nem registrar agora outro plugin ou túnel externo do ChatGPT. Só conectar o Forge como plugin independente depois do ciclo E2E real de projeto, GPT, arquivos, recibos, memória e retomada.
+- **Não confundir autoridades:** OrdaX MCP acessa o computador; o Forge mantém seu SQLite e os grants dos projetos. O controle via OrdaX não concede acesso arbitrário ao MCP interno do Forge e não comprova uma chamada GPT→Forge MCP remoto.
+
 ### Produto e interfaces
 
 - **Um aplicativo Forge e um Runtime de arquivos interno:** reutilizar o
   broker, o serviço e as políticas presentes. O OrdaX Runtime permanece
   separado e **opcional** para controlar outros dispositivos/sistema.
-- **Um MCP Forge multiprojeto:** um único listener `127.0.0.1` com até
-  oito projetos autorizados por ações Owner independentes, tokens efêmeros
-  exclusivos por projeto e sessões MCP ligadas à identidade do token. Cada
-  concessão permanece ativa até revogação explícita ou fechamento do Forge;
-  revogação encerra apenas sessões do projeto revogado. `status` não revela
-  tokens. A ponte HTTPS remota com consentimento ainda está pendente.
-  Não criar processos MCP nem URLs separados para cada projeto.
+- **Um MCP do aplicativo Forge (decisão 11/11/2026):** um único listener
+  `127.0.0.1`, uma aprovação nativa Owner e um token temporário de escopo
+  `forge_app`. A conexão não é escolhida nem autorizada por projeto.
+  `projects_list` descobre projetos no SQLite canônico; todas as demais
+  ferramentas recebem o `projectId` explícito quando necessário. As operações
+  de arquivo permanecem limitadas a pastas físicas vinculadas e verificadas
+  pelo mesmo broker, sem acesso geral ao Windows. Novos projetos não criam
+  túnel, token ou plugin adicional. O escopo do aplicativo não concede novos
+  tipos de ferramenta; operações destrutivas e envio recursivo ao GPT continuam
+  ausentes do MCP. `status` nunca divulga tokens. O túnel externo continua
+  opt-in, não comprovado sem uma chamada GPT→MCP real.
   **Recuperação de sessões ociosas implementada (07/11/2026):** no máximo
   64 sessões HTTP MCP ativas; se um cliente abandonar sua sessão sem
   `DELETE`, o Forge recupera apenas sessões com mais de uma hora sem
   atividade **quando uma nova sessão solicita vaga**. Sessões utilizadas
-  recentemente não são eliminadas e a autorização Owner/token do projeto
+  recentemente não são eliminadas e a autorização Owner/token do aplicativo
   NÃO recebe prazo. Uma sessão abandonada retorna 404 e o cliente pode
   inicializar outra com o token ainda autorizado. Regressão comprovou
   capacidade cheia (409), recuperação de órfãs, preservação da sessão viva
@@ -76,43 +86,42 @@ históricos, não instruções de implementação. A realidade de cada funcional
   abertas; handshakes MCP paralelos reservam vaga antes da execução assíncrona.
   Esses limites não restringem projetos, tarefas, histórico ou conversas
   persistidos no SQLite.
-  **Escopo do bearer fixado (07/11/2026):** cada token MCP registra uma
-  impressão da pasta verificada do projeto no momento da concessão. A
-  validação é feita em todas as solicitações e consultas de grant: uma
-  mudança de pasta invalida o token e sua sessão anterior mesmo se o Owner
-  aprovar a nova pasta depois. A aprovação renovada cria um token novo;
-  o grant de outro projeto no mesmo listener permanece utilizável. Teste
-  direcionado com dois projetos prova a não reanimação do bearer antigo,
-  ausência de acesso cruzado e recuperação apenas por novo consentimento.
-  **Continuidade atual:** a confiança autorizada pelo Owner é registrada
-  por projeto na tabela `forge_mcp_owner_approvals` do SQLite existente,
-  sem guardar segredos. Na próxima ativação do mesmo projeto, o Forge
-  reconhece essa confiança sem repetir o diálogo; revogar remove o registro
-  e invalida seu acesso. Os tokens MCP continuam exclusivos e SOMENTE em
-  memória, sem expiração de 30 minutos: duram até revogar, desativar ou
-  encerrar o processo. Desativar todos fecha a porta, mas conserva as
-  aprovações para futura reativação. Cada aprovação guarda um hash SHA-256
-  da identidade do workspace, não seu caminho ou credencial: mudar a pasta
-  verificada invalida a confiança anterior e exige nova aprovação Owner.
-  **Reconexão segura opcional homologada em Electron Windows isolado (`31076`):**
-  o Owner pode habilitar por projeto **Manter conectado após reinício** via
-  confirmação nativa. Electron `safeStorage`/DPAPI cifra o bearer no SQLite
-  canônico `forge_mcp_secure_resume` e grava a porta loopback; o servidor
-  pode reabrir na mesma porta e com a credencial cifrada após reiniciar o
-  Forge. Não há segundo instalador/servidor MCP: permanece um listener dentro
-  do app. O modo é **desligado por padrão**, exige consentimento explícito,
-  proteção Windows disponível, identidade verificada da pasta e mesma sessão
-  Owner. Porta ocupada, cifra inválida e troca de pasta causam bloqueio
-  fail-closed. **Desativar todos** também desativa a reconexão no próximo
-  boot. Revogar confiança exclui as credenciais cifradas em cascata.
-  Sem opt-in, a autorização persiste mas o token continua somente em RAM.
-  Mesmo com o modo opcional, a instalação/configuração física de um cliente
-  MCP que reutilize o endereço/credencial ainda precisa de E2E.
+  **Escopo canônico do bearer:** o token único pertence ao aplicativo e
+  está ligado à identidade do perfil Forge e à sessão Owner, não a um projeto
+  selecionado. Um projeto só permite operações de arquivo quando seu vínculo
+  físico permanece válido; trocar ou remover a pasta bloqueia o acesso a ela
+  sem criar nem rotacionar credenciais MCP adicionais. A revogação Owner do
+  aplicativo bloqueia todos os projetos e encerra o listener; sessões MCP
+  não são transferíveis entre diferentes bearers.
+  **Continuidade atual do aplicativo:** a aprovação única é persistida
+  na tabela `forge_mcp_app_owner_approval` do SQLite canônico, contendo
+  apenas sessão, hash de identidade do perfil e horário. Não contém bearer.
+  Aprovações antigas de projetos não são elevadas automaticamente a uma
+  autorização global. O token atual permanece em memória e é desativado
+  ao fechar o Forge, salvo opt-in explícito de reconexão cifrada. Desativar
+  fecha a porta; revogar também elimina a confiança do aplicativo.
+  **Reconexão segura opcional do aplicativo:** o Owner pode habilitar
+  **Manter conectado após reinício** para o Forge inteiro, com confirmação
+  nativa. Electron `safeStorage`/DPAPI cifra o único bearer na tabela
+  `forge_mcp_app_secure_resume` do mesmo SQLite e registra a porta loopback.
+  O modo é desligado por padrão. Reinício só restaura o acesso se a confiança
+  global, o perfil e a cifra permanecerem válidos; se a porta estiver ocupada,
+  a conexão falha fechada. Desativar o MCP também desativa a reconexão;
+  revogar o aplicativo elimina o registro cifrado em cascata. A restauração
+  local não inicia o túnel externo do ChatGPT.
   **Transporte com GPT Web:** priorizar o Secure MCP Tunnel oficial da OpenAI
   em vez de expor uma URL HTTPS pública; requer tunnel_id, runtime key, app
   de conexão autorizado e validação real de permissões do plano/workspace.
+  **Padrão de plugin ChatGPT:** criar uma conexão MCP personalizada chamada
+  `OrdaX Forge` em Plugins, usando Tunnel e o `tunnel_id` autorizado (ou um
+  endpoint HTTPS válido), com consentimento do Owner e ferramentas descobertas
+  via `tools/list`, descrições, schemas e ações de escrita explícitas. O
+  Forge não pode registrar sozinho a conexão na conta ChatGPT; nem a presença
+  do cliente local nem um processo do túnel provam instalação, autenticação
+  ou chamadas reais ao plugin. Não apresentar a conexão como pronta antes
+  de uma execução GPT→MCP→recibo comprovada.
   **Preparação oficial implementada (`forge-mcp-official-tunnel.mjs`):**
-  valida túnel, projeto e endpoint estritamente em `127.0.0.1`; gera apenas
+  valida túnel, escopo do aplicativo e endpoint estritamente em `127.0.0.1`; gera apenas
   argumentos documentados para o `tunnel-client` oficial, com referências
   `env:` para Authorization em chamadas e em descoberta, incluindo porta
   de saúde efêmera. Usa a sintaxe real do CLI `--mcp.server-url=url=http://127.0.0.1:<porta>/mcp`, não uma URL nua. Nunca inclui API key ou bearer no argv e rejeita
@@ -141,14 +150,14 @@ históricos, não instruções de implementação. A realidade de cada funcional
   `forge-mcp-official-tunnel-session.mjs` cria no máximo um processo auxiliar
   `tunnel-client` após confirmação Owner; a UI Conexões recebe `tunnel_id`
   e chave restrita localmente, limpa a chave ao enviar e não a persiste.
-  O Main só entrega ao cliente o bearer do projeto já autorizado e a
-  localização do executável verificado. Revogar o projeto, migrar sua pasta,
-  desativar MCP ou fechar o Forge encerra o cliente, sem manter túnel
-  autônomo fora do aplicativo. O controlador aguarda a saída física do
-  processo anterior antes de permitir outra inicialização (sem túnel duplo);
+  O Main só entrega ao cliente o bearer único do aplicativo Forge autorizado
+  e a localização do executável verificado. Revogar o Forge, desativar MCP
+  ou fechar o aplicativo encerra o cliente, sem manter túnel autônomo.
+  O controlador aguarda a saída física do processo anterior antes de
+  permitir outra inicialização (sem túnel duplo);
   cancelamento durante o startup permanece bloqueado até `exit`.
-  Vincular/criar uma pasta de projeto também encerra o túnel daquele projeto
-  antes de alterar a identidade do workspace.
+  Mudar uma pasta de projeto não recria nem amplia o túnel. O broker verifica
+  a identidade física dessa pasta em cada acesso e bloqueia escopos inválidos.
   **Prova do CLI real no Windows:** `tunnel-client v0.0.20 run` recebeu
   `--mcp.server-url=url=http://127.0.0.1:65000/mcp` e os headers por
   referências `env:` e terminou com falta de `CONTROL_PLANE_API_KEY` (esperado,
@@ -184,11 +193,11 @@ históricos, não instruções de implementação. A realidade de cada funcional
   ou parâmetros de linha de comando.
   Fontes: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
   e https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt.
-- **Autodescoberta:** `orchestrator_forge_discover`, recursos MCP
-  `forge://app/guide` e `forge://project/current` anunciam regras,
-  capacidades, pasta vinculada (sem vazar o caminho físico), memória, limites
-  e provas disponíveis. O GPT recebe o projeto ativo pela sessão, sem
-  comando técnico ou prompt escrito pelo usuário.
+- **Autodescoberta do Forge aplicativo:** `projects_list` apresenta os
+  projetos disponíveis, `forge://app/guide` anuncia as regras e cada
+  operação específica exige um `projectId` válido. As respostas do broker
+  revelam provas/hashes autorizados, não caminhos físicos arbitrários. Não
+  existe um projeto selecionado como identidade da conexão MCP.
 - **Fluxo GPT-first:** usuário solicita o resultado em linguagem natural;
   Forjador organiza o projeto; GPT produz trabalho; ferramentas MCP/Runtime
   executam somente no workspace autorizado; Forge verifica bytes/recibos.
@@ -270,9 +279,9 @@ preservados na exclusão, e nenhuma alegação de efeito sem prova independente.
 
 1. **GPT-first na conversa Forjador — IMPLEMENTADO NO CÓDIGO WINDOWS; PROVA GPT WEB REAL PENDENTE:** nova operação canônica de envio ao GPT no chat do Forjador, reaproveitando Task/Run/ledger e proteção contra envio incerto. Manter a rota Groq antiga apenas para análises avançadas e compatibilidade; não chamar Groq no chat comum. Testar ausência de chamadas Groq e resposta GPT gravada uma só vez.
 2. **Memória factual e contexto de projeto — LEITURA MCP IMPLEMENTADA; CICLO ADMINISTRADOR PENDENTE:** leitura escopada do histórico, de trabalho, verificações e pendências. Não varrer disco nem criar tabela paralela de fatos; registrar a projeção como ferramenta de leitura MCP, com limites claros daquilo que foi comprovado.
-3. **Memória inteligente e Administrador — PROTOCOLO LOCAL IMPLEMENTADO, AGENTE AINDA NÃO ATIVO:** `orchestrator_project_administrator_snapshot` compõe leitura bounded de frentes, Runs, comandos não resolvidos e memória do SQLite canônico; `orchestrator_project_memory_propose` registra sugestões do GPT com `sourceMessageId` e citação literal de uma mensagem `assistant` persistida no projeto. Permanece `pending` para o review já existente; **sem aprovação automática, sem escrita de arquivos e sem chamada de modelo**. Próximas ações: ligar uma conversa GPT Administrador quando houver demanda/evento real e expor inspeção na aba Execução, sem criar serviço, banco ou agente concorrente.
-4. **Workspace real por projeto e MCP Forge — CÓDIGO WINDOWS IMPLEMENTADO, E2E FÍSICO PENDENTE:** novo projeto recebe pasta `Documentos/Forge/<nome>` através do IPC nativo. Projetos existentes podem vincular uma pasta pelo seletor Windows. `forge_local_project_roots` guarda o vínculo único no SQLite atual; o broker de arquivos usa esta raiz e impede escrita em pasta privada antiga não vinculada. Caminhos relativos, SHA-256, recibos e releitura continuam obrigatórios. O transporte MCP HTTP segue local e limitado a um projeto por ativação, com token efêmero e consentimento. Multiplexação e ponte GPT Web remota permanecem pendentes.
-5. **Handoff e múltiplas sessões GPT — CONTEXTO INICIAL LOCAL INTEGRADO:** `orchestrator_project_handoff` oferece um pacote limitado de leitura MCP; em novas conversas de trabalho, `forgeFreshConversationContext` injeta uma introdução curta com decisões editoriais aceitas do mesmo projeto no primeiro envio GPT, sem Groq e sem segunda base de dados. Conversas existentes continuam usando o handoff de Task, anexos e rotação já implementados. Ainda faltam prova real da transferência entre sessões no Windows e conexão do broker MCP ao GPT Web.
+3. **Memória inteligente e Administrador — PROTOCOLO LOCAL IMPLEMENTADO, AGENTE AINDA NÃO ATIVO:** `forge_project_administrator_snapshot` compõe leitura bounded de frentes, Runs, comandos não resolvidos e memória do SQLite canônico; `forge_project_memory_propose` registra sugestões do GPT com `sourceMessageId` e citação literal de uma mensagem `assistant` persistida no projeto. Permanece `pending` para o review já existente; **sem aprovação automática, sem escrita de arquivos e sem chamada de modelo**. Próximas ações: ligar uma conversa GPT Administrador quando houver demanda/evento real e expor inspeção na aba Execução, sem criar serviço, banco ou agente concorrente.
+4. **Workspace real por projeto e MCP Forge — MCP MULTIPROJETO VALIDADO EM DEV; GPT WEB PENDENTE:** novo projeto recebe pasta `Documentos/Forge/<nome>` através do IPC nativo. Projetos existentes podem vincular uma pasta pelo seletor Windows. `forge_local_project_roots` guarda o vínculo único no SQLite atual; o broker de arquivos usa esta raiz e impede escrita em pasta privada antiga não vinculada. Caminhos relativos, SHA-256, recibos e releitura continuam obrigatórios. O MCP HTTP mantém um único listener local multiprojeto, com tokens e sessões isolados, consentimento e revogação do Owner. A conexão remota como plugin do ChatGPT ainda exige túnel seguro e autorização no workspace; uma chamada GPT real ao Forge permanece pendente.
+5. **Handoff e múltiplas sessões GPT — CONTEXTO INICIAL LOCAL INTEGRADO:** `forge_project_handoff` oferece um pacote limitado de leitura MCP; em novas conversas de trabalho, `forgeFreshConversationContext` injeta uma introdução curta com decisões editoriais aceitas do mesmo projeto no primeiro envio GPT, sem Groq e sem segunda base de dados. Conversas existentes continuam usando o handoff de Task, anexos e rotação já implementados. Ainda faltam prova real da transferência entre sessões no Windows e conexão do broker MCP ao GPT Web.
 6. **Homologação física e integração remota:** verificar no Windows conversas comuns, criação/continuidade de site, memória, resumo e arquivos; atualizar uma única instalação com pacote oficial validado; depois reconciliar a PR existente e integrar com gates verdes. Não publicar ou fazer push nesta fase local sem solicitação posterior.
 
 ## Critérios de aceite para cada fase
@@ -286,15 +295,19 @@ preservados na exclusão, e nenhuma alegação de efeito sem prova independente.
 
 - [x] Plano canônico criado no checkout Windows.
 - [x] Rota principal Forjador → GPT implementada com recibos, sem chamada Groq no envio normal (69/69 contratos direcionados aprovados). A operação de envio é **exclusiva da UI confiável**, não é ferramenta MCP para evitar loops GPT→GPT. **Ainda falta envio real físico com sessão GPT autenticada.**
-- [x] Memória factual consultável via `orchestrator_project_memory`, agregando `project_memory_items`, `project_memory_candidates` e Runs do Store existente sem outra tabela/DB. Itens e respostas permanecem com `verifiedExternalEffect:false` se não houver comprovação independente. **Não equivale a um Administrador GPT ativo.**
-- [x] Protocolo MCP do Administrador: leitura consolidada `orchestrator_project_administrator_snapshot` e notas propostas `orchestrator_project_memory_propose`, com fonte local verificável, isolamento entre projetos, revisão humana e sem elevar resposta textual a execução comprovada. Testes direcionados aprovados.
-- [x] Pacote read-only de handoff `orchestrator_project_handoff` consultável no MCP, com isolamento de projeto, fronteiras de evidência e proteção contra replay.
+- [x] Memória factual consultável via `forge_project_memory`, agregando `project_memory_items`, `project_memory_candidates` e Runs do Store existente sem outra tabela/DB. Itens e respostas permanecem com `verifiedExternalEffect:false` se não houver comprovação independente. **Não equivale a um Administrador GPT ativo.**
+- [x] Protocolo MCP do Administrador: leitura consolidada `forge_project_administrator_snapshot` e notas propostas `forge_project_memory_propose`, com fonte local verificável, isolamento entre projetos, revisão humana e sem elevar resposta textual a execução comprovada. Testes direcionados aprovados.
+- [x] Pacote read-only de handoff `forge_project_handoff` consultável no MCP, com isolamento de projeto, fronteiras de evidência e proteção contra replay.
 - [x] Contexto inicial de cada nova conversa GPT ligado ao SQLite do projeto; injeta apenas notas aceitas com origem, tamanho limitado e sem reenviar mensagem/modelo. Testes de escopo entre projetos aprovados. **Ainda não é homologação física da nova sessão.**
 - [ ] Ativação e ciclo GPT Administrador sob demanda, com transição real entre conversas e leitura do workspace real. **Não alegar que o Administrador já está rodando.**
 - [x] Broker UTF-8 app-private conectado ao catálogo MCP no Windows: projeto isolado, caminhos relativos, SHA-256 na substituição e releitura física com recibos SQLite. Sem grants de pasta externa.
-- [x] Endpoint MCP HTTP local por projeto, desligado por padrão, token aleatório não persistido, `127.0.0.1` apenas, autorização por sessão do aplicativo (sem prazo fixo), autenticação, escopo explícito e sem operações destrutivas. Configuração de ativar/desativar adicionada ao Electron; testes direcionados Windows aprovados (79/79).
-- [x] Descoberta MCP declarativa do aplicativo (`orchestrator_forge_discover`), recursos `forge://app/guide` e `forge://project/current`, regras canônicas compartilhadas com o contexto do projeto, projeção de capacidades do SQLite e broker privado, e binding automático do `projectId` na sessão autorizada. O cliente consulta o contrato sem exigir comandos, caminhos ou prompts técnicos do usuário; não presume pastas externas, deploy, grants ou resultados não comprovados.
-- [x] Binding físico de workspace Windows por projeto no mesmo Store/SQLite: `Documentos/Forge` pelo Windows para novos projetos, seletor nativo para projetos existentes, isolamento entre projetos/raiz, bloqueio de sobreposição, leitura apenas para pasta privada antiga e não remoção de arquivos do usuário ao excluir metadados. **Aceites físicos da interface e instalação ainda pendentes.**
+- [x] Endpoint MCP HTTP local multiprojeto, desligado por padrão, token aleatório não persistido, `127.0.0.1` apenas, autorização por sessão do aplicativo (sem prazo fixo), autenticação, escopo explícito e sem operações destrutivas. Configuração de ativar/desativar adicionada ao Electron; testes direcionados Windows aprovados (79/79).
+- [x] Descoberta MCP declarativa do aplicativo (`forge_discover`), recursos `forge://app/guide` e `forge://project/current`, regras canônicas compartilhadas com o contexto do projeto, projeção de capacidades do SQLite e broker privado, e binding automático do `projectId` na sessão autorizada. O cliente consulta o contrato sem exigir comandos, caminhos ou prompts técnicos do usuário; não presume pastas externas, deploy, grants ou resultados não comprovados.
+- [x] Binding físico de workspace Windows por projeto no mesmo Store/SQLite: `Documentos/Forge` pelo Windows para novos projetos, seletor nativo para projetos existentes, isolamento entre projetos/raiz, bloqueio de sobreposição, leitura apenas para pasta privada antiga e não remoção de arquivos do usuário ao excluir metadados. **Criação física via IPC nativo aprovada no Electron DEV isolado em 08/11; ainda faltam homologação do seletor externo e atualização da instalação operacional.**
 - [x] Migração explícita de diretório privado antigo no mesmo volume via botão nativo, sem cópia duplicada: verificação de árvore e SHA-256, bloqueio com Run/observação ativa, isolamento do projeto, preservação dos demais diretórios e rollback em falha. Cross-volume não suportado nesta etapa; não prometer movimento automático entre discos.
-- [ ] Conexão remota segura entre GPT Web e Forge, multiplexação de projetos no MCP e prova física da ferramenta invocada pelo GPT real. O endpoint de loopback sozinho não alcança o GPT na nuvem.
+- [x] Um MCP HTTP multiprojeto no Windows com tokens/sessões independentes; catálogo real alinhado às instruções e consultas de Tasks/mensagens autorizadas, verificado via HTTP e OrdaX MCP em perfil de teste.
+- [x] **E2E físico de site em 08/11/2026, somente DEV isolado:** projeto `project_a6ae4ca0-a62a-428e-9005-37b68cda3562`, pasta Windows real `Vereda-Cafe-E2E-51982d1` em `candidate-userdata-.../OrdaX/staged-documents/Forge`, tarefa real, consentimento nativo clicado pelo OrdaX MCP, `initialize`/`tools/list`/`forge_discover`/`forge_work_list`, `forge_project_file_write` via HTTP, recibos persistidos e `readback` SHA-256. Corrigido menu móvel com edição condicionada ao SHA anterior: `index.html` na revisão do menu de 8.354 bytes, SHA-256 `7cd6b641bedee222eab574cd31fd9ff957b0429a3b48a7c3744b610e70c1f224`; leitura e SQLite `quick_check=ok` **após segundo encerramento forçado e reinício**. Edge Chromium comprovou render desktop 1365 px e viewport mobile emulado 390 px sem overflow, navegação/menu e rótulo ARIA após seleção. Execuções reproduzíveis, com aprovação explícita e guardas de perfil, em `scripts/forge-physical-site-acceptance.cjs` e `scripts/forge-site-browser-qa.cjs`.
+- [x] **Preview local atualizado fisicamente via MCP em 08/11/2026:** aba Preview na coluna direita renderiza `index.html` verificado do projeto sem anexá-lo artificialmente a mensagens GPT. Alteração real pelo MCP com a aba aberta foi observada automaticamente no iframe visual isolado, sem trocar de projeto ou aba; o botão Atualizar também foi validado. Quarta operação SQLite `succeeded`, revisão de 8.359 bytes, SHA-256 `e231383e88e762052bdc4cf07d79063ba2f7a117c1a33a3591d5586a2ea9c1ce`, leitura e `quick_check=ok`, listener local revogado. Um callback sem segredos notifica somente alterações autorizadas de `index.html`; escopo, revogação e proteção de conteúdo inválido continuam fail-closed. 77/77 testes direcionados aprovados. **Prévia visual não executa JavaScript e não é prova de geração GPT.**
+- [ ] **Fronteira de IA ainda não homologada:** no perfil DEV, ChatGPT `authState=unknown`, apesar de compositor visível, e `coordinatorAvailable=false` (Groq opcional não configurada). `forge_project_administrator_snapshot` e memória são consultas factuais reais, mas **não são análise semântica GPT/Groq nem resposta entregue**. Não alegar GPT autor do HTML ou execução automática do Forjador; o conteúdo foi criado por este GPT e gravado via MCP autorizado.
+- [ ] Conexão remota segura entre GPT Web e Forge como plugin e prova física da ferramenta invocada pelo GPT real. O endpoint de loopback sozinho não alcança o GPT na nuvem.
 - [ ] Prova física ponta a ponta, atualização do pacote e merge remoto. Alterações da etapa Administrador permanecem **apenas no checkout Windows**, sem push.

@@ -172,6 +172,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   let lastPresentedMissionStatusKey=null;
   let coordinatorOpen=false,coordinatorAvailable=false,orchestratorChatAvailable=false,coordinatorDraftCommitAvailable=false;
   let gptWebTransportAvailable=false;
+  let observedGptHealth=null;
   let chatgptPlanStatus={connected:false,planUsageAuthorized:false,secureStorageAvailable:false};
   let groqConfigured=false,coordinatorProvider=null;
   let analysisBusy=false,preflightBusy=false,preflightGeneration=0,repositoryBusy=false,observationBusy=false,repositoryPortAvailable=false,coordinatorSubmitting=false,quickProjectCreating=false,nodeHost=false;
@@ -203,6 +204,21 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       ?'Runtime · porta detectada, grant não verificado':'Runtime · sem porta autenticada no Forge',
       workspacePortAvailable?'partial':'blocked');
     set('capabilityContinuity','24 h · supervisor ausente','blocked');
+  }
+  function syncForjadorSessionAvailability(){
+    // Reuse the SAME fail-closed GPT readiness policy as the work composer.
+    // A visible textbox or worker process does not prove a login session.
+    const available=providerComposeAvailability(observedGptHealth,{hostMode:nodeHost});
+    orchestratorChatAvailable=gptWebTransportAvailable&&available.allowed===true;
+    const loginHint=['login_required','authenticating','unverified'].includes(available.reason)
+      ?' Abra a aba GPT Web e conclua o login.':'';
+    $('orchestrationConnection').textContent=!gptWebTransportAvailable
+      ?'GPT Web indisponível. Confira o navegador na aba GPT Web.'
+      :orchestratorChatAvailable
+        ?'Sessão GPT observada. O envio ainda será verificado pelo executor.'
+        :(COMPOSE_STATUS_MESSAGES[available.reason]||COMPOSE_STATUS_MESSAGES.unverified)+loginHint;
+    if($('coordinatorTransport'))$('coordinatorTransport').hidden=orchestratorChatAvailable;
+    syncCoordinatorActions();
   }
   function syncCoordinatorActions() {
     const selected=orchestrators.find(item=>item.id===orchestratorId);
@@ -881,7 +897,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     gptWebTransportAvailable=engineStatus.providerExecutionAvailable===true&&!nodeHost;
     // GPT-first: the same canonical Forjador Task is now served by GPT Web.
     // Groq is optional for the advanced analyst, not the normal chat.
-    orchestratorChatAvailable=gptWebTransportAvailable;
     coordinatorDraftCommitAvailable=engineStatus.coordinatorDraftCommitAvailable===true;
     if(!coordinatorDraftCommitAvailable)setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
     else if($('coordinatorDraftState').textContent.includes('backend anterior'))
@@ -892,12 +907,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('coordinatorPrompt').placeholder='Descreva o que você quer criar ou mudar…';
     $('coordinatorSend').textContent='Enviar';
     $('coordinatorSend').setAttribute('aria-label','Enviar mensagem');
-    $('orchestrationConnection').textContent=orchestratorChatAvailable
-      ?'GPT Web disponível. O envio exige uma sessão autenticada.'
-      :'GPT Web indisponível. Verifique a sessão em Ajustes.';
-    if($('coordinatorTransport'))$('coordinatorTransport').hidden=orchestratorChatAvailable;
     syncCapabilitySummary();
-    syncCoordinatorActions();
+    syncForjadorSessionAvailability();
   }
   $('coordinatorApiSettings').addEventListener('click',()=>onOpenAppSettings?.('providers'));
   function openNewProjectForm(){
@@ -2065,6 +2076,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         refreshRequested=true;
         if(!refreshPending)void refreshAfterChange();
       });},
+    setProviderHealth:health=>{
+      observedGptHealth=health&&typeof health==='object'?health:null;
+      syncForjadorSessionAvailability();
+    },
     createWork,reviewGptRun,getRunReviewStatus,hasProject:()=>Boolean(projectId),hasOrchestrator:()=>Boolean(chatTaskId),
     getProjectId:()=>projectId,
     getOrchestratorId:()=>orchestratorId,

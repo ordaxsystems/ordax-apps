@@ -22,8 +22,9 @@ function start() {
       pkg.build?.productName !== lock.targetIdentity.productName ||
       pkg.build?.win?.executableName !== lock.targetIdentity.productName ||
       owned.source?.commit !== lock.commit ||
-      owned.source?.repository !== lock.repository ||
-      owned.product?.appId !== lock.targetIdentity.appId) {
+      owned.source?.repository !== lock.repository) {
+    // OWNED-SOURCE.product records the immutable imported app identity.
+    // The launcher's current identity is asserted through pkg.build above.
     throw Error('owned_product_contract_mismatch');
   }
 

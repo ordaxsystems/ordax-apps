@@ -9,7 +9,7 @@ const UI_ONLY_OPERATIONS=new Set(['forjador_send']);
 // context on EVERY call. This module opens no port, reads no database and owns
 // no authentication. Platform/Runtime must bind the remote transport/grants.
 export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2',
-  allowedOperations=null,allowedProjectId=null}={}) {
+  allowedOperations=null,allowedProjectId=null,authorizeFileRead=null}={}) {
   if(typeof service?.invoke!=='function'||typeof getContext!=='function')
     throw Error('orchestrator_mcp_ports_required');
   if(allowedOperations!==null&&(!Array.isArray(allowedOperations)||
@@ -17,6 +17,8 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
     throw Error('orchestrator_mcp_scope_invalid');
   if(allowedProjectId!==null&&(typeof allowedProjectId!=='string'||!allowedProjectId))
     throw Error('orchestrator_mcp_scope_invalid');
+  if(authorizeFileRead!==null&&typeof authorizeFileRead!=='function')
+    throw Error('orchestrator_mcp_file_guard_invalid');
   const allow=allowedOperations===null?null:new Set(allowedOperations);
   const scoped=allowedProjectId!==null;
   const resources=Object.freeze([
@@ -111,6 +113,13 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
             return error(id,-32602,'Project scope rejected');
           const args=scoped?{...supplied,projectId:allowedProjectId}:supplied;
           try {
+            // Use Forge's canonical verified workspace status. A broad app
+            // MCP grant must not expose legacy private files to an external
+            // client merely because the native UI can read them for migration.
+            if(authorizeFileRead!==null&&
+               ['project_file_read','project_files_list'].includes(tool.operation)&&
+               authorizeFileRead(args.projectId)!==true)
+              throw Error('forge_mcp_file_workspace_not_authorized');
             const output=await service.invoke(context,tool.operation,args);
             return result(id,{content:[{type:'text',text:JSON.stringify(output)}],structuredContent:output});
           } catch {

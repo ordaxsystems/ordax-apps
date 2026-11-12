@@ -43,6 +43,19 @@ test('official tunnel launcher is outbound-only, project scoped and leaks no sec
   assert.equal(s.publicStatus.projectId,id);
 });
 
+test('health URL file is private process configuration, never remote readiness proof',()=>{
+  const healthUrlFile='C:\\Users\\tester\\AppData\\Local\\Temp\\forge-unique\\health.url';
+  const result=makeForgeOfficialTunnelLaunch({...input(),healthUrlFile});
+  assert.equal(result.args.at(-1),'--health.url-file='+healthUrlFile);
+  assert.equal(result.publicStatus.runtimeReady,false);
+  assert.equal(result.publicStatus.remoteChatGptConnected,false);
+  assert.equal(JSON.stringify(result.args).includes(input().controlPlaneKey),false);
+  for(const candidate of ['health.url','..\\health.url','https://other.example/health.url',
+    'C:\\Users\\tester\\health.txt'])
+    assert.throws(()=>makeForgeOfficialTunnelLaunch({...input(),healthUrlFile:candidate}),
+      /health_url_file_invalid/);
+});
+
 test('official legacy and namespaced tunnel IDs are preserved unchanged',()=>{
   const valid=[
     tunnelId,
@@ -92,4 +105,16 @@ test('tunnel preparation refuses unapproved, unscoped, unsafe or public targets'
     /forge_tunnel_/);
   assert.deepEqual(validateForgeTunnelTarget({projectId:id,tunnelId,endpoint}),
     {projectId:id,tunnelId,endpoint});
+});
+
+test('official tunnel connects the Forge app scope, not a selected project',()=>{
+  const launch=makeForgeOfficialTunnelLaunch({...input(),projectId:'forge_app'});
+  assert.equal(launch.publicStatus.projectId,'forge_app');
+  assert.equal(launch.publicStatus.endpoint,endpoint);
+  assert.equal(launch.publicStatus.outgoingOnly,true);
+  assert.equal(launch.publicStatus.remoteChatGptConnected,false);
+  assert.equal(launch.args.some(arg=>arg.includes(id)),false);
+  assert.equal(launch.args.some(arg=>arg.includes('forge_app')),false);
+  assert.equal(launch.args.some(arg=>arg.includes(controlPlaneKey)),false);
+  assert.equal(launch.args.some(arg=>arg.includes(bearerToken)),false);
 });

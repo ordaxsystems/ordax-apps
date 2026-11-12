@@ -1,13 +1,17 @@
 import http from 'node:http';
 import {randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
 
+export const FORGE_APP_MCP_SCOPE='forge_app';
 export const FORGE_LOCAL_MCP_OPERATIONS=Object.freeze([
-  'forge_discover','project_context','project_memory','project_administrator_snapshot','project_handoff',
-  'project_files_status','project_files_list','project_file_read','project_file_write'
+  'projects_list','forge_discover','project_context','project_memory','project_administrator_snapshot','project_handoff',
+  'project_files_status','project_files_list','project_file_read','project_file_write',
+  // Bounded, project-bound work inspection is needed for a tool-using GPT to
+  // reference actual task IDs and messages, never invent them from chat text.
+  'work_list','work_get','work_messages'
 ]);
 const MAX_REQUEST_BYTES=180_000;
 const MAX_RESPONSE_BYTES=450_000;
-const ID=/^project_[a-zA-Z0-9-]{1,100}$/;
+const ID=/^(?:forge_app|project_[a-zA-Z0-9-]{1,100})$/;
 const SESSION=/^[0-9a-f-]{36}$/;
 const TOKEN=/^[A-Za-z0-9_-]{40,128}$/;
 const MAX_MCP_SESSIONS=64;
@@ -21,6 +25,7 @@ function constantMatch(candidate,expected){
   return a.length===b.length&&timingSafeEqual(a,b);
 }
 function json(res,status,value,headers={}) {
+  if(res.destroyed||res.writableEnded)return;
   const raw=JSON.stringify(value);
   res.writeHead(status,{'Content-Type':'application/json; charset=utf-8',
     'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers});
@@ -41,14 +46,17 @@ async function bodyJson(req) {
 }
 
 // Disabled until explicit owner action in the Electron settings panel.
-// One listener, distinct owner-approved tokens and immutable project-scoped sessions.
+// One listener. The native Forge uses a single app grant; legacy scoped
+// transport tests remain isolated. Project access is checked by the service.
 // No remote listening, auto-connect, browser origins, persistence or OAuth claim.
 export function createForgeLoopbackMcp({createMcp,authorizeProject,
-  projectScope=projectId=>projectId,clock=Date.now}={}) {
+  projectScope=projectId=>projectId,clock=Date.now,onProjectFileChanged=()=>{}}={}) {
   if(typeof createMcp!=='function'||typeof authorizeProject!=='function'||
-     typeof projectScope!=='function'||typeof clock!=='function')
+     typeof projectScope!=='function'||typeof clock!=='function'||
+     typeof onProjectFileChanged!=='function')
     throw Error('forge_mcp_transport_ports_required');
   let server=null,port=null;
+  let starting=false;
   const sessions=new Map(),grants=new Map();
   let pendingInitializations=0;
   const bound=()=>server?.listening===true;
@@ -127,8 +135,10 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
             return json(res,409,{error:'forge_mcp_session_limit'});
         }
         newSessionId=randomUUID();
-        session=createMcp({projectId:grant.projectId,
-          allowedOperations:FORGE_LOCAL_MCP_OPERATIONS});
+        session=createMcp({projectId:grant.projectId===FORGE_APP_MCP_SCOPE?null:grant.projectId,
+          allowedOperations:grant.projectId===FORGE_APP_MCP_SCOPE
+            ?FORGE_LOCAL_MCP_OPERATIONS
+            :FORGE_LOCAL_MCP_OPERATIONS.filter(op=>op!=='projects_list')});
       }else{
         if(typeof sessionId!=='string'||!SESSION.test(sessionId))
           return json(res,404,{error:'forge_mcp_session_required'});
@@ -146,6 +156,27 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
       let result;
       try{result=await session.handle(message);}
       finally{if(newSessionId)pendingInitializations--;}
+      // Revocation can occur while an asynchronous handler is running.
+      // Never publish a result or re-register a session after authority ended.
+      if(!bound()||!valid(grant)||!authorizeProject(grant.projectId))
+        return json(res,403,{error:'forge_mcp_project_revoked'});
+      // DELETE may close just this MCP session while an async tool is
+      // running. The project grant can remain valid for other sessions, but
+      // the closed session must not receive a late result or persist state.
+      if(!newSessionId&&sessions.get(sessionId)?.handler!==session)
+        return json(res,404,{error:'forge_mcp_session_unavailable'});
+      // Notify the owner UI after any authorized file write. Only the project
+      // identity is delivered, never the file contents or bearer token.
+      if(message.method==='tools/call'&&
+         message.params?.name==='forge_project_file_write'&&
+         result?.result?.isError!==true&&
+         result?.result?.structuredContent?.status==='succeeded'){
+        const changedProject=grant.projectId===FORGE_APP_MCP_SCOPE
+          ?result.result.structuredContent?.result?.projectId
+          :grant.projectId;
+        if(typeof changedProject==='string'&&/^project_[A-Za-z0-9-]{1,100}$/.test(changedProject))
+          try{onProjectFileChanged(changedProject);}catch{} // Never invalidate a verified receipt.
+      }
       if(newSessionId){
         if(!result?.result?.protocolVersion)return json(res,400,{error:'forge_mcp_initialize_rejected'});
         sessions.set(newSessionId,{handler:session,grant,lastActivity:clock()});
@@ -155,6 +186,7 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
         return json(res,413,{error:'forge_mcp_response_too_large'});
       return json(res,200,result,newSessionId?{'Mcp-Session-Id':newSessionId}:{});
     }catch{
+      if(res.destroyed||res.writableEnded)return;
       if(!res.headersSent)return json(res,500,{error:'forge_mcp_unavailable'});
       res.destroy();
     }
@@ -163,43 +195,57 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
     status,
     // Restored credentials are allowed only on the trusted Electron owner path.
     async start(requestedProjectId,{listenPort=0,resumeToken=null}={}){
-      if(!ID.test(requestedProjectId)||!authorizeProject(requestedProjectId))
-        throw Error('forge_mcp_project_not_authorized');
-      if(bound()){
-        if(active())throw Error('forge_mcp_already_active');
-        await this.stop();
-      }
-      if(!Number.isInteger(listenPort)||listenPort<0||listenPort>65535||
-          (listenPort>0&&listenPort<1024)||
-          (resumeToken!==null&&(typeof resumeToken!=='string'||!TOKEN.test(resumeToken))))
-        throw Error('forge_mcp_resume_connection_invalid');
-      const grant={projectId:requestedProjectId,
-        scopeFingerprint:captureScope(requestedProjectId),
-        token:resumeToken??randomBytes(32).toString('base64url'),startedAt:clock()};
-      grants.clear();grants.set(requestedProjectId,grant);
-      sessions.clear();
-      server=http.createServer((req,res)=>{void onRequest(req,res);});
-      server.requestTimeout=15_000;
-      server.headersTimeout=10_000;
-      server.maxRequestsPerSocket=120;
+      // Reserve the lifecycle synchronously, BEFORE listen() becomes ready.
+      // Two concurrent start calls must never leave an untracked HTTP server.
+      if(starting)throw Error('forge_mcp_start_in_progress');
+      starting=true;
       try{
-        await new Promise((resolve,reject)=>{
-          server.once('error',reject);
-          server.listen(listenPort,'127.0.0.1',()=>{
-            server.off('error',reject);
-            resolve();
+        if(!ID.test(requestedProjectId)||!authorizeProject(requestedProjectId))
+          throw Error('forge_mcp_project_not_authorized');
+        if(bound()){
+          if(active())throw Error('forge_mcp_already_active');
+          await this.stop();
+        }
+        if(!Number.isInteger(listenPort)||listenPort<0||listenPort>65535||
+            (listenPort>0&&listenPort<1024)||
+            (resumeToken!==null&&(typeof resumeToken!=='string'||!TOKEN.test(resumeToken))))
+          throw Error('forge_mcp_resume_connection_invalid');
+        const grant={projectId:requestedProjectId,
+          scopeFingerprint:captureScope(requestedProjectId),
+          token:resumeToken??randomBytes(32).toString('base64url'),startedAt:clock()};
+        grants.clear();grants.set(requestedProjectId,grant);
+        sessions.clear();
+        const listener=http.createServer((req,res)=>{void onRequest(req,res);});
+        server=listener;
+        listener.requestTimeout=15_000;
+        listener.headersTimeout=10_000;
+        listener.maxRequestsPerSocket=120;
+        try{
+          await new Promise((resolve,reject)=>{
+            listener.once('error',reject);
+            listener.listen(listenPort,'127.0.0.1',()=>{
+              listener.off('error',reject);
+              resolve();
+            });
           });
-        });
-        port=server.address().port;
-        return {...status(),token:grant.token,projectId:grant.projectId};
-      }catch(error){
-        try{server?.close();}catch{}
-        server=null;port=null;grants.clear();sessions.clear();
-        throw error;
-      }
+          // stop() may have revoked authority while listen() was pending.
+          if(server!==listener||grants.get(requestedProjectId)!==grant)
+            throw Error('forge_mcp_start_cancelled');
+          port=listener.address().port;
+          return {...status(),token:grant.token,projectId:grant.projectId};
+        }catch(error){
+          if(server===listener){
+            server=null;port=null;grants.clear();sessions.clear();
+            try{listener.close();}catch{}
+          }
+          throw error;
+        }
+      }finally{starting=false;}
     },
     addProject(requestedProjectId,{resumeToken=null}={}){
       if(!active())throw Error('forge_mcp_not_active');
+      if(grants.has(FORGE_APP_MCP_SCOPE)||requestedProjectId===FORGE_APP_MCP_SCOPE)
+        throw Error('forge_mcp_app_scope_exclusive');
       if(!ID.test(requestedProjectId)||!authorizeProject(requestedProjectId))
         throw Error('forge_mcp_project_not_authorized');
       if(valid(grants.get(requestedProjectId)))throw Error('forge_mcp_project_already_granted');
@@ -231,8 +277,36 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
     },
     async stop(){
       const old=server;
+      // Revoke before awaiting any socket shutdown. No new requests can gain
+      // authority while Windows finishes a pending listen or close.
       server=null;port=null;grants.clear();sessions.clear();
-      if(old)await new Promise(resolve=>old.close(()=>resolve()));
+      if(old)await new Promise(resolve=>{
+        let finished=false;
+        const done=()=>{
+          if(finished)return;
+          finished=true;
+          old.off('listening',onListening);
+          old.off('error',onError);
+          resolve();
+        };
+        const close=()=>{
+          try{
+            // Stop accepting first; then terminate outstanding HTTP sockets.
+            // close() alone waits indefinitely for a stalled MCP tool.
+            old.close(()=>done());
+            old.closeAllConnections();
+          }catch{done();}
+        };
+        const onListening=()=>close();
+        const onError=()=>done();
+        if(old.listening)close();
+        else if(starting){
+          // Do not close() a not-yet-listening server prematurely: the
+          // listen callback could otherwise create an orphaned listener.
+          old.once('listening',onListening);
+          old.once('error',onError);
+        }else close();
+      });
       return status();
     }
   });

@@ -5,9 +5,26 @@ import os from 'node:os';
 import path from 'node:path';
 import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
-import {FORGE_EXECUTOR_PROTOCOL,FORGE_MCP_INSTRUCTIONS} from '../src/forge-executor-context.mjs';
+import {FORGE_EXECUTOR_PROTOCOL,FORGE_MCP_INSTRUCTIONS,FORGE_SCOPED_MCP_INSTRUCTIONS} from '../src/forge-executor-context.mjs';
+import {FORGE_LOCAL_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
 import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
+
+test('canonical instructions reference only real typed MCP tool names, never invented names',()=>{
+  const catalog=new Map(ORCHESTRATOR_TOOLS.map(tool=>[tool.name,tool.operation]));
+  const mentioned=text=>[...new Set([...text.matchAll(/\bforge_[a-z][a-z0-9_]*\b/g)].map(m=>m[0]))];
+  const scoped=[...FORGE_EXECUTOR_PROTOCOL.flow,FORGE_SCOPED_MCP_INSTRUCTIONS].join(' ');
+  for(const name of mentioned(scoped)){
+    assert.ok(catalog.has(name),'scoped instructions refer to missing MCP tool: '+name);
+    assert.ok(FORGE_LOCAL_MCP_OPERATIONS.includes(catalog.get(name)),
+      'scoped instructions refer to a tool not available to the authorized connection: '+name);
+  }
+  for(const name of mentioned(FORGE_MCP_INSTRUCTIONS))
+    assert.ok(catalog.has(name),'unscoped instructions refer to missing MCP tool: '+name);
+  assert.ok(mentioned(scoped).includes('forge_discover'));
+  assert.ok(mentioned(scoped).includes('forge_work_messages'));
+  assert.ok(mentioned(FORGE_MCP_INSTRUCTIONS).includes('forge_projects_list'));
+});
 
 test('Forge exposes project context without granting filesystem access or inferring a path',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'forge-context-'));

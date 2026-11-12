@@ -69,3 +69,15 @@ test('login button follows observed session state and uses official login withou
   assert.match(ui,/chatgpt_provider_backend_access_restricted/);
 });
 
+
+test('Forjador uses the existing authenticated GPT gate, not just a visible composer',()=>{
+  const forge=fs.readFileSync(path.resolve(here,'../desktop/orchestrator-ui.mjs'),'utf8');
+  const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
+  assert.match(forge,/providerComposeAvailability\(observedGptHealth,\{hostMode:nodeHost\}\)/);
+  assert.match(forge,/orchestratorChatAvailable=gptWebTransportAvailable&&available\.allowed===true/);
+  assert.match(forge,/\$\('coordinatorSend'\)\.disabled=!orchestratorChatAvailable/);
+  assert.match(forge,/setProviderHealth:health=>/);
+  assert.match(ui,/orchestrationUi\?\.setProviderHealth\?\.\(status\)/);
+  assert.doesNotMatch(forge,/orchestratorChatAvailable=gptWebTransportAvailable;/);
+  assert.match(forge,/Abra a aba GPT Web e conclua o login/);
+});

@@ -6,14 +6,23 @@ contextBridge.exposeInMainWorld('ordax', {
   orchestratorInvoke: (operation,input={}) => ipcRenderer.invoke('ordax:orchestrator:invoke',{operation,input}),
   orchestratorMcp: message => ipcRenderer.invoke('ordax:orchestrator:mcp',message),
   forgeLocalMcpStatus: () => ipcRenderer.invoke('ordax:forge:local-mcp:status'),
-  forgeLocalMcpStart: projectId => ipcRenderer.invoke('ordax:forge:local-mcp:start',projectId),
-  forgeLocalMcpAdd: projectId => ipcRenderer.invoke('ordax:forge:local-mcp:add',projectId),
-  forgeLocalMcpRevoke: projectId => ipcRenderer.invoke('ordax:forge:local-mcp:revoke',projectId),
-  forgeLocalMcpResumeEnable: projectId => ipcRenderer.invoke('ordax:forge:local-mcp:resume-enable',projectId),
-  forgeLocalMcpResumeDisable: projectId => ipcRenderer.invoke('ordax:forge:local-mcp:resume-disable',projectId),
+  forgeLocalMcpStart: () => ipcRenderer.invoke('ordax:forge:local-mcp:start'),
+  forgeLocalMcpRevoke: () => ipcRenderer.invoke('ordax:forge:local-mcp:revoke'),
+  forgeLocalMcpResumeEnable: () => ipcRenderer.invoke('ordax:forge:local-mcp:resume-enable'),
+  forgeLocalMcpResumeDisable: () => ipcRenderer.invoke('ordax:forge:local-mcp:resume-disable'),
   forgeLocalMcpStop: () => ipcRenderer.invoke('ordax:forge:local-mcp:stop'),
   forgeOfficialTunnelStart: input => ipcRenderer.invoke('ordax:forge:tunnel:start',input),
   forgeOfficialTunnelStop: () => ipcRenderer.invoke('ordax:forge:tunnel:stop'),
+  onForgeOfficialTunnelChanged: callback => {
+    const listener=()=>callback();
+    ipcRenderer.on('ordax:forge:tunnel:changed',listener);
+    return ()=>ipcRenderer.removeListener('ordax:forge:tunnel:changed',listener);
+  },
+  onForgeProjectFileChanged: callback => {
+    const listener=(_event,payload)=>callback(payload);
+    ipcRenderer.on('ordax:forge:project-file:changed',listener);
+    return ()=>ipcRenderer.removeListener('ordax:forge:project-file:changed',listener);
+  },
   forgeWorkspaceStatus: projectId => ipcRenderer.invoke('ordax:forge:workspace:status',projectId),
   forgeWorkspaceCreate: projectId => ipcRenderer.invoke('ordax:forge:workspace:create',projectId),
   forgeWorkspaceChoose: projectId => ipcRenderer.invoke('ordax:forge:workspace:choose',projectId),

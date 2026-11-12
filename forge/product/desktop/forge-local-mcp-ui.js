@@ -1,11 +1,13 @@
-// Optional owner-only UI for a disabled-by-default MCP loopback listener.
-// No credentials are written to storage or automatically sent to another app.
+// The native Forge owns ONE application-level MCP connection.
+// Project selection below is exclusively for configuring physical folders.
+// Never move or persist tunnel credentials through project UI state.
 const localMcpElement=id=>document.getElementById(id);
+const APP_SCOPE='forge_app';
 const mcpStart=localMcpElement('forgeLocalMcpStart');
 const mcpStop=localMcpElement('forgeLocalMcpStop');
 const mcpRevoke=localMcpElement('forgeLocalMcpRevoke');
 const mcpResume=localMcpElement('forgeLocalMcpResume');
-const mcpProject=localMcpElement('forgeLocalMcpProject');
+const workspaceProject=localMcpElement('forgeLocalMcpProject');
 const mcpState=localMcpElement('forgeLocalMcpState');
 const officialTunnelState=localMcpElement('forgeOfficialTunnelState');
 const officialTunnelId=localMcpElement('forgeOfficialTunnelId');
@@ -15,189 +17,188 @@ const officialTunnelStop=localMcpElement('forgeOfficialTunnelStop');
 const mcpCredentials=localMcpElement('forgeLocalMcpCredentials');
 const mcpToken=localMcpElement('forgeLocalMcpToken');
 const mcpUrl=localMcpElement('forgeLocalMcpUrl');
-let mcpBusy=false;
-let lastMcpStatus=null;
-function syncTunnelControls(){
-  const session=lastMcpStatus?.officialTunnelSession;
-  const running=session?.processRunning===true;
-  if(officialTunnelStart)officialTunnelStart.disabled=mcpBusy||running||
-    !lastMcpStatus?.officialTunnel?.installed||
-    !lastMcpStatus?.scopes?.includes(mcpProject?.value)||
-    !officialTunnelId?.value?.trim()||!officialTunnelKey?.value||
-    typeof api?.forgeOfficialTunnelStart!=='function';
-  if(officialTunnelStop)officialTunnelStop.disabled=mcpBusy||!running||
-    typeof api?.forgeOfficialTunnelStop!=='function';
-}
 const api=window.ordax;
 const usable=typeof api?.forgeLocalMcpStatus==='function'&&
   typeof api?.forgeLocalMcpStart==='function'&&
-  typeof api?.forgeLocalMcpAdd==='function'&&
   typeof api?.forgeLocalMcpRevoke==='function'&&
   typeof api?.forgeLocalMcpResumeEnable==='function'&&
   typeof api?.forgeLocalMcpResumeDisable==='function'&&
   typeof api?.forgeLocalMcpStop==='function';
-
+let mcpBusy=false,lastMcpStatus=null;
+const appActive=status=>status?.running===true&&status?.scopes?.length===1&&
+  status.scopes[0]===APP_SCOPE;
 function hideSecret(){
   if(mcpToken)mcpToken.value='';
   if(mcpUrl)mcpUrl.value='';
   if(mcpCredentials)mcpCredentials.hidden=true;
 }
-function setState(message){
-  if(mcpState)mcpState.textContent=message;
+function setState(message){if(mcpState)mcpState.textContent=message;}
+function syncTunnelControls(){
+  const session=lastMcpStatus?.officialTunnelSession;
+  const running=Boolean(session?.state&&session.state!=='stopped');
+  if(officialTunnelStart)officialTunnelStart.disabled=mcpBusy||running||
+    !appActive(lastMcpStatus)||!lastMcpStatus?.appTrusted||
+    !lastMcpStatus?.officialTunnel?.installed||
+    !officialTunnelId?.value?.trim()||!officialTunnelKey?.value||
+    typeof api?.forgeOfficialTunnelStart!=='function';
+  if(officialTunnelStop)officialTunnelStop.disabled=mcpBusy||!running||
+    session?.state==='stopping'||typeof api?.forgeOfficialTunnelStop!=='function';
+}
+function syncControls(){
+  const active=appActive(lastMcpStatus);
+  const trusted=lastMcpStatus?.appTrusted===true;
+  const autoResume=lastMcpStatus?.autoResumeApp===true;
+  if(mcpStart){
+    mcpStart.disabled=mcpBusy||!usable||active;
+    mcpStart.textContent=trusted?'Reativar MCP do Forge':'Autorizar MCP do Forge';
+  }
+  if(mcpRevoke)mcpRevoke.disabled=mcpBusy||!usable||(!trusted&&!active);
+  if(mcpResume){
+    mcpResume.textContent=autoResume?'Desativar reconexão automática':'Manter conectado após reinício';
+    mcpResume.disabled=mcpBusy||!usable||
+      (!autoResume&&(!active||!lastMcpStatus?.autoResumeAvailable));
+  }
+  if(mcpStop)mcpStop.disabled=mcpBusy||!usable||!active;
+  syncTunnelControls();
 }
 async function refreshMcp(){
   if(!usable){
-    setState('Disponível somente no aplicativo Electron local; não está conectado ao GPT Web.');
-    if(mcpStart)mcpStart.disabled=true;
-    if(mcpStop)mcpStop.disabled=true;
-    if(mcpRevoke)mcpRevoke.disabled=true;
-    if(mcpResume)mcpResume.disabled=true;
-    return;
+    lastMcpStatus=null;
+    setState('MCP disponível somente no Forge Electron local; GPT Web não conectado.');
+    syncControls();return;
   }
   try{
     const status=await api.forgeLocalMcpStatus();
     lastMcpStatus=status;
-    syncTunnelControls();
+    syncControls();
     if(officialTunnelState){
-      officialTunnelState.textContent=status.officialTunnelSession?.processRunning
-        ?'Cliente de túnel iniciado para o projeto autorizado. Conexão e chamadas GPT Web ainda não comprovadas.'
-        :status.officialTunnel?.installed
-          ?'Cliente oficial OpenAI '+status.officialTunnel.clientVersion+
-            ' instalado e verificado. GPT Web não conectado; faltam autorização e permissões do workspace.'
-          :'GPT Web não conectado. Cliente oficial ainda não verificado nesta instalação.';
+      const tunnel=status.officialTunnelSession;
+      officialTunnelState.textContent=tunnel?.state==='starting'
+        ?'Iniciando cliente oficial; conexão GPT Web ainda não verificada.'
+        :tunnel?.state==='stopping'
+          ?'Encerrando cliente oficial; conexão GPT Web ainda não verificada.'
+          :tunnel?.processRunning&&tunnel.clientReady
+            ?'Cliente oficial pronto no Windows (/readyz=200). Conexão GPT Web e chamada MCP ainda não comprovadas.'
+            :tunnel?.processRunning&&tunnel.clientReadiness==='not_ready'
+              ?'Cliente oficial ativo, mas ainda não pronto (/readyz=503). GPT Web não conectado.'
+              :tunnel?.processRunning
+                ?'Cliente oficial iniciado; prontidão /readyz ainda não verificada. GPT Web não conectado.'
+                :status.officialTunnel?.installed
+                  ?'Cliente oficial OpenAI '+status.officialTunnel.clientVersion+
+                    ' verificado. Túnel do Forge ainda não conectado ao GPT Web.'
+                  :'Cliente oficial não verificado neste perfil; GPT Web não conectado ao MCP Forge.';
     }
-    const scopes=Array.isArray(status.scopes)?status.scopes:(status.scope?[status.scope]:[]);
-    const selected=scopes.includes(mcpProject?.value);
-    const trusted=Array.isArray(status.trustedProjects)?status.trustedProjects:[];
-    const approved=trusted.includes(mcpProject?.value);
-    const autoResume=Array.isArray(status.autoResumeProjects)
-      ?status.autoResumeProjects.includes(mcpProject?.value):false;
-    if(mcpStart){
-      mcpStart.disabled=mcpBusy||!mcpProject?.value||selected;
-      mcpStart.textContent=status.running
-        ?(approved?'Conectar projeto confiável':'Autorizar outro projeto')
-        :(approved?'Reativar projeto confiável':'Ativar MCP local');
-    }
-    if(mcpRevoke)mcpRevoke.disabled=mcpBusy||(!selected&&!approved);
-    if(mcpResume){
-      mcpResume.textContent=autoResume?'Desativar reconexão automática':'Manter conectado após reinício';
-      mcpResume.disabled=mcpBusy||(!autoResume&&(!selected||!status.autoResumeAvailable));
-    }
-    if(mcpStop)mcpStop.disabled=mcpBusy||!status.running;
-    if(mcpProject)mcpProject.disabled=mcpBusy;
-    if(status.running){
-      setState('MCP local ativo para '+scopes.length+' projeto(s). '+
-        (status.autoResumeBlocked?'Reconexão bloqueada; confira a porta e autorizações. ':'')+
-        'Reconexão após reinício é opcional e protegida pelo Windows. '+
-        'Não conectado ao GPT Web.');
+    if(appActive(status)){
+      setState('MCP do aplicativo Forge ativo em 127.0.0.1. Uma conexão para o catálogo de projetos; '+
+        'arquivos limitados às pastas vinculadas e verificadas. '+
+        (status.autoResumeBlocked?'Reconexão bloqueada; confira a autorização. ':'')+
+        'GPT Web não conectado automaticamente.');
     }else{
       hideSecret();
-      setState('MCP local desativado. Nenhuma porta MCP aberta pelo Forge. '+
-        trusted.length+' projeto(s) com confiança salva no SQLite; as chaves não são persistidas.');
+      setState('MCP do aplicativo desativado. '+
+        (status.appTrusted?'Autorização do Forge salva, sem token ativo.':
+          'Autorize o aplicativo Forge uma vez; não é necessário ativar o MCP em cada projeto.'));
     }
   }catch{
     lastMcpStatus=null;
-    syncTunnelControls();
-    hideSecret();
-    setState('Não foi possível verificar o MCP local.');
-    if(mcpStart)mcpStart.disabled=true;
-    if(mcpStop)mcpStop.disabled=true;
-    if(mcpRevoke)mcpRevoke.disabled=true;
-    if(mcpResume)mcpResume.disabled=true;
+    hideSecret();syncControls();
+    if(officialTunnelState)officialTunnelState.textContent=
+      'Estado do túnel indisponível; conexão GPT Web não comprovada.';
+    setState('Não foi possível verificar o MCP do aplicativo.');
   }
 }
 async function loadProjects(){
-  if(!usable)return refreshMcp();
+  // This selector is for local workspace management only.
   try{
     const result=await api.orchestratorInvoke('projects_list',{});
     const projects=result?.projects||result?.result?.projects||[];
-    const previous=mcpProject.value;
-    mcpProject.replaceChildren();
-    for(const project of projects){
-      if(typeof project?.id!=='string')continue;
-      const option=document.createElement('option');
-      option.value=project.id;
-      option.textContent=(project.name||'Projeto')+' ('+project.id+')';
-      mcpProject.appendChild(option);
+    if(workspaceProject){
+      const previous=workspaceProject.value;
+      workspaceProject.replaceChildren();
+      for(const project of projects){
+        if(typeof project?.id!=='string')continue;
+        const option=document.createElement('option');
+        option.value=project.id;
+        option.textContent=(project.name||'Projeto')+' ('+project.id+')';
+        workspaceProject.appendChild(option);
+      }
+      if([...workspaceProject.options].some(option=>option.value===previous))
+        workspaceProject.value=previous;
     }
-    if([...mcpProject.options].some(option=>option.value===previous))mcpProject.value=previous;
-    if(!projects.length)setState('Crie um projeto antes de habilitar o MCP local.');
-  }catch{setState('Não foi possível carregar projetos autorizados.');}
+  }catch{/* The workspace selector has independent availability. */}
   await refreshMcp();
 }
 mcpStart?.addEventListener('click',async()=>{
-  if(mcpBusy||!usable||!mcpProject?.value)return;
-  mcpBusy=true;hideSecret();mcpStart.disabled=true;
+  if(mcpBusy||!usable)return;
+  mcpBusy=true;hideSecret();syncControls();
   try{
-    const active=await api.forgeLocalMcpStatus();
-    const enabled=active.running
-      ?await api.forgeLocalMcpAdd(mcpProject.value)
-      :await api.forgeLocalMcpStart(mcpProject.value);
-    if(enabled?.running&&enabled?.token&&enabled?.endpoint){
+    const enabled=await api.forgeLocalMcpStart();
+    if(enabled?.running&&enabled?.scope===APP_SCOPE&&enabled?.token&&enabled?.endpoint){
       mcpUrl.value=enabled.endpoint;
       mcpToken.value=enabled.token;
       mcpCredentials.hidden=false;
-    }else if(enabled?.declined)setState('Ativação cancelada; MCP continua desligado.');
-  }catch(error){setState('Ativação não realizada: '+String(error?.message||'falha local').slice(0,130));}
+    }else if(enabled?.declined)setState('Autorização do MCP Forge cancelada.');
+  }catch{setState('Não foi possível ativar o MCP do aplicativo.');}
   finally{mcpBusy=false;await refreshMcp();}
 });
 mcpStop?.addEventListener('click',async()=>{
   if(mcpBusy||!usable)return;
-  mcpBusy=true;mcpStop.disabled=true;
+  mcpBusy=true;syncControls();
   try{await api.forgeLocalMcpStop();hideSecret();}
   catch{setState('Não foi possível confirmar o encerramento do MCP.');}
   finally{mcpBusy=false;await refreshMcp();}
 });
 mcpRevoke?.addEventListener('click',async()=>{
-  if(mcpBusy||!usable||!mcpProject?.value)return;
-  mcpBusy=true;mcpRevoke.disabled=true;
-  try{await api.forgeLocalMcpRevoke(mcpProject.value);hideSecret();}
-  catch{setState('Não foi possível revogar a autorização deste projeto.');}
+  if(mcpBusy||!usable)return;
+  mcpBusy=true;syncControls();
+  try{await api.forgeLocalMcpRevoke();hideSecret();}
+  catch{setState('Não foi possível revogar a autorização do Forge.');}
   finally{mcpBusy=false;await refreshMcp();}
 });
 mcpResume?.addEventListener('click',async()=>{
-  if(mcpBusy||!usable||!mcpProject?.value)return;
-  mcpBusy=true;mcpResume.disabled=true;
+  if(mcpBusy||!usable)return;
+  mcpBusy=true;syncControls();
   try{
     const info=await api.forgeLocalMcpStatus();
-    const isEnabled=Array.isArray(info.autoResumeProjects)&&
-      info.autoResumeProjects.includes(mcpProject.value);
-    if(isEnabled)await api.forgeLocalMcpResumeDisable(mcpProject.value);
-    else await api.forgeLocalMcpResumeEnable(mcpProject.value);
+    if(info.autoResumeApp)await api.forgeLocalMcpResumeDisable();
+    else await api.forgeLocalMcpResumeEnable();
   }catch{setState('Reconexão segura não disponível neste perfil Windows.');}
   finally{mcpBusy=false;await refreshMcp();}
 });
 officialTunnelId?.addEventListener('input',syncTunnelControls);
 officialTunnelKey?.addEventListener('input',syncTunnelControls);
 officialTunnelStart?.addEventListener('click',async()=>{
-  if(mcpBusy||!usable||!mcpProject?.value||!officialTunnelKey?.value)return;
-  const request={projectId:mcpProject.value,
-    tunnelId:officialTunnelId.value.trim(),runtimeKey:officialTunnelKey.value};
-  officialTunnelKey.value=''; // Never retain the restricted key in the UI.
-  mcpBusy=true;syncTunnelControls();
+  if(mcpBusy||!usable||!appActive(lastMcpStatus)||!officialTunnelKey?.value)return;
+  const request={tunnelId:officialTunnelId.value.trim(),runtimeKey:officialTunnelKey.value};
+  officialTunnelKey.value='';
+  mcpBusy=true;syncControls();
   try{
     const result=await api.forgeOfficialTunnelStart(request);
-    if(result?.declined)setState('Conexão remota não autorizada; nada foi iniciado.');
-  }catch{
-    setState('Túnel não iniciado. Verifique autorização, ID e chave restrita no Windows.');
-  }finally{
-    request.runtimeKey=null;
-    mcpBusy=false;await refreshMcp();
-  }
+    if(result?.declined)setState('Túnel do Forge não autorizado; nada foi iniciado.');
+  }catch{setState('Túnel não iniciado. Confira autorização, ID e chave restrita no Windows.');}
+  finally{request.runtimeKey=null;mcpBusy=false;await refreshMcp();}
 });
 officialTunnelStop?.addEventListener('click',async()=>{
   if(mcpBusy||typeof api?.forgeOfficialTunnelStop!=='function')return;
-  mcpBusy=true;syncTunnelControls();
+  mcpBusy=true;syncControls();
   try{await api.forgeOfficialTunnelStop();}
   catch{setState('Não foi possível confirmar o encerramento do túnel.');}
   finally{mcpBusy=false;await refreshMcp();}
 });
-mcpProject?.addEventListener('change',()=>{hideSecret();void refreshMcp();});
 localMcpElement('settingsTabConnections')?.addEventListener('click',()=>{void loadProjects();});
 localMcpElement('openAppSettings')?.addEventListener('click',()=>{void loadProjects();});
+if(typeof api?.onForgeOfficialTunnelChanged==='function')
+  api.onForgeOfficialTunnelChanged(()=>{if(!mcpBusy)void refreshMcp();});
 localMcpElement('appSettingsDialog')?.addEventListener('close',()=>{
   hideSecret();
   if(officialTunnelKey)officialTunnelKey.value='';
-  syncTunnelControls();
+  syncControls();
 });
+let readinessPollPending=false;
+setInterval(async()=>{
+  if(readinessPollPending||mcpBusy||!lastMcpStatus?.officialTunnelSession?.processRunning||
+    !localMcpElement('appSettingsDialog')?.open)return;
+  readinessPollPending=true;
+  try{await refreshMcp();}finally{readinessPollPending=false;}
+},3000);
 void loadProjects();

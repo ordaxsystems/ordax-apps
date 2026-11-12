@@ -421,7 +421,8 @@ export class OrchestratorService {
     }catch(error){
       const deterministic=new Set(['forge_file_path_invalid','forge_file_content_invalid',
         'forge_file_size_limit','forge_file_expected_hash_invalid',
-        'forge_file_version_conflict','forge_file_not_found','forge_file_reparse_denied']);
+        'forge_file_version_conflict','forge_file_not_found','forge_file_reparse_denied',
+        'forge_workspace_binding_required']);
       const reason=deterministic.has(error?.message)?error.message:'forge_file_effect_uncertain';
       try{this.transaction(()=>this.finish(reserved.commandId,
         {reason,path:input.path,verified:false},

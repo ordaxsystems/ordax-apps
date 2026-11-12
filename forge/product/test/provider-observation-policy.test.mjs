@@ -33,6 +33,12 @@ test('DOM unavailable on ChatGPT home is UNKNOWN, not logged in',()=>{
     page:{composer:false,hasLogin:false,hasSignup:false}}),'unknown');
   assert.equal(classifyProviderAuthObservation({url:'https://chatgpt.com/',
     page:{composer:true,hasLogin:true,hasSignup:true}}),'anonymous');
+  // Physical Forge DEV after restart: Login visible, Signup absent,
+  // composer absent. Never report this state as logged in.
+  assert.equal(classifyProviderAuthObservation({url:'https://chatgpt.com/',
+    page:{composer:false,hasLogin:true,hasSignup:false}}),'anonymous');
+  assert.equal(classifyProviderAuthObservation({url:'https://chatgpt.com/',
+    page:{composer:false,hasLogin:true}}),'anonymous');
   assert.equal(classifyProviderAuthObservation({url:'https://chatgpt.com/',
     page:{composer:true,hasLogin:false,hasSignup:false}}),'session_present');
   assert.equal(classifyProviderAuthObservation({url:'https://chatgpt.com/',

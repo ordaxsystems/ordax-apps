@@ -1141,6 +1141,20 @@ body.orchestrator-focus .preview-panel .work-surface-viewport{height:clamp(290px
 .forge-files-empty>span{display:grid;place-items:center;width:44px;height:44px;border-radius:11px;background:#342b28;color:#dbad99;font-size:24px}
 .forge-files-empty strong{font-size:13px}
 .forge-files-empty p{font-size:11px;color:var(--muted);line-height:1.6;margin:0}
+.forge-files-browser{display:flex;flex-direction:column;gap:11px;min-width:0}
+.forge-files-browser[hidden],.forge-files-reader[hidden]{display:none!important}
+.forge-files-location{display:flex;align-items:center;gap:10px;min-width:0}
+.forge-files-location code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:12px}
+.forge-files-entries{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+.forge-files-entries button{width:100%;text-align:left;padding:10px 12px;border:1px solid #4a403c;border-radius:9px;background:#242120;color:inherit;display:flex;justify-content:space-between;align-items:center;gap:9px}
+.forge-files-entries button:hover,.forge-files-entries button:focus-visible{border-color:#ae806d}
+.forge-files-entries button:disabled{opacity:.55;cursor:not-allowed}
+.forge-files-entries .forge-file-name{overflow-wrap:anywhere;font-size:12px}
+.forge-files-entries small{font-size:10px;color:var(--muted);flex-shrink:0}
+.forge-files-reader{border:1px solid #4a403c;border-radius:10px;overflow:hidden;background:#1d1c1b}
+.forge-files-reader strong{display:block;padding:10px 12px;font-size:12px;overflow-wrap:anywhere}
+.forge-files-reader p{margin:0;padding:0 12px 9px;font-size:10px;color:var(--muted)}
+.forge-files-reader pre{margin:0;padding:13px;background:#171615;white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;max-height:45vh;font-size:11px;line-height:1.5}
 #forgeFilesConnections{align-self:flex-start;margin-top:0;font-size:11px}
 body.orchestrator-focus.orchestrator-rail-open #contextRail #executionOverview{display:none!important}
 body.orchestrator-focus.orchestrator-rail-open #contextRail #contextPanel:not([hidden]){display:flex!important}

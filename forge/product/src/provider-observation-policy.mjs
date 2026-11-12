@@ -39,7 +39,12 @@ export function classifyProviderAuthObservation({url,page}={}) {
      /^https:\/\/chatgpt\.com\/auth\//i.test(current))
     return 'authenticating';
   if(!page||typeof page!=='object')return 'unknown';
-  if(page.hasLogin===true && page.hasSignup===true)return 'anonymous';
+  // ChatGPT may display only its visible Login control after restart,
+  // without an accompanying Signup button. No composer + explicit Login is
+  // evidence of a signed-out page, not a confirmed authenticated session.
+  if(page.hasLogin===true&&(page.hasSignup===true||page.composer!==true))
+    return 'anonymous';
+  // A composer alongside Login remains ambiguous and fail-closed.
   // UI heuristics provide an indication only; not verified session identity.
   if(page.composer===true && page.hasLogin!==true && page.hasSignup!==true)
     return 'session_present';
