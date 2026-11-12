@@ -277,7 +277,12 @@ export class OrchestratorService {
     if(binding?.kind==='orchestrator'&&!allowCoordinator)throw Error('orchestrator_coordinator_channel_required');
     if(allowCoordinator&&binding?.kind!=='orchestrator')throw Error('orchestrator_coordinator_task_required');
     if(binding?.status==='paused')throw Error('orchestrator_paused');
-    const uncertain=binding?.kind==='work'
+    // A normal GPT Task need not belong to a Forge project. It has no
+    // project-level receipts to query; passing undefined into SQLite here
+    // blocked every ordinary unbound Task before a Run could be recorded.
+    // Task-level uncertain delivery remains guarded by the caller.
+    if(!binding)return;
+    const uncertain=binding.kind==='work'
       ?this.hasUnresolvedWorkReceipt(binding.project_id,taskId)
       :Boolean(this.db.prepare(`SELECT 1 FROM lab_command_receipts
         WHERE project_id=? AND operation='forjador_send' AND status='uncertain'
