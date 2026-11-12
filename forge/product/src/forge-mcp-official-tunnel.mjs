@@ -3,7 +3,8 @@ import path from 'node:path';
 // The official OpenAI tunnel-client is the ONLY supported outbound bridge.
 // This adapter never creates a public ingress, an MCP server or another Forge.
 // Credentials must come from a trusted, Owner-approved Electron context.
-const ID=/^project_[a-zA-Z0-9-]{1,100}$/;
+// The native Forge exposes one app MCP endpoint; projects are its resources.
+const ID=/^(?:forge_app|project_[a-zA-Z0-9-]{1,100})$/;
 // Official client v0.0.20 accepts legacy IDs and 4-character namespaced IDs.
 // Both identifier and namespace are lowercase ASCII letters/digits.
 const TUNNEL=/^tunnel_(?:[a-z0-9]{4}_)?[a-z0-9]{32}$/;

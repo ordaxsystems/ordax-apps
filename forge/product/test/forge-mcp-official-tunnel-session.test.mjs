@@ -128,11 +128,11 @@ test('tunnel UI subscription receives lifecycle changes through credential-free 
   assert.match(ui,/onForgeOfficialTunnelChanged\(\(\)=>\{if\(!mcpBusy\)void refreshMcp\(\)/);
   assert.match(ui,/session\.state!=='stopped'/);
   assert.match(ui,/session\?\.state==='stopping'/);
-  assert.match(ui,/officialTunnelSession\?\.state==='starting'/);
-  assert.match(ui,/officialTunnelSession\?\.state==='stopping'/);
+  assert.match(ui,/tunnel\?\.state==='starting'/);
+  assert.match(ui,/tunnel\?\.state==='stopping'/);
   assert.match(main,/await forgeOfficialTunnel\.inspectReadiness\(\)/);
-  assert.match(ui,/officialTunnelSession\?\.clientReadiness==='not_ready'/);
-  assert.match(ui,/officialTunnelSession\?\.clientReady/);
+  assert.match(ui,/tunnel\.clientReadiness==='not_ready'/);
+  assert.match(ui,/tunnel\.clientReady/);
   assert.match(ui,/Estado do túnel indisponível/);
 });
 

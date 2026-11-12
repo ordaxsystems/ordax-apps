@@ -62,6 +62,21 @@ async function main(){
           providerTab:get('providerPaneTab')?.getAttribute('aria-selected')};
       })()`);
       const tunnel=await ui.evaluate("window.ordax.forgeLocalMcpStatus()");
+      const appMcpUi=await ui.evaluate(`(()=>{
+        const panel=document.getElementById('forgeLocalMcpPanel');
+        const selector=document.getElementById('forgeLocalMcpProject');
+        return {appPanel:!!panel,workspaceSelectorSeparate:!!selector&&!panel.contains(selector),
+          appLabel:panel?.querySelector('h3')?.textContent||null,
+          startLabel:document.getElementById('forgeLocalMcpStart')?.textContent||null,
+          projectSpecificAddExposed:typeof window.ordax.forgeLocalMcpAdd==='function'};
+      })()`);
+      assert.equal(appMcpUi.appPanel,true);
+      assert.equal(appMcpUi.workspaceSelectorSeparate,true);
+      assert.equal(appMcpUi.projectSpecificAddExposed,false);
+      assert.equal(typeof tunnel.appTrusted,'boolean');
+      assert.equal(typeof tunnel.autoResumeApp,'boolean');
+      if(tunnel.running)assert.deepEqual(tunnel.scopes,['forge_app']);
+      else assert.deepEqual(tunnel.scopes,[]);
       // DEV uses a segregated LOCALAPPDATA. Do not borrow binaries or keys
       // from the operational profile or claim its client is installed here.
       assert.equal(typeof tunnel.officialTunnel?.installed,'boolean');
@@ -71,6 +86,8 @@ async function main(){
       assert.equal(tunnel.officialTunnelSession?.remoteChatGptConnected,false);
       assert.equal(tunnel.officialTunnelSession?.chatGptCallVerified,false);
       console.log(JSON.stringify({phase,staged:true,provider:state,controls,
+        appMcp:{running:tunnel.running,appTrusted:tunnel.appTrusted,
+          autoResumeApp:tunnel.autoResumeApp,scope:tunnel.scope,...appMcpUi},
         coordinatorAvailable:engine.coordinatorAvailable===true,
         providerExecutionAvailable:engine.providerExecutionAvailable===true,
         uncertainCommands:engine.uncertainCommands,activeRuns:engine.activeRuns,

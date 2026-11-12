@@ -7,7 +7,7 @@ import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {ForgeProjectFiles} from '../src/forge-project-files.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
-import {createForgeLoopbackMcp} from '../src/forge-loopback-mcp.mjs';
+import {createForgeLoopbackMcp,FORGE_APP_MCP_SCOPE} from '../src/forge-loopback-mcp.mjs';
 
 function fixture(t) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'forge-multi-mcp-'));
@@ -183,4 +183,111 @@ test('independent project grants survive elapsed time but never survive revocati
   await f.transport.stop();
   assert.equal(f.transport.status().running,false);
   await assert.rejects(fetch(second.endpoint),/fetch failed|ECONNREFUSED/);
+});
+
+test('one app MCP token discovers projects and writes only verified owner folders',async t=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'forge-app-global-mcp-'));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true,maxRetries:5,retryDelay:75}));
+  const store=new Store(':memory:');t.after(()=>store.close());
+  const context={actorId:'owner',clientId:'desktop',workspaceSessionId:store.getWorkspaceSession().id};
+  const bindings=new Map();
+  const files=new ForgeProjectFiles({root:path.join(root,'private'),
+    requireOwnerBinding:true,workspaceLookup:id=>bindings.get(id)||null});
+  const service=new OrchestratorService({store,fileBroker:files,
+    authorize:({context:c})=>c===context});
+  const project=async name=>(await service.invoke(context,'project_quick_create',{
+    creationNonce:name,requestId:'forge_app_'+name})).result.projectId;
+  const a=await project('global_alpha'),b=await project('global_beta'),
+    unbound=await project('global_unbound');
+  for(const id of [a,b]){
+    const folder=path.join(root,id);fs.mkdirSync(folder);
+    bindings.set(id,folder);
+  }
+  let ownerApproved=false;
+  const events=[];
+  const transport=createForgeLoopbackMcp({
+    createMcp:({projectId,allowedOperations})=>createOrchestratorMcp({
+      service,getContext:()=>context,allowedProjectId:projectId,allowedOperations,
+      authorizeFileRead:requestedId=>{
+        try{return Boolean(files.boundRoot(requestedId));}
+        catch{return false;}
+      }
+    }),
+    authorizeProject:scope=>scope===FORGE_APP_MCP_SCOPE&&ownerApproved,
+    projectScope:scope=>scope===FORGE_APP_MCP_SCOPE?'forge-dev-profile-identity':scope,
+    onProjectFileChanged:projectId=>events.push(projectId)
+  });
+  t.after(()=>transport.stop());
+  await assert.rejects(transport.start(FORGE_APP_MCP_SCOPE),/not_authorized/);
+  ownerApproved=true; // only an explicit test grant; never grants production authority.
+  const app=await transport.start(FORGE_APP_MCP_SCOPE);
+  assert.equal(app.scope,FORGE_APP_MCP_SCOPE);
+  assert.deepEqual(app.scopes,[FORGE_APP_MCP_SCOPE]);
+  assert.equal(app.remoteChatGptConnected,false);
+  assert.equal('token' in transport.status(),false);
+  assert.throws(()=>transport.addProject(a),/forge_mcp_app_scope_exclusive/);
+  const init=await request(app.endpoint,app.token,null,initialize);
+  assert.equal(init.status,200);
+  assert.match(init.body.result.instructions,/Forge/i);
+  await request(app.endpoint,app.token,init.session,notify);
+  const list=await request(app.endpoint,app.token,init.session,
+    {jsonrpc:'2.0',id:2,method:'tools/list'});
+  const tools=list.body.result.tools.map(tool=>tool.name);
+  for(const tool of ['forge_projects_list','forge_project_file_write','forge_project_file_read'])
+    assert.ok(tools.includes(tool),tool+' must be available on the app');
+  for(const tool of ['forge_project_delete','forge_forjador_send','forge_project_quick_create'])
+    assert.ok(!tools.includes(tool),tool+' must not be exposed');
+  const catalog=await request(app.endpoint,app.token,init.session,invoke(3,'projects_list'));
+  assert.equal(catalog.body.result.structuredContent.projects.length,3);
+  const writeA=await request(app.endpoint,app.token,init.session,
+    invoke(4,'project_file_write',{projectId:a,path:'index.html',
+      content:'<main>Alpha</main>',requestId:'app_global_write_alpha'}));
+  const writeB=await request(app.endpoint,app.token,init.session,
+    invoke(5,'project_file_write',{projectId:b,path:'index.html',
+      content:'<main>Beta</main>',requestId:'app_global_write_beta'}));
+  for(const written of [writeA,writeB]){
+    assert.equal(written.body.result.structuredContent.status,'succeeded');
+    assert.equal(written.body.result.structuredContent.result.verification,'sha256_readback');
+  }
+  assert.equal(files.read(a,'index.html').content,'<main>Alpha</main>');
+  assert.equal(files.read(b,'index.html').content,'<main>Beta</main>');
+  assert.deepEqual(events,[a,b]);
+  const denied=await request(app.endpoint,app.token,init.session,
+    invoke(6,'project_file_write',{projectId:unbound,path:'index.html',
+      content:'denied',requestId:'app_global_unbound'}));
+  assert.equal(denied.body.result.isError,true);
+  const failed=store.db.prepare('SELECT status,result FROM lab_command_receipts WHERE request_id=?')
+    .get('app_global_unbound');
+  assert.equal(failed.status,'failed');
+  assert.equal(JSON.parse(failed.result).reason,'forge_workspace_binding_required');
+  assert.equal(fs.existsSync(path.join(root,'private',unbound,'index.html')),false);
+  // Old Forge-private files remain readable to the trusted native UI for
+  // migration, but an app-wide MCP token must not disclose those bytes.
+  const legacy=path.join(root,'private',unbound);
+  fs.mkdirSync(legacy,{recursive:true});
+  fs.writeFileSync(path.join(legacy,'old.txt'),'legacy native-only content');
+  assert.equal(files.read(unbound,'old.txt').content,'legacy native-only content');
+  const leak=await request(app.endpoint,app.token,init.session,
+    invoke(61,'project_file_read',{projectId:unbound,path:'old.txt'}));
+  assert.equal(leak.body.result.isError,true);
+  assert.equal(JSON.stringify(leak.body).includes('legacy native-only content'),false);
+  const listing=await request(app.endpoint,app.token,init.session,
+    invoke(62,'project_files_list',{projectId:unbound}));
+  assert.equal(listing.body.result.isError,true);
+  // New projects are Forge resources. No new MCP token or tunnel is created.
+  const c=await project('global_new_after_start');
+  const folderC=path.join(root,c);fs.mkdirSync(folderC);bindings.set(c,folderC);
+  const writeC=await request(app.endpoint,app.token,init.session,
+    invoke(7,'project_file_write',{projectId:c,path:'index.html',
+      content:'<main>New project</main>',requestId:'app_global_write_new'}));
+  assert.equal(writeC.body.result.structuredContent.status,'succeeded');
+  assert.equal(transport.status().scopes.length,1);
+  assert.equal(transport.localGrant(FORGE_APP_MCP_SCOPE).token,app.token);
+  assert.deepEqual(events,[a,b,c]);
+  ownerApproved=false;
+  const revoked=await request(app.endpoint,app.token,init.session,invoke(8,'projects_list'));
+  assert.equal(revoked.status,403); // Owner trust is checked for every request.
+  assert.equal(transport.status().running,true); // Listener closes only on explicit stop.
+  await transport.stop();
+  assert.equal(store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });

@@ -67,19 +67,61 @@ test('Forge remembers owner consent in the existing SQLite without persisting MC
   assert.deepEqual(trust.trustedProjects(),[]);
 });
 
-test('both native MCP approval handlers reject a changed project scope after consent',()=>{
+test('native Forge MCP is approved once for the app, not for individual projects',()=>{
   const main=fs.readFileSync(path.resolve(import.meta.dirname,'../desktop/main.mjs'),'utf8');
-  for(const [kind,next] of [
-    ['start','add'],
-    ['add','revoke']
-  ]){
-    const begin=main.indexOf("registerUiHandler('ordax:forge:local-mcp:"+kind+"'");
-    const end=main.indexOf("registerUiHandler('ordax:forge:local-mcp:"+next+"'",begin+1);
-    assert.ok(begin>=0&&end>begin,kind+' handler must exist');
-    const handler=main.slice(begin,end);
-    assert.match(handler,/const consentScopeHash=forgeMcpTrusted\.scopeHash\(projectId\)/);
-    assert.match(handler,/if\(forgeMcpTrusted\.scopeHash\(projectId\)!==consentScopeHash\)/);
-    assert.match(handler,/forgeMcpTrusted\.trust\(projectId,\{expectedScopeHash:consentScopeHash\}\)/);
-    assert.match(handler,/orchestratorService\.requireAccess\(localOrchestratorContext,'project_file_read',projectId\)/);
-  }
+  const ui=fs.readFileSync(path.resolve(import.meta.dirname,'../desktop/forge-local-mcp-ui.js'),'utf8');
+  const preload=fs.readFileSync(path.resolve(import.meta.dirname,'../desktop/preload.cjs'),'utf8');
+  const start=main.indexOf("registerUiHandler('ordax:forge:local-mcp:start'");
+  const revoke=main.indexOf("registerUiHandler('ordax:forge:local-mcp:revoke'",start+1);
+  assert.ok(start>=0&&revoke>start);
+  const approval=main.slice(start,revoke);
+  assert.match(approval,/forgeMcpTrusted\.appScopeHash\(\)/);
+  assert.match(approval,/forgeMcpTrusted\.trustApp\(\{expectedScopeHash:consentScopeHash\}\)/);
+  assert.match(approval,/forgeLocalMcp\.start\(FORGE_APP_MCP_SCOPE/);
+  assert.match(approval,/orchestratorService\.requireAccess\(localOrchestratorContext,'projects_list'\)/);
+  assert.doesNotMatch(main,/registerUiHandler\('ordax:forge:local-mcp:add'/);
+  assert.doesNotMatch(preload,/forgeLocalMcpAdd:/);
+  assert.match(ui,/api\.forgeLocalMcpStart\(\)/);
+  assert.match(ui,/api\.forgeLocalMcpRevoke\(\)/);
+  assert.doesNotMatch(ui,/api\.forgeLocalMcpStart\(workspaceProject\.value\)/);
+});
+
+test('one app consent survives restart and never inherits old project approvals',async t=>{
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'forge-app-trust-'));
+  let store=new Store(path.join(tmp,'forge.sqlite'));
+  t.after(()=>{try{store.close();}finally{
+    fs.rmSync(tmp,{recursive:true,force:true,maxRetries:6,retryDelay:100});
+  }});
+  const context={actorId:'owner',clientId:'desktop',workspaceSessionId:store.getWorkspaceSession().id};
+  const service=new OrchestratorService({store,authorize:({context:c})=>c===context});
+  const project=(await service.invoke(context,'project_quick_create',{
+    creationNonce:'app_consent_project',requestId:'app_consent_project_create'
+  })).result.projectId;
+  let trust=new ForgeMcpOwnerTrust({store,appIdentity:'C:/Forge-DEV-profile-A',
+    scopeSignature:()=> 'owner-project-folder'});
+  trust.trust(project);
+  assert.equal(trust.isAppTrusted(),false,'old project trust never becomes app-wide authority');
+  const approved=trust.appScopeHash();
+  assert.throws(()=>trust.trustApp({expectedScopeHash:'not-the-same-profile'}),
+    /forge_mcp_consent_scope_changed/);
+  assert.equal(trust.isAppTrusted(),false);
+  assert.equal(trust.trustApp({expectedScopeHash:approved}).credentialsPersisted,false);
+  assert.equal(trust.isAppTrusted(),true);
+  const columns=store.db.prepare('PRAGMA table_info(forge_mcp_app_owner_approval)')
+    .all().map(c=>c.name);
+  assert.deepEqual(columns,['workspace_session_id','scope_hash','approved_at']);
+  assert.equal(columns.some(c=>/token|bearer|secret|key/i.test(c)),false);
+  store.close();
+  store=new Store(path.join(tmp,'forge.sqlite'));
+  trust=new ForgeMcpOwnerTrust({store,appIdentity:'C:/Forge-DEV-profile-A',
+    scopeSignature:()=> 'owner-project-folder'});
+  assert.equal(trust.isAppTrusted(),true);
+  // Same database copied under another profile must not inherit app consent.
+  const other=new ForgeMcpOwnerTrust({store,appIdentity:'C:/Forge-OTHER-profile',
+    scopeSignature:()=> 'owner-project-folder'});
+  assert.equal(other.isAppTrusted(),false);
+  assert.equal(trust.revokeApp().trustRevoked,true);
+  assert.equal(trust.isAppTrusted(),false);
+  assert.equal(other.isAppTrusted(),false);
+  assert.equal(store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });

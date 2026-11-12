@@ -106,3 +106,15 @@ test('tunnel preparation refuses unapproved, unscoped, unsafe or public targets'
   assert.deepEqual(validateForgeTunnelTarget({projectId:id,tunnelId,endpoint}),
     {projectId:id,tunnelId,endpoint});
 });
+
+test('official tunnel connects the Forge app scope, not a selected project',()=>{
+  const launch=makeForgeOfficialTunnelLaunch({...input(),projectId:'forge_app'});
+  assert.equal(launch.publicStatus.projectId,'forge_app');
+  assert.equal(launch.publicStatus.endpoint,endpoint);
+  assert.equal(launch.publicStatus.outgoingOnly,true);
+  assert.equal(launch.publicStatus.remoteChatGptConnected,false);
+  assert.equal(launch.args.some(arg=>arg.includes(id)),false);
+  assert.equal(launch.args.some(arg=>arg.includes('forge_app')),false);
+  assert.equal(launch.args.some(arg=>arg.includes(controlPlaneKey)),false);
+  assert.equal(launch.args.some(arg=>arg.includes(bearerToken)),false);
+});

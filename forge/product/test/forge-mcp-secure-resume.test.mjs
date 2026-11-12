@@ -23,7 +23,7 @@ function fixture(t){
     encryptString:token=>Buffer.concat([Buffer.from('dpapi-fixture:'),Buffer.from(token.split('').reverse().join(''))]),
     decryptString:bytes=>bytes.subarray('dpapi-fixture:'.length).toString().split('').reverse().join('')
   };
-  let trust=new ForgeMcpOwnerTrust({store,scopeSignature:signature});
+  let trust=new ForgeMcpOwnerTrust({store,scopeSignature:signature,appIdentity:'Forge DEV app profile'});
   let resume=new ForgeMcpSecureResume({store,ownerTrust:trust,secureStorage:storage,platform:'win32'});
   const project=async name=>{
     const id=(await service.invoke(context,'project_quick_create',
@@ -33,7 +33,7 @@ function fixture(t){
   };
   const reopen=()=>{
     store.close();store=new Store(db);
-    trust=new ForgeMcpOwnerTrust({store,scopeSignature:signature});
+    trust=new ForgeMcpOwnerTrust({store,scopeSignature:signature,appIdentity:'Forge DEV app profile'});
     resume=new ForgeMcpSecureResume({store,ownerTrust:trust,secureStorage:storage,platform:'win32'});
     return {trust,resume};
   };
@@ -84,4 +84,38 @@ test('Windows encryption failure and corrupt ciphertext fail closed without expo
   f.storage.isEncryptionAvailable=()=>false;
   assert.deepEqual(f.resume().recover(),[]);
   assert.throws(()=>f.resume().enable({projectId:a,token,port:46020}),/protection_unavailable/);
+});
+
+test('one app MCP token is Windows-sealed across restart without per-project grants',async t=>{
+  const f=fixture(t),token=randomBytes(32).toString('base64url');
+  assert.equal(f.resume().enabledApp(),false);
+  assert.equal(f.resume().recoverApp(),null);
+  assert.throws(()=>f.resume().enableApp({projectId:'forge_app',token,port:47041}),
+    /app_trust_required/);
+  f.trust().trustApp();
+  const saved=f.resume().enableApp({projectId:'forge_app',token,port:47041});
+  assert.equal(saved.autoResume,true);
+  assert.equal(saved.secretEncrypted,true);
+  assert.equal(f.resume().enabledApp(),true);
+  const blob=f.store().db.prepare('SELECT sealed_bearer FROM forge_mcp_app_secure_resume').get();
+  assert.equal(blob.sealed_bearer instanceof Uint8Array,true);
+  assert.equal(Buffer.from(blob.sealed_bearer).includes(Buffer.from(token)),false);
+  assert.deepEqual(f.resume().recoverApp(),{projectId:'forge_app',token,port:47041});
+  f.reopen();
+  assert.deepEqual(f.resume().recoverApp(),{projectId:'forge_app',token,port:47041});
+  // Another app profile and revoked owner consent must each fail closed.
+  f.trust().appIdentity='Other Forge profile';
+  assert.equal(f.resume().enabledApp(),false);
+  assert.equal(f.resume().recoverApp(),null);
+  f.trust().appIdentity='Forge DEV app profile';
+  assert.equal(f.resume().enabledApp(),true);
+  f.store().db.prepare('UPDATE forge_mcp_app_secure_resume SET sealed_bearer=?')
+    .run(Buffer.from('bad'));
+  assert.equal(f.resume().recoverApp(),null);
+  assert.equal(f.resume().disableApp().removed,1);
+  f.resume().enableApp({projectId:'forge_app',token,port:47041});
+  f.trust().revokeApp();
+  assert.equal(f.resume().recoverApp(),null);
+  assert.equal(f.resume().enabledApp(),false);
+  assert.equal(f.store().db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });

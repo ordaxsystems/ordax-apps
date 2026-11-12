@@ -1,7 +1,7 @@
 # Forge GPT-first — execução canônica e Administrador de Projeto
 
 Status: **implementação local Windows**, não integrada ao remoto. Owner único: `ordaxsystems/ordax-apps`, `forge`.
-Atualizado: 2026-11-06. **Precedência para direção Forge V3: este plano único > documentos históricos anteriores.** Para afirmações de entrega, código + testes + prova física prevalecem. `ORCHESTRATOR-CANONICAL-PRODUCT.md` permanece apenas como registro histórico do desenho de 01/11.
+Atualizado: 2026-11-11. **Precedência para direção Forge V3: este plano único > documentos históricos anteriores.** Para afirmações de entrega, código + testes + prova física prevalecem. `ORCHESTRATOR-CANONICAL-PRODUCT.md` permanece apenas como registro histórico do desenho de 01/11.
 
 ## Decisão arquitetural definitiva — Forge Windows, projetos e MCP (2026-11-06)
 
@@ -60,18 +60,22 @@ históricos, não instruções de implementação. A realidade de cada funcional
 - **Um aplicativo Forge e um Runtime de arquivos interno:** reutilizar o
   broker, o serviço e as políticas presentes. O OrdaX Runtime permanece
   separado e **opcional** para controlar outros dispositivos/sistema.
-- **Um MCP Forge multiprojeto:** um único listener `127.0.0.1` com até
-  oito projetos autorizados por ações Owner independentes, tokens efêmeros
-  exclusivos por projeto e sessões MCP ligadas à identidade do token. Cada
-  concessão permanece ativa até revogação explícita ou fechamento do Forge;
-  revogação encerra apenas sessões do projeto revogado. `status` não revela
-  tokens. A ponte HTTPS remota com consentimento ainda está pendente.
-  Não criar processos MCP nem URLs separados para cada projeto.
+- **Um MCP do aplicativo Forge (decisão 11/11/2026):** um único listener
+  `127.0.0.1`, uma aprovação nativa Owner e um token temporário de escopo
+  `forge_app`. A conexão não é escolhida nem autorizada por projeto.
+  `projects_list` descobre projetos no SQLite canônico; todas as demais
+  ferramentas recebem o `projectId` explícito quando necessário. As operações
+  de arquivo permanecem limitadas a pastas físicas vinculadas e verificadas
+  pelo mesmo broker, sem acesso geral ao Windows. Novos projetos não criam
+  túnel, token ou plugin adicional. O escopo do aplicativo não concede novos
+  tipos de ferramenta; operações destrutivas e envio recursivo ao GPT continuam
+  ausentes do MCP. `status` nunca divulga tokens. O túnel externo continua
+  opt-in, não comprovado sem uma chamada GPT→MCP real.
   **Recuperação de sessões ociosas implementada (07/11/2026):** no máximo
   64 sessões HTTP MCP ativas; se um cliente abandonar sua sessão sem
   `DELETE`, o Forge recupera apenas sessões com mais de uma hora sem
   atividade **quando uma nova sessão solicita vaga**. Sessões utilizadas
-  recentemente não são eliminadas e a autorização Owner/token do projeto
+  recentemente não são eliminadas e a autorização Owner/token do aplicativo
   NÃO recebe prazo. Uma sessão abandonada retorna 404 e o cliente pode
   inicializar outra com o token ainda autorizado. Regressão comprovou
   capacidade cheia (409), recuperação de órfãs, preservação da sessão viva
@@ -82,38 +86,29 @@ históricos, não instruções de implementação. A realidade de cada funcional
   abertas; handshakes MCP paralelos reservam vaga antes da execução assíncrona.
   Esses limites não restringem projetos, tarefas, histórico ou conversas
   persistidos no SQLite.
-  **Escopo do bearer fixado (07/11/2026):** cada token MCP registra uma
-  impressão da pasta verificada do projeto no momento da concessão. A
-  validação é feita em todas as solicitações e consultas de grant: uma
-  mudança de pasta invalida o token e sua sessão anterior mesmo se o Owner
-  aprovar a nova pasta depois. A aprovação renovada cria um token novo;
-  o grant de outro projeto no mesmo listener permanece utilizável. Teste
-  direcionado com dois projetos prova a não reanimação do bearer antigo,
-  ausência de acesso cruzado e recuperação apenas por novo consentimento.
-  **Continuidade atual:** a confiança autorizada pelo Owner é registrada
-  por projeto na tabela `forge_mcp_owner_approvals` do SQLite existente,
-  sem guardar segredos. Na próxima ativação do mesmo projeto, o Forge
-  reconhece essa confiança sem repetir o diálogo; revogar remove o registro
-  e invalida seu acesso. Os tokens MCP continuam exclusivos e SOMENTE em
-  memória, sem expiração de 30 minutos: duram até revogar, desativar ou
-  encerrar o processo. Desativar todos fecha a porta, mas conserva as
-  aprovações para futura reativação. Cada aprovação guarda um hash SHA-256
-  da identidade do workspace, não seu caminho ou credencial: mudar a pasta
-  verificada invalida a confiança anterior e exige nova aprovação Owner.
-  **Reconexão segura opcional homologada em Electron Windows isolado (`31076`):**
-  o Owner pode habilitar por projeto **Manter conectado após reinício** via
-  confirmação nativa. Electron `safeStorage`/DPAPI cifra o bearer no SQLite
-  canônico `forge_mcp_secure_resume` e grava a porta loopback; o servidor
-  pode reabrir na mesma porta e com a credencial cifrada após reiniciar o
-  Forge. Não há segundo instalador/servidor MCP: permanece um listener dentro
-  do app. O modo é **desligado por padrão**, exige consentimento explícito,
-  proteção Windows disponível, identidade verificada da pasta e mesma sessão
-  Owner. Porta ocupada, cifra inválida e troca de pasta causam bloqueio
-  fail-closed. **Desativar todos** também desativa a reconexão no próximo
-  boot. Revogar confiança exclui as credenciais cifradas em cascata.
-  Sem opt-in, a autorização persiste mas o token continua somente em RAM.
-  Mesmo com o modo opcional, a instalação/configuração física de um cliente
-  MCP que reutilize o endereço/credencial ainda precisa de E2E.
+  **Escopo canônico do bearer:** o token único pertence ao aplicativo e
+  está ligado à identidade do perfil Forge e à sessão Owner, não a um projeto
+  selecionado. Um projeto só permite operações de arquivo quando seu vínculo
+  físico permanece válido; trocar ou remover a pasta bloqueia o acesso a ela
+  sem criar nem rotacionar credenciais MCP adicionais. A revogação Owner do
+  aplicativo bloqueia todos os projetos e encerra o listener; sessões MCP
+  não são transferíveis entre diferentes bearers.
+  **Continuidade atual do aplicativo:** a aprovação única é persistida
+  na tabela `forge_mcp_app_owner_approval` do SQLite canônico, contendo
+  apenas sessão, hash de identidade do perfil e horário. Não contém bearer.
+  Aprovações antigas de projetos não são elevadas automaticamente a uma
+  autorização global. O token atual permanece em memória e é desativado
+  ao fechar o Forge, salvo opt-in explícito de reconexão cifrada. Desativar
+  fecha a porta; revogar também elimina a confiança do aplicativo.
+  **Reconexão segura opcional do aplicativo:** o Owner pode habilitar
+  **Manter conectado após reinício** para o Forge inteiro, com confirmação
+  nativa. Electron `safeStorage`/DPAPI cifra o único bearer na tabela
+  `forge_mcp_app_secure_resume` do mesmo SQLite e registra a porta loopback.
+  O modo é desligado por padrão. Reinício só restaura o acesso se a confiança
+  global, o perfil e a cifra permanecerem válidos; se a porta estiver ocupada,
+  a conexão falha fechada. Desativar o MCP também desativa a reconexão;
+  revogar o aplicativo elimina o registro cifrado em cascata. A restauração
+  local não inicia o túnel externo do ChatGPT.
   **Transporte com GPT Web:** priorizar o Secure MCP Tunnel oficial da OpenAI
   em vez de expor uma URL HTTPS pública; requer tunnel_id, runtime key, app
   de conexão autorizado e validação real de permissões do plano/workspace.
@@ -126,7 +121,7 @@ históricos, não instruções de implementação. A realidade de cada funcional
   ou chamadas reais ao plugin. Não apresentar a conexão como pronta antes
   de uma execução GPT→MCP→recibo comprovada.
   **Preparação oficial implementada (`forge-mcp-official-tunnel.mjs`):**
-  valida túnel, projeto e endpoint estritamente em `127.0.0.1`; gera apenas
+  valida túnel, escopo do aplicativo e endpoint estritamente em `127.0.0.1`; gera apenas
   argumentos documentados para o `tunnel-client` oficial, com referências
   `env:` para Authorization em chamadas e em descoberta, incluindo porta
   de saúde efêmera. Usa a sintaxe real do CLI `--mcp.server-url=url=http://127.0.0.1:<porta>/mcp`, não uma URL nua. Nunca inclui API key ou bearer no argv e rejeita
@@ -155,14 +150,14 @@ históricos, não instruções de implementação. A realidade de cada funcional
   `forge-mcp-official-tunnel-session.mjs` cria no máximo um processo auxiliar
   `tunnel-client` após confirmação Owner; a UI Conexões recebe `tunnel_id`
   e chave restrita localmente, limpa a chave ao enviar e não a persiste.
-  O Main só entrega ao cliente o bearer do projeto já autorizado e a
-  localização do executável verificado. Revogar o projeto, migrar sua pasta,
-  desativar MCP ou fechar o Forge encerra o cliente, sem manter túnel
-  autônomo fora do aplicativo. O controlador aguarda a saída física do
-  processo anterior antes de permitir outra inicialização (sem túnel duplo);
+  O Main só entrega ao cliente o bearer único do aplicativo Forge autorizado
+  e a localização do executável verificado. Revogar o Forge, desativar MCP
+  ou fechar o aplicativo encerra o cliente, sem manter túnel autônomo.
+  O controlador aguarda a saída física do processo anterior antes de
+  permitir outra inicialização (sem túnel duplo);
   cancelamento durante o startup permanece bloqueado até `exit`.
-  Vincular/criar uma pasta de projeto também encerra o túnel daquele projeto
-  antes de alterar a identidade do workspace.
+  Mudar uma pasta de projeto não recria nem amplia o túnel. O broker verifica
+  a identidade física dessa pasta em cada acesso e bloqueia escopos inválidos.
   **Prova do CLI real no Windows:** `tunnel-client v0.0.20 run` recebeu
   `--mcp.server-url=url=http://127.0.0.1:65000/mcp` e os headers por
   referências `env:` e terminou com falta de `CONTROL_PLANE_API_KEY` (esperado,
@@ -198,11 +193,11 @@ históricos, não instruções de implementação. A realidade de cada funcional
   ou parâmetros de linha de comando.
   Fontes: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
   e https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt.
-- **Autodescoberta:** `forge_discover`, recursos MCP
-  `forge://app/guide` e `forge://project/current` anunciam regras,
-  capacidades, pasta vinculada (sem vazar o caminho físico), memória, limites
-  e provas disponíveis. O GPT recebe o projeto ativo pela sessão, sem
-  comando técnico ou prompt escrito pelo usuário.
+- **Autodescoberta do Forge aplicativo:** `projects_list` apresenta os
+  projetos disponíveis, `forge://app/guide` anuncia as regras e cada
+  operação específica exige um `projectId` válido. As respostas do broker
+  revelam provas/hashes autorizados, não caminhos físicos arbitrários. Não
+  existe um projeto selecionado como identidade da conexão MCP.
 - **Fluxo GPT-first:** usuário solicita o resultado em linguagem natural;
   Forjador organiza o projeto; GPT produz trabalho; ferramentas MCP/Runtime
   executam somente no workspace autorizado; Forge verifica bytes/recibos.

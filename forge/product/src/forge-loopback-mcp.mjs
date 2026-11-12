@@ -1,8 +1,9 @@
 import http from 'node:http';
 import {randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
 
+export const FORGE_APP_MCP_SCOPE='forge_app';
 export const FORGE_LOCAL_MCP_OPERATIONS=Object.freeze([
-  'forge_discover','project_context','project_memory','project_administrator_snapshot','project_handoff',
+  'projects_list','forge_discover','project_context','project_memory','project_administrator_snapshot','project_handoff',
   'project_files_status','project_files_list','project_file_read','project_file_write',
   // Bounded, project-bound work inspection is needed for a tool-using GPT to
   // reference actual task IDs and messages, never invent them from chat text.
@@ -10,7 +11,7 @@ export const FORGE_LOCAL_MCP_OPERATIONS=Object.freeze([
 ]);
 const MAX_REQUEST_BYTES=180_000;
 const MAX_RESPONSE_BYTES=450_000;
-const ID=/^project_[a-zA-Z0-9-]{1,100}$/;
+const ID=/^(?:forge_app|project_[a-zA-Z0-9-]{1,100})$/;
 const SESSION=/^[0-9a-f-]{36}$/;
 const TOKEN=/^[A-Za-z0-9_-]{40,128}$/;
 const MAX_MCP_SESSIONS=64;
@@ -45,7 +46,8 @@ async function bodyJson(req) {
 }
 
 // Disabled until explicit owner action in the Electron settings panel.
-// One listener, distinct owner-approved tokens and immutable project-scoped sessions.
+// One listener. The native Forge uses a single app grant; legacy scoped
+// transport tests remain isolated. Project access is checked by the service.
 // No remote listening, auto-connect, browser origins, persistence or OAuth claim.
 export function createForgeLoopbackMcp({createMcp,authorizeProject,
   projectScope=projectId=>projectId,clock=Date.now,onProjectFileChanged=()=>{}}={}) {
@@ -133,8 +135,10 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
             return json(res,409,{error:'forge_mcp_session_limit'});
         }
         newSessionId=randomUUID();
-        session=createMcp({projectId:grant.projectId,
-          allowedOperations:FORGE_LOCAL_MCP_OPERATIONS});
+        session=createMcp({projectId:grant.projectId===FORGE_APP_MCP_SCOPE?null:grant.projectId,
+          allowedOperations:grant.projectId===FORGE_APP_MCP_SCOPE
+            ?FORGE_LOCAL_MCP_OPERATIONS
+            :FORGE_LOCAL_MCP_OPERATIONS.filter(op=>op!=='projects_list')});
       }else{
         if(typeof sessionId!=='string'||!SESSION.test(sessionId))
           return json(res,404,{error:'forge_mcp_session_required'});
@@ -167,7 +171,11 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
          message.params?.name==='forge_project_file_write'&&
          result?.result?.isError!==true&&
          result?.result?.structuredContent?.status==='succeeded'){
-        try{onProjectFileChanged(grant.projectId);}catch{} // UI failure never invalidates the write receipt.
+        const changedProject=grant.projectId===FORGE_APP_MCP_SCOPE
+          ?result.result.structuredContent?.result?.projectId
+          :grant.projectId;
+        if(typeof changedProject==='string'&&/^project_[A-Za-z0-9-]{1,100}$/.test(changedProject))
+          try{onProjectFileChanged(changedProject);}catch{} // Never invalidate a verified receipt.
       }
       if(newSessionId){
         if(!result?.result?.protocolVersion)return json(res,400,{error:'forge_mcp_initialize_rejected'});
@@ -236,6 +244,8 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
     },
     addProject(requestedProjectId,{resumeToken=null}={}){
       if(!active())throw Error('forge_mcp_not_active');
+      if(grants.has(FORGE_APP_MCP_SCOPE)||requestedProjectId===FORGE_APP_MCP_SCOPE)
+        throw Error('forge_mcp_app_scope_exclusive');
       if(!ID.test(requestedProjectId)||!authorizeProject(requestedProjectId))
         throw Error('forge_mcp_project_not_authorized');
       if(valid(grants.get(requestedProjectId)))throw Error('forge_mcp_project_already_granted');

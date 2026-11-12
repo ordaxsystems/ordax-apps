@@ -643,11 +643,11 @@
           <section id="settingsPanelConnections" class="app-settings-panel" role="tabpanel" aria-labelledby="settingsTabConnections" data-settings-panel="connections" tabindex="0" hidden>
             <div class="app-settings-card"><span class="app-settings-eyebrow">GITHUB</span><h3>Repositórios</h3><p>O endereço do repositório é configurado dentro de cada projeto. A leitura de branches, PRs e verificações depende de uma conexão autorizada pelo Platform; este perfil ainda não a confirma.</p><button id="settingsOpenProject" type="button" class="mini-secondary">Configurar projeto</button></div>
             <div class="app-settings-card"><span class="app-settings-eyebrow">FERRAMENTAS DO GPT</span><h3>OrdaX MCP · conexão de teste</h3><p>O Forjador envia mensagens comuns ao GPT Web; Groq é opcional para análise. O marcador @ordax-mcp pode ser solicitado nas tarefas enviadas ao GPT Web. O plugin precisa estar disponível na conta; a seleção Owner do dispositivo continua obrigatória. A verificação não envia mensagens nem cria arquivos.</p><button id="settingsMcpCheck" type="button" class="mini-secondary">Verificar seleção no ChatGPT</button><p id="settingsMcpState" class="settings-connection-state" role="status" aria-live="polite">Seleção do plugin não verificada.</p><p class="diagnostics-hint">O marcador visual do plugin não comprova uma ação. Arquivos e comandos só contam como feitos quando houver recibo verificável. O MCP Forge local abaixo é separado do OrdaX MCP e ainda não está conectado ao GPT Web.</p></div>
-            <div id="forgeLocalMcpPanel" class="app-settings-card">
-              <span class="app-settings-eyebrow">FORGE MCP · LOCAL</span><h3>Conexão do projeto neste computador</h3>
-              <p>Um servidor MCP local em 127.0.0.1 para todos os projetos, com autorização e token independente por projeto (válidos até revogar ou fechar o aplicativo). As ferramentas acessam exclusivamente o workspace autorizado de cada projeto. Não há publicação ou conexão automática com o GPT Web.</p>
-              <label for="forgeLocalMcpProject">Projeto autorizado</label>
-              <select id="forgeLocalMcpProject" aria-label="Projeto que poderá ser acessado pelo cliente MCP local"></select>
+            <div class="app-settings-card">
+              <span class="app-settings-eyebrow">ARQUIVOS DOS PROJETOS</span><h3>Pastas dos projetos</h3>
+              <p>Escolha uma pasta física para cada projeto. Essa seleção é independente da conexão MCP do aplicativo.</p>
+              <label for="forgeLocalMcpProject">Projeto para configurar a pasta</label>
+              <select id="forgeLocalMcpProject" aria-label="Projeto cuja pasta será configurada"></select>
               <div id="forgeWorkspacePanel" class="app-settings-card">
                 <span class="app-settings-eyebrow">PASTA DO PROJETO</span>
                 <p>A pasta padrão é Documentos/Forge/NomeDoProjeto. O Forge guarda um único vínculo no SQLite, sem cópias do código. Projetos existentes podem escolher outra pasta.</p>
@@ -658,11 +658,15 @@
                   <button id="forgeWorkspaceMigrate" type="button" class="mini-secondary" hidden>Migrar arquivos antigos</button>
                 </div>
               </div>
+            </div>
+            <div id="forgeLocalMcpPanel" class="app-settings-card">
+              <span class="app-settings-eyebrow">MCP DO APLICATIVO</span><h3>Uma conexão para o OrdaX Forge</h3>
+              <p>Autorize o Forge uma única vez. O MCP poderá descobrir projetos e tarefas, mas só poderá ler ou escrever arquivos nas pastas de projeto vinculadas e verificadas. Não concede acesso geral ao Windows nem inicia conexão remota automaticamente.</p>
               <div class="settings-connection-actions">
-                <button id="forgeLocalMcpStart" type="button" class="mini-secondary">Ativar MCP local</button>
-                <button id="forgeLocalMcpRevoke" type="button" class="mini-secondary">Revogar confiança</button>
+                <button id="forgeLocalMcpStart" type="button" class="mini-secondary">Autorizar MCP do Forge</button>
+                <button id="forgeLocalMcpRevoke" type="button" class="mini-secondary">Revogar autorização do Forge</button>
                 <button id="forgeLocalMcpResume" type="button" class="mini-secondary" disabled>Manter conectado após reinício</button>
-                <button id="forgeLocalMcpStop" type="button" class="mini-secondary">Desativar todos</button>
+                <button id="forgeLocalMcpStop" type="button" class="mini-secondary">Desativar MCP do Forge</button>
               </div>
               <p id="forgeLocalMcpState" class="settings-connection-state" role="status" aria-live="polite">O MCP local está desativado.</p>
               <p id="forgeOfficialTunnelState" class="settings-connection-state" role="status" aria-live="polite">Conexão com GPT Web ainda não verificada.</p>
