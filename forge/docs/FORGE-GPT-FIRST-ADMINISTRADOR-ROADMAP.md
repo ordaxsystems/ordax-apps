@@ -3,6 +3,74 @@
 Status: **implementação integrada progressivamente à main e validada no Windows**; homologação longa e conector GPT→MCP remoto continuam pendentes. Owner único: `ordaxsystems/ordax-apps`, `forge`.
 Atualizado: 2026-11-12. **Precedência para direção Forge V3: este plano único > documentos históricos anteriores.** Para afirmações de entrega, código + testes + prova física prevalecem. `ORCHESTRATOR-CANONICAL-PRODUCT.md` permanece apenas como registro histórico do desenho de 01/11.
 
+## Regra de produto obrigatória — GPT executa pelo MCP; Forge acompanha (12/11/2026)
+
+> **Leitura obrigatória para qualquer chat, IA, engenheiro ou teste do Forge.** Esta seção é a definição normativa do fluxo de usuário comum. Não confundir "GPT respondeu", "outro agente escreveu um arquivo" ou "MCP local funciona" com "GPT executor trabalhou usando MCP". Em conflito com relatos históricos, esta regra define o comportamento esperado; o código, os recibos e a prova física definem o que de fato foi entregue. Este arquivo permanece o único SSOT de direção do Forge.
+
+### Experiência correta
+
+O usuário abre o Forge, cria ou seleciona seu projeto e pede naturalmente: **"Crie um site para minha cafeteria Doce Grão, que vende cafés, bolos e doces. Quero cardápio, preços, contato e um site bonito no celular. Quero ver funcionando aqui no Forge. Não publique na internet."**
+
+Ele **não** deve escrever código, citar `@ordax-mcp`, escolher ferramentas, fornecer JSON, caminhos de arquivo, prompts técnicos ou acompanhar janelas internas do GPT. O aplicativo identifica o projeto e o workspace autorizado, disponibiliza ao GPT as ferramentas que sua sessão realmente pode chamar e exibe trabalho e resultados verificáveis. Uma conversa que só recebe HTML sem gravar os arquivos **não concluiu** essa solicitação.
+
+### Responsabilidades sem duplicação
+
+- **Forjador:** interface, conversa central, roteamento e acompanhamento, sem exigir outra chamada de modelo por mensagem.
+- **GPT executor:** agente técnico principal. Interpreta o pedido, **invoca por conta própria ferramentas MCP reais**, lê/cria/edita arquivos da pasta autorizada, inspeciona resultados, testa e corrige. A origem das chamadas deve ser vinculada à sessão GPT e à tarefa.
+- **Forge / MCP interno:** um app multiprojeto, um SQLite, um broker, um listener MCP de aplicação, uma raiz vinculada por projeto; aplica consentimento do Owner, limites, permissões, hashes SHA-256, recibos idempotentes, memória e preview real. Não transforma texto de chat em gravação ou em prova de sucesso.
+- **Administrador de Projeto:** papel lógico opcional exercido por GPT quando disponível ou Groq opcional. Pode responder ao usuário, examinar recibos, dialogar com o executor por mensagens de trabalho atribuíveis, sugerir e coordenar as próximas etapas. Não é obrigatório para toda mensagem, não executa com poderes implícitos, não cria segundo banco, fila, agente concorrente ou SSOT. **Não alegar que o segundo agente está ativo** se só existem snapshots, análise ou propostas no código.
+- **MCP OrdaX do Windows:** controle nativo de dispositivo, útil para desenvolvimento e inspeção; não é sinônimo do MCP interno do Forge. Se um engenheiro usa esse acesso para criar arquivos, **a ação foi do engenheiro**, não do GPT do Forge. O GPT só o utiliza se a ferramenta estiver realmente conectada, autorizada e invocada na sua própria sessão.
+
+### Fluxo obrigatório (pedido natural até entrega)
+
+1. **Entrada:** pedido registrado na conversa Forjador; projeto, Task/Run e pasta real vinculados pelo Forge. Só o Owner escolhe/autoriza a raiz; o GPT não escolhe grants, credenciais nem diretórios.
+2. **Preflight:** comprovar sessão GPT autenticada, acesso às ferramentas MCP **na própria sessão do executor**, workspace e permissões. `@ordax-mcp`, botão de plugin, `tools/list` por outro cliente, porta loopback ou túnel iniciado não comprovam GPT→MCP.
+3. **Despacho:** transmitir pedido original e contexto mínimo autorizado. Sem entregar HTML de exemplo pronto, simular autorização, omitir bloqueios ou exigir linguagem técnica ao usuário. GPT decide os passos.
+4. **Execução:** o GPT invoca MCP para ler, criar, editar, testar e corrigir no workspace. Cada efeito deve ter identidade da chamada originadora, projeto/Run, operação, recibo e hash correlacionáveis; responder com código no chat não conta.
+5. **Acompanhamento:** Forge exibe automaticamente eventos do Store existente, arquivos efetivos, progresso comprovado, erros, pendências e preview do conteúdo verificado; não inventa status/porcentagem a partir da fala do modelo.
+6. **Administração opcional:** GPT ou Groq pode revisar recibos, conversar com usuário/executor e recomendar a próxima etapa por canal autorizado. Não reenviar efeitos incertos, nem fingir segundo agente ativo se ainda não existe.
+7. **Conclusão:** somente após arquivos gravados e relidos, hashes e recibos válidos e testes pertinentes do site. Publicação externa e autonomia 24 h são outros gates.
+
+Estados desejados (não inventar um ledger para isso): aguardando autenticação; aguardando MCP; aguardando consentimento; executando; operação verificada; revisão necessária; bloqueado/incerto; concluído. **Um efeito incerto não pode ser reenviado automaticamente.**
+
+### Provas que não podem ser confundidas
+
+| Fato observado | Prova | Não prova |
+| --- | --- | --- |
+| GPT respondeu e o Run foi salvo | Conversa real | Escrita de arquivos ou uso de MCP |
+| Outro agente copiou HTML da resposta e escreveu por MCP | Ação daquele agente | Que o GPT executor usou MCP |
+| Um teste HTTP chamou 13 ferramentas MCP | Broker local funcional | Ferramentas invocadas pelo GPT no Forge |
+| Plugin aparece ou é selecionado no GPT | Seleção visual | Chamada real, autorização ou resultado |
+| Recibo e SHA-256 de arquivo | Efeito físico atribuído a operação | Autor GPT sem trilha de chamada originadora |
+| Chamada GPT→MCP + recibo vinculado + releitura | Execução do GPT no arquivo | Site funcional sem testes ou deploy |
+| Administrador sugeriu próximos passos | Proposta | Que outra IA executou ou aprovou |
+| Preview mostra a página real | Renderização local | Publicação na internet |
+
+### E2E de aceite — simular somente um usuário comum
+
+**Entrada única:** o pedido natural da cafeteria acima, digitado na UI do Forge. Não fornecer ferramentas, HTML, comandos, JSON ou marcadores no texto do usuário; não preparar arquivos do site antes, não usar script externo para completar o trabalho.
+
+- [ ] Projeto, conversa e Run têm identidade canônica; autenticação GPT confirmada, sem reenvio duplicado.
+- [ ] O **próprio GPT** descobriu e invocou MCP na sessão executor; identificar ferramenta, origem e escopo.
+- [ ] Chamadas do GPT criaram e revisaram arquivos na pasta autorizada; recibos, bytes e SHA-256 confirmados por leitura independente.
+- [ ] O Forge acompanhou eventos e exibiu arquivos, progresso honesto e preview real.
+- [ ] Site contém cafés, bolos, doces, cardápio, preços e contato; responsividade/navegação testadas. Se houve defeito, o GPT corrigiu via MCP.
+- [ ] Reinício preservou arquivos, conversa e recibos sem repetir efeitos; administrador opcional só é mostrado como ativo quando suas ações forem comprovadas.
+- [ ] Nenhuma publicação não solicitada, saída da raiz, falso grant ou segredo exposto.
+
+**Reprovação ou bloqueio obrigatório:** só responder HTML; teste eco; gravação manual pelo engenheiro; MCP invocado fora da sessão do GPT e atribuído ao GPT; botão de plugin como "prova"; autenticação `unknown`; ferramentas/consentimento ausentes; recibo sem origem; preview sem validação. Testes de componente continuam úteis, **mas não são o E2E do produto**.
+
+### Estado observado em 12/11/2026 — não anunciar capacidade antes do E2E
+
+- Na verificação anterior, `ordaxsystems/ordax-apps/main`, checkout Windows e pacote instalado estavam alinhados em `59ac66c2` (`0.2.0-alpha.42`). É um **snapshot datado**, nunca promessa de sincronização futura.
+- Já foram comprovados **separadamente**: GPT Web respondendo pelo Electron e persistindo Run; MCP HTTP real do Forge com 13 ferramentas; gravações locais com recibos e SHA-256; preview e persistência SQLite. Uma prova anterior extraiu HTML escrito pelo GPT e **um agente externo** gravou-o via MCP. **Não** considerar isso GPT→MCP do Forge.
+- O teste novo, com entrada natural e projeto criado pela UI, foi **bloqueado por `authState=unknown`** no perfil de teste. Não enviou ao GPT nem criou site. Não burlar o preflight para declarar aceite.
+- **Pendente:** conexão e invocação comprovada do MCP pelo próprio GPT executor na sessão do Forge, ferramentas com origem atribuível, ciclo de correção feito pelo GPT e supervisão real do Administrador GPT/Groq. O túnel/plugin e a disponibilidade de ferramentas podem depender de autorizações e capacidades reais da conta; verificar sem presumir. Se indisponíveis, indicar o bloqueio e não fingir que um script agiu pelo GPT.
+
+### Instrução de retomada para outros chats / agentes
+
+**Ler esta seção antes de alterar, testar ou declarar o Forge pronto.** O problema a resolver é a ligação real entre GPT executor, MCP e workspace, mais o acompanhamento honesto e o Administrador opcional. Investigar o código existente e corrigir **a causa raiz no owner**, sem outro MCP, plugin, banco, fila, instalação, plano ou rota alternativa disfarçando execução. Executar primeiro a correção mínima, depois testes proporcionais; só chamar o E2E de aprovado quando a origem GPT e os efeitos forem independemente verificáveis. Não usar projetos de clientes nos testes, não reenviar comandos incertos e não publicar site sem pedido. Registrar o resultado neste **mesmo SSOT** sem manter checklists concorrentes.
+
 ## Decisão arquitetural definitiva — Forge Windows, projetos e MCP (2026-11-06)
 
 **Este é o plano normativo único do Forge V3.** Substitui as antigas direções
