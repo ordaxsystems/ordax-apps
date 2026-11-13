@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.app-presentation-manifest/1",
+  "appId": "internet",
+  "appVersion": "0.3.0",
+  "authority": "none",
+  "sourceLocale": "pt-BR",
+  "description": "Navegue na Web usando a sessão de navegador e as políticas de segurança fornecidas pela plataforma.",
+  "monogram": "IN",
+  "singleton": true,
+  "translations": {
+    "en-US": {
+      "title": "Internet",
+      "description": "Browse the web using the browser session and security policies provided by the platform."
+    }
+  }
+}
