@@ -171,6 +171,25 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   function handleResults() {
     for (const op of state.operations) {
       if (handled.has(op.id) || pending(op)) continue; handled.add(op.id);
+      if (pendingReversibleWrite?.operationId === op.id) {
+        const transaction = pendingReversibleWrite;
+        pendingReversibleWrite = null;
+        if (op.status === 'succeeded') {
+          if (transaction.mode === 'apply') {
+            lastReversibleWrite = {
+              deviceId: transaction.deviceId,
+              project: transaction.project,
+              path: transaction.path,
+              beforeContent: transaction.beforeContent,
+              afterContent: transaction.afterContent,
+              afterSha256: null,
+              receiptId: op.requestId || op.id,
+            };
+          } else if (transaction.mode === 'undo') {
+            lastReversibleWrite = null;
+          }
+        }
+      }
       if (op.status !== 'succeeded') continue;
       const data = resultData(op);
       if (op.deviceId !== selected().deviceId) continue;
@@ -204,6 +223,16 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
       if (op.kind === 'read') {
         if (typeof data.content !== 'string' || !/^[a-f0-9]{64}$/.test(data.sha256 || '') || (data.end_line !== undefined && data.end_line < data.line_count)) { message('O Runtime retornou somente parte do arquivo. Escolha um arquivo menor para editar.'); continue; }
         file = { ...selected(), path: data.relative_path || data.path || op.path, content: data.content, sha256: data.sha256 };
+        if (lastReversibleWrite) {
+          if (!reversibleWriteMatches(lastReversibleWrite)) {
+            lastReversibleWrite = null;
+          } else if (lastReversibleWrite.afterSha256 === null) {
+            if (data.content === lastReversibleWrite.afterContent) lastReversibleWrite.afterSha256 = data.sha256;
+            else lastReversibleWrite = null;
+          } else if (data.sha256 !== lastReversibleWrite.afterSha256) {
+            lastReversibleWrite = null;
+          }
+        }
         $('projectEditor').value = proposal ?? file.content; proposal = null; reviewed = null; $('projectReviewArea').hidden = true; message('Arquivo aberto. Edite e revise a alteração antes de aplicar.');
       }
       if (op.kind === 'write') {
