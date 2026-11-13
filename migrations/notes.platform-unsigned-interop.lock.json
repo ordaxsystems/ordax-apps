@@ -9,10 +9,10 @@
     "commit": "acaa6b0ae910b89334dbb1cbf3cfe9203f5faa5e"
   },
   "platform": {
-    "repository": "washingtonmsdj/prototipo-ordax-os",
+    "repository": "ordaxsystems/ordax-os",
     "commit": "029d88b5e26fd1c976c1e5acbc1ff393481eb087",
     "interop_contract": "docs/contracts/external-unsigned-candidate-interop.json",
-    "verifier": "tools/runtime-component-channel/verify_unsigned_candidate.py",
+    "verifier": "sdk/app-sdk-v1/verify_unsigned_candidate.py",
     "readiness_checker": "tools/runtime-component-channel/check_production_readiness.py"
   },
   "handoff": {
