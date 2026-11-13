@@ -125,7 +125,7 @@ def validate_source_inventory(root: Path, plan: dict) -> dict:
 
 
 def load_plan(root: Path) -> tuple[dict, dict, dict]:
-    """Validate ownership and contract claims; do not imply Gate A is complete."""
+    """Validate the post-Gate-A absent-source state and historical removal proof."""
     workspace = read_json(root / "ordax-apps.workspace.json")
     plan = read_json(root / "migrations" / "files.externalization.json")
     sdk = read_json(root / "platform-sdk.lock.json")
@@ -152,7 +152,7 @@ def load_plan(root: Path) -> tuple[dict, dict, dict]:
     ):
         raise FilesCutoverError("Files migration identity, owner or distribution gate is invalid")
     # Gate A is complete but Gate B has not materialized the target source yet.
-    # Current source must therefore be absent from both repositories.
+    # Current product source must therefore be absent from both repositories.
     target_source = root / "apps" / "files"
     if target_source.exists() or target_source.is_symlink():
         raise FilesCutoverError("Files target source exists while materialization state is still pending")
