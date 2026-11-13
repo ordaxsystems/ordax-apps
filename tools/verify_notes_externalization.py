@@ -426,7 +426,7 @@ def main() -> None:
     notes_sdk_lock = json.loads(NOTES_SDK_LOCK_PATH.read_text(encoding="utf-8"))
     expected_notes_sdk_lock = {
         "$schema": "ordax.app-sdk-lock/1",
-        "repository": "washingtonmsdj/prototipo-ordax-os",
+        "repository": "ordaxsystems/ordax-os",
         "commit": "4229f9e381203a09036bff7955bd87ea971cf231",
         "bundle_path": "sdk/app-sdk-v1/bundle.json",
         "bundle_schema": "ordax.app-sdk-bundle/1",
