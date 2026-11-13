@@ -12,6 +12,16 @@ test('a visible plugin name never constitutes an MCP invocation receipt',()=>{
   assert.equal(selected.state,'selection_visible');
   assert.equal(selected.selectionObserved,true);
   assert.equal(selected.invocationVerified,false);
+  const forge=classifyProviderMcpSelection({
+    composerPresent:true,exactNamedControl:true,exactSelectedControl:true,
+    selectedIntegration:'forge'
+  });
+  assert.equal(forge.integration,'forge');
+  assert.equal(forge.invocationVerified,false);
+  const fallback=classifyProviderMcpSelection({
+    composerPresent:true,exactSelectedControl:true,selectedIntegration:'ordax'
+  });
+  assert.equal(fallback.integration,'ordax');
   assert.equal(classifyProviderMcpSelection({composerPresent:true,exactNamedControl:true}).selectionObserved,false);
   assert.equal(classifyProviderMcpSelection({composerPresent:true}).state,'not_observed');
   assert.equal(classifyProviderMcpSelection(null).state,'unavailable');
@@ -81,5 +91,8 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   assert.match(coordinatorUi,/provider_mcp_selection_required/);
   assert.match(coordinatorUi,/rascunho foi preservado/);
   assert.match(main,/withForjadorMcpMention/);
+  assert.match(worker,/OrdaX\\\\s\+Forge/);
+  assert.match(worker,/selectedIntegration/);
+  assert.match(ui,/MCP do Forge selecionado/);
   assert.match(main,/mention_requested:mentionRequested/);
 });

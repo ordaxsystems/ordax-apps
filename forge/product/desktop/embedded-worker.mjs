@@ -592,15 +592,24 @@ export class EmbeddedChatWorker {
           return rect.width>0&&rect.height>0&&style.display!=='none'&&style.visibility!=='hidden';
         };
         const candidates=[...scope.querySelectorAll('button,[role="button"],[aria-selected],[data-selected]')];
-        const matches=candidates.filter(node=>{
-          if(!visible(node))return false;
+        const matches=candidates.flatMap(node=>{
+          if(!visible(node))return [];
           const label=String(node.getAttribute('aria-label')||node.getAttribute('title')||node.textContent||'').trim();
-          return label.length<=120&&/\\bOrdaX\\s+MCP\\b/i.test(label);
+          if(label.length>120)return [];
+          // Prefer the project's own app; retain the general MCP for existing
+          // users during migration. A named control is never a tool receipt.
+          const integration=/\\b(?:OrdaX\\s+Forge|Forge\\s+MCP)\\b/i.test(label)?'forge'
+            :/\\bOrdaX\\s+MCP\\b/i.test(label)?'ordax':null;
+          return integration?[{node,integration}]:[];
         });
-        const selected=matches.some(node=>node.getAttribute('aria-pressed')==='true'||
+        const active=({node})=>node.getAttribute('aria-pressed')==='true'||
           node.getAttribute('aria-selected')==='true'||node.getAttribute('data-selected')==='true'||
-          node.getAttribute('data-state')==='active');
-        return {composerPresent:true,exactNamedControl:matches.length>0,exactSelectedControl:selected};
+          node.getAttribute('data-state')==='active';
+        const selected=matches.find(item=>item.integration==='forge'&&active(item))||
+          matches.find(active);
+        return {composerPresent:true,exactNamedControl:matches.length>0,
+          namedIntegration:matches.some(item=>item.integration==='forge')?'forge':'ordax',
+          exactSelectedControl:Boolean(selected),selectedIntegration:selected?.integration||null};
       })()`,timeoutMs:5000,timeoutCode:'provider_mcp_selection_observation_timeout'
     }).catch(()=>null);
     return classifyProviderMcpSelection(observation);

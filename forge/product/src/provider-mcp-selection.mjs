@@ -27,10 +27,12 @@ export function classifyProviderMcpSelection(raw) {
     state:'unavailable',selectionObserved:false,invocationVerified:false
   });
   if(raw.exactSelectedControl===true) return Object.freeze({
-    state:'selection_visible',selectionObserved:true,invocationVerified:false
+    state:'selection_visible',selectionObserved:true,invocationVerified:false,
+    integration:['forge','ordax'].includes(raw.selectedIntegration)?raw.selectedIntegration:null
   });
   if(raw.exactNamedControl===true) return Object.freeze({
-    state:'name_visible_unverified',selectionObserved:false,invocationVerified:false
+    state:'name_visible_unverified',selectionObserved:false,invocationVerified:false,
+    integration:['forge','ordax'].includes(raw.namedIntegration)?raw.namedIntegration:null
   });
   return Object.freeze({
     state:'not_observed',selectionObserved:false,invocationVerified:false
