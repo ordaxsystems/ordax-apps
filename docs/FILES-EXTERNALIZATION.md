@@ -1,12 +1,13 @@
 # Files — Gate A e preflight de extração
 
-> Estado: **bloqueado por ownership**. Este documento não autoriza criar `apps/files`, publicar pacotes ou alterar o OrdaX OS. O plano machine-readable está em `migrations/files.externalization.json`.
+> **Estado atual:** o Gate A de remoção do source bundled foi concluído em `ordax-os#2184`; `system/apps/files/` não existe mais na `main`. Ainda não há `apps/files` ativo e a distribuição permanece bloqueada. O plano machine-readable `migrations/files.externalization.json` continua sendo um gate de pré-materialização e contém campos históricos do source anterior; ele não deve ser usado para afirmar que a implementação Files ainda vive no OS.
 
-## Estado reconciliado com os repositórios atuais (2026-10-23)
+## Estado reconciliado com os repositórios atuais
 
-- O owner atual da plataforma é `ordaxsystems/ordax-os`; a fonte do produto
-  permanece em `system/apps/files/`. O snapshot de `ordax-apps/main` usado na
-  prova, `6c1090fe022a8b78a2967c8f1b57d18310accbea`, não contém `apps/files/`.
+- O `ordax-os` conserva os serviços/contratos File Space, Recentes e Projetos,
+  mas não a implementação do app Files. O snapshot histórico dos blobs removidos
+  permanece a origem verificável para uma futura materialização em `ordax-apps`;
+  até isso ocorrer, não existe segunda fonte executável.
 - O snapshot dos dez arquivos foi recapturado da árvore canônica limpa
   `ordax-os/main@cf8b07ba6d152856b34cc190079beaa8312252f2`. Os dez Git blob IDs
   foram comparados com o snapshot anterior (`fe8d233`) e permanecem idênticos;
