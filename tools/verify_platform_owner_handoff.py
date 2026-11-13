@@ -115,24 +115,14 @@ def operational_path(path: str) -> bool:
 # whole source/workflow file or a checkout URL. Extra references fail closed.
 def verified_historical_assertions(root: Path, path: str, old: str) -> bool:
     allowed = {
-        "tools/verify_notes_platform_sdk.py": [
-            f'if lock["repository"] != "{old}":',
-        ],
-        "tools/verify_notes_production_trust.py": [
-            f'if lock.get("repository") != "{old}":',
-        ],
         "tools/verify_notes_externalization.py": [
             f'if source_snapshot.get("repository") != "{old}":',
-            f'"repository": "{old}",',
         ],
         ".github/workflows/foundation.yml": [
             f'assert repository == "{old}"',
         ],
         ".github/workflows/store-catalog-candidate.yml": [
             f'assert repository == "{old}"',
-        ],
-        ".github/workflows/notes-unsigned-candidate.yml": [
-            f"'repository': '{old}',",
         ],
     }
     expected = allowed.get(path)
