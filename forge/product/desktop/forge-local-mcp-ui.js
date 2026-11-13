@@ -11,6 +11,7 @@ const workspaceProject=localMcpElement('forgeLocalMcpProject');
 const mcpState=localMcpElement('forgeLocalMcpState');
 const officialTunnelState=localMcpElement('forgeOfficialTunnelState');
 const officialTunnelId=localMcpElement('forgeOfficialTunnelId');
+const officialTunnelInstall=localMcpElement('forgeOfficialTunnelInstall');
 const officialTunnelKey=localMcpElement('forgeOfficialTunnelKey');
 const officialTunnelStart=localMcpElement('forgeOfficialTunnelStart');
 const officialTunnelStop=localMcpElement('forgeOfficialTunnelStop');
@@ -34,6 +35,9 @@ function hideSecret(){
 }
 function setState(message){if(mcpState)mcpState.textContent=message;}
 function syncTunnelControls(){
+  if(officialTunnelInstall)officialTunnelInstall.disabled=mcpBusy||
+    lastMcpStatus?.officialTunnel?.installed===true||
+    typeof api?.forgeOfficialTunnelInstall!=='function';
   const session=lastMcpStatus?.officialTunnelSession;
   const running=Boolean(session?.state&&session.state!=='stopped');
   if(officialTunnelStart)officialTunnelStart.disabled=mcpBusy||running||
@@ -86,7 +90,7 @@ async function refreshMcp(){
                 :status.officialTunnel?.installed
                   ?'Cliente oficial OpenAI '+status.officialTunnel.clientVersion+
                     ' verificado. Túnel do Forge ainda não conectado ao GPT Web.'
-                  :'Cliente oficial não verificado neste perfil; GPT Web não conectado ao MCP Forge.';
+                  :'Cliente oficial não instalado/verificado. Use “Instalar cliente oficial do túnel”, depois configure o ID e a chave. GPT Web ainda não conectado.';
     }
     if(appActive(status)){
       setState('MCP do aplicativo Forge ativo em 127.0.0.1. Uma conexão para o catálogo de projetos; '+
@@ -165,6 +169,29 @@ mcpResume?.addEventListener('click',async()=>{
   }catch{setState('Reconexão segura não disponível neste perfil Windows.');}
   finally{mcpBusy=false;await refreshMcp();}
 });
+officialTunnelInstall?.addEventListener('click',async()=>{
+  if(mcpBusy||typeof api?.forgeOfficialTunnelInstall!=='function')return;
+  mcpBusy=true;syncControls();
+  if(officialTunnelState)officialTunnelState.textContent=
+    'Instalando cliente oficial com verificação de SHA-256…';
+  let failed=false;
+  try{
+    const result=await api.forgeOfficialTunnelInstall();
+    if(result?.declined)failed=true;
+  }catch{failed=true;}
+  finally{
+    mcpBusy=false;await refreshMcp();
+    if(failed&&officialTunnelState)officialTunnelState.textContent=
+      'Instalação não concluída. Confira autorização, conexão de internet e componentes existentes.';
+  }
+});
+for(const button of document.querySelectorAll('[data-forge-tunnel-link]')){
+  button.addEventListener('click',async()=>{
+    try{await api.forgeOfficialTunnelOpenSetup(button.dataset.forgeTunnelLink);}
+    catch{if(officialTunnelState)officialTunnelState.textContent=
+      'Não foi possível abrir a configuração da OpenAI no navegador.';}
+  });
+}
 officialTunnelId?.addEventListener('input',syncTunnelControls);
 officialTunnelKey?.addEventListener('input',syncTunnelControls);
 officialTunnelStart?.addEventListener('click',async()=>{

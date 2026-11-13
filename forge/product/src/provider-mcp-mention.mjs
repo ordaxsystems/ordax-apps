@@ -1,14 +1,13 @@
-// Temporary OrdaX MCP pilot: mentions request a ChatGPT app, but do not
-// grant device access or prove an invocation. Only Groq-delegated GPT turns
-// receive the suffix; direct human GPT messages remain unchanged.
+// Legacy OrdaX MCP mention remains recognizable in existing user requests.
+// Forge owns a separate MCP connection; never silently inject the general
+// computer-control app into delegated project messages.
 export const FORJADOR_MCP_MENTION='@ordax-mcp';
 
 export function withForjadorMcpMention(prompt,{authorSource='human'}={}) {
-  const text=String(prompt??'');
-  if(authorSource!=='orchestrator')return text;
-  if(!text.trim())return text;
-  if(/(^|[^\w])@ordax-mcp(?=$|[^\w-])/i.test(text))return text;
-  return text.trimEnd()+'\n\n'+FORJADOR_MCP_MENTION;
+  // Preserve the old export for existing callers, but do not force a
+  // different device-wide MCP merely because Groq delegated the turn.
+  // The actual ChatGPT tool choice is checked read-only before submission.
+  return String(prompt??'');
 }
 
 export function mentionWasRequested(prompt) {

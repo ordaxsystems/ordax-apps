@@ -34,6 +34,7 @@ import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
 import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
 import {inspectForgeOfficialTunnelClient,officialTunnelComponentDirectory} from '../src/forge-mcp-tunnel-readiness.mjs';
 import {createForgeOfficialTunnelSession} from '../src/forge-mcp-official-tunnel-session.mjs';
+import {installForgeOfficialTunnelClient} from '../src/forge-mcp-tunnel-installer.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
 import {IsolatedInteractiveHtmlPreview} from './isolated-interactive-preview.mjs';
@@ -1461,6 +1462,38 @@ registerUiHandler('ordax:forge:local-mcp:resume-disable',event=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
   return {...forgeMcpResume.disableApp(),autoResumeApp:false};
+});
+let forgeTunnelInstallPending=false;
+registerUiHandler('ordax:forge:tunnel:install',async event=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_tunnel_native_ui_only');
+  if(forgeTunnelInstallPending)throw Error('forge_tunnel_install_in_progress');
+  forgeTunnelInstallPending=true;
+  try{
+    orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
+    if(forgeOfficialTunnel.status().state!=='stopped')
+      throw Error('forge_tunnel_stop_before_install');
+    const confirmed=await confirmInActiveUi({
+      title:'Instalar cliente oficial da OpenAI',
+      message:'Instalar o componente de túnel do Forge neste Windows?',
+      detail:'O Forge baixará o pacote oficial openai/tunnel-client v0.0.20, verificará SHA-256 do arquivo e executável e instalará somente na pasta de componentes do Forge. Não inicia o túnel, não cria credenciais e não modifica outros aplicativos.',
+      approveLabel:'Instalar cliente oficial'
+    });
+    if(!confirmed)return {installed:false,declined:true};
+    return await installForgeOfficialTunnelClient({ownerApproved:true});
+  }finally{forgeTunnelInstallPending=false;}
+});
+const FORGE_TUNNEL_SETUP_URLS=Object.freeze({
+  tunnels:'https://platform.openai.com/settings/organization/tunnels',
+  keys:'https://platform.openai.com/settings/organization/api-keys',
+  chatgpt:'https://chatgpt.com/#settings/Connectors'
+});
+registerUiHandler('ordax:forge:tunnel:open-setup',async(event,target)=>{
+  requireTrustedSupervisorRenderer(event);
+  const url=typeof target==='string'?FORGE_TUNNEL_SETUP_URLS[target]:null;
+  if(!url)throw Error('forge_tunnel_setup_destination_invalid');
+  await shell.openExternal(url);
+  return {opened:true};
 });
 registerUiHandler('ordax:forge:tunnel:start',async(event,request)=>{
   requireTrustedSupervisorRenderer(event);

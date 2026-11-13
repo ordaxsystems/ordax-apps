@@ -675,6 +675,13 @@
               </div>
               <p id="forgeLocalMcpState" class="settings-connection-state" role="status" aria-live="polite">O MCP local está desativado.</p>
               <p id="forgeOfficialTunnelState" class="settings-connection-state" role="status" aria-live="polite">Conexão com GPT Web ainda não verificada.</p>
+              <div class="settings-connection-actions">
+                <button id="forgeOfficialTunnelInstall" type="button" class="mini-secondary">Instalar cliente oficial do túnel</button>
+                <button data-forge-tunnel-link="tunnels" type="button" class="mini-secondary">1. Criar túnel na OpenAI</button>
+                <button data-forge-tunnel-link="keys" type="button" class="mini-secondary">2. Criar chave restrita</button>
+                <button data-forge-tunnel-link="chatgpt" type="button" class="mini-secondary">3. Conectar Forge no ChatGPT</button>
+              </div>
+              <p class="diagnostics-hint">O túnel exige ID autorizado na OpenAI Platform e chave de execução com Tunnels Read + Use. Instale o cliente, ative o MCP local, inicie o túnel e, no ChatGPT, crie uma conexão MCP personalizada usando esse mesmo ID. Não cole a chave no chat.</p>
               <div id="forgeOfficialTunnelControls" class="app-settings-card">
                 <label for="forgeOfficialTunnelId">ID do túnel autorizado na OpenAI Platform</label>
                 <input id="forgeOfficialTunnelId" type="text" autocomplete="off" spellcheck="false" placeholder="tunnel_…" />
