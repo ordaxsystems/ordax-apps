@@ -250,9 +250,19 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     })().finally(() => { refreshPromise = null; });
     return refreshPromise;
   }
-  async function submit(data) {
+  async function submit(data, reversibleTransaction = null) {
     submitting++; controls();
-    try { const request = { ...selected(), ...data }; const op = assertOperationBinding(request, await host.runtimeSubmit(request)); state.operations.push(op); message(`${labels[op.status]} · ${op.label}`); }
+    try {
+      const request = { ...selected(), ...data };
+      const op = assertOperationBinding(request, await host.runtimeSubmit(request));
+      if (reversibleTransaction) {
+        reversibleTransaction.operationId = op.id;
+        pendingReversibleWrite = reversibleTransaction;
+      }
+      state.operations.push(op);
+      message(`${labels[op.status]} · ${op.label}`);
+      return op;
+    }
     catch (error) { await refresh(); throw error; }
     finally { await refresh({ fresh: true }); submitting--; controls(); }
   }
@@ -358,7 +368,43 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     review({ deviceId: file.deviceId, project: file.project, kind: 'write', path: file.path, content: $('projectEditor').value, expectedSha256: file.sha256 }, `Alterar ${file.project}/${file.path} em ${file.deviceId}. O Runtime recusará a gravação se o arquivo tiver mudado.`);
     $('projectDiff').textContent = changePreview(file.content, reviewed.content); $('projectApply').hidden = false; $('terminalRun').hidden = true;
   });
-  $('projectApply').addEventListener('click', () => task(async () => { const current = reviewed; if (current?.kind !== 'write') return; reviewed = null; $('projectReviewArea').hidden = true; await submit(current); }));
+  $('projectUndo').addEventListener('click', () => {
+    const undo = lastReversibleWrite;
+    if (!reversibleWriteMatches(undo) || !undo.afterSha256 || file.sha256 !== undo.afterSha256 || dirty()) {
+      return message('Releia a versão atual do arquivo antes de tentar desfazer.');
+    }
+    review({
+      deviceId: undo.deviceId,
+      project: undo.project,
+      kind: 'write',
+      path: undo.path,
+      content: undo.beforeContent,
+      expectedSha256: undo.afterSha256,
+      undoCandidate: true,
+    }, `Desfazer a última alteração confirmada de ${undo.project}/${undo.path}. O Runtime recusará a reversão se o arquivo tiver mudado desde o recibo ${undo.receiptId}.`);
+    $('projectDiff').textContent = changePreview(file.content, undo.beforeContent);
+    $('projectApply').hidden = false;
+    $('terminalRun').hidden = true;
+  });
+  $('projectApply').addEventListener('click', () => task(async () => {
+    const current = reviewed;
+    if (current?.kind !== 'write') return;
+    const { undoCandidate = false, ...request } = current;
+    const transaction = undoCandidate
+      ? { mode: 'undo', operationId: null }
+      : {
+          mode: 'apply',
+          operationId: null,
+          deviceId: file.deviceId,
+          project: file.project,
+          path: file.path,
+          beforeContent: file.content,
+          afterContent: request.content,
+        };
+    reviewed = null;
+    $('projectReviewArea').hidden = true;
+    await submit(request, transaction);
+  }));
   $('terminalReview').addEventListener('click', () => task(() => {
     const argv = JSON.parse($('terminalArgv').value);
     if (!Array.isArray(argv) || !argv.length || argv.some(a => typeof a !== 'string' || !a)) throw new Error('Informe os argumentos como uma lista JSON de textos.');
