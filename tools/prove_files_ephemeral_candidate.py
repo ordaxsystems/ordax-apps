@@ -246,13 +246,6 @@ def prove(root: Path, platform_root: Path, sdk_root: Path) -> dict:
                 or runtime_evidence["missing_host_ports"] != "not-assessed"
                 or runtime_evidence["component_version"] != app["version"]):
             raise FilesProofError("packaged Files runtime contract smoke is incomplete")
-        owner_gate = (
-            _canonical_source_owner_gate_proof(
-                channel_bin, staging,
-                staging / "candidate-0" / "release" / "files.release.json",
-                staging / "candidate-0" / "release" / "files.compatibility.json",
-            ) if channel_bin is not None else None
-        )
         result = {
             "schema": "ordax.files-ephemeral-candidate-proof/1",
             "app_id": "files",
