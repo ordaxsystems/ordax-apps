@@ -21,7 +21,7 @@ test("Aura is the single product identity of the versioned Assistant component",
   assert.equal(manifest.id, "assistant"); // Stable install/activation key, not a second app.
   assert.equal(typeof manifest.title, "string");
   assert.ok(manifest.title.length > 0, "Product title must be non-empty");
-  assert.equal(manifest.version, "0.1.2");
+  assert.equal(manifest.version, "0.1.3");
   assert.equal(manifest.owner, "ordaxsystems/ordax-apps");
   assert.equal(manifest.kind, "app");
   assert.equal(manifest.failureDomain, "app");
