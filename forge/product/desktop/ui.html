@@ -589,14 +589,14 @@
   <dialog id="appSettingsDialog" class="app-settings-dialog" aria-labelledby="appSettingsTitle">
     <div class="app-settings-frame">
       <header class="app-settings-header">
-        <div><span id="productBrandEyebrow" class="app-settings-eyebrow">ORDAX FORGE</span><h2 id="appSettingsTitle">Configurações</h2><p>Preferências do aplicativo, provedores e estado das conexões.</p></div>
+        <div class="app-settings-heading"><span class="app-settings-wordmark"><span class="app-settings-logo" aria-hidden="true">⬡</span><span id="productBrandEyebrow">OrdaX Forge</span></span><span class="app-settings-heading-copy"><h2 id="appSettingsTitle">Configurações</h2><p>Preferências do aplicativo, provedores e conexões.</p></span></div>
         <button id="closeAppSettings" class="app-settings-close" type="button" aria-label="Fechar configurações">×</button>
       </header>
       <div class="app-settings-body">
         <nav class="app-settings-nav" role="tablist" aria-label="Seções de configurações" aria-orientation="vertical">
-          <button id="settingsTabGeneral" class="app-settings-tab" type="button" role="tab" aria-selected="true" aria-controls="settingsPanelGeneral" tabindex="0" data-settings-tab="general">Geral</button>
-          <button id="settingsTabProviders" class="app-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsPanelProviders" tabindex="-1" data-settings-tab="providers">IA e provedores</button>
-          <button id="settingsTabConnections" class="app-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsPanelConnections" tabindex="-1" data-settings-tab="connections">Conexões</button>
+          <button id="settingsTabGeneral" class="app-settings-tab" type="button" role="tab" aria-selected="true" aria-controls="settingsPanelGeneral" tabindex="0" data-settings-tab="general"><span class="settings-tab-icon" aria-hidden="true">⚙</span>Geral</button>
+          <button id="settingsTabProviders" class="app-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsPanelProviders" tabindex="-1" data-settings-tab="providers"><span class="settings-tab-icon" aria-hidden="true">◇</span>IA e provedores</button>
+          <button id="settingsTabConnections" class="app-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsPanelConnections" tabindex="-1" data-settings-tab="connections"><span class="settings-tab-icon" aria-hidden="true">↗</span>Conexões</button>
         </nav>
         <div class="app-settings-content">
           <section id="settingsPanelGeneral" class="app-settings-panel" role="tabpanel" aria-labelledby="settingsTabGeneral" data-settings-panel="general" tabindex="0">
@@ -645,84 +645,138 @@
               <p id="labSupervisorKeyState" role="status" aria-live="polite" class="diagnostics-hint">Nenhuma chave enviada ou testada.</p>
             </details>
           </section>
-          <section id="settingsPanelConnections" class="app-settings-panel" role="tabpanel" aria-labelledby="settingsTabConnections" data-settings-panel="connections" tabindex="0" hidden>
-            <div class="app-settings-card"><span class="app-settings-eyebrow">GITHUB</span><h3>Repositórios</h3><p>O endereço do repositório é configurado dentro de cada projeto. A leitura de branches, PRs e verificações depende de uma conexão autorizada pelo Platform; este perfil ainda não a confirma.</p><button id="settingsOpenProject" type="button" class="mini-secondary">Configurar projeto</button></div>
-            <div class="app-settings-card"><span class="app-settings-eyebrow">FERRAMENTAS DO GPT</span><h3>OrdaX MCP · conexão de teste</h3><p>O Forjador envia mensagens comuns ao GPT Web; Groq é opcional para análise. O marcador @ordax-mcp pode ser solicitado nas tarefas enviadas ao GPT Web. O plugin precisa estar disponível na conta; a seleção Owner do dispositivo continua obrigatória. A verificação não envia mensagens nem cria arquivos.</p><button id="settingsMcpCheck" type="button" class="mini-secondary">Verificar seleção no ChatGPT</button><p id="settingsMcpState" class="settings-connection-state" role="status" aria-live="polite">Seleção do plugin não verificada.</p><p class="diagnostics-hint">O marcador visual do plugin não comprova uma ação. Arquivos e comandos só contam como feitos quando houver recibo verificável. O MCP Forge local abaixo é separado do OrdaX MCP e ainda não está conectado ao GPT Web.</p></div>
-            <div class="app-settings-card">
-              <span class="app-settings-eyebrow">ARQUIVOS DOS PROJETOS</span><h3>Pastas dos projetos</h3>
-              <p>Escolha uma pasta física para cada projeto. Essa seleção é independente da conexão MCP do aplicativo.</p>
-              <label for="forgeLocalMcpProject">Projeto para configurar a pasta</label>
-              <select id="forgeLocalMcpProject" aria-label="Projeto cuja pasta será configurada"></select>
-              <div id="forgeWorkspacePanel" class="app-settings-card">
-                <span class="app-settings-eyebrow">PASTA DO PROJETO</span>
-                <p>A pasta padrão é Documentos/Forge/NomeDoProjeto. O Forge guarda um único vínculo no SQLite, sem cópias do código. Projetos existentes podem escolher outra pasta.</p>
-                <p id="forgeWorkspaceState" class="settings-connection-state" role="status" aria-live="polite">Selecione um projeto para verificar a pasta.</p>
-                <div class="settings-connection-actions">
-                  <button id="forgeWorkspaceCreate" type="button" class="mini-secondary">Criar pasta padrão</button>
-                  <button id="forgeWorkspaceChoose" type="button" class="mini-secondary">Escolher pasta existente</button>
-                  <button id="forgeWorkspaceMigrate" type="button" class="mini-secondary" hidden>Migrar arquivos antigos</button>
+          <section id="settingsPanelConnections" class="app-settings-panel forge-settings-connections" role="tabpanel" aria-labelledby="settingsTabConnections" data-settings-panel="connections" tabindex="0" hidden>
+            <section id="forgeLocalMcpPanel" class="app-settings-card forge-connection-card" aria-labelledby="forgeLocalMcpTitle">
+              <div class="forge-settings-card-heading">
+                <span class="forge-settings-card-icon" aria-hidden="true">▤</span>
+                <div class="forge-settings-card-copy">
+                  <h3 id="forgeLocalMcpTitle">MCP do aplicativo</h3>
+                  <p>Conecte o ChatGPT ao Forge com acesso somente aos projetos e pastas autorizados.</p>
                 </div>
+                <span id="forgeLocalMcpBadge" class="forge-settings-badge" data-state="waiting" role="status" aria-live="polite">MCP desativado</span>
               </div>
-            </div>
-            <div id="forgeLocalMcpPanel" class="app-settings-card">
-              <span class="app-settings-eyebrow">MCP DO APLICATIVO</span><h3>Uma conexão para o OrdaX Forge</h3>
-              <p>Autorize o Forge uma única vez. O MCP poderá descobrir projetos e tarefas, mas só poderá ler ou escrever arquivos nas pastas de projeto vinculadas e verificadas. Não concede acesso geral ao Windows nem inicia conexão remota automaticamente.</p>
-              <div class="settings-connection-actions">
-                <button id="forgeLocalMcpStart" type="button" class="mini-secondary">Autorizar MCP do Forge</button>
-                <button id="forgeLocalMcpRevoke" type="button" class="mini-secondary">Revogar autorização do Forge</button>
+              <div class="settings-connection-actions forge-settings-actions">
+                <button id="forgeLocalMcpStart" type="button" class="mini-primary">Autorizar MCP do Forge</button>
+                <button id="forgeLocalMcpRevoke" type="button" class="mini-secondary">Revogar autorização</button>
                 <button id="forgeLocalMcpResume" type="button" class="mini-secondary" disabled>Manter conectado após reinício</button>
-                <button id="forgeLocalMcpStop" type="button" class="mini-secondary">Desativar MCP do Forge</button>
+                <button id="forgeLocalMcpStop" type="button" class="mini-secondary">Desativar MCP</button>
               </div>
-              <p id="forgeLocalMcpState" class="settings-connection-state" role="status" aria-live="polite">O MCP local está desativado.</p>
-              <div id="forgeCloudflareTunnelPanel" class="app-settings-card">
-                <span class="app-settings-eyebrow">CLOUDFLARE TUNNEL — FORGE</span>
-                <h4>Conexão direta do GPT aos projetos</h4>
-                <p class="diagnostics-hint">Endpoint reservado: <code>https://forge-mcp.ordax.com.br/mcp</code>. Cloudflare Access OAuth precisa estar ativo antes de habilitar as requisições; a rota pública ainda responde 503. O Forge exige um JWT Access válido para cada operação. Não utiliza o OrdaX MCP geral.</p>
-                <p id="forgeCloudflareState" class="settings-connection-state" role="status">Túnel reservado, aguardando Cloudflare Access. GPT Web não conectado.</p>
-                <button id="forgeCloudflareInstall" type="button" class="mini-secondary">Instalar cloudflared oficial</button>
-                <label for="forgeCloudflareTeam">Equipe Cloudflare Access (nome da organização Zero Trust)</label>
-                <input id="forgeCloudflareTeam" type="text" spellcheck="false" autocomplete="off" placeholder="ex.: equipe-ordax"/>
-                <label for="forgeCloudflareAudience">Audience (AUD) da aplicação Access MCP</label>
-                <input id="forgeCloudflareAudience" type="text" spellcheck="false" autocomplete="off" placeholder="ID de audiência da aplicação autorizada"/>
-                <label for="forgeCloudflareToken">Token privado do túnel Forge (somente nesta sessão)</label>
-                <input id="forgeCloudflareToken" type="password" autocomplete="off" spellcheck="false" placeholder="Não compartilhar no ChatGPT"/>
-                <div class="settings-connection-actions">
-                  <button id="forgeCloudflareStart" type="button" class="mini-secondary" disabled>Iniciar túnel protegido</button>
-                  <button id="forgeCloudflareStop" type="button" class="mini-secondary" disabled>Desligar túnel Forge</button>
+              <p id="forgeLocalMcpState" class="forge-settings-detail" role="status" aria-live="polite">Verificando a conexão local…</p>
+              <div id="forgeLocalMcpCredentials" hidden>
+                <label for="forgeLocalMcpUrl">Endpoint MCP local</label>
+                <input id="forgeLocalMcpUrl" type="text" readonly autocomplete="off" spellcheck="false"/>
+                <label for="forgeLocalMcpToken">Token temporário do MCP local</label>
+                <textarea id="forgeLocalMcpToken" rows="3" readonly autocomplete="off" spellcheck="false"></textarea>
+                <p class="diagnostics-hint">Este token é restrito ao cliente local e não deve ser compartilhado.</p>
+              </div>
+            </section>
+
+            <section id="forgeCloudflareTunnelPanel" class="app-settings-card forge-connection-card" aria-labelledby="forgeCloudflareTitle">
+              <div class="forge-settings-card-heading">
+                <span class="forge-settings-card-icon" aria-hidden="true">☁</span>
+                <div class="forge-settings-card-copy">
+                  <h3 id="forgeCloudflareTitle">Cloudflare Tunnel</h3>
+                  <p>Conexão protegida entre o ChatGPT Web e os projetos locais do Forge.</p>
+                </div>
+                <span class="forge-settings-badge" data-state="secure">OAuth obrigatório</span>
+              </div>
+              <div class="forge-cloudflare-endpoint">
+                <span>Endereço do Forge MCP</span>
+                <code>https://forge-mcp.ordax.com.br/mcp</code>
+              </div>
+              <div class="forge-settings-field-grid">
+                <div class="forge-settings-field">
+                  <label for="forgeCloudflareTeam">Equipe Cloudflare Access</label>
+                  <input id="forgeCloudflareTeam" type="text" spellcheck="false" autocomplete="off" placeholder="Nome da equipe Zero Trust"/>
+                </div>
+                <div class="forge-settings-field">
+                  <label for="forgeCloudflareAudience">Audience (AUD)</label>
+                  <input id="forgeCloudflareAudience" type="text" spellcheck="false" autocomplete="off" placeholder="Identificador da aplicação Access"/>
                 </div>
               </div>
-              <div id="forgeOfficialTunnelLegacy" hidden>
-              <p id="forgeOfficialTunnelState" class="settings-connection-state" role="status" aria-live="polite">Conexão com GPT Web ainda não verificada.</p>
-              <div class="settings-connection-actions">
-                <button id="forgeOfficialTunnelInstall" type="button" class="mini-secondary">Instalar cliente oficial do túnel</button>
-                <button data-forge-tunnel-link="tunnels" type="button" class="mini-secondary">1. Criar túnel na OpenAI</button>
-                <button data-forge-tunnel-link="keys" type="button" class="mini-secondary">2. Criar chave restrita</button>
-                <button data-forge-tunnel-link="chatgpt" type="button" class="mini-secondary">3. Conectar Forge no ChatGPT</button>
+              <div class="forge-settings-field">
+                <label for="forgeCloudflareToken">Token privado do túnel <span class="forge-settings-hint-inline">não é enviado ao ChatGPT</span></label>
+                <div class="forge-settings-secret">
+                  <input id="forgeCloudflareToken" type="password" autocomplete="new-password" spellcheck="false" placeholder="Cole o token somente nesta sessão"/>
+                  <button id="forgeCloudflareTokenToggle" type="button" aria-label="Mostrar token" aria-pressed="false">Mostrar</button>
+                </div>
               </div>
-              <p class="diagnostics-hint">O túnel exige ID autorizado na OpenAI Platform e chave de execução com Tunnels Read + Use. Instale o cliente, ative o MCP local, inicie o túnel e, no ChatGPT, crie uma conexão MCP personalizada usando esse mesmo ID. Não cole a chave no chat.</p>
-              <div id="forgeOfficialTunnelControls" class="app-settings-card">
-                <label for="forgeOfficialTunnelId">ID do túnel autorizado na OpenAI Platform</label>
-                <input id="forgeOfficialTunnelId" type="text" autocomplete="off" spellcheck="false" placeholder="tunnel_…" />
-                <label for="forgeOfficialTunnelKey">Chave restrita de execução (somente nesta sessão)</label>
-                <input id="forgeOfficialTunnelKey" type="password" autocomplete="off" spellcheck="false" placeholder="Não compartilhe esta chave no chat" />
-                <button id="forgeOfficialTunnelStart" type="button" class="mini-secondary" disabled>Iniciar túnel oficial</button>
-                <button id="forgeOfficialTunnelStop" type="button" class="mini-secondary" disabled>Desligar túnel</button>
+              <div class="forge-settings-tunnel-controls">
+                <div class="settings-connection-actions forge-settings-actions">
+                  <button id="forgeCloudflareStart" type="button" class="mini-primary" disabled>Iniciar túnel protegido</button>
+                  <button id="forgeCloudflareStop" type="button" class="mini-secondary" disabled>Desligar</button>
+                </div>
+                <span id="forgeCloudflareBadge" class="forge-settings-badge" data-state="waiting" role="status" aria-live="polite">Túnel desligado</span>
               </div>
+              <p id="forgeCloudflareState" class="forge-settings-detail" role="status" aria-live="polite">O acesso remoto permanece bloqueado até o túnel ser iniciado.</p>
+              <button id="forgeCloudflareInstall" type="button" class="forge-settings-install-button mini-secondary">Instalar conector cloudflared oficial</button>
+            </section>
+
+            <section class="app-settings-card forge-connection-card forge-runtime-card" aria-labelledby="forgeRuntimeTitle">
+              <div class="forge-settings-card-heading">
+                <span class="forge-settings-card-icon" aria-hidden="true">▣</span>
+                <div class="forge-settings-card-copy">
+                  <h3 id="forgeRuntimeTitle">Execução local</h3>
+                  <p>Arquivos e comandos só são executados com autorização válida do Runtime/Platform.</p>
+                </div>
+                <span class="forge-settings-badge" data-state="waiting">Autorização necessária</span>
               </div>
-              <div id="forgeLocalMcpCredentials" hidden>
-                <label for="forgeLocalMcpUrl">Endpoint (somente clientes MCP locais)</label>
-                <input id="forgeLocalMcpUrl" type="text" readonly autocomplete="off" spellcheck="false"/>
-                <label for="forgeLocalMcpToken">Token temporário (não compartilhar)</label>
-                <textarea id="forgeLocalMcpToken" rows="3" readonly autocomplete="off" spellcheck="false"></textarea>
-                <p class="diagnostics-hint">Configure o cliente local com Authorization: Bearer &lt;token&gt;. Esta chave aparece uma só vez: para recuperá-la, desative e reative a conexão.</p>
+            </section>
+
+            <details class="forge-settings-advanced">
+              <summary>Projetos e outras conexões <span>Configurações adicionais</span></summary>
+              <div class="forge-settings-advanced-content">
+                <section class="app-settings-card">
+                  <span class="app-settings-eyebrow">PASTAS DOS PROJETOS</span>
+                  <h3>Pastas autorizadas</h3>
+                  <p>Cada projeto utiliza uma única pasta vinculada no Forge. Nenhuma pasta externa é liberada automaticamente.</p>
+                  <label for="forgeLocalMcpProject">Projeto para configurar a pasta</label>
+                  <select id="forgeLocalMcpProject" aria-label="Projeto cuja pasta será configurada"></select>
+                  <div id="forgeWorkspacePanel" class="forge-settings-workspace">
+                    <p id="forgeWorkspaceState" class="forge-settings-detail" role="status" aria-live="polite">Selecione um projeto para verificar a pasta.</p>
+                    <div class="settings-connection-actions forge-settings-actions">
+                      <button id="forgeWorkspaceCreate" type="button" class="mini-secondary">Criar pasta padrão</button>
+                      <button id="forgeWorkspaceChoose" type="button" class="mini-secondary">Escolher pasta existente</button>
+                      <button id="forgeWorkspaceMigrate" type="button" class="mini-secondary" hidden>Migrar arquivos antigos</button>
+                    </div>
+                  </div>
+                </section>
+                <section class="app-settings-card">
+                  <span class="app-settings-eyebrow">GITHUB</span><h3>Repositórios</h3>
+                  <p>O repositório remoto é configurado individualmente em cada projeto.</p>
+                  <button id="settingsOpenProject" type="button" class="mini-secondary">Configurar projeto</button>
+                </section>
+                <section class="app-settings-card">
+                  <span class="app-settings-eyebrow">MCP GERAL</span><h3>OrdaX MCP · conexão separada</h3>
+                  <p>O OrdaX MCP geral não substitui o MCP exclusivo do Forge. A seleção no ChatGPT exige confirmação.</p>
+                  <button id="settingsMcpCheck" type="button" class="mini-secondary">Verificar seleção no ChatGPT</button>
+                  <p id="settingsMcpState" class="settings-connection-state" role="status" aria-live="polite">Seleção do plugin não verificada.</p>
+                </section>
+                <section class="app-settings-card">
+                  <span class="app-settings-eyebrow">CONTINUIDADE</span><h3>Operação em segundo plano</h3>
+                  <p>O estado de segundo plano é configurado em Geral. Operação contínua só será indicada após verificação do Runtime/Scheduler.</p>
+                </section>
+                <div id="forgeOfficialTunnelLegacy" hidden>
+                  <p id="forgeOfficialTunnelState" class="settings-connection-state" role="status" aria-live="polite">Conexão OpenAI não verificada.</p>
+                  <button id="forgeOfficialTunnelInstall" type="button" class="mini-secondary">Instalar cliente oficial</button>
+                  <button data-forge-tunnel-link="tunnels" type="button" class="mini-secondary">Criar túnel</button>
+                  <button data-forge-tunnel-link="keys" type="button" class="mini-secondary">Criar chave</button>
+                  <button data-forge-tunnel-link="chatgpt" type="button" class="mini-secondary">Conectar no ChatGPT</button>
+                  <div id="forgeOfficialTunnelControls" class="app-settings-card">
+                    <label for="forgeOfficialTunnelId">ID do túnel OpenAI</label>
+                    <input id="forgeOfficialTunnelId" type="text" autocomplete="off" spellcheck="false" placeholder="tunnel_…"/>
+                    <label for="forgeOfficialTunnelKey">Chave restrita OpenAI</label>
+                    <input id="forgeOfficialTunnelKey" type="password" autocomplete="off" spellcheck="false"/>
+                    <button id="forgeOfficialTunnelStart" type="button" class="mini-secondary" disabled>Iniciar</button>
+                    <button id="forgeOfficialTunnelStop" type="button" class="mini-secondary" disabled>Desligar</button>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div class="app-settings-card"><span class="app-settings-eyebrow">RUNTIME</span><h3>Execução local</h3><p>Arquivos, testes e alterações no computador exigem um dispositivo conectado e um grant válido do Runtime/Platform. Nenhum grant é criado por esta tela.</p><p class="settings-connection-state" data-state="blocked">Aguardando conexão autorizada</p></div>
-            <div class="app-settings-card"><span class="app-settings-eyebrow">CONTINUIDADE</span><h3>Operação em segundo plano</h3><p>O estado de segundo plano aparece em Geral quando o Windows oferece esse recurso. Operação contínua só será indicada após integração e verificação pelo Runtime/Scheduler.</p></div>
+            </details>
           </section>
         </div>
       </div>
-      <footer class="app-settings-footer"><span>As conexões ficam separadas por função e seguem suas autoridades próprias.</span><button id="settingsDone" type="button" class="mini-primary">Concluído</button></footer>
+      <footer class="app-settings-footer"><span>Conexões protegidas e restritas aos projetos autorizados.</span><button id="settingsDone" type="button" class="mini-primary">Concluir</button></footer>
     </div>
   </dialog>
   <section id="hostBrowserSessionNotice" class="host-browser-session-notice" role="alert" aria-live="assertive" hidden>
