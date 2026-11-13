@@ -34,6 +34,7 @@ def make_root(parent: Path) -> Path:
         "ordax-apps.workspace.json",
         "platform-sdk.lock.json",
         "migrations/files.externalization.json",
+        "migrations/files.source-snapshot.json",
     ):
         shutil.copyfile(ROOT / path, root / path)
     return root
@@ -229,7 +230,7 @@ class FilesCutoverTests(unittest.TestCase):
             runtime = root / "apps" / "files" / "src" / "runtime.mjs"
             runtime.parent.mkdir(parents=True)
             runtime.write_text("export const componentRuntime = {};\n", encoding="utf-8")
-            with self.assertRaisesRegex(files.FilesCutoverError, "second canonical"):
+            with self.assertRaisesRegex(files.FilesCutoverError, "materialization state is still pending"):
                 files.report(root)
 
     def test_empty_premature_files_tree_fails_closed(self):
