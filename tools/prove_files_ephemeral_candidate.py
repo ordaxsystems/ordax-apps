@@ -137,12 +137,21 @@ def prove(root: Path, platform_root: Path, sdk_root: Path,
     root, platform_root, sdk_root = root.resolve(), platform_root.resolve(), sdk_root.resolve()
     _, plan, sdk_pin = cutover.load_plan(root)
     if (
-        plan["source_repository_current"] != "ordaxsystems/ordax-os"
-        or plan["source_cutover_allowed"] is not False
+        plan["source_of_truth_state"] != "source-absent-after-platform-removal"
+        or plan["source_repository_current"] is not None
+        or plan["source_path_current"] is not None
+        or plan["source_cutover_allowed"] is not True
+        or plan["source_cutover"]["gate_a_complete"] is not True
+        or plan["source_cutover"]["target_materialization_state"] != "pending"
         or plan["distribution_activation_allowed"] is not False
         or (root / "apps/files").exists()
     ):
-        raise FilesProofError("refusing to create a parallel Files owner")
+        raise FilesProofError("ephemeral proof requires post-Gate-A source absence and pending Gate B")
+    if channel_bin is not None:
+        raise FilesProofError(
+            "precutover canonical-owner signer proof is obsolete after Gate A; "
+            "materialize Gate B before running signer/install proofs"
+        )
     layout = portable.audit(root, platform_root, sdk_root)
     if (
         layout["app_source_count"] != 10
@@ -305,9 +314,14 @@ def prove(root: Path, platform_root: Path, sdk_root: Path,
             "packaged_runtime_import_verified": True,
             "empty_host_context_rejected": False,
             "real_host_mount_verified": False,
-            "source_of_truth_repository": "ordaxsystems/ordax-os",
+            "source_state": plan["source_of_truth_state"],
+            "source_of_truth_repository": None,
+            "historical_source_repository": plan["source_cutover"]["platform_repository"],
+            "target_repository": plan["target_repository"],
+            "gate_a_complete": True,
+            "gate_b_materialized": False,
             "second_permanent_files_source_created": False,
-            "canonical_owner_gate_verified": owner_gate is not None,
+            "canonical_owner_gate_verified": False,
             "canonical_owner_gate_proof": owner_gate,
             "signed_install_verified": False,
             "bootstrap_delivery_verified": False,
