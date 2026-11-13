@@ -16,6 +16,9 @@ const cloudflareAudience=localMcpElement('forgeCloudflareAudience');
 const cloudflareToken=localMcpElement('forgeCloudflareToken');
 const cloudflareStart=localMcpElement('forgeCloudflareStart');
 const cloudflareStop=localMcpElement('forgeCloudflareStop');
+const cloudflareBadge=localMcpElement('forgeCloudflareBadge');
+const localMcpBadge=localMcpElement('forgeLocalMcpBadge');
+const cloudflareTokenToggle=localMcpElement('forgeCloudflareTokenToggle');
 const officialTunnelState=localMcpElement('forgeOfficialTunnelState');
 const officialTunnelId=localMcpElement('forgeOfficialTunnelId');
 const officialTunnelInstall=localMcpElement('forgeOfficialTunnelInstall');
@@ -44,9 +47,13 @@ function setState(message){if(mcpState)mcpState.textContent=message;}
 function syncTunnelControls(){
   const remote=lastMcpStatus?.cloudflareTunnelSession;
   const runningCloudflare=Boolean(remote?.state&&remote.state!=='stopped');
-  if(cloudflareInstall)cloudflareInstall.disabled=mcpBusy||
-    lastMcpStatus?.cloudflareClientPresent===true||
-    typeof api?.forgeCloudflareInstall!=='function';
+  if(cloudflareInstall){
+    const installed=lastMcpStatus?.cloudflareClientPresent===true;
+    cloudflareInstall.textContent=installed?'Conector cloudflared instalado':'Instalar conector cloudflared oficial';
+    cloudflareInstall.hidden=installed;
+    cloudflareInstall.disabled=mcpBusy||installed||
+      typeof api?.forgeCloudflareInstall!=='function';
+  }
   if(cloudflareStart)cloudflareStart.disabled=mcpBusy||runningCloudflare||
     !appActive(lastMcpStatus)||!lastMcpStatus?.appTrusted||
     !lastMcpStatus?.cloudflareClientPresent||
@@ -97,14 +104,21 @@ async function refreshMcp(){
     syncControls();
     if(cloudflareState){
       const remote=status.cloudflareTunnelSession;
-      cloudflareState.textContent=remote?.state==='starting'
-        ?'Iniciando conector com JWT Access obrigatório. Chamadas GPT ainda não comprovadas.'
-        :remote?.state==='stopping'?'Encerrando túnel Cloudflare.'
+      const phase=remote?.state??'stopped';
+      cloudflareState.textContent=phase==='starting'
+        ?'Abrindo o conector. A autenticação Access e a conexão GPT ainda não foram verificadas.'
+        :phase==='stopping'?'Encerrando o conector e revogando o acesso local.'
         :remote?.processRunning
-          ?'Processo cloudflared iniciado. ChatGPT não comprovado; Cloudflare Access e o roteamento externo exigem verificação.'
+          ?'Conector iniciado neste Windows; isso ainda não comprova conexão ao GPT Web.'
           :status.cloudflareClientPresent
-            ?'Cliente cloudflared disponível. Access ainda não provisionado; túnel não iniciado.'
-            :'Cliente cloudflared ainda não instalado. Access não configurado; endpoint continua fechado.';
+            ?'Conector instalado. Inicie o túnel protegido para permitir a conexão autorizada.'
+            :'O conector oficial precisa ser instalado antes de iniciar o túnel.';
+      if(cloudflareBadge){
+        const active=remote?.processRunning===true;
+        cloudflareBadge.textContent=phase==='starting'?'Iniciando…':
+          phase==='stopping'?'Desligando…':active?'Conector iniciado':'Túnel desligado';
+        cloudflareBadge.dataset.state=active?'ready':phase==='stopped'?'blocked':'waiting';
+      }
     }
     if(officialTunnelState){
       const tunnel=status.officialTunnelSession;
@@ -123,16 +137,19 @@ async function refreshMcp(){
                     ' verificado. Túnel do Forge ainda não conectado ao GPT Web.'
                   :'Cliente oficial não instalado/verificado. Use “Instalar cliente oficial do túnel”, depois configure o ID e a chave. GPT Web ainda não conectado.';
     }
+    if(localMcpBadge){
+      const active=appActive(status);
+      localMcpBadge.textContent=active?'MCP ativo':status.appTrusted?'Autorizado · inativo':'MCP desativado';
+      localMcpBadge.dataset.state=active?'ready':'blocked';
+    }
     if(appActive(status)){
-      setState('MCP do aplicativo Forge ativo em 127.0.0.1. Uma conexão para o catálogo de projetos; '+
-        'arquivos limitados às pastas vinculadas e verificadas. '+
-        (status.autoResumeBlocked?'Reconexão bloqueada; confira a autorização. ':'')+
-        'GPT Web não conectado automaticamente.');
+      setState('MCP local ativo em 127.0.0.1; arquivos restritos às pastas autorizadas. GPT Web ainda não comprovado.'+
+        (status.autoResumeBlocked?' Reconexão automática bloqueada.':''));
     }else{
       hideSecret();
-      setState('MCP do aplicativo desativado. '+
-        (status.appTrusted?'Autorização do Forge salva, sem token ativo.':
-          'Autorize o aplicativo Forge uma vez; não é necessário ativar o MCP em cada projeto.'));
+      setState(status.appTrusted
+        ?'Autorização preservada. Reative o MCP para trabalhar nos projetos.'
+        :'Autorize o MCP uma única vez para habilitar os projetos locais.');
     }
   }catch{
     lastMcpStatus=null;
@@ -215,11 +232,25 @@ cloudflareInstall?.addEventListener('click',async()=>{
 });
 for(const input of [cloudflareTeam,cloudflareAudience,cloudflareToken])
   input?.addEventListener('input',syncTunnelControls);
+cloudflareTokenToggle?.addEventListener('click',()=>{
+  if(!cloudflareToken)return;
+  const visible=cloudflareToken.type==='password';
+  cloudflareToken.type=visible?'text':'password';
+  cloudflareTokenToggle.textContent=visible?'Ocultar':'Mostrar';
+  cloudflareTokenToggle.setAttribute('aria-label',visible?'Ocultar token':'Mostrar token');
+  cloudflareTokenToggle.setAttribute('aria-pressed',String(visible));
+});
 cloudflareStart?.addEventListener('click',async()=>{
   if(mcpBusy||!appActive(lastMcpStatus)||!cloudflareToken?.value)return;
   const request={team:cloudflareTeam.value.trim(),audience:cloudflareAudience.value.trim(),
     token:cloudflareToken.value};
   cloudflareToken.value='';
+  cloudflareToken.type='password';
+  if(cloudflareTokenToggle){
+    cloudflareTokenToggle.textContent='Mostrar';
+    cloudflareTokenToggle.setAttribute('aria-pressed','false');
+    cloudflareTokenToggle.setAttribute('aria-label','Mostrar token');
+  }
   mcpBusy=true;syncControls();
   try{
     const result=await api.forgeCloudflareStart(request);
