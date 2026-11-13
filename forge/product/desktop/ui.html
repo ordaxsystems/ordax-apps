@@ -674,6 +674,24 @@
                 <button id="forgeLocalMcpStop" type="button" class="mini-secondary">Desativar MCP do Forge</button>
               </div>
               <p id="forgeLocalMcpState" class="settings-connection-state" role="status" aria-live="polite">O MCP local está desativado.</p>
+              <div id="forgeCloudflareTunnelPanel" class="app-settings-card">
+                <span class="app-settings-eyebrow">CLOUDFLARE TUNNEL — FORGE</span>
+                <h4>Conexão direta do GPT aos projetos</h4>
+                <p class="diagnostics-hint">Endpoint reservado: <code>https://forge-mcp.ordax.com.br/mcp</code>. Cloudflare Access OAuth precisa estar ativo antes de habilitar as requisições; a rota pública ainda responde 503. O Forge exige um JWT Access válido para cada operação. Não utiliza o OrdaX MCP geral.</p>
+                <p id="forgeCloudflareState" class="settings-connection-state" role="status">Túnel reservado, aguardando Cloudflare Access. GPT Web não conectado.</p>
+                <button id="forgeCloudflareInstall" type="button" class="mini-secondary">Instalar cloudflared oficial</button>
+                <label for="forgeCloudflareTeam">Equipe Cloudflare Access (nome da organização Zero Trust)</label>
+                <input id="forgeCloudflareTeam" type="text" spellcheck="false" autocomplete="off" placeholder="ex.: equipe-ordax"/>
+                <label for="forgeCloudflareAudience">Audience (AUD) da aplicação Access MCP</label>
+                <input id="forgeCloudflareAudience" type="text" spellcheck="false" autocomplete="off" placeholder="ID de audiência da aplicação autorizada"/>
+                <label for="forgeCloudflareToken">Token privado do túnel Forge (somente nesta sessão)</label>
+                <input id="forgeCloudflareToken" type="password" autocomplete="off" spellcheck="false" placeholder="Não compartilhar no ChatGPT"/>
+                <div class="settings-connection-actions">
+                  <button id="forgeCloudflareStart" type="button" class="mini-secondary" disabled>Iniciar túnel protegido</button>
+                  <button id="forgeCloudflareStop" type="button" class="mini-secondary" disabled>Desligar túnel Forge</button>
+                </div>
+              </div>
+              <div id="forgeOfficialTunnelLegacy" hidden>
               <p id="forgeOfficialTunnelState" class="settings-connection-state" role="status" aria-live="polite">Conexão com GPT Web ainda não verificada.</p>
               <div class="settings-connection-actions">
                 <button id="forgeOfficialTunnelInstall" type="button" class="mini-secondary">Instalar cliente oficial do túnel</button>
@@ -689,6 +707,7 @@
                 <input id="forgeOfficialTunnelKey" type="password" autocomplete="off" spellcheck="false" placeholder="Não compartilhe esta chave no chat" />
                 <button id="forgeOfficialTunnelStart" type="button" class="mini-secondary" disabled>Iniciar túnel oficial</button>
                 <button id="forgeOfficialTunnelStop" type="button" class="mini-secondary" disabled>Desligar túnel</button>
+              </div>
               </div>
               <div id="forgeLocalMcpCredentials" hidden>
                 <label for="forgeLocalMcpUrl">Endpoint (somente clientes MCP locais)</label>

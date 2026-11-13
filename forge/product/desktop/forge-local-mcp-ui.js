@@ -9,6 +9,13 @@ const mcpRevoke=localMcpElement('forgeLocalMcpRevoke');
 const mcpResume=localMcpElement('forgeLocalMcpResume');
 const workspaceProject=localMcpElement('forgeLocalMcpProject');
 const mcpState=localMcpElement('forgeLocalMcpState');
+const cloudflareState=localMcpElement('forgeCloudflareState');
+const cloudflareInstall=localMcpElement('forgeCloudflareInstall');
+const cloudflareTeam=localMcpElement('forgeCloudflareTeam');
+const cloudflareAudience=localMcpElement('forgeCloudflareAudience');
+const cloudflareToken=localMcpElement('forgeCloudflareToken');
+const cloudflareStart=localMcpElement('forgeCloudflareStart');
+const cloudflareStop=localMcpElement('forgeCloudflareStop');
 const officialTunnelState=localMcpElement('forgeOfficialTunnelState');
 const officialTunnelId=localMcpElement('forgeOfficialTunnelId');
 const officialTunnelInstall=localMcpElement('forgeOfficialTunnelInstall');
@@ -35,6 +42,19 @@ function hideSecret(){
 }
 function setState(message){if(mcpState)mcpState.textContent=message;}
 function syncTunnelControls(){
+  const remote=lastMcpStatus?.cloudflareTunnelSession;
+  const runningCloudflare=Boolean(remote?.state&&remote.state!=='stopped');
+  if(cloudflareInstall)cloudflareInstall.disabled=mcpBusy||
+    lastMcpStatus?.cloudflareClientPresent===true||
+    typeof api?.forgeCloudflareInstall!=='function';
+  if(cloudflareStart)cloudflareStart.disabled=mcpBusy||runningCloudflare||
+    !appActive(lastMcpStatus)||!lastMcpStatus?.appTrusted||
+    !lastMcpStatus?.cloudflareClientPresent||
+    !cloudflareTeam?.value.trim()||!cloudflareAudience?.value.trim()||
+    !cloudflareToken?.value||
+    typeof api?.forgeCloudflareStart!=='function';
+  if(cloudflareStop)cloudflareStop.disabled=mcpBusy||!runningCloudflare||
+    remote?.state==='stopping'||typeof api?.forgeCloudflareStop!=='function';
   if(officialTunnelInstall)officialTunnelInstall.disabled=mcpBusy||
     lastMcpStatus?.officialTunnel?.installed===true||
     typeof api?.forgeOfficialTunnelInstall!=='function';
@@ -75,6 +95,17 @@ async function refreshMcp(){
     const status=await api.forgeLocalMcpStatus();
     lastMcpStatus=status;
     syncControls();
+    if(cloudflareState){
+      const remote=status.cloudflareTunnelSession;
+      cloudflareState.textContent=remote?.state==='starting'
+        ?'Iniciando conector com JWT Access obrigatório. Chamadas GPT ainda não comprovadas.'
+        :remote?.state==='stopping'?'Encerrando túnel Cloudflare.'
+        :remote?.processRunning
+          ?'Processo cloudflared iniciado. ChatGPT não comprovado; Cloudflare Access e o roteamento externo exigem verificação.'
+          :status.cloudflareClientPresent
+            ?'Cliente cloudflared disponível. Access ainda não provisionado; túnel não iniciado.'
+            :'Cliente cloudflared ainda não instalado. Access não configurado; endpoint continua fechado.';
+    }
     if(officialTunnelState){
       const tunnel=status.officialTunnelSession;
       officialTunnelState.textContent=tunnel?.state==='starting'
@@ -169,6 +200,41 @@ mcpResume?.addEventListener('click',async()=>{
   }catch{setState('Reconexão segura não disponível neste perfil Windows.');}
   finally{mcpBusy=false;await refreshMcp();}
 });
+cloudflareInstall?.addEventListener('click',async()=>{
+  if(mcpBusy||typeof api?.forgeCloudflareInstall!=='function')return;
+  mcpBusy=true;syncControls();
+  if(cloudflareState)cloudflareState.textContent='Baixando cloudflared oficial e verificando SHA-256…';
+  let failed=false;
+  try{const result=await api.forgeCloudflareInstall();if(result?.declined)failed=true;}
+  catch{failed=true;}
+  finally{
+    mcpBusy=false;await refreshMcp();
+    if(failed&&cloudflareState)cloudflareState.textContent=
+      'Instalação do cloudflared não concluída ou não autorizada.';
+  }
+});
+for(const input of [cloudflareTeam,cloudflareAudience,cloudflareToken])
+  input?.addEventListener('input',syncTunnelControls);
+cloudflareStart?.addEventListener('click',async()=>{
+  if(mcpBusy||!appActive(lastMcpStatus)||!cloudflareToken?.value)return;
+  const request={team:cloudflareTeam.value.trim(),audience:cloudflareAudience.value.trim(),
+    token:cloudflareToken.value};
+  cloudflareToken.value='';
+  mcpBusy=true;syncControls();
+  try{
+    const result=await api.forgeCloudflareStart(request);
+    if(result?.declined&&cloudflareState)cloudflareState.textContent='Autorização cancelada; túnel desligado.';
+  }catch{if(cloudflareState)cloudflareState.textContent=
+    'Túnel bloqueado. Verifique Cloudflare Access, JWT, identidade e componente oficial.';}
+  finally{request.token=null;mcpBusy=false;await refreshMcp();}
+});
+cloudflareStop?.addEventListener('click',async()=>{
+  if(mcpBusy||typeof api?.forgeCloudflareStop!=='function')return;
+  mcpBusy=true;syncControls();
+  try{await api.forgeCloudflareStop();}
+  catch{if(cloudflareState)cloudflareState.textContent='Falha ao encerrar túnel.';}
+  finally{mcpBusy=false;await refreshMcp();}
+});
 officialTunnelInstall?.addEventListener('click',async()=>{
   if(mcpBusy||typeof api?.forgeOfficialTunnelInstall!=='function')return;
   mcpBusy=true;syncControls();
@@ -216,9 +282,12 @@ localMcpElement('settingsTabConnections')?.addEventListener('click',()=>{void lo
 localMcpElement('openAppSettings')?.addEventListener('click',()=>{void loadProjects();});
 if(typeof api?.onForgeOfficialTunnelChanged==='function')
   api.onForgeOfficialTunnelChanged(()=>{if(!mcpBusy)void refreshMcp();});
+if(typeof api?.onForgeCloudflareChanged==='function')
+  api.onForgeCloudflareChanged(()=>{if(!mcpBusy)void refreshMcp();});
 localMcpElement('appSettingsDialog')?.addEventListener('close',()=>{
   hideSecret();
   if(officialTunnelKey)officialTunnelKey.value='';
+  if(cloudflareToken)cloudflareToken.value='';
   syncControls();
 });
 let readinessPollPending=false;

@@ -34,6 +34,9 @@ import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
 import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
 import {inspectForgeOfficialTunnelClient,officialTunnelComponentDirectory} from '../src/forge-mcp-tunnel-readiness.mjs';
 import {createForgeOfficialTunnelSession} from '../src/forge-mcp-official-tunnel-session.mjs';
+import {createForgeCloudflareTunnelSession,forgeCloudflaredExecutable}
+  from '../src/forge-cloudflare-tunnel.mjs';
+import {installForgeCloudflared} from '../src/forge-cloudflared-install.mjs';
 import {installForgeOfficialTunnelClient} from '../src/forge-mcp-tunnel-installer.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
@@ -1300,6 +1303,16 @@ const forgeLocalMcp=createForgeLoopbackMcp({
     ?forgeMcpTrusted.appScopeHash():forgeMcpTrusted.scopeHash(projectId),
   onProjectFileChanged:projectId=>emitRendererEvent('ordax:forge:project-file:changed',{projectId})
 });
+// Dedicated Cloudflare Tunnel: ONE Forge MCP server and an Access-validated
+// loopback proxy. The public Cloudflare route stays at HTTP 503 until Access
+// is provisioned; process spawn is never proof that GPT used an MCP tool.
+const forgeCloudflareTunnel=createForgeCloudflareTunnelSession({
+  getLocalGrant:()=>forgeLocalMcp.localGrant(FORGE_APP_MCP_SCOPE),
+  ownerTrusted:()=>forgeMcpTrusted.isAppTrusted(),
+  executablePath:process.platform==='win32'
+    ?forgeCloudflaredExecutable(process.env.LOCALAPPDATA):null,
+  onChange:()=>emitRendererEvent('ordax:forge:cloudflare:changed')
+});
 orchestratorService.autonomous.setNotifier(()=>notifyOrchestratorChanged());
 orchestratorService.recoverInterruptedCommands();
 // Off by default. This inherited private pipe is NOT a public MCP endpoint.
@@ -1400,6 +1413,11 @@ registerUiHandler('ordax:forge:local-mcp:status',async event=>{
   return {...forgeLocalMcp.status(),appTrusted:forgeMcpTrusted.isAppTrusted(),
     officialTunnel:inspectForgeOfficialTunnelClient(),
     officialTunnelSession:forgeOfficialTunnel.status(),
+    cloudflareTunnelSession:forgeCloudflareTunnel.status(),
+    cloudflareClientPresent:process.platform==='win32'&&
+      (()=>{try{return fs.existsSync(forgeCloudflaredExecutable(process.env.LOCALAPPDATA));}
+      catch{return false;}})(),
+    cloudflareAccessProvisioned:false, // Cloudflare Access is not enabled in this account.
     autoResumeApp:forgeMcpResume.enabledApp(),
     autoResumeAvailable:forgeMcpResume.supported(),
     autoResumeBlocked:forgeMcpResumeError};
@@ -1432,6 +1450,7 @@ registerUiHandler('ordax:forge:local-mcp:revoke',async event=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
   forgeOfficialTunnel.stop();
+  forgeCloudflareTunnel.stop();
   forgeMcpResume.disableAll(); // Old project consents never revive app access.
   await forgeLocalMcp.stop();
   return {...forgeLocalMcp.status(),...forgeMcpTrusted.revokeApp(),appTrusted:false};
@@ -1495,6 +1514,58 @@ registerUiHandler('ordax:forge:tunnel:open-setup',async(event,target)=>{
   await shell.openExternal(url);
   return {opened:true};
 });
+let forgeCloudflareInstallPending=false;
+registerUiHandler('ordax:forge:cloudflare:install',async event=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_cloudflare_native_ui_only');
+  if(forgeCloudflareInstallPending)throw Error('forge_cloudflare_install_in_progress');
+  forgeCloudflareInstallPending=true;
+  try{
+    orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
+    if(forgeCloudflareTunnel.status().state!=='stopped')
+      throw Error('forge_cloudflare_stop_before_install');
+    const allowed=await confirmInActiveUi({
+      title:'Instalar conector Cloudflare do Forge',
+      message:'Instalar cloudflared oficial para a conexão exclusiva do Forge?',
+      detail:'Baixar a versão cloudflared 2026.11.0 de cloudflare/cloudflared, verificar o hash SHA-256 fixado e instalar somente nos componentes do Forge. Não cria portas públicas, não inicia o túnel nem altera o OrdaX MCP.',
+      approveLabel:'Instalar conector'
+    });
+    if(!allowed)return {installed:false,declined:true};
+    return await installForgeCloudflared({ownerApproved:true});
+  }finally{forgeCloudflareInstallPending=false;}
+});
+registerUiHandler('ordax:forge:cloudflare:start',async(event,request)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_cloudflare_native_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
+  if(!forgeMcpTrusted.isAppTrusted())
+    throw Error('forge_cloudflare_app_untrusted');
+  if(forgeCloudflareTunnel.status().state!=='stopped'||
+      forgeOfficialTunnel.status().state!=='stopped')
+    throw Error('forge_cloudflare_tunnel_already_running');
+  const localGrant=forgeLocalMcp.localGrant(FORGE_APP_MCP_SCOPE);
+  if(!localGrant)throw Error('forge_cloudflare_local_mcp_not_active');
+  const allowed=await confirmInActiveUi({
+    title:'Conectar o Forge via Cloudflare',
+    message:'Iniciar o túnel privado para o MCP do Forge?',
+    detail:'Exige Cloudflare Access ativado, OAuth e assinatura JWT verificada. Cada chamada é validada no Forge antes de acessar o MCP local; o túnel pertence somente ao Forge e não dá acesso ao computador inteiro. Token de túnel usado apenas na memória do processo.',
+    approveLabel:'Iniciar túnel protegido'
+  });
+  if(!allowed)return {declined:true,...forgeCloudflareTunnel.status()};
+  orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
+  if(!forgeMcpTrusted.isAppTrusted()||
+      forgeLocalMcp.localGrant(FORGE_APP_MCP_SCOPE)?.token!==localGrant.token)
+    throw Error('forge_cloudflare_local_grant_changed');
+  return forgeCloudflareTunnel.start({
+    token:request?.token,team:request?.team,
+    audience:request?.audience,ownerApproved:true,platform:process.platform
+  });
+});
+registerUiHandler('ordax:forge:cloudflare:stop',event=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_cloudflare_native_ui_only');
+  return forgeCloudflareTunnel.stop();
+});
 registerUiHandler('ordax:forge:tunnel:start',async(event,request)=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_tunnel_native_ui_only');
@@ -1502,7 +1573,8 @@ registerUiHandler('ordax:forge:tunnel:start',async(event,request)=>{
   if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_tunnel_app_untrusted');
   if(!inspectForgeOfficialTunnelClient().installed)
     throw Error('forge_tunnel_official_client_unavailable');
-  if(forgeOfficialTunnel.status().state!=='stopped')
+  if(forgeOfficialTunnel.status().state!=='stopped'||
+      forgeCloudflareTunnel.status().state!=='stopped')
     throw Error('forge_tunnel_already_running');
   const grant=forgeLocalMcp.localGrant(FORGE_APP_MCP_SCOPE);
   if(!grant)throw Error('forge_tunnel_local_mcp_not_active');
@@ -1535,6 +1607,7 @@ registerUiHandler('ordax:forge:local-mcp:stop',async event=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
   forgeOfficialTunnel.stop(); // No remote client may outlive the local MCP.
+  forgeCloudflareTunnel.stop();
   forgeMcpResume.disableAll(); // Desativar todos must remain off after restart.
   return forgeLocalMcp.stop();
 });
@@ -1845,6 +1918,7 @@ app.on('will-quit', () => {
   if(continuationTimer)clearInterval(continuationTimer);
   void hostBrowserServer?.close();
   forgeOfficialTunnel.stop();
+  forgeCloudflareTunnel.stop();
   void forgeLocalMcp.stop();
   closeRuntimeOrchestratorPipe?.();
   store.close();
