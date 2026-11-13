@@ -6,7 +6,7 @@ Um recurso não deve entrar no core apenas por vir instalado de fábrica.
 
 ### Plataforma / nativo estrutural
 
-Permanece em `prototipo-ordax-os` quando é necessário para boot, segurança, autoridade ou manutenção do próprio sistema. Exemplos: Store estrutural, Settings, Account, System, Identity, permissions, component lifecycle, recovery e trust.
+Permanece em `ordaxsystems/ordax-os` quando é necessário para boot, segurança, autoridade ou manutenção do próprio sistema. Exemplos: Store estrutural, Settings, Account, System, Identity, permissions, component lifecycle, recovery e trust.
 
 ### App first-party
 

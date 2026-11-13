@@ -24,8 +24,8 @@ Cada área pertence a um owner único:
 
 - **APP** — `ordax-apps/apps/studio`: UI e comportamento portátil do produto;
 - **HOST/RUNTIME** — `ordax-runtime`: host Windows, Device Host, Computer Control e adapters de ambiente;
-- **PLATFORM** — `prototipo-ordax-os`: contratos públicos, composição OrdaX OS, policies e authority da plataforma;
-- **INFRA** — `ordax-control-plane`: MCP remoto, OAuth, grants remotos, audit/queue e connectors;
+- **OS/COMPOSITION** — `ordaxsystems/ordax-os`: contratos públicos, composição OrdaX OS, policies e lifecycle sistêmico;
+- **CONTROL PLANE** — `ordaxsystems/ordax-platform`: MCP remoto, OAuth, grants remotos, audit/queue e connectors;
 - **ADAPTER** — Blender/Unity/ferramentas especializadas atrás de capabilities genéricas.
 
 Studio não deve absorver Runtime, Identity, grants, Control Plane, pairing ou políticas de Computer Control.
