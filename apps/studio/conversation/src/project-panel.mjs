@@ -10,6 +10,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   const $ = id => document.getElementById(id);
   let state = { targets: [], operations: [] }, refreshPromise = null, submitting = 0, file = null, entries = [], proposal = null, reviewed = null, stamp = '', handled = new Set();
   let continuityProposal = null, contextResult = null, continuityBase = null;
+  let pendingReversibleWrite = null, lastReversibleWrite = null;
   let continuityBaseline = JSON.stringify(['','','','','']);
   let desiredBinding = null;
   const accountHost = window.ordaxStudioAccountHost;
@@ -35,6 +36,12 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   }
   const selected = () => ({ deviceId: $('runtimeDevice').value, project: $('runtimeProject').value });
   const currentBinding = () => selected().deviceId && selected().project ? selected() : null;
+  function clearReversibleWrite() {
+    pendingReversibleWrite = null;
+    lastReversibleWrite = null;
+  }
+  const reversibleWriteMatches = value => Boolean(value && file &&
+    value.deviceId === file.deviceId && value.project === file.project && value.path === file.path);
   function assertContext(binding) {
     if (bindingEquals(binding, currentBinding())) return;
     $('activityScope').value = 'project';
