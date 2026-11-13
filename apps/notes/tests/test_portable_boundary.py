@@ -28,7 +28,7 @@ class NotesPortableBoundaryTests(unittest.TestCase):
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
         self.assertEqual(manifest["schema"], "ordax.component-manifest/1")
         self.assertEqual(manifest["id"], "notes")
-        self.assertEqual(manifest["version"], "0.4.3")
+        self.assertEqual(manifest["version"], "0.4.4")
         self.assertEqual(manifest["releaseMode"], "component-slot")
         self.assertEqual(manifest["owner"], "ordaxsystems/ordax-apps")
 
@@ -53,6 +53,42 @@ class NotesPortableBoundaryTests(unittest.TestCase):
             f'const NOTES_RUNTIME_VERSION = "{manifest["version"]}";',
             runtime,
         )
+
+    def test_semantic_ui_targets_real_controls_and_scenarios_use_real_capabilities(self):
+        semantic = json.loads(
+            (ROOT / "presentation" / "semantic-ui.json").read_text(encoding="utf-8")
+        )
+        scenarios = json.loads(
+            (ROOT / "testing" / "agentic-scenarios.json").read_text(encoding="utf-8")
+        )
+        actions = json.loads(
+            (ROOT / "actions" / "manifest.json").read_text(encoding="utf-8")
+        )
+        ui = (SRC / "ui" / "workspace-controls.mjs").read_text(encoding="utf-8")
+        manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+
+        self.assertEqual((semantic["appId"], semantic["appVersion"]), ("notes", manifest["version"]))
+        self.assertEqual((scenarios["appId"], scenarios["appVersion"]), ("notes", manifest["version"]))
+        self.assertEqual(semantic["authority"], "none")
+        self.assertEqual(semantic["execution"], "descriptive-only")
+        self.assertIs(semantic["privacy"]["captureInputValues"], False)
+        self.assertIs(semantic["privacy"]["captureCredentials"], False)
+        self.assertEqual(scenarios["authority"], "none")
+        self.assertEqual(scenarios["execution"], "plan-only")
+        self.assertIs(scenarios["defaults"]["coordinateFallback"], False)
+        self.assertIs(scenarios["defaults"]["repeatUncertainEffects"], False)
+
+        semantic_ids = {item["id"] for item in semantic["elements"]}
+        for item in semantic["elements"]:
+            selector = item["selector"]
+            self.assertTrue(selector.startswith("#"))
+            self.assertIn(f'"{selector[1:]}"', ui)
+
+        action_ids = {item["actionId"] for item in actions["capabilities"]}
+        for scenario in scenarios["scenarios"]:
+            self.assertTrue(set(scenario["semanticElements"]).issubset(semantic_ids))
+            self.assertTrue(set(scenario["allowedCapabilities"]).issubset(action_ids))
+            self.assertTrue(set(scenario["probeCapabilities"]).issubset(action_ids))
 
     def test_public_contract_facade_is_sdk_pinned_and_authority_free(self):
         facade = (SRC / "sdk" / "public-contracts.mjs").read_text(encoding="utf-8")
