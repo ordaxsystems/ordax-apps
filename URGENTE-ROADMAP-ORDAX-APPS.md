@@ -364,12 +364,14 @@ O workspace (`ordax-apps.workspace.json`) declara **20 alvos first-party**. Em 2
 
 **Superfícies estruturais fora deste repositório:** `store`, `settings`, `account` e `system`. Não recriar esses serviços como apps removíveis.
 
-**Owners canônicos atuais:**
+**Owners canônicos atuais (corrigidos; use `repository-ownership.json` para a autoridade vigente):**
 
 - Apps first-party: `ordaxsystems/ordax-apps`.
-- Plataforma/core, Identity, Memory, Intelligence, permissions, trust, lifecycle: `washingtonmsdj/prototipo-ordax-os` (migração futura de owner conforme workspace, não presumir concluída).
+- OS/core, host Native, serviços e lifecycle sistêmico: `ordaxsystems/ordax-os`.
+- Intelligence portátil: `ordaxsystems/ordax-intelligence`, consumido pelo OS conforme o lock/cutover vigente.
 - Windows Runtime/Device Host/Computer Control: `ordaxsystems/ordax-runtime`.
-- Control Plane, Product MCP, grants e conectores de providers: `ordaxsystems/ordax-control-plane`.
+- Control Plane, Product MCP, grants remotos e conectores: `ordaxsystems/ordax-platform`.
+- Surface visual: `ordaxsystems/ordax-surface`; Desktop host/packaging: `ordaxsystems/ordax-desktop`.
 
 ## 3. Restrições inegociáveis
 
