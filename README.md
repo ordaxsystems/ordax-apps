@@ -70,13 +70,13 @@ Arquivos (`files`) e Internet (`internet`) são apps da classe `bootstrap`; isso
 não significa que ambos ainda tenham o mesmo owner de fonte ou distribuição
 independente aprovada.
 
-- **Arquivos:** a fonte executável permanece exclusivamente em
-  `ordaxsystems/ordax-os/system/apps/files`. O Gate A está bloqueado porque
-  remover Arquivos antes de provar o bootstrap por slot assinado quebra as
-  operações obrigatórias do MVP USB. A prova de pacote *efêmero e não assinado*
-  não cria `apps/files`, fonte paralela ou autorização de instalação. Consulte
-  [o plano Files](migrations/files.externalization.json) e
-  [a issue de handoff](https://github.com/ordaxsystems/ordax-os/issues/1743).
+- **Arquivos:** a fonte bundled `ordax-os/system/apps/files` foi removida pela
+  PR `ordax-os#2184`. Ainda não existe uma fonte executável ativa em `apps/files`
+  nem distribuição externa habilitada; o produto Files está temporariamente
+  ausente enquanto o host conserva File Space/Recentes/Projetos. Não restaurar a
+  implementação no OS nem declarar Files instalado. O plano de externalização
+  preserva o snapshot e os gates para a futura materialização em `ordax-apps`;
+  seus campos de pré-cutover não substituem o estado atual provado no OS.
 - **Internet:** o Gate A de fonte já ocorreu. O owner portátil é
   `ordaxsystems/ordax-apps/apps/internet`, com `app.json` e código canônico
   presentes. A ativação de distribuição permanece bloqueada no
