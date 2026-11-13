@@ -1,7 +1,7 @@
 {
   "schema": "ordax.app-presentation-manifest/1",
   "appId": "assistant",
-  "appVersion": "0.1.2",
+  "appVersion": "0.1.3",
   "authority": "none",
   "sourceLocale": "pt-BR",
   "description": "Converse com a Aura e receba respostas do motor local de inteligência do OrdaX.",
