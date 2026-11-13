@@ -11,6 +11,14 @@ contextBridge.exposeInMainWorld('ordax', {
   forgeLocalMcpResumeEnable: () => ipcRenderer.invoke('ordax:forge:local-mcp:resume-enable'),
   forgeLocalMcpResumeDisable: () => ipcRenderer.invoke('ordax:forge:local-mcp:resume-disable'),
   forgeLocalMcpStop: () => ipcRenderer.invoke('ordax:forge:local-mcp:stop'),
+  forgeCloudflareInstall: () => ipcRenderer.invoke('ordax:forge:cloudflare:install'),
+  forgeCloudflareStart: input => ipcRenderer.invoke('ordax:forge:cloudflare:start',input),
+  forgeCloudflareStop: () => ipcRenderer.invoke('ordax:forge:cloudflare:stop'),
+  onForgeCloudflareChanged: callback => {
+    const listener=()=>callback();
+    ipcRenderer.on('ordax:forge:cloudflare:changed',listener);
+    return ()=>ipcRenderer.removeListener('ordax:forge:cloudflare:changed',listener);
+  },
   forgeOfficialTunnelInstall: () => ipcRenderer.invoke('ordax:forge:tunnel:install'),
   forgeOfficialTunnelOpenSetup: target => ipcRenderer.invoke('ordax:forge:tunnel:open-setup',target),
   forgeOfficialTunnelStart: input => ipcRenderer.invoke('ordax:forge:tunnel:start',input),
