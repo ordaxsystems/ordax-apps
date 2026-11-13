@@ -1,6 +1,8 @@
 # OrdaX Orchestrator Lab
 
-**Plano mestre de produto, arquitetura e execução — RFC-002**  
+> **HISTÓRICO / SUPERSEDED.** Esta RFC-002 não é mais SSOT do Forge. A direção executiva vigente está em [../FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md](../FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md), roteada por [../README.md](../README.md). Requisitos, prioridades, versões e sequências abaixo são fotografia de 19/10/2026 e não devem abrir trabalho atual sem revalidação.
+
+**Plano mestre histórico de produto, arquitetura e execução — RFC-002**  
 **Data de referência:** 19 de outubro de 2026  
 **Status:** especificação consolidada para iniciar engenharia; **documento de planejamento, não implementação, merge ou aprovação de release**  
 **Base auditada estaticamente:** `ordaxsystems/ordax-apps`, branch `feat/orchestrator-lab-isolated-20261019`, versão **`0.2.0-alpha.2`**  
@@ -10,7 +12,7 @@
 > **Tese do produto:** um único ambiente no qual o usuário conversa, acompanha e controla trabalhos duradouros executados por agentes de IA. **O trabalho pertence ao OrdaX; a conversa e a sessão do provedor são meios transitórios de realizá-lo.** Nesta fase, **ChatGPT Web é peça central obrigatória** do fluxo operacional, não algo a ser substituído na proposta. Seu uso permanece experimental e sujeito às condições, permissões e limites do provedor.
 
 
-> **Controle documental:** este RFC-002 consolida e substitui o RFC-001 como proposta de SSOT **quando adotado no repositório**. O histórico de decisões está em `02-HISTORICO-ANALISES-E-ADRS.md` e a execução com gates em `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md`. Ambos são anexos explicativos; **nenhum documento gerado neste chat foi automaticamente publicado no GitHub**.
+> **Controle documental histórico:** este RFC-002 consolidava e substituía o RFC-001 dentro daquele ciclo; hoje ele foi superseded pelo roadmap GPT-first. O histórico de decisões está em `02-HISTORICO-ANALISES-E-ADRS.md` e a execução com gates em `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md`. Ambos são anexos explicativos; **nenhum documento gerado neste chat foi automaticamente publicado no GitHub**.
 
 > **Legenda:** `[V]` leitura estática de código; `[R]` relato de testes no README/outra IA, não reexecutado aqui; `[P]` proposta pendente; `[D]` requisito ou direção consolidada; `[G]` gate que precisa de prova real.
 
