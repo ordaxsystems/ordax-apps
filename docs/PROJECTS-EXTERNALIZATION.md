@@ -2,7 +2,7 @@
 
 > **CURRENT STATE — SOURCE CUTOVER COMPLETE; DISTRIBUTION NOT ACTIVATED.** `migrations/projects.externalization.json` is authoritative: `source_repository_current=ordaxsystems/ordax-apps`, `source_path_current=apps/projects`, `source_of_truth_state=ordax-apps-canonical`, `source_cutover_allowed=true` and `distribution_activation_allowed=false`. Platform absence was proven at `93ec5bbefeb9d2c2f00c9ab8a4525590c8a25454`; Gate B is `source-materialized-unsigned`. **Do not rerun Gate A/B or restore `system/apps/projects`.** Signed distribution, Native installation and rollback remain separate unproven gates.
 
-Projects was the second first-party extraction pilot after Notes. The historical pre-cutover owner was `ordax-os/system/apps/projects`; the one-time remove-first transfer has already established `ordax-apps/apps/projects` as the source authority.
+Projects was the second first-party extraction pilot after Notes. The historical pre-cutover owner path was `ordaxsystems/ordax-os/system/apps/projects`; the one-time remove-first transfer has already established `ordax-apps/apps/projects` as the source authority.
 
 ## Why Projects is the second pilot
 
