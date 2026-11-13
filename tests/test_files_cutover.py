@@ -237,7 +237,10 @@ class FilesCutoverTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = make_root(Path(temp))
             (root / "apps" / "files").mkdir()
-            with self.assertRaisesRegex(files.FilesCutoverError, "second canonical"):
+            with self.assertRaisesRegex(
+                files.FilesCutoverError,
+                "materialization state is still pending",
+            ):
                 files.report(root)
 
     def test_platform_owned_port_cannot_be_deleted_in_gate_a(self):
