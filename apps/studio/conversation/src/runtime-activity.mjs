@@ -9,7 +9,20 @@ export function visibleOperations(operations, binding, all = false) {
       (['projectCreate','projectImport'].includes(operation.kind) && operation.slug === binding.project))));
 }
 export function operationReceipt(operation) {
+  const digest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) ? value : null;
+  const result = operation?.result?.data ?? operation?.result;
+  const expectedSha256 = digest(operation?.expectedSha256);
+  const proposedSha256 = digest(operation?.proposedSha256);
+  const resultSha256 = digest(result?.sha256);
   return JSON.stringify({ schemaVersion: 1, source: 'ORDAX Studio / Product REST', localId: operation.id, requestId: operation.requestId ?? null,
     kind: operation.kind, deviceId: operation.deviceId, project: operation.project ?? null, status: operation.status,
-    createdAt: operation.createdAt, finishedAt: operation.finishedAt ?? null }, null, 2);
+    createdAt: operation.createdAt, finishedAt: operation.finishedAt ?? null,
+    ...(operation.kind === 'write' && (expectedSha256 || proposedSha256 || resultSha256) ? {
+      contentDigests: {
+        expectedSha256,
+        proposedSha256,
+        resultSha256,
+      },
+    } : {}),
+  }, null, 2);
 }
