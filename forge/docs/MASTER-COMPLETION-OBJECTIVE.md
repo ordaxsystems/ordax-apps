@@ -1,16 +1,16 @@
 > **REFERÊNCIA HISTÓRICA — substituída na direção do produto em 2026-11-06.** A única arquitetura e sequência executiva vigentes estão em [Forge GPT-first — plano canônico](FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md). Dados de PR/CI/E2E abaixo são evidências datadas; NÃO reativar Groq obrigatória, instância por projeto, caminhos privados como destino final ou dependência Runtime externo para arquivos locais. O código e as provas atuais determinam o que já funciona.
 
-> **Reestruturação de rotas alpha.20 (31/10/2026):** prioridade atual é certificar que o chat do Orquestrador use exclusivamente o coordenador Groq no Windows e que o envio a GPT Web seja possível apenas na frente de trabalho, com UI e recibos separados. Criar missão deve ser operação local. O plano histórico abaixo permanece somente como evidência; não tratar a antiga definição de GPT Web primário no Orquestrador como contrato vigente. Gate final exige suíte, CI, uma instalação Windows com `sourceCommit` verificável e demonstração física de navegação/sem envio cruzado. Projetos e conversas de teste são descartáveis se necessário, mas não excluir dados de outros produtos.
+> **Checkpoint de reestruturação alpha.20 (31/10/2026):** naquele momento, a prioridade era certificar o chat do Orquestrador com coordenador Groq no Windows e envio a GPT Web apenas na frente de trabalho. Este bloco preserva somente a decisão e a evidência daquela revisão; **não** define a arquitetura atual. A direção vigente está exclusivamente no [plano Forge GPT-first](FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md).
 
 # Objetivo mestre de conclusão — OrdaX Orchestrator
 
-**Estado:** objetivo contínuo ativo. Este documento é o plano de execução e aceite da auditoria de prontidão de 27/10/2026, atualizado com o estado remoto e do Desktop confirmados em 27/10/2026 (America/Sao_Paulo). A conclusão depende de evidências observáveis; respostas do GPT, mocks e testes unitários isolados não provam o produto completo.
+**Estado histórico:** este documento foi o plano de execução e aceite da auditoria de prontidão de 27/10/2026 e hoje é **evidência/registro**, não objetivo contínuo nem fila executiva. A conclusão histórica dependia de evidências observáveis; respostas do GPT, mocks e testes unitários isolados não provavam o produto completo. Para qualquer trabalho atual, usar o plano Forge GPT-first e o código/recibos correntes.
 
-## Estado vigente — 31/10/2026
+## Checkpoint de estado — 31/10/2026
 
 **Estado em 31/10/2026:** `main` em `3e86eb402ad1f4aca5665e182c908cd4372e506c`; versão canônica `0.2.0-alpha.19` no manifesto. PRs #348, #368 e #370 integradas. Entrega Windows Dev [#41021670806](https://github.com/ordaxsystems/ordax-apps/actions/runs/41021670806) no commit `f9c46e99038e06ceaeff6c07cc3b64ced60ae877`, sem alteração subsequente na subárvore Orchestrator. No `DESKTOP-PNUHUA0`, existe uma única instalação em `%LOCALAPPDATA%\Programs\OrdaX Orchestrator Lab`, com EXE e ASAR verificados; quatro processos Electron apontam ao mesmo EXE; staging e ZIP removidos. `DESKTOP-COHT67R` está offline e não foi alterado. Pacote não assinado para desenvolvimento; distribuição pública, GPT Web live, recuperação W3 real, grants Runtime/Platform e autonomia 24h continuam sem certificação.
 
-**Próximos gates:** prova de GPT Web autenticado com recibo de envio/resposta, recuperação W3 sem replay após interrupção física, grants reais e continuidade sem janela pelo Runtime/Scheduler existentes. Não criar segunda fila, banco, instalador ou Runtime.
+**Gates registrados naquele checkpoint:** prova de GPT Web autenticado com recibo de envio/resposta, recuperação W3 sem replay após interrupção física, grants reais e continuidade sem janela pelo Runtime/Scheduler existentes. Esses itens **não são automaticamente pendências atuais**; revalidar no roadmap GPT-first, no código e nos recibos vigentes antes de agir.
 
 ## Snapshot remoto histórico — 27/10/2026
 
