@@ -26,7 +26,7 @@ test('Studio tools cannot inject arbitrary actions, scope, or terminal arguments
 test('workspace presentation bounds data and rejects results from another device or project', () => {
   assert.equal(workspaceText('gitDiff', { data: { diff: '+updated\n' } }), '+updated\n');
   assert.equal(workspaceText('gitDiff', { data: { stdout: '+runtime-output\n' } }), '+runtime-output\n');
-  assert.equal(workspaceText('continuity', { data: { project: 'demo', state: { summary: 'Concluído', next_action: 'Testar' } } }), 'Concluído\n\nPróximo passo: Testar');
+  assert.equal(workspaceText('continuity', { data: { project: 'demo', state: { summary: 'Concluído', next_action: 'Testar', completed: ['Base pronta'], blockers: ['Revisar'], changed_paths: ['src/main.mjs'] } } }), 'Concluído\n\nPróximo passo: Testar\n\nConcluído: Base pronta\n\nPendência: Revisar\n\nArquivo alterado: src/main.mjs');
   assert.equal(workspaceText('gitDiff', { data: { diff: '' } }), 'Sem alterações no diff.');
   assert.equal(workspaceText('gitDiff', { data: { diff: 'x'.repeat(160000) } }).length, 150000);
   assert.equal(workspaceResultBelongs({ deviceId: 'a', project: 'one' }, { deviceId: 'b', project: 'one' }), false);
