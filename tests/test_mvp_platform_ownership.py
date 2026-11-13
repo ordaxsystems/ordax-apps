@@ -49,6 +49,27 @@ class PlatformOwnerMvpTests(unittest.TestCase):
             self.assertIn("source-cutover-not-authorized", row["blockers"])
             self.assertFalse((ROOT / "apps" / app_id / "app.json").exists())
 
+    def test_files_after_gate_a_is_absent_not_platform_owned_or_installable(self):
+        plan = json.loads((ROOT / "migrations/files.externalization.json").read_text(encoding="utf-8"))
+        self.assertEqual(plan["source_of_truth_state"], "source-absent-after-platform-removal")
+        self.assertIsNone(plan["source_repository_current"])
+        self.assertIsNone(plan["source_path_current"])
+        self.assertTrue(plan["source_cutover_allowed"])
+        self.assertTrue(plan["source_cutover"]["gate_a_complete"])
+        self.assertEqual(plan["source_cutover"]["target_materialization_state"], "pending")
+        self.assertFalse((ROOT / "apps/files").exists())
+
+        report = audit_workspace(ROOT)
+        row = next(item for item in report["apps"] if item["app_id"] == "files")
+        self.assertEqual(row["source_state"], "source-absent-after-platform-removal")
+        self.assertIn("source-materialization-pending", row["blockers"])
+        self.assertIn("production-activation-not-authorized", row["blockers"])
+
+        minimum = audit_mvp_minimum(ROOT, minimum_candidates=13)
+        minimum_row = next(item for item in minimum["apps"] if item["app_id"] == "files")
+        self.assertEqual(minimum_row["minimum_entry_status"], "blocked-source-materialization-pending")
+        self.assertFalse(minimum_row["production_installable"])
+
     def test_internet_cutover_must_not_duplicate_native_browser_engine(self):
         plan = json.loads((ROOT / "migrations/internet.externalization.json").read_text(
             encoding="utf-8"
