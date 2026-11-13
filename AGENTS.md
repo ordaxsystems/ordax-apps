@@ -2,6 +2,17 @@
 
 > **Execução DEV — Evolução Rápida (regra transversal obrigatória):** aplicar a [política canônica OrdaX](https://github.com/ordaxsystems/ordax-os/blob/main/docs/DEVELOPMENT-WORKFLOW.md#regra-operacional-transversal--evolucao-rapida-dev-2026-11-04) antes de iniciar trabalho. Entregar a alteração no owner correto primeiro e validar com testes proporcionais depois; não ampliar escopo com auditorias, documentação, CI ou workflows sem causalidade. Preservar gates obrigatórios, integridade, segurança e autorização.
 
+## Integração canônica no produto — 13/11/2026
+
+Este repo é **producer de aplicativos**, não compositor do sistema. A regra transversal está em [`ordax-os/docs/DEVELOPMENT-WORKFLOW.md`](https://github.com/ordaxsystems/ordax-os/blob/main/docs/DEVELOPMENT-WORKFLOW.md#integração-multi-repositório--composição-do-produto-2026-11-13) e ADR-031.
+
+- Apps publicam source/pacotes/componentes e catálogo pelos contratos já existentes.
+- `ordax-os` consome os artefatos/catálogo quando uma revisão deve entrar no produto Native; não copiar app source para o OS.
+- `ordax-surface` apresenta catálogo/estado/ações por ports; não importa implementação de apps.
+- Desktop e Creator não integram apps diretamente quando a composição OrdaX/OS já é a dependência direta.
+- Mudança compatível em um app/Forge termina neste owner; não abrir PR em OS/Surface/Desktop só para sincronizar SHA.
+- Só criar adoção cross-repo quando um contrato/artefato novo for realmente necessário.
+
 ## Retomada de apps, Aura e MCP — não reiniciar missão histórica (04/11/2026)
 
 **Somente quando a tarefa afetar a integração de apps com Aura/Fabric/MCP:**
