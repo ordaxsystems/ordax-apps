@@ -15,6 +15,17 @@ test('Studio tools cannot inject arbitrary actions, scope, or terminal arguments
   assert.deepEqual(runtime.input({ ...selected, kind: 'blenderInspect', objectId: 'ordax_object_42' }).arguments, { ordax_object_id: 'ordax_object_42', timeout_seconds: 15 });
   assert.throws(() => runtime.input({ ...selected, kind: 'blenderInspect', objectName: '' }), /exatamente um nome/);
   assert.throws(() => runtime.input({ ...selected, kind: 'blenderInspect', objectName: 'Cube', objectId: 'id' }), /exatamente um nome/);
+  assert.deepEqual(runtime.input({ ...selected, kind: 'blenderStart' }).arguments, { wait_seconds: 10, timeout_seconds: 30, adopt_blank: false });
+  assert.deepEqual(runtime.input({ ...selected, kind: 'blenderTransform', objectName: 'Cube', transform: 'location', vector: [1,2,3] }).arguments, { object_name: 'Cube', location: [1,2,3], timeout_seconds: 30 });
+  assert.deepEqual(runtime.input({ ...selected, kind: 'blenderTransform', objectId: 'ordax_object_42', transform: 'scale', vector: [1,1,1] }).arguments, { ordax_object_id: 'ordax_object_42', scale: [1,1,1], timeout_seconds: 30 });
+  assert.throws(() => runtime.input({ ...selected, kind: 'blenderTransform', objectName: 'Cube', transform: 'scale', vector: [1,0,1] }), /Vetor Blender/);
+  assert.deepEqual(runtime.input({ ...selected, kind: 'blenderCreate', name: 'Box', primitive: 'cube', location: [1,2,3], size: 2, depth: 99, segments: 64 }).arguments, { name: 'Box', primitive: 'cube', location: [1,2,3], timeout_seconds: 30, size: 2 });
+  assert.deepEqual(runtime.input({ ...selected, kind: 'blenderCreate', name: 'Pipe', primitive: 'cylinder', location: [0,0,0], size: 1.5, depth: 4, segments: 24 }).arguments, { name: 'Pipe', primitive: 'cylinder', location: [0,0,0], timeout_seconds: 30, radius: 1.5, segments: 24, depth: 4 });
+  assert.deepEqual(runtime.input({ ...selected, kind: 'blenderMaterial', objectName: 'Cube', materialName: 'Red', baseColor: '#ff0000', roughness: 0.3, metallic: 0.2 }).arguments, { object_name: 'Cube', material_name: 'Red', base_color: [1,0,0,1], roughness: 0.3, metallic: 0.2, transmission: 0, alpha: 1, ior: 1.45, surface_render_method: 'DITHERED', transparency_overlap: true, timeout_seconds: 30 });
+  assert.throws(() => runtime.input({ ...selected, kind: 'blenderMaterial', objectName: 'Cube', materialName: 'Bad', baseColor: '#ffffff', roughness: 2, metallic: 0 }), /Roughness/);
+  assert.deepEqual(runtime.input({ ...selected, kind: 'blenderSave', targetPath: 'scenes/demo.blend' }).arguments, { target_path: 'scenes/demo.blend', timeout_seconds: 120 });
+  assert.deepEqual(runtime.input({ ...selected, kind: 'blenderSave', targetPath: '' }).arguments, { timeout_seconds: 120 });
+  assert.throws(() => runtime.input({ ...selected, kind: 'blenderSave', targetPath: '../outside.blend' }), /relativo ao projeto/);
   assert.throws(() => runtime.input({ ...selected, kind: 'gitStatus', argv: ['push'] }), /Campo/);
   assert.throws(() => runtime.input({ ...selected, kind: 'gitDiff', action: 'terminal.exec' }), /Campo/);
   assert.throws(() => runtime.input({ ...selected, kind: 'search', query: '' }), /busca/);
