@@ -4,6 +4,12 @@
 
 **OrdaX Orchestrator — Project-First:** a versão corrente é definida no manifesto do produto e validada contra `forge/product-version.json` pelos gates de CI; consulte esses arquivos e o HEAD da `main` antes de qualquer release. Não mantenha números de versão copiados neste README. Essa identificação de fonte e os testes de CI **não** certificam envio GPT Web real, recuperação após interrupção física, grants Runtime/Platform em dispositivo, operação autônoma 24 h ou distribuição pública. O aplicativo deve consumir os contratos dos owners Intelligence, Runtime e Platform sem duplicá-los; OrdaX MCP serve o caminho ChatGPT → Runtime e não substitui um transporte App → ChatGPT autorizado. [Arquitetura](forge/docs/PROJECT-FIRST-ARCHITECTURE.md) · [Plano e gates](forge/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md) · [Matriz atual](forge/docs/audits/PROJECT-WORKSPACE-CAPABILITY-MATRIX.md) · [E2E VESTE](forge/docs/VESTE-PROJECT-FIRST-E2E.md) · [Handoff Codex](forge/CODEX-HANDOFF.md).
 
+## Como Apps entra no OrdaX
+
+`ordax-apps` produz aplicativos e seus artefatos/catálogos. O produto Native os consome pelos contratos de componente/lifecycle do `ordax-os`; a Surface os apresenta por ports. Desktop e Creator não devem copiar nem pinçar source de apps individualmente.
+
+Uma alteração compatível em um app pode avançar e ser integrada aqui sem uma cascata de PRs. A adoção em uma composição OrdaX acontece somente quando houver candidato/artefato a consumir. Regra completa: [integração multi-repositório do OrdaX](https://github.com/ordaxsystems/ordax-os/blob/main/docs/DEVELOPMENT-WORKFLOW.md#integração-multi-repositório--composição-do-produto-2026-11-13).
+
 > [!IMPORTANT]
 > **Leitura prioritária:** antes de analisar, planejar ou implementar aplicativos, leia o [URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS](URGENTE-ROADMAP-ORDAX-APPS.md).
 > Para agentes e assistentes, consulte também [AGENTS.md](AGENTS.md). O roadmap é um plano vivo e não substitui os contratos, o CI nem os gates canônicos de trust e distribuição.
