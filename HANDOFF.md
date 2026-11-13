@@ -1,8 +1,10 @@
-# OrdaX Apps — canonical handoff
+# OrdaX Apps — handoff histórico e roteador de domínio
 
-## Prioridade atual do Orchestrator — decisão 2026-11-01
+> **STATUS: REFERÊNCIA HISTÓRICA / NÃO É CURRENT-STATE.** Para qualquer trabalho novo, comece em [AGENTS.md](AGENTS.md), no source/manifest/migration do domínio afetado e, para Forge, no único SSOT vigente [forge/docs/FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md](forge/docs/FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md). As seções datadas abaixo preservam decisões e provas anteriores; não use seus SHAs, versões, prioridades ou “próximos passos” como instrução operacional sem conferir o estado atual.
 
-Contrato canônico: [Orchestrator dedicado a um único projeto, Administração Geral Groq e coordenação iniciada sem prompt](forge/docs/ORCHESTRATOR-CANONICAL-PRODUCT.md). É a direção obrigatória para qualquer próxima IA. A antiga abordagem Project-First com vários projetos simultâneos e conversa GPT principal, descrita no histórico abaixo, foi **substituída** como experiência de produto; código multi-projeto e dados existentes permanecem até migração testada. O estado funcional depende de manifesto, CI, transportes, grants e provas reais — não inferir autonomia 24 h.
+## Forge / Orchestrator — direção vigente desde 2026-11-06
+
+O Forge é GPT-first: pedido natural → o próprio GPT executor usa o MCP autorizado da sessão → efeitos/arquivos são verificados → Forge acompanha/mostra preview → Administrador opcional revisa e coordena. Groq não é obrigatório e documentos de instância única/Project-First antigos são registros históricos.
 
 ## Atualização Orchestrator Project-First (decisão 2026-10-21) — histórico subordinado
 

@@ -1,6 +1,10 @@
-# Prioridade atual do OrdaX Orchestrator — 2026-11-01
+# OrdaX Apps — roadmap transversal e registro histórico
 
-**SSOT de direção:** [Orchestrator — contrato autônomo/instância única](forge/docs/ORCHESTRATOR-CANONICAL-PRODUCT.md). Uma instância = um projeto; Administrador Geral Groq é entrada principal; após conectar e **Iniciar** pode realizar diagnóstico sem prompt, definir missões e coordenar executores por repo **somente nos gates autorizados**. O usuário pode direcionar a qualquer momento. O plano antigo multi-projeto e "GPT Web como chat principal" abaixo é **histórico e não deve orientar novas implementações**. Envio GPT é um canal distinto e não implícito. Nada nesta decisão habilita sozinho GPT autônomo, Runtime/grants ou 24 h.
+> **STATUS: PLANEJAMENTO/REFERÊNCIA, NÃO SSOT DE EXECUÇÃO.** A direção corrente do Forge está exclusivamente em [forge/docs/FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md](forge/docs/FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md). Para apps individuais, source, manifests, migrations e contratos atuais prevalecem. Não interpretar prioridades, SHAs, versões ou “próximos passos” datados abaixo como fila global.
+
+## Orchestrator de 2026-11-01 — decisão histórica substituída
+
+A antiga direção de instância única com Administrador Geral Groq foi substituída pela arquitetura GPT-first em 2026-11-06. O conteúdo abaixo permanece apenas para preservar contexto de evolução e não deve orientar novas implementações quando divergir do roadmap GPT-first ou do source atual.
 
 ## Direção Project-First do OrdaX Orchestrator — decisão do proprietário (2026-10-21; histórico)
 
