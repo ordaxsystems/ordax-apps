@@ -27,6 +27,22 @@ class MvpMinimumTests(unittest.TestCase):
     def fixture(self, root: Path):
         fixtures.make_workspace(root, ["alpha", "studio", "files", "projects", "internet"])
         fixtures.make_app(root, "alpha")
+        fixtures.write_json(root / "apps" / "alpha" / "presentation" / "manifest.json", {
+            "schema": "ordax.app-presentation-manifest/1",
+            "appId": "alpha",
+            "appVersion": "0.1.0",
+            "authority": "none",
+            "sourceLocale": "pt-BR",
+            "description": "Aplicativo Alpha.",
+            "monogram": "AL",
+            "singleton": True,
+            "translations": {
+                "en-US": {
+                    "title": "Alpha",
+                    "description": "Alpha application.",
+                }
+            },
+        })
         fixtures.make_app(root, "studio", compatibility=False)
         fixtures.write_json(root / "migrations" / "projects.externalization.json", {
             "app_id": "projects",
