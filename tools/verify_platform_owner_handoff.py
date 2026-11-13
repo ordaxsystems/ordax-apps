@@ -118,12 +118,6 @@ def verified_historical_assertions(root: Path, path: str, old: str) -> bool:
         "tools/verify_notes_externalization.py": [
             f'if source_snapshot.get("repository") != "{old}":',
         ],
-        ".github/workflows/foundation.yml": [
-            f'assert repository == "{old}"',
-        ],
-        ".github/workflows/store-catalog-candidate.yml": [
-            f'assert repository == "{old}"',
-        ],
     }
     expected = allowed.get(path)
     if expected is None:
