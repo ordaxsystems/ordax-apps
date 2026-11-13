@@ -1,6 +1,6 @@
 # Notes host boundary
 
-`apps/notes` must be portable product code. It does not import implementation files from `prototipo-ordax-os` and it does not know Native routes, filesystem locations, install state or Store authority.
+`apps/notes` must be portable product code. It does not import implementation files from `ordaxsystems/ordax-os` and it does not know Native routes, filesystem locations, install state or Store authority.
 
 The host injects one object, `ordaxNotesHost`, whose facets implement the pinned public OrdaX contracts:
 
