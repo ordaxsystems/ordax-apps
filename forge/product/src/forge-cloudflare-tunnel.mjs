@@ -28,7 +28,7 @@ export function forgeCloudflaredExecutable(localAppData=process.env.LOCALAPPDATA
 }
 export function validateForgeCloudflareToken(token){
   if(typeof token!=='string'||token.length<60||token.length>8192||
-     !/^[A-Za-z0-9_=-]+$/.test(token))
+     !/^[A-Za-z0-9+/=_-]+$/.test(token))
     throw Error('forge_cloudflare_tunnel_token_invalid');
   let claims;
   try{claims=JSON.parse(Buffer.from(token,'base64').toString('utf8'));}
@@ -88,11 +88,18 @@ export function createForgeCloudflareTunnelSession({
     if(!ownerApproved||!ownerTrusted())throw Error('forge_cloudflare_owner_approval_required');
     const args=launch({token,executablePath,ownerApproved,platform});
     state='starting';notify();
+    let candidateBridge=null;
     try{
-      bridge=createBridge({getLocalGrant,ownerTrusted});
-      await bridge.start({team,audience});
-      if(!ownerTrusted())throw Error('forge_cloudflare_owner_consent_revoked');
-    }catch(error){await cleanup();state='stopped';notify();throw error;}
+      candidateBridge=createBridge({getLocalGrant,ownerTrusted});
+      bridge=candidateBridge;
+      await candidateBridge.start({team,audience});
+      if(state!=='starting'||bridge!==candidateBridge||!ownerTrusted())
+        throw Error('forge_cloudflare_start_cancelled');
+    }catch(error){
+      if(candidateBridge)try{await candidateBridge.stop();}catch{}
+      if(bridge===candidateBridge)bridge=null;
+      state='stopped';notify();throw error;
+    }
     let candidate;
     try{
       candidate=spawnClient(args.command,args.args,{...args.spawnOptions,env:args.env});

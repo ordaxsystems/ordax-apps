@@ -158,3 +158,36 @@ test('installer publishes only a file with the verified pinned checksum',async t
   }),/official_sha256_invalid/);
   assert.equal(fs.existsSync(other),false);
 });
+
+test('revoking a pending Access preflight cannot leave a late MCP listener',async()=>{
+  let release;
+  const bridge=createForgeCloudflareBridge({
+    port:await freePort(),getLocalGrant:()=>grant,ownerTrusted:()=>true,
+    keysProvider:()=>new Promise(resolve=>{release=resolve;})
+  });
+  const pending=bridge.start({team,audience});
+  assert.equal(bridge.status().running,false);
+  await bridge.stop();
+  release([jwk]);
+  await assert.rejects(pending,/start_cancelled/);
+  assert.equal(bridge.status().running,false);
+});
+
+test('stopping during async bridge activation cannot spawn an orphan connector',async()=>{
+  let release;let spawns=0;
+  const control=createForgeCloudflareTunnelSession({
+    getLocalGrant:()=>grant,ownerTrusted:()=>true,
+    executablePath:'C:\\Forge\\cloudflared.exe',
+    launch:()=>({command:'C:\\Forge\\cloudflared.exe',args:['tunnel','run'],
+      spawnOptions:{shell:false},env:{TUNNEL_TOKEN:tunnelToken}}),
+    createBridge:()=>({start:()=>new Promise(resolve=>{release=resolve;}),
+      stop:async()=>{}}),
+    spawnClient:()=>{spawns++;throw Error('must never spawn');}
+  });
+  const pending=control.start({ownerApproved:true,token:tunnelToken,team,audience});
+  control.stop();
+  release();
+  await assert.rejects(pending,/start_cancelled/);
+  assert.equal(spawns,0);
+  assert.equal(control.status().state,'stopped');
+});

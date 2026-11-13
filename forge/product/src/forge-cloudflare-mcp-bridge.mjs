@@ -29,7 +29,7 @@ export function createForgeCloudflareBridge({
      !Number.isInteger(port)||port<1024||port>65535)
     throw Error('forge_cloudflare_bridge_ports_required');
   let server=null,active=null,keys=null,keysAt=0;
-  let processingKeys=null;
+  let processingKeys=null,starting=false,generation=0;
   const status=()=>Object.freeze({running:server?.listening===true,
     localOnly:true,originPort:server?.listening?port:null,
     remoteChatGptConnected:false,accessVerified:false});
@@ -109,36 +109,43 @@ export function createForgeCloudflareBridge({
     });
   }
   async function start({team,audience}={}){
-    if(server)throw Error('forge_cloudflare_bridge_already_running');
-    forgeAccessIssuer(team);forgeAccessAudience(audience);
-    if(!ownerTrusted())throw Error('forge_cloudflare_owner_consent_required');
-    const grant=parseGrant(getLocalGrant());
-    // Load signing keys before creating a socket; unavailable Access is a hard stop.
-    const trustedKeys=await keysFor(team);
-    if(!trustedKeys.length)throw Error('forge_cloudflare_access_keys_unavailable');
-    const listener=createServer((req,res)=>{void handle(req,res).catch(()=>{
-      response(res,500,'forge_cloudflare_bridge_unavailable');
-    });});
-    server=listener;
-    active={team,audience,grant};
-    listener.headersTimeout=10000;listener.requestTimeout=15000;
+    if(server||starting)throw Error('forge_cloudflare_bridge_already_running');
+    starting=true;
+    const expectedGeneration=generation;
     try{
-      await new Promise((resolve,reject)=>{
-        listener.once('error',reject);
-        listener.listen(port,'127.0.0.1',()=>{
-          listener.off('error',reject);resolve();
+      forgeAccessIssuer(team);forgeAccessAudience(audience);
+      if(!ownerTrusted())throw Error('forge_cloudflare_owner_consent_required');
+      const grant=parseGrant(getLocalGrant());
+      // Revocation while JWKS is being fetched must not create a late listener.
+      const trustedKeys=await keysFor(team);
+      if(!trustedKeys.length)throw Error('forge_cloudflare_access_keys_unavailable');
+      if(generation!==expectedGeneration||!ownerTrusted())
+        throw Error('forge_cloudflare_start_cancelled');
+      const listener=createServer((req,res)=>{void handle(req,res).catch(()=>{
+        response(res,500,'forge_cloudflare_bridge_unavailable');
+      });});
+      server=listener;
+      active={team,audience,grant};
+      listener.headersTimeout=10000;listener.requestTimeout=15000;
+      try{
+        await new Promise((resolve,reject)=>{
+          listener.once('error',reject);
+          listener.listen(port,'127.0.0.1',()=>{
+            listener.off('error',reject);resolve();
+          });
         });
-      });
-      if(server!==listener||!ownerTrusted())
-        throw Error('forge_cloudflare_owner_consent_revoked');
-      return status();
-    }catch(error){
-      server=null;active=null;
-      try{listener.close();}catch{}
-      throw error;
-    }
+        if(generation!==expectedGeneration||server!==listener||!ownerTrusted())
+          throw Error('forge_cloudflare_owner_consent_revoked');
+        return status();
+      }catch(error){
+        if(server===listener){server=null;active=null;}
+        try{listener.close();}catch{}
+        throw error;
+      }
+    }finally{starting=false;}
   }
   async function stop(){
+    generation++;
     active=null;const listener=server;server=null;
     if(listener)await new Promise(resolve=>{
       try{listener.close(()=>resolve());listener.closeAllConnections();}
