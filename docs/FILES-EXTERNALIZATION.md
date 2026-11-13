@@ -15,8 +15,6 @@
 
 Os parágrafos abaixo identificados como evidência de 2026-10-08 são históricos; quando mencionarem `source_cutover_allowed=false`, Files “platform-owned”, Gate A não executado, namespaces antigos ou próximos passos daquela época, **não são instrução operacional**. O plano machine-readable e a seção atual acima prevalecem.
 
- Quando divergirem desta reconciliação, prevalecem os repositórios, pins e verificações atuais.
-
 ## Evidência observada (2026-10-08)
 
 Esta evidência foi registrada antes da transferência física do OS e não define a autoridade operacional após o corte. O proprietário canônico preparado é `ordaxsystems/prototipo-ordax-os`; confirmar a transferência do repositório GitHub ID `1371063347` antes de mesclar as alterações de namespace.
