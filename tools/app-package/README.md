@@ -107,12 +107,14 @@ These files are **not installable authority by themselves**. The OrdaX platform 
 O inventário da Loja é derivado de `catalog_inventory.discover_catalog_apps`,
 sem lista fixa de IDs nem uma segunda implementação das regras de segurança.
 Um app com `component-slot` só entra na lista quando o inventário aplica
-diretamente `build.validate_app_manifest` e
-`build.validate_compatibility`, sobre JSONs lidos com os mesmos limites do
-builder oficial. O catálogo, portanto, falha já na descoberta diante de
-contratos inválidos, campos extras, dependências duplicadas, versões ou
-ranges ilegais e descritores superdimensionados. A ausência legítima de
-compatibility mantém Studio e apps ainda não habilitados fora dos candidatos.
+diretamente `build.validate_app_manifest`, `build.validate_compatibility`
+e o contrato canônico de `presentation/manifest.json`, sempre vinculado ao
+mesmo app id/versão e sem authority. O catálogo, portanto, falha já na
+descoberta diante de contratos inválidos, campos extras, dependências
+duplicadas, versões/ranges ilegais, apresentação ausente ou descritores
+superdimensionados. A ausência legítima de compatibility mantém Studio e apps
+ainda não habilitados fora dos candidatos; uma vez que compatibility existe,
+a apresentação app-owned deixa de ser opcional para a rota Store comum.
 A contagem dos candidatos não constitui permissão de instalação.
 
 ## Exportação pública completa antes da publicação
