@@ -4,7 +4,7 @@
 
 This document defines the target product boundary for **ORDAX Studio** as a first-party OrdaX application with two official distribution targets: OrdaX OS and Windows.
 
-`apps/studio/` in `ordaxsystems/ordax-apps` is the **canonical portable source of truth** for ORDAX Studio. The historical `mcp-blender` repository is legacy migration residue only and must not receive new Studio product features. Distribution/runtime cutover remains separately gated until Windows Runtime, Control Plane, connector and lifecycle ownership are proven outside the legacy repository.
+`apps/studio/` in `ordaxsystems/ordax-apps` is the **canonical portable source of truth** for ORDAX Studio. The historical `mcp-blender` product source has been retired: Runtime/Device Host is owned by `ordaxsystems/ordax-runtime`, Product MCP/Control Plane/connectors by `ordaxsystems/ordax-platform`, and the post-retirement smoke is recorded in `migrations/studio.externalization.json`. This completed source/owner cutover does **not** imply that every Studio package, publication or target-specific release gate is activated; those states must be read from the current packaging/lifecycle/trust contracts.
 
 ## Product identity
 
@@ -125,9 +125,9 @@ The goal is one Studio product with environment adapters, not separate Studio fo
 
 ## Dual-distribution invariant
 
-OrdaX OS and Windows are two release targets of the **same portable Studio source**. After source cutover, both consume `apps/studio/`; target-specific code is restricted to host adapters, package metadata and lifecycle integration.
+OrdaX OS and Windows are two release targets of the **same portable Studio source**. Since the completed source cutover, both consume `apps/studio/`; target-specific code is restricted to host adapters, package metadata and lifecycle integration.
 
-A release must not be promoted merely because each target works independently. Before cutover and for future compatibility gates, the release pipeline must prove:
+A release must not be promoted merely because each target works independently. Current and future compatibility gates must continue proving:
 
 - both targets consume the same portable Studio source/input;
 - both expose compatible public port majors;
@@ -184,7 +184,7 @@ A Studio release must not require rebuilding the Base image solely because Studi
 
 The portable Studio source has already cut over to `apps/studio/`. Do not restore or evolve a parallel Studio product tree in `mcp-blender`.
 
-Retiring the historical repository must follow this invariant:
+The completed historical retirement followed this invariant; preserve it as provenance and as a regression checklist against reintroducing a second owner:
 
 1. prove package/build compatibility against the pinned App SDK;
 2. remove private platform/runtime implementation dependencies from Studio core;
@@ -202,4 +202,4 @@ Retiring the historical repository must follow this invariant:
 14. only then delete/archive the historical repository;
 15. prove no residual path can launch a removed or divergent Studio copy.
 
-The app source is already owned here. What remains blocked is **legacy repository retirement**, not portable Studio ownership.
+The portable source ownership **and legacy repository retirement are complete**. Do not reopen this checklist as a current migration. Any remaining Studio availability, package publication, install/activation or release work must be determined from the current manifests, locks, lifecycle/trust contracts and live CI—not from the retired-repository gate.
