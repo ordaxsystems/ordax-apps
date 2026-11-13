@@ -15,8 +15,7 @@ Os documentos anteriores de Orchestrator “instância única/Groq obrigatório�
 Uma alteração compatível em um app pode avançar e ser integrada aqui sem uma cascata de PRs. A adoção em uma composição OrdaX acontece somente quando houver candidato/artefato a consumir. Regra completa: [integração multi-repositório do OrdaX](https://github.com/ordaxsystems/ordax-os/blob/main/docs/DEVELOPMENT-WORKFLOW.md#integração-multi-repositório--composição-do-produto-2026-11-13).
 
 > [!IMPORTANT]
-> **Leitura prioritária:** antes de analisar, planejar ou implementar aplicativos, leia o [URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS](URGENTE-ROADMAP-ORDAX-APPS.md).
-> Para agentes e assistentes, consulte também [AGENTS.md](AGENTS.md). O roadmap é um plano vivo e não substitui os contratos, o CI nem os gates canônicos de trust e distribuição.
+> **Entrada para agentes:** leia [AGENTS.md](AGENTS.md) e os arquivos/contratos diretamente afetados. Consulte [URGENTE-ROADMAP-ORDAX-APPS.md](URGENTE-ROADMAP-ORDAX-APPS.md) apenas para portfólio, migração ou planejamento transversal; ele é um roteador histórico/subordinado e não substitui source, manifests, migrations, o roadmap GPT-first do Forge ou os contratos atuais.
 
 
 Repositório oficial dos aplicativos first-party do OrdaX.
