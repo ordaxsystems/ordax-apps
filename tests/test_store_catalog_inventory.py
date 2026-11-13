@@ -11,9 +11,41 @@ assert spec.loader is not None
 spec.loader.exec_module(catalog_inventory)
 
 
+def presentation(app_id: str, version: str = "0.1.0") -> dict:
+    return {
+        "schema": "ordax.app-presentation-manifest/1",
+        "appId": app_id,
+        "appVersion": version,
+        "authority": "none",
+        "sourceLocale": "pt-BR",
+        "description": f"Aplicativo {app_id}.",
+        "monogram": app_id[:2].upper(),
+        "singleton": True,
+        "translations": {
+            "en-US": {
+                "title": app_id.title(),
+                "description": f"{app_id.title()} application.",
+            }
+        },
+    }
+
+
 def write_json(path: Path, value: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value), encoding="utf-8")
+    app_id = None
+    app_root = None
+    if path.name == "compatibility.json" and path.parent.parent.name == "apps":
+        app_id = path.parent.name
+        app_root = path.parent
+    elif path.parent.name == "migrations" and path.name.endswith(".compatibility.json"):
+        app_id = path.name.removesuffix(".compatibility.json")
+        app_root = path.parent.parent / "apps" / app_id
+    if app_id and app_root and (app_root / "app.json").is_file():
+        presentation_path = app_root / "presentation" / "manifest.json"
+        if not presentation_path.exists():
+            presentation_path.parent.mkdir(parents=True, exist_ok=True)
+            presentation_path.write_text(json.dumps(presentation(app_id)), encoding="utf-8")
 
 
 def manifest(app_id: str, *, release_mode: str = "component-slot") -> dict:
@@ -87,6 +119,38 @@ class CatalogInventoryTests(unittest.TestCase):
                 },
             })
             with self.assertRaisesRegex(catalog_inventory.CatalogInventoryError, "platform-owned source"):
+                catalog_inventory.discover_catalog_apps(apps, migrations)
+
+    def test_rejects_missing_or_invalid_presentation_for_store_candidate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            apps, migrations = root / "apps", root / "migrations"
+            migrations.mkdir()
+            write_json(apps / "alpha" / "app.json", manifest("alpha"))
+            write_json(apps / "alpha" / "compatibility.json", compatibility("alpha"))
+            presentation_path = apps / "alpha" / "presentation" / "manifest.json"
+
+            presentation_path.unlink()
+            with self.assertRaisesRegex(catalog_inventory.CatalogInventoryError, "requires a regular"):
+                catalog_inventory.discover_catalog_apps(apps, migrations)
+
+            write_json(presentation_path, {**presentation("alpha"), "appVersion": "0.2.0"})
+            with self.assertRaisesRegex(catalog_inventory.CatalogInventoryError, "presentation is invalid"):
+                catalog_inventory.discover_catalog_apps(apps, migrations)
+
+    def test_rejects_symlinked_presentation_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            apps, migrations = root / "apps", root / "migrations"
+            migrations.mkdir()
+            write_json(apps / "alpha" / "app.json", manifest("alpha"))
+            write_json(apps / "alpha" / "compatibility.json", compatibility("alpha"))
+            presentation_path = apps / "alpha" / "presentation" / "manifest.json"
+            presentation_path.unlink()
+            external = root / "external-presentation.json"
+            external.write_text(json.dumps(presentation("alpha")), encoding="utf-8")
+            presentation_path.symlink_to(external)
+            with self.assertRaisesRegex(catalog_inventory.CatalogInventoryError, "requires a regular"):
                 catalog_inventory.discover_catalog_apps(apps, migrations)
 
     def test_rejects_ambiguous_compatibility_ssot(self):
