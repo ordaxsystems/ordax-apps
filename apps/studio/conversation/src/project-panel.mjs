@@ -10,11 +10,29 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   const $ = id => document.getElementById(id);
   let state = { targets: [], operations: [] }, refreshPromise = null, submitting = 0, file = null, entries = [], proposal = null, reviewed = null, stamp = '', handled = new Set();
   let continuityProposal = null, contextResult = null, continuityBase = null;
+  let continuityBaseline = JSON.stringify(['','','','','']);
   let desiredBinding = null;
   const accountHost = window.ordaxStudioAccountHost;
   let accountAvailable = false, accountBusy = false;
   const dirty = () => file && $('projectEditor').value !== file.content;
-  const continuityDirty = () => Boolean($('studioSummary').value.trim() || $('studioNextAction').value.trim());
+  const continuityFields = Object.freeze(['studioSummary','studioNextAction','studioCompleted','studioBlockers','studioChangedPaths']);
+  const continuityStamp = () => JSON.stringify(continuityFields.map(id => $(id).value));
+  const continuityDirty = () => continuityStamp() !== continuityBaseline;
+  const safeContinuityList = value => Array.isArray(value) ? value.filter(item => typeof item === 'string').slice(0, 100) : [];
+  function writeContinuity(value = null) {
+    $('studioSummary').value = typeof value?.summary === 'string' ? value.summary : '';
+    $('studioNextAction').value = typeof value?.next_action === 'string' ? value.next_action : '';
+    $('studioCompleted').value = safeContinuityList(value?.completed).join('\n');
+    $('studioBlockers').value = safeContinuityList(value?.blockers).join('\n');
+    $('studioChangedPaths').value = safeContinuityList(value?.changed_paths).join('\n');
+    continuityBaseline = continuityStamp();
+  }
+  function continuityList(id, label) {
+    const values = $(id).value.split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+    if (values.length > 100) throw new Error(`${label}: use no máximo 100 itens.`);
+    if (values.some(item => item.length > 4000 || item.includes('\0'))) throw new Error(`${label}: cada item deve ter até 4000 caracteres.`);
+    return values;
+  }
   const selected = () => ({ deviceId: $('runtimeDevice').value, project: $('runtimeProject').value });
   const currentBinding = () => selected().deviceId && selected().project ? selected() : null;
   function assertContext(binding) {
@@ -68,7 +86,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   function clearProjectTools() {
     continuityProposal = null; contextResult = null; continuityBase = null; $('studioContinuityReviewArea').hidden = true;
     $('studioContextSource').textContent = 'Nenhum contexto recuperado. Consulte o Runtime autorizado para este projeto.';
-    $('studioSummary').value = ''; $('studioNextAction').value = '';
+    writeContinuity();
     for (const tool of Object.values(workspaceTools)) $(tool.target).textContent = 'Consulte o projeto selecionado para atualizar.';
   }
   function controls() {
@@ -84,7 +102,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     $('productSignIn').disabled = accountBusy || blocked || Boolean(dirty()) || continuityDirty();
     $('runtimeConnect').textContent = state.connected ? 'Reconectar Runtime' : 'Conectar Runtime';
     $('runtimeDevice').disabled = blocked || !state.connected || dirty() || continuityDirty(); $('runtimeProject').disabled = blocked || !state.connected || dirty() || continuityDirty();
-    $('studioSummary').disabled = blocked; $('studioNextAction').disabled = blocked;
+    for (const id of continuityFields) $(id).disabled = blocked;
     $('projectList').disabled = blocked || !ready || dirty(); $('projectPath').disabled = blocked || !ready || dirty();
     $('projectEditor').disabled = blocked || !file;
     $('projectAttach').disabled = !file || dirty() || blocked; $('projectDiscard').disabled = !dirty() || active;
@@ -162,9 +180,13 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
         }
         if (['continuity','continuitySave'].includes(op.kind) && Object.hasOwn(data, 'state')) {
           const saved = data.state;
-          if (saved == null || (typeof saved === 'object' && !Array.isArray(saved))) continuityBase = { completed: saved?.completed ?? [], blockers: saved?.blockers ?? [], changedPaths: saved?.changed_paths ?? [] };
+          if (saved == null || (typeof saved === 'object' && !Array.isArray(saved))) {
+            continuityBase = saved ?? {};
+            writeContinuity(continuityBase);
+            continuityProposal = null;
+            $('studioContinuityReviewArea').hidden = true;
+          }
         }
-        if (op.kind === 'continuitySave') { $('studioSummary').value = ''; $('studioNextAction').value = ''; }
         message(`${tool.title} atualizado.`);
       }
       if (op.kind === 'directory') { entries = (Array.isArray(data.entries) ? data.entries : []).map(e => ({ ...e, path: e.relative_path || e.path })).filter(e => typeof e.path === 'string' && ['file','directory'].includes(e.kind)); renderEntries(); message(data.truncated ? 'A lista foi limitada. Abra uma subpasta para continuar.' : `${entries.length} itens encontrados.`); }
@@ -324,14 +346,22 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   $('studioContinuityReview').addEventListener('click', () => {
     if (!$('studioSummary').value.trim()) return message('Informe um resumo antes de revisar.');
     if (!continuityBase) return message('Consulte a continuidade para preservar o registro existente antes de salvar.');
-    continuityProposal = Object.freeze({ ...selected(), ...structuredClone(continuityBase), kind: 'continuitySave', summary: $('studioSummary').value, nextAction: $('studioNextAction').value });
+    continuityProposal = Object.freeze({
+      ...selected(),
+      kind: 'continuitySave',
+      summary: $('studioSummary').value,
+      nextAction: $('studioNextAction').value,
+      completed: continuityList('studioCompleted', 'Concluídos'),
+      blockers: continuityList('studioBlockers', 'Bloqueios'),
+      changedPaths: continuityList('studioChangedPaths', 'Arquivos alterados'),
+    });
     $('studioContinuityProposal').textContent = JSON.stringify(continuityProposal, null, 2); $('studioContinuityReviewArea').hidden = false; controls();
   });
   function invalidateContinuity() { continuityProposal = null; $('studioContinuityReviewArea').hidden = true; controls(); }
-  for (const id of ['studioSummary','studioNextAction']) $(id).addEventListener('input', invalidateContinuity);
+  for (const id of continuityFields) $(id).addEventListener('input', invalidateContinuity);
   $('studioContinuityCancel').addEventListener('click', invalidateContinuity);
-  $('studioContinuityDiscard').addEventListener('click', () => { $('studioSummary').value = ''; $('studioNextAction').value = ''; invalidateContinuity(); });
-  $('studioContinuityApply').addEventListener('click', () => task(async () => { const value = continuityProposal; if (!value) return; continuityBase = null; invalidateContinuity(); await submit(value); }));
+  $('studioContinuityDiscard').addEventListener('click', () => { writeContinuity(continuityBase); invalidateContinuity(); });
+  $('studioContinuityApply').addEventListener('click', () => task(async () => { const value = continuityProposal; if (!value) return; invalidateContinuity(); await submit(value); }));
   const timer = setInterval(() => { if (workspaceVisible() || state.operations.some(pending)) refresh(); }, 1000);
   $('workspaceProjectConversations').addEventListener('click', () => task(() => onProjectConversations({ binding: selected(), name: $('runtimeProject').selectedOptions[0]?.textContent || selected().project })));
   window.addEventListener('beforeunload', () => clearInterval(timer));
