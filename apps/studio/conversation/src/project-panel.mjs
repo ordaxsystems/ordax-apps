@@ -51,7 +51,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   function setContext(binding) {
     assertContext(binding); desiredBinding = binding;
     if (bindingEquals(binding, currentBinding())) return;
-    file = null; entries = []; reviewed = null; proposal = null; clearProjectTools();
+    clearReversibleWrite(); file = null; entries = []; reviewed = null; proposal = null; clearProjectTools();
     $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('projectPath').value = '.';
     $('runtimeProject').replaceChildren(new Option('Selecione um projeto', ''));
     if (binding) {
@@ -113,6 +113,10 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     $('projectList').disabled = blocked || !ready || dirty(); $('projectPath').disabled = blocked || !ready || dirty();
     $('projectEditor').disabled = blocked || !file;
     $('projectAttach').disabled = !file || dirty() || blocked; $('projectDiscard').disabled = !dirty() || active;
+    const undoReady = reversibleWriteMatches(lastReversibleWrite) && Boolean(lastReversibleWrite.afterSha256) &&
+      file.sha256 === lastReversibleWrite.afterSha256 && !dirty();
+    $('projectUndo').hidden = !lastReversibleWrite;
+    $('projectUndo').disabled = blocked || !ready || !undoReady;
     $('projectReview').disabled = !dirty() || blocked; $('projectApply').disabled = reviewed?.kind !== 'write' || blocked || !ready;
     $('terminalReview').disabled = blocked || !ready; $('terminalRun').disabled = blocked || !ready || !reviewed || reviewed.kind !== 'terminal';
     for (const button of $('projectFiles').querySelectorAll('button')) button.disabled = blocked || dirty() || !ready;
@@ -274,7 +278,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   $('projectClose').addEventListener('click', () => { showWorkspace(false); });
   async function applyConnectedState(connected) {
     state = connected; handled = new Set(state.operations.map(op => op.id));
-    file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries();
+    clearReversibleWrite(); file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries();
     $('runtimeDevice').replaceChildren(new Option('Selecione um dispositivo', ''));
     for (const device of state.targets) $('runtimeDevice').append(new Option(deviceLabel(device), device.deviceId));
     const deviceId = desiredBinding ? state.targets.find(target => target.deviceId === desiredBinding.deviceId)?.deviceId : state.targets.length === 1 ? state.targets[0].deviceId : null;
@@ -313,8 +317,8 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   if (accountHost?.available) void Promise.resolve().then(() => accountHost.available())
     .then(available => { accountAvailable = available === true; controls(); })
     .catch(() => { accountAvailable = false; controls(); });
-  $('runtimeDevice').addEventListener('change', () => task(async () => { desiredBinding = null; file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries(); controls(); if (deviceAvailable(state, selected().deviceId)) await submit({ kind: 'projects' }); }));
-  $('runtimeProject').addEventListener('change', () => { desiredBinding = currentBinding(); file = null; reviewed = null; entries = []; clearProjectTools(); $('projectReviewArea').hidden = true; $('projectPath').value = '.'; $('projectEditor').value = ''; $('activityScope').value = 'project'; renderEntries(); renderOperations(); controls(); });
+  $('runtimeDevice').addEventListener('change', () => task(async () => { desiredBinding = null; clearReversibleWrite(); file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries(); controls(); if (deviceAvailable(state, selected().deviceId)) await submit({ kind: 'projects' }); }));
+  $('runtimeProject').addEventListener('change', () => { desiredBinding = currentBinding(); clearReversibleWrite(); file = null; reviewed = null; entries = []; clearProjectTools(); $('projectReviewArea').hidden = true; $('projectPath').value = '.'; $('projectEditor').value = ''; $('activityScope').value = 'project'; renderEntries(); renderOperations(); controls(); });
   $('projectList').addEventListener('click', () => task(() => submit({ kind: 'directory', path: $('projectPath').value })));
   $('projectFilter').addEventListener('input', renderEntries);
   $('projectEditor').addEventListener('input', () => { reviewed = null; $('projectReviewArea').hidden = true; controls(); });
