@@ -1,8 +1,8 @@
 # Projects externalization plan
 
-Projects is the second first-party extraction pilot after Notes.
+> **CURRENT STATE — SOURCE CUTOVER COMPLETE; DISTRIBUTION NOT ACTIVATED.** `migrations/projects.externalization.json` is authoritative: `source_repository_current=ordaxsystems/ordax-apps`, `source_path_current=apps/projects`, `source_of_truth_state=ordax-apps-canonical`, `source_cutover_allowed=true` and `distribution_activation_allowed=false`. Platform absence was proven at `93ec5bbefeb9d2c2f00c9ab8a4525590c8a25454`; Gate B is `source-materialized-unsigned`. **Do not rerun Gate A/B or restore `system/apps/projects`.** Signed distribution, Native installation and rollback remain separate unproven gates.
 
-Following the repository transfer and rename, the current **OrdaX OS owner** is `ordaxsystems/ordax-os/system/apps/projects` (same repository ID and Git history; historical URLs may redirect). No source is copied into `apps/projects` until Gate A proves removal of the platform-owned implementation. SDK 1.9 is already merged and an immutable, reproducible source baseline is pinned; this **does not authorize copying**.
+Projects was the second first-party extraction pilot after Notes. The historical pre-cutover owner path was `ordaxsystems/ordax-os/system/apps/projects`; the one-time remove-first transfer has already established `ordax-apps/apps/projects` as the source authority.
 
 ## Why Projects is the second pilot
 
@@ -50,23 +50,23 @@ Stays in the platform:
 - localization/runtime host;
 - delivery/install/trust/probation authority.
 
-## Cutover
+## Cutover — historical completion record and remaining distribution gate
 
-Gate A — platform preparation:
+Gate A — platform preparation — **COMPLETE**:
 
 1. [concluído] merge the public SDK 1.9 boundary;
-2. [concluído] pin exact SDK 1.9 source commit and file inventory as pre-cutover baseline;
-3. [pendente] remove embedded Projects implementation and repo-local catalog/composition imports;
-4. prove OrdaX boots with Projects absent while delivery policy still advertises it as on-demand/store-only.
+2. [concluído] pin exact SDK source/file inventory as the pre-cutover baseline;
+3. [concluído] remove the embedded Projects implementation and repo-local implementation couplings;
+4. [concluído] prove platform absence (`93ec5bbefeb9d2c2f00c9ab8a4525590c8a25454`) while retaining delivery metadata.
 
-Gate B — source ownership:
+Gate B — source ownership — **COMPLETE**:
 
-1. copy the pinned app-owned source into `apps/projects`;
-2. convert platform-relative imports to the pinned public SDK boundary;
-3. add `app.json`, component-scoped localization and portable boundary tests;
-4. mark `ordax-apps` as the only source of truth.
+1. [concluído] materialize the pinned app-owned source once in `apps/projects`;
+2. [concluído] consume the public SDK boundary instead of platform-private source;
+3. [concluído] establish app identity/localization/portable boundary tests;
+4. [concluído] mark `ordax-apps` as the only source of truth (`gate_b.state=source-materialized-unsigned`).
 
-Gate C — distribution:
+Gate C — distribution — **PENDING / NOT ACTIVATED**:
 
 1. deterministic package;
 2. compatibility descriptor;
@@ -77,4 +77,4 @@ Gate C — distribution:
 
 Temporary absence is allowed before launch. Dual source is not.
 
-**Nomenclature audit (19/10/2026):** The historical repository path `ordaxsystems/prototipo-ordax-os` above is retained **only** as evidence of the 2026-10-08 pinned source snapshot. It is not an active owner name. Current owner: `ordaxsystems/ordax-os`; OrdaX Platform is the remote PostgreSQL identity/authorization authority, while `ordax-apps` owns app presentation and can only read the OS App SDK ports. This correction does not authorize Gate A/B source copying, catalog duplication or distribution promotion.
+**Nomenclature audit (updated after cutover):** The historical repository path `ordaxsystems/prototipo-ordax-os` above is retained **only** as evidence of the 2026-10-08 pinned source snapshot. It is not an active owner name. The **Projects app source owner is now `ordaxsystems/ordax-apps`**; `ordax-os` retains the platform project catalog, mutable cloud-link owner, public ports and lifecycle/trust services, while OrdaX Platform remains the remote identity/authorization authority. This completed source transfer does not authorize catalog duplication or Gate C distribution promotion.

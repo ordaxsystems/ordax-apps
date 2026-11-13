@@ -1,8 +1,8 @@
 # Notes externalization plan
 
-Notes is the first extraction pilot from `prototipo-ordax-os` into `ordax-apps`.
+> **CURRENT STATE — SOURCE CUTOVER COMPLETE; DISTRIBUTION NOT ACTIVATED.** `migrations/notes.externalization.json` is authoritative: `source_repository_current=ordaxsystems/ordax-apps`, `source_path_current=apps/notes`, `source_of_truth_state=ordax-apps-canonical`, `source_cutover_allowed=true` and `distribution_activation_allowed=false`. Gate A completed at OS commit `a8e736ab27b03da6da981959d9c115c4d7de8136`; Gate B established the single external source. Production remains blocked by runtime-component trust/publication/slot-activation authority. **Do not repeat Gate A/B, restore `system/apps/notes`, or copy the historical source again.** Imperative pre-cutover steps below are preserved as migration provenance/regression rules.
 
-The source MUST NOT be copied here while the platform copy is still authoritative. For this pre-launch/no-data migration, the selected strategy is **remove-platform-first**: first remove the implementation from the platform and prove OrdaX works without Notes; then copy the last canonical source into `ordax-apps`. A temporary absence of Notes is preferable to two authoritative copies.
+Notes was the first extraction pilot from the historical platform source into `ordax-apps`. The completed pre-launch migration used **remove-platform-first**: the platform implementation was removed and absence proven before the last canonical source was materialized once in `apps/notes`. Temporary absence was preferred to dual authority.
 
 ## Platform contracts that must be public App SDK inputs
 
@@ -24,7 +24,7 @@ The repository-wide SDK pin is now 1.12.0. First-party app packaging remains bou
 
 ## Notes-owned contracts/code
 
-These belong to the Notes product and should move with Notes at source-of-truth cutover:
+These belong to the Notes product and were classified to move with Notes at the completed source-of-truth cutover:
 
 - Notes document/store schema and validation;
 - Notes file-importer schema and behavior;
@@ -34,7 +34,7 @@ These belong to the Notes product and should move with Notes at source-of-truth 
 - Notes localization messages;
 - Notes app tests that do not require platform integration.
 
-The current core paths `system/contracts/notes-store.mjs` and `system/contracts/notes-file-importer.mjs` therefore need an ownership migration strategy; they should not become generic OrdaX platform contracts merely because they currently live under `system/contracts`.
+The historical pre-cutover paths `system/contracts/notes-store.mjs` and `system/contracts/notes-file-importer.mjs` were Notes-owned migration inputs, not generic OrdaX platform contracts. Gate A/B retired that platform-source ownership; do not restore those paths as a second Notes authority.
 
 ## Intelligence dependency — resolved
 
@@ -62,7 +62,7 @@ platform-owned App Data owner
 
 The Notes-owned schema/validation remains with the product. The platform owns isolation, verified app identity, durability and lifecycle of the private App Data partition.
 
-Source cutover is blocked only until the platform proves that it operates with Notes absent. The App Data/runtime adaptation and package/lifecycle proof block **distribution activation**, not ownership transfer. They are performed **after** the single-source move, from `ordax-apps`. This is a **clean pre-launch cutover**: there are no production users or production Notes data to migrate, so a legacy seed bridge is not a requirement. The old payload may be discarded at cutover instead of being carried forward as compatibility debt.
+Source cutover **is complete**: the platform absence proof is recorded and `ordax-apps/apps/notes` is canonical. App Data/runtime adaptation and package/lifecycle/trust proofs govern **distribution activation**, not ownership transfer, and continue from the single external source. This is a **clean pre-launch cutover**: there are no production users or production Notes data to migrate, so a legacy seed bridge is not a requirement. The old payload may be discarded at cutover instead of being carried forward as compatibility debt.
 
 This does **not** weaken the permanent lifecycle rule: once real user data exists, uninstalling the app must remain separate from deleting its App Data.
 
@@ -97,20 +97,20 @@ The platform catalog still references repo-local Notes implementation metadata t
 
 These must become package/inventory metadata lookups at cutover. They are source-location couplings, not reasons to expose platform internals to the app.
 
-## Tests that must change at cutover
+## Tests changed at cutover — retained invariant
 
-Platform tests currently inspect repo-local paths such as `system/apps/notes/*`. These must split into:
+The completed cutover split tests that previously inspected repo-local paths such as `system/apps/notes/*` into:
 
 1. app/package tests owned by `ordax-apps`;
 2. platform conformance/integration tests that consume a built Notes artifact/package by identity and version.
 
 Browser/Surface integration must not require Notes source to be inside the platform repository.
 
-## Cutover gate
+## Cutover gate — historical completion record
 
-### Gate A — remove from platform
+### Gate A — remove from platform — **COMPLETE**
 
-Before copying Notes into `ordax-apps`:
+The completed Gate A required, before the one-time source materialization into `ordax-apps`:
 
 - [x] pre-launch cutover explicitly requires no legacy data seed;
 - [x] Notes Intelligence uses app-owned code over the injected public Intelligence port;
@@ -140,9 +140,9 @@ Retain in the platform:
 
 Gate A is complete only when OrdaX boots and operates with Notes absent and no residual local path can launch the removed implementation.
 
-### Gate B — establish canonical external source
+### Gate B — establish canonical external source — **COMPLETE**
 
-After Gate A, copy the last canonical Notes source into `apps/notes` and mark `ordax-apps` as the only source of truth.
+Gate B materialized the last canonical Notes source into `apps/notes` and established `ordax-apps` as the only source of truth. Do not rerun this copy step.
 
 ### Gate C — make the external app distributable
 
@@ -168,4 +168,4 @@ The production trust verifier does not trust policy booleans alone. While the ca
 Long-lived dual source is forbidden. Temporary absence is explicitly allowed for this pre-launch migration.
 ## CI preflight
 
-`tools/verify_notes_externalization.py` enforces the current Gate A state. While the platform remains the declared source, it fails if `apps/notes` appears here. After platform removal is proven, the migration metadata must advance before `apps/notes` is introduced; the verifier then protects the new single-source state.
+`tools/verify_notes_externalization.py` protects the **post-cutover single-source state** recorded by the migration metadata. Its pre-cutover branches remain regression coverage; the current state must reject resurrection of a platform Notes implementation or any second source.
