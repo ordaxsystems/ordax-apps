@@ -38,6 +38,10 @@ export const PRODUCT_RUNTIME_OPERATIONS = Object.freeze({
   search: profile("project.search_text", ["query"], "project"),
   briefing: profile("agent.project_briefing", ["query"], "project"),
   preview: profile("project.preview_status", [], "project"),
+  blenderStatus: profile("blender.live_status", [], "project"),
+  blenderSchema: profile("blender.live_modeling_schema", [], "project"),
+  blenderScene: profile("blender.live_scene_snapshot", [], "project"),
+  blenderInspect: profile("blender.live_object_inspect", ["objectName","objectId"], "project"),
   continuity: profile("continuity.get", [], "project"),
   continuitySave: profile("continuity.update", ["summary","nextAction","completed","blockers","changedPaths"], "project"),
 });
