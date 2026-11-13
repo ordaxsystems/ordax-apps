@@ -113,6 +113,22 @@ def make_app(root: Path, app_id: str = "alpha", *, compatibility: bool = True) -
     runtime.parent.mkdir(parents=True, exist_ok=True)
     runtime.write_text("export const authority = 'none';\n", encoding="utf-8")
     if compatibility:
+        write_json(base / "presentation" / "manifest.json", {
+            "schema": "ordax.app-presentation-manifest/1",
+            "appId": app_id,
+            "appVersion": version,
+            "authority": "none",
+            "sourceLocale": "pt-BR",
+            "description": f"Aplicativo {app_id}.",
+            "monogram": app_id[:2].upper(),
+            "singleton": True,
+            "translations": {
+                "en-US": {
+                    "title": app_id.title(),
+                    "description": f"{app_id.title()} application.",
+                }
+            },
+        })
         write_json(base / "compatibility.json", {
             "schema": "ordax.component-compatibility/1",
             "componentId": app_id,
