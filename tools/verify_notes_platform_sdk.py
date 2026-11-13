@@ -45,7 +45,7 @@ def main() -> None:
         fail("Notes SDK lock fields drifted")
     if lock["$schema"] != "ordax.app-sdk-lock/1":
         fail("unexpected Notes SDK lock schema")
-    if lock["repository"] != "washingtonmsdj/prototipo-ordax-os":
+    if lock["repository"] != "ordaxsystems/ordax-os":
         fail("Notes SDK repository is not canonical")
     commit = lock["commit"]
     if not isinstance(commit, str) or re.fullmatch(r"[0-9a-f]{40}", commit) is None:
