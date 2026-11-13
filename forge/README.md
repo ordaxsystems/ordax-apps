@@ -6,7 +6,7 @@
 
 **Identidade comercial SSOT:** `product/src/product-brand.mjs` define `OrdaX Forge` para Electron, interface, Groq e `serverInfo.title` do MCP; `product/package.json#build.productName` espelha esse valor e é verificado pelo teste de identidade. O `serverInfo.name` técnico do MCP continua estável, conforme separação entre identificador e título de apresentação do protocolo. O owner permanece `ordaxsystems/ordax-apps/forge`. O pacote npm, `appId`, executável já instalado, diretório de perfil `OrdaX/OrchestratorLab`, SQLite, contratos IPC/MCP e nomes técnicos internos continuam inalterados **por compatibilidade**. Nenhuma instalação, banco ou identidade nova é criada pela troca de marca. Histórico anterior mantém nomenclatura original como evidência.
 
-## Project-First (decisão 2026-10-21)
+## Histórico Project-First e incrementos anteriores (não é direção vigente)
 
 ## Capacidade correta do executor GPT Web — alpha.38
 
@@ -95,22 +95,22 @@ A versão alpha.21 acrescenta **modo opcional de segundo plano no Windows**. Em 
 Isso **não** certifica execução durante desligamento, logoff, ausência de conexão/energia ou garantia 24h; também não ignora as aprovações e recibos necessários para enviar ao GPT Web. Fechar completamente pelo ícone encerra o processo e marca Runs ativos como interrompidos, preservando a recuperação existente. A `alpha.21` já foi integrada e aprovada em CI; a instalação física só deve ser atualizada pelo artefato canônico da `main`, com `sourceCommit`, hashes e prova de funcionamento. Na `alpha.22`, uma segunda abertura também restaura uma janela antes destruída, sem criar outro processo ou perfil.
 
 
-> **Leia primeiro:** [Arquitetura Project-First](docs/PROJECT-FIRST-ARCHITECTURE.md) ·
+> **Documentação histórica relacionada:** [Arquitetura Project-First](docs/PROJECT-FIRST-ARCHITECTURE.md) ·
 > [Plano M0–M7](docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md) ·
-> [Handoff obrigatório para Codex](CODEX-HANDOFF.md) ·
-> [Aceite VESTE](docs/VESTE-PROJECT-FIRST-E2E.md) · [Port Runtime ainda proposto](docs/PROJECT-WORKSPACE-RUNTIME-PORT-V1.md).
+> [Handoff antigo do Codex](CODEX-HANDOFF.md) ·
+> [Aceite histórico VESTE](docs/VESTE-PROJECT-FIRST-E2E.md) · [Port Runtime proposto](docs/PROJECT-WORKSPACE-RUNTIME-PORT-V1.md).
+>
+> Esses arquivos preservam decisões/provas anteriores e **não são a entrada operacional**. Para trabalho novo, use somente [FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md](docs/FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md), `AGENTS.md`, source/SQLite e testes atuais.
 
-**Direção oficial aprovada:** o objeto central é um projeto com missão, pasta/repositório local autorizado, plano, diffs, testes e evidências. ChatGPT e outros modelos são inteligências/executores opcionais. O App e o plugin OrdaX MCP devem consumir o mesmo Runtime e grants canônicos; não criar segunda camada de arquivos/Git/terminal dentro do Lab.
+**Direção histórica substituída:** a fase Project-First tratava ChatGPT como executor opcional e o Orquestrador/Groq como conversa principal. Essa experiência foi substituída pelo Forge GPT-first; os estados `alpha.20/21/22` e SHAs citados nas seções seguintes são snapshots de evolução, não configuração vigente.
 
-**Estado de referência — 01/11/2026:** a `main` alcançou `44b3f9b2` com a `alpha.21` integrada e cinco checks aprovados. A correção posterior de restauração da janela compõe `alpha.22` no manifesto; a integração deve ser conferida no GitHub antes de sua promoção. A última instalação física atestada no `DESKTOP-PNUHUA0` permanece `alpha.20`; não inferir atualização do Windows por alterações de código. O usuário conversa com o **Orquestrador via Groq**; envios ao **GPT Web** exigem comando separado da frente. Criar missão persiste apenas projeto e rascunho. Não existem filas, perfis oficiais paralelos ou Runtime alternativo. W3 GPT real, Runtime/Platform e operação 24h continuam gates independentes.
+## UX histórica de duas áreas Groq/GPT — não usar como instrução atual
 
-## Como conversar — duas áreas sem redirecionamento
+**Histórico — Orquestrador (Groq):** nesta fase, selecionava-se um projeto e clicava-se **Orquestrador** na navegação esquerda. O centro da tela mostra “CONVERSA DIRETA · GROQ”; o botão **Enviar à Groq** é o único envio dessa área. Em **Configurar Groq**, adicione uma chave de API ao cofre do Windows se ainda não estiver configurada. Uma falha não transfere mensagens ao GPT Web. No Host Node, o modelo de coordenação pode ser Groq ou ChatGPT Plan, mas nunca o WebView de execução.
 
-**Orquestrador (Groq):** selecione um projeto e clique **Orquestrador** na navegação esquerda. O centro da tela mostra “CONVERSA DIRETA · GROQ”; o botão **Enviar à Groq** é o único envio dessa área. Em **Configurar Groq**, adicione uma chave de API ao cofre do Windows se ainda não estiver configurada. Uma falha não transfere mensagens ao GPT Web. No Host Node, o modelo de coordenação pode ser Groq ou ChatGPT Plan, mas nunca o WebView de execução.
+**Histórico — Conversas GPT:** nessa fase, abria-se **Conversas GPT** e a frente desejada, usando o compositor identificado “CONVERSA DE TRABALHO · CHATGPT WEB” com botão **Enviar ao GPT**. O ChatGPT Web aparece exclusivamente nesse espaço de trabalho, não no chat do Orquestrador. O Orquestrador pode preparar uma frente, mas aprovar envio pelo GPT continua ação separada e auditada.
 
-**Conversas GPT:** clique **Conversas GPT**, abra a frente desejada e use o compositor identificado “CONVERSA DE TRABALHO · CHATGPT WEB” com botão **Enviar ao GPT**. O ChatGPT Web aparece exclusivamente nesse espaço de trabalho, não no chat do Orquestrador. O Orquestrador pode preparar uma frente, mas aprovar envio pelo GPT continua ação separada e auditada.
-
-**Primeiro uso:** “Nova missão” cria o projeto e a primeira frente como rascunho local. Você primeiro conversa com o Orquestrador, depois abre a frente GPT quando realmente desejar executar. Nenhum clique na navegação, na criação da missão ou nas configurações envia mensagens. Espaços de trabalho e conversas descartáveis podem ser limpos pelo usuário, mas a limpeza nunca acontece implicitamente na atualização de versão.
+**Histórico — primeiro uso:** “Nova missão” criava o projeto e a primeira frente como rascunho local. O fluxo daquela fase conversava primeiro com o Orquestrador e abria a frente GPT depois. Nenhum clique na navegação, na criação da missão ou nas configurações envia mensagens. Espaços de trabalho e conversas descartáveis podem ser limpos pelo usuário, mas a limpeza nunca acontece implicitamente na atualização de versão.
 
 ## Estado anterior (alpha.19 — histórico)
 
@@ -118,7 +118,7 @@ Isso **não** certifica execução durante desligamento, logoff, ausência de co
 
 **Snapshot da candidata em branch (24/10/2026; histórico, não vigente):** `npm start` inicia o servidor Node loopback, sem Electron, para a UI real do Lab; `npm run start:electron` é a entrada desktop explícita. Host e Electron compartilham o `OrchestratorService`, MCP, handlers de tarefas e o mesmo Store; o Host usa `.host-profile` isolado e o pacote Windows continua sem o servidor de desenvolvimento. Teste visual real criou o projeto VESTE, persistiu missão/rascunho e os recuperou após reload. Uma chamada Groq real não teve resposta confirmada e ficou em reconciliação; não a contamos como sucesso. O Host ainda não conecta executor GPT, Runtime workspace/grants ou GitHub, nem cria arquivos, valida o site ou trabalha 24 h. As funções automáticas seguem bloqueadas quando dependem desses owners. Distribuição continua desativada; Flow/Grátis e o perfil instalado ficam isolados.
 
-As seções históricas abaixo documentam incrementos anteriores; **não superam** a decisão Project-First nem a fonte canônica de versionamento.
+As seções abaixo documentam incrementos anteriores; **não superam** o roadmap GPT-first, o source atual, o manifesto vigente nem as provas físicas.
 
 ---
 
