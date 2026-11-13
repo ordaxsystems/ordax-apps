@@ -431,7 +431,9 @@ app.whenReady().then(async () => {
     assert.equal(remoteCalls.filter(c=>c.action==='blender.live_object_transform').length,0);
     await window.webContents.executeJavaScript('document.getElementById("studioBlenderVector").value="2, 3, 4";document.getElementById("studioBlenderVector").dispatchEvent(new Event("input"))');
     assert.equal(await window.webContents.executeJavaScript('document.getElementById("studioBlenderReviewArea").hidden'),true);
-    await window.webContents.executeJavaScript('document.getElementById("studioBlenderTransformReview").click();document.getElementById("studioBlenderApply").click()');
+    await window.webContents.executeJavaScript('document.getElementById("studioBlenderTransformReview").click()');
+    await until('!document.getElementById("studioBlenderReviewArea").hidden && !document.getElementById("studioBlenderApply").disabled');
+    await window.webContents.executeJavaScript('document.getElementById("studioBlenderApply").click()');
     await until('document.getElementById("studioBlenderResult").textContent.includes("transform_applied") && document.getElementById("studioBlenderReviewArea").hidden');
     await window.webContents.executeJavaScript('document.getElementById("studioBlenderPrimitiveName").value="FixtureCube";document.getElementById("studioBlenderCreateReview").click()');
     await until('!document.getElementById("studioBlenderReviewArea").hidden');
