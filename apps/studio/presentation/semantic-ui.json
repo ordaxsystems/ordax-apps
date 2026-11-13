@@ -1,7 +1,7 @@
 {
   "schema": "ordax-apps.ui-semantic-map/1",
   "appId": "studio",
-  "appVersion": "0.15.13",
+  "appVersion": "0.15.14",
   "authority": "none",
   "execution": "descriptive-only",
   "privacy": {"captureInputValues": false, "captureCredentials": false, "maxTextLength": 240},
@@ -15,6 +15,7 @@
     {"id":"editor.content","selector":"#projectEditor","role":"textbox","surface":"editor","intent":"edit-file","interaction":"text"},
     {"id":"editor.review","selector":"#projectReview","role":"button","surface":"editor","intent":"review-file-change","interaction":"activate"},
     {"id":"editor.apply","selector":"#projectApply","role":"button","surface":"editor","intent":"apply-file-change","interaction":"activate"},
+    {"id":"editor.undo","selector":"#projectUndo","role":"button","surface":"editor","intent":"undo-last-file-change","interaction":"activate"},
     {"id":"terminal.argv","selector":"#terminalArgv","role":"textbox","surface":"terminal","intent":"terminal-command","interaction":"text"},
     {"id":"terminal.review","selector":"#terminalReview","role":"button","surface":"terminal","intent":"review-terminal-command","interaction":"activate"},
     {"id":"terminal.run","selector":"#terminalRun","role":"button","surface":"terminal","intent":"run-terminal-command","interaction":"activate"},

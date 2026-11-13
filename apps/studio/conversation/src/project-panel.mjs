@@ -10,6 +10,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   const $ = id => document.getElementById(id);
   let state = { targets: [], operations: [] }, refreshPromise = null, submitting = 0, file = null, entries = [], proposal = null, reviewed = null, stamp = '', handled = new Set();
   let continuityProposal = null, contextResult = null, continuityBase = null;
+  let pendingReversibleWrite = null, lastReversibleWrite = null;
   let continuityBaseline = JSON.stringify(['','','','','']);
   let desiredBinding = null;
   const accountHost = window.ordaxStudioAccountHost;
@@ -35,6 +36,12 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   }
   const selected = () => ({ deviceId: $('runtimeDevice').value, project: $('runtimeProject').value });
   const currentBinding = () => selected().deviceId && selected().project ? selected() : null;
+  function clearReversibleWrite() {
+    pendingReversibleWrite = null;
+    lastReversibleWrite = null;
+  }
+  const reversibleWriteMatches = value => Boolean(value && file &&
+    value.deviceId === file.deviceId && value.project === file.project && value.path === file.path);
   function assertContext(binding) {
     if (bindingEquals(binding, currentBinding())) return;
     $('activityScope').value = 'project';
@@ -44,7 +51,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   function setContext(binding) {
     assertContext(binding); desiredBinding = binding;
     if (bindingEquals(binding, currentBinding())) return;
-    file = null; entries = []; reviewed = null; proposal = null; clearProjectTools();
+    clearReversibleWrite(); file = null; entries = []; reviewed = null; proposal = null; clearProjectTools();
     $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('projectPath').value = '.';
     $('runtimeProject').replaceChildren(new Option('Selecione um projeto', ''));
     if (binding) {
@@ -106,6 +113,10 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     $('projectList').disabled = blocked || !ready || dirty(); $('projectPath').disabled = blocked || !ready || dirty();
     $('projectEditor').disabled = blocked || !file;
     $('projectAttach').disabled = !file || dirty() || blocked; $('projectDiscard').disabled = !dirty() || active;
+    const undoReady = reversibleWriteMatches(lastReversibleWrite) && Boolean(lastReversibleWrite.afterSha256) &&
+      file.sha256 === lastReversibleWrite.afterSha256 && !dirty();
+    $('projectUndo').hidden = !lastReversibleWrite;
+    $('projectUndo').disabled = blocked || !ready || !undoReady;
     $('projectReview').disabled = !dirty() || blocked; $('projectApply').disabled = reviewed?.kind !== 'write' || blocked || !ready;
     $('terminalReview').disabled = blocked || !ready; $('terminalRun').disabled = blocked || !ready || !reviewed || reviewed.kind !== 'terminal';
     for (const button of $('projectFiles').querySelectorAll('button')) button.disabled = blocked || dirty() || !ready;
@@ -160,6 +171,25 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   function handleResults() {
     for (const op of state.operations) {
       if (handled.has(op.id) || pending(op)) continue; handled.add(op.id);
+      if (pendingReversibleWrite?.operationId === op.id) {
+        const transaction = pendingReversibleWrite;
+        pendingReversibleWrite = null;
+        if (op.status === 'succeeded') {
+          if (transaction.mode === 'apply') {
+            lastReversibleWrite = {
+              deviceId: transaction.deviceId,
+              project: transaction.project,
+              path: transaction.path,
+              beforeContent: transaction.beforeContent,
+              afterContent: transaction.afterContent,
+              afterSha256: null,
+              receiptId: op.requestId || op.id,
+            };
+          } else if (transaction.mode === 'undo') {
+            lastReversibleWrite = null;
+          }
+        }
+      }
       if (op.status !== 'succeeded') continue;
       const data = resultData(op);
       if (op.deviceId !== selected().deviceId) continue;
@@ -193,6 +223,16 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
       if (op.kind === 'read') {
         if (typeof data.content !== 'string' || !/^[a-f0-9]{64}$/.test(data.sha256 || '') || (data.end_line !== undefined && data.end_line < data.line_count)) { message('O Runtime retornou somente parte do arquivo. Escolha um arquivo menor para editar.'); continue; }
         file = { ...selected(), path: data.relative_path || data.path || op.path, content: data.content, sha256: data.sha256 };
+        if (lastReversibleWrite) {
+          if (!reversibleWriteMatches(lastReversibleWrite)) {
+            lastReversibleWrite = null;
+          } else if (lastReversibleWrite.afterSha256 === null) {
+            if (data.content === lastReversibleWrite.afterContent) lastReversibleWrite.afterSha256 = data.sha256;
+            else lastReversibleWrite = null;
+          } else if (data.sha256 !== lastReversibleWrite.afterSha256) {
+            lastReversibleWrite = null;
+          }
+        }
         $('projectEditor').value = proposal ?? file.content; proposal = null; reviewed = null; $('projectReviewArea').hidden = true; message('Arquivo aberto. Edite e revise a alteração antes de aplicar.');
       }
       if (op.kind === 'write') {
@@ -210,9 +250,19 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     })().finally(() => { refreshPromise = null; });
     return refreshPromise;
   }
-  async function submit(data) {
+  async function submit(data, reversibleTransaction = null) {
     submitting++; controls();
-    try { const request = { ...selected(), ...data }; const op = assertOperationBinding(request, await host.runtimeSubmit(request)); state.operations.push(op); message(`${labels[op.status]} · ${op.label}`); }
+    try {
+      const request = { ...selected(), ...data };
+      const op = assertOperationBinding(request, await host.runtimeSubmit(request));
+      if (reversibleTransaction) {
+        reversibleTransaction.operationId = op.id;
+        pendingReversibleWrite = reversibleTransaction;
+      }
+      state.operations.push(op);
+      message(`${labels[op.status]} · ${op.label}`);
+      return op;
+    }
     catch (error) { await refresh(); throw error; }
     finally { await refresh({ fresh: true }); submitting--; controls(); }
   }
@@ -267,7 +317,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   $('projectClose').addEventListener('click', () => { showWorkspace(false); });
   async function applyConnectedState(connected) {
     state = connected; handled = new Set(state.operations.map(op => op.id));
-    file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries();
+    clearReversibleWrite(); file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries();
     $('runtimeDevice').replaceChildren(new Option('Selecione um dispositivo', ''));
     for (const device of state.targets) $('runtimeDevice').append(new Option(deviceLabel(device), device.deviceId));
     const deviceId = desiredBinding ? state.targets.find(target => target.deviceId === desiredBinding.deviceId)?.deviceId : state.targets.length === 1 ? state.targets[0].deviceId : null;
@@ -306,8 +356,8 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   if (accountHost?.available) void Promise.resolve().then(() => accountHost.available())
     .then(available => { accountAvailable = available === true; controls(); })
     .catch(() => { accountAvailable = false; controls(); });
-  $('runtimeDevice').addEventListener('change', () => task(async () => { desiredBinding = null; file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries(); controls(); if (deviceAvailable(state, selected().deviceId)) await submit({ kind: 'projects' }); }));
-  $('runtimeProject').addEventListener('change', () => { desiredBinding = currentBinding(); file = null; reviewed = null; entries = []; clearProjectTools(); $('projectReviewArea').hidden = true; $('projectPath').value = '.'; $('projectEditor').value = ''; $('activityScope').value = 'project'; renderEntries(); renderOperations(); controls(); });
+  $('runtimeDevice').addEventListener('change', () => task(async () => { desiredBinding = null; clearReversibleWrite(); file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries(); controls(); if (deviceAvailable(state, selected().deviceId)) await submit({ kind: 'projects' }); }));
+  $('runtimeProject').addEventListener('change', () => { desiredBinding = currentBinding(); clearReversibleWrite(); file = null; reviewed = null; entries = []; clearProjectTools(); $('projectReviewArea').hidden = true; $('projectPath').value = '.'; $('projectEditor').value = ''; $('activityScope').value = 'project'; renderEntries(); renderOperations(); controls(); });
   $('projectList').addEventListener('click', () => task(() => submit({ kind: 'directory', path: $('projectPath').value })));
   $('projectFilter').addEventListener('input', renderEntries);
   $('projectEditor').addEventListener('input', () => { reviewed = null; $('projectReviewArea').hidden = true; controls(); });
@@ -318,7 +368,43 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     review({ deviceId: file.deviceId, project: file.project, kind: 'write', path: file.path, content: $('projectEditor').value, expectedSha256: file.sha256 }, `Alterar ${file.project}/${file.path} em ${file.deviceId}. O Runtime recusará a gravação se o arquivo tiver mudado.`);
     $('projectDiff').textContent = changePreview(file.content, reviewed.content); $('projectApply').hidden = false; $('terminalRun').hidden = true;
   });
-  $('projectApply').addEventListener('click', () => task(async () => { const current = reviewed; if (current?.kind !== 'write') return; reviewed = null; $('projectReviewArea').hidden = true; await submit(current); }));
+  $('projectUndo').addEventListener('click', () => {
+    const undo = lastReversibleWrite;
+    if (!reversibleWriteMatches(undo) || !undo.afterSha256 || file.sha256 !== undo.afterSha256 || dirty()) {
+      return message('Releia a versão atual do arquivo antes de tentar desfazer.');
+    }
+    review({
+      deviceId: undo.deviceId,
+      project: undo.project,
+      kind: 'write',
+      path: undo.path,
+      content: undo.beforeContent,
+      expectedSha256: undo.afterSha256,
+      undoCandidate: true,
+    }, `Desfazer a última alteração confirmada de ${undo.project}/${undo.path}. O Runtime recusará a reversão se o arquivo tiver mudado desde o recibo ${undo.receiptId}.`);
+    $('projectDiff').textContent = changePreview(file.content, undo.beforeContent);
+    $('projectApply').hidden = false;
+    $('terminalRun').hidden = true;
+  });
+  $('projectApply').addEventListener('click', () => task(async () => {
+    const current = reviewed;
+    if (current?.kind !== 'write') return;
+    const { undoCandidate = false, ...request } = current;
+    const transaction = undoCandidate
+      ? { mode: 'undo', operationId: null }
+      : {
+          mode: 'apply',
+          operationId: null,
+          deviceId: file.deviceId,
+          project: file.project,
+          path: file.path,
+          beforeContent: file.content,
+          afterContent: request.content,
+        };
+    reviewed = null;
+    $('projectReviewArea').hidden = true;
+    await submit(request, transaction);
+  }));
   $('terminalReview').addEventListener('click', () => task(() => {
     const argv = JSON.parse($('terminalArgv').value);
     if (!Array.isArray(argv) || !argv.length || argv.some(a => typeof a !== 'string' || !a)) throw new Error('Informe os argumentos como uma lista JSON de textos.');

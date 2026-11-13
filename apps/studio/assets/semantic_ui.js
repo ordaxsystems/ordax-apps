@@ -12,6 +12,7 @@
     ["editor.content", "#projectEditor", "textbox", "editor"],
     ["editor.review", "#projectReview", "button", "editor"],
     ["editor.apply", "#projectApply", "button", "editor"],
+    ["editor.undo", "#projectUndo", "button", "editor"],
     ["terminal.argv", "#terminalArgv", "textbox", "terminal"],
     ["terminal.review", "#terminalReview", "button", "terminal"],
     ["terminal.run", "#terminalRun", "button", "terminal"],
