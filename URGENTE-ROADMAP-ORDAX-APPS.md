@@ -673,23 +673,15 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 - Uso/limitações: [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
 - **Estado:** primeira etapa de G0 integrada; G0 completo ainda depende de evidências de runtime/package/lifecycle por app.
 
-### Execução P0 Files — preflight de source cutover (PRs #129 e #130 integradas)
+### Execução P0 Files — histórico do preflight e estado atual
 
-- Plano: `migrations/files.externalization.json`, `source_cutover_allowed=false` e `distribution_activation_allowed=false`.
-- Auditor read-only: `tools/verify_files_cutover.py`; testes: `tests/test_files_cutover.py`.
-- PR #130: snapshot **derivado do histórico Git real**, com inventário completo de blobs, ancestralidade e remoção comprovada no Gate A. JSON sozinho **não** é prova de SSOT.
-- Evidência de ownership, dependências e lacunas do App SDK: [`docs/FILES-EXTERNALIZATION.md`](docs/FILES-EXTERNALIZATION.md).
-- **Estado:** proteção de cutover integrada; **cutover ainda bloqueado**. O Files pertence à plataforma; não criar `apps/files` nem copiar código até Gate A remove-first comprovado.
+> **A parte abaixo era o estado pré-Gate-A e foi superseded.** O estado corrente está em `migrations/files.externalization.json` e `docs/FILES-EXTERNALIZATION.md`.
 
-**Reconciliação verificada em 2026-10-23:** no OS `main@fe8d2336`, o runtime
-externo já executa em origem opaca e o broker Native entrega File Space/11
-device-local somente ao slot Files current cuja identidade é revalidada em
-cada RPC. As regressões locais do executor, binding trusted, loader current e
-probation passaram (46/46). O bloqueio restante é a entrega completa: trust
-canônico e ativação de slots continuam desabilitados, não há pacote Files
-assinado provisionado offline e ainda faltam as provas de boot/recuperação USB
-com esse pacote. Portanto, manter os gates fechados e a fonte única no OS até
-o handoff bootstrap comprovado.
+- PRs #129/#130 prepararam o inventário e o verificador quando `source_cutover_allowed=false` e o OS ainda continha Files.
+- O Gate A **já foi executado** em `ordax-os#2184`, commit exato `4bee05e1b2e707354217fe2a4dfa6d8540aecf0e`. O snapshot `cf8b07ba...` foi comparado até o pai imediato do Gate A sem alteração nos paths app-owned.
+- Estado atual: `source_of_truth_state=source-absent-after-platform-removal`, source atual ausente, `source_cutover_allowed=true`, `apps/files` ausente e `target_materialization_state=pending`.
+- Isso autoriza **somente Gate B/materialização de source**. Package/sign/install/ativação permanecem bloqueados; `distribution_activation_allowed=false`.
+- File Space/Recentes/Projects e demais serviços estruturais continuam no OS. A futura materialização não pode copiar esses owners para o app.
 
 ### Execução G0 — SSOT dos inventários de CI (PR #131 integrada)
 
