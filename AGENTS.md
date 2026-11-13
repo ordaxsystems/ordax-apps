@@ -34,16 +34,17 @@ físico e a limpeza de devices DEV foram concluídos na
 [`ordax-platform#291`](https://github.com/ordaxsystems/ordax-platform/issues/291);
 **não repetir essa missão**.
 
-**Pendente fora deste repo:** ponte Native Product
+**Integração cross-repo:** a ponte Native Product
 [`ordax-os#2400`](https://github.com/ordaxsystems/ordax-os/pull/2400)
-e observação autenticada da Store `CURRENT` pelo Runtime;
-a Aura ainda não executa automaticamente as tools Product.
-Quando uma ação específica de app for escolhida para provar o
-fluxo ponta a ponta, implementar **um único provider real no
-app** e validar contrato, consentimento, efeito/recibo/revogação
-no owner correspondente. Não assumir que a PR #2400 está integrada
-sem conferir a `main` atual. Este handoff **não substitui** a
-prioridade/contrato separado do Orchestrator abaixo.
+foi **integrada em 04/11/2026**; não reabrir nem duplicar essa ponte.
+Readiness atual do Runtime, observação autenticada da Store `CURRENT`,
+tools Product e gates de Aura são estados voláteis dos owners
+correspondentes e devem ser revalidados no source/contratos atuais antes
+de agir. Quando uma ação específica de app for escolhida para provar o
+fluxo ponta a ponta, implementar **um único provider real no app** e
+validar contrato, consentimento, efeito/recibo/revogação no owner
+correspondente. Este handoff **não substitui** a prioridade/contrato
+separado do Orchestrator abaixo.
 
 ## Prioridade canônica do OrdaX Forge V3 — 2026-11-06
 
