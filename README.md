@@ -1,8 +1,12 @@
 # OrdaX Apps
 
-**OrdaX Orchestrator — direção canônica de 2026-11-01:** [Instância de projeto único, Administrador Geral Groq e coordenação autônoma supervisionada](forge/docs/ORCHESTRATOR-CANONICAL-PRODUCT.md). A operação começa após conectar o projeto e clicar **Iniciar**, com inventário/análise de evidências e executores de escopo por repositório; comandos humanos são opcionais e podem redirecionar. A arquitetura vigente substitui o antigo modelo de muitos projetos por uma instalação, sem eliminar dados legados. Implementação, E2E GPT Web, grants, integração Aura e 24 h continuam sujeitos a gates próprios. **Esta é a referência inicial para novos agentes.**
+## Forge — direção canônica vigente
 
-**OrdaX Orchestrator — Project-First:** a versão corrente é definida no manifesto do produto e validada contra `forge/product-version.json` pelos gates de CI; consulte esses arquivos e o HEAD da `main` antes de qualquer release. Não mantenha números de versão copiados neste README. Essa identificação de fonte e os testes de CI **não** certificam envio GPT Web real, recuperação após interrupção física, grants Runtime/Platform em dispositivo, operação autônoma 24 h ou distribuição pública. O aplicativo deve consumir os contratos dos owners Intelligence, Runtime e Platform sem duplicá-los; OrdaX MCP serve o caminho ChatGPT → Runtime e não substitui um transporte App → ChatGPT autorizado. [Arquitetura](forge/docs/PROJECT-FIRST-ARCHITECTURE.md) · [Plano e gates](forge/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md) · [Matriz atual](forge/docs/audits/PROJECT-WORKSPACE-CAPABILITY-MATRIX.md) · [E2E VESTE](forge/docs/VESTE-PROJECT-FIRST-E2E.md) · [Handoff Codex](forge/CODEX-HANDOFF.md).
+O Forge é o fluxo ativo de execução GPT-first em `ordax-apps`. A autoridade de arquitetura, continuidade e E2E é **somente** [`forge/docs/FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md`](forge/docs/FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md), junto do source, SQLite e testes atuais.
+
+Fluxo esperado: pedido natural do usuário → **o próprio GPT executor** usa o MCP autorizado da sessão → arquivos e recibos verificáveis no workspace → Forge acompanha e exibe preview → Administrador opcional revisa/coordena. Resposta textual, HTML copiado por outro agente, plugin apenas selecionado ou ação MCP executada fora da sessão do GPT não provam o E2E.
+
+Os documentos anteriores de Orchestrator “instância única/Groq obrigatório”, Project-First M0–M7, handoffs antigos e provas datadas são **históricos**. Eles não devem ser usados como instrução operacional quando divergirem do roadmap GPT-first, do `AGENTS.md`, do source ou do estado verificável atual. Groq é opcional; não criar outro banco, MCP, fila, instalador ou SSOT.
 
 ## Como Apps entra no OrdaX
 
