@@ -10,7 +10,7 @@ export function workspaceText(kind, result) {
   }
   if (kind === 'search' && Array.isArray(data.matches)) return data.matches.slice(0, 50).map(match => `${value(match.path ?? match.relative_path)}:${value(match.line ?? match.line_number)}\n${value(match.text ?? match.content)}`).join('\n\n') || 'Nenhum resultado encontrado.';
   if (['briefing','continuity','continuitySave'].includes(kind) && typeof data.summary === 'string') {
-    return [data.summary, data.next_action && `Próximo passo: ${value(data.next_action)}`, ...(Array.isArray(data.completed) ? data.completed.slice(0, 100).map(item => `Concluído: ${value(item)}`) : []), ...(Array.isArray(data.blockers) ? data.blockers.slice(0, 100).map(item => `Pendência: ${value(item)}`) : [])].filter(Boolean).join('\n\n').slice(0, 150000);
+    return [data.summary, data.next_action && `Próximo passo: ${value(data.next_action)}`, ...(Array.isArray(data.completed) ? data.completed.slice(0, 100).map(item => `Concluído: ${value(item)}`) : []), ...(Array.isArray(data.blockers) ? data.blockers.slice(0, 100).map(item => `Pendência: ${value(item)}`) : []), ...(Array.isArray(data.changed_paths) ? data.changed_paths.slice(0, 100).map(item => `Arquivo alterado: ${value(item)}`) : [])].filter(Boolean).join('\n\n').slice(0, 150000);
   }
   if (kind === 'preview' && data.mode) {
     const states = { stopped: 'parado', running: 'em execução', ready: 'pronto', starting: 'iniciando', failed: 'falhou' }, state = data.runtime?.state;
