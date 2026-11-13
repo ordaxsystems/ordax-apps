@@ -24,7 +24,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import {HTML_ARTIFACT_LIMIT_BYTES,validateHtmlArtifactName} from '../src/provider-html-artifact.mjs';
-import {classifyProviderMcpSelection,requireSelectedMcpForPrompt} from '../src/provider-mcp-selection.mjs';
+import {classifyProviderMcpSelection,requireSelectedMcpForPrompt,inspectProviderMcpComposerSelection,inspectProviderMcpAddContextTrigger,inspectProviderMcpPickerOption,isStandaloneMcpSelection} from '../src/provider-mcp-selection.mjs';
 import { fileURLToPath } from 'node:url';
 import { classifyProviderContextAttachmentObservation, selectProviderContextFileInput, PROVIDER_CONTEXT_FILE_INPUT_SELECTOR, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
 
@@ -584,26 +584,139 @@ export class EmbeddedChatWorker {
     const observation=await evaluateProviderReadOnlyDom({
       debugger:wc.debugger,expression:`(() => {
         const composer=${composerExpression()};
-        if(!composer)return {composerPresent:false};
-        const scope=composer.closest('form')||composer.parentElement;
-        if(!scope)return {composerPresent:true};
-        const visible=node=>{
-          const rect=node.getBoundingClientRect(),style=getComputedStyle(node);
-          return rect.width>0&&rect.height>0&&style.display!=='none'&&style.visibility!=='hidden';
-        };
-        const candidates=[...scope.querySelectorAll('button,[role="button"],[aria-selected],[data-selected]')];
-        const matches=candidates.filter(node=>{
-          if(!visible(node))return false;
-          const label=String(node.getAttribute('aria-label')||node.getAttribute('title')||node.textContent||'').trim();
-          return label.length<=120&&/\\bOrdaX\\s+MCP\\b/i.test(label);
-        });
-        const selected=matches.some(node=>node.getAttribute('aria-pressed')==='true'||
-          node.getAttribute('aria-selected')==='true'||node.getAttribute('data-selected')==='true'||
-          node.getAttribute('data-state')==='active');
-        return {composerPresent:true,exactNamedControl:matches.length>0,exactSelectedControl:selected};
+        const detect=${inspectProviderMcpComposerSelection.toString()};
+        return detect(composer);
       })()`,timeoutMs:5000,timeoutCode:'provider_mcp_selection_observation_timeout'
     }).catch(()=>null);
     return classifyProviderMcpSelection(observation);
+  }
+
+  // Stage one real, selected ChatGPT app token before beginning the SQLite Run.
+  // The provider app picker, not a textual @ mention, supplies the connection.
+  async prepareMcpPrompt({prompt,chatUrl=null,newSession=false}={}) {
+    return this.enqueue(async()=>{
+      if(this.preparedMcpPrompt)throw Error('provider_mcp_preparation_already_pending');
+      const core=String(prompt||'').trim().replace(/\s*@ordax-mcp\s*$/i,'').trim();
+      if(!core)throw Error('provider_mcp_prompt_empty');
+      const wc=this.view.webContents;
+      assertProviderSendReadiness(await this.health());
+      const startsFresh=Boolean(newSession||!chatUrl);
+      const initial=await this.#composerState();
+      const initialSelection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true});
+      const atHome=(()=>{
+        try{return new URL(wc.getURL()).origin==='https://chatgpt.com'&&
+          new URL(wc.getURL()).pathname==='/';}catch{return false;}
+      })();
+      const reuseHomeToken=startsFresh&&atHome&&
+        isStandaloneMcpSelection(initial.text,initialSelection);
+      if(initial.text.trim()&&!reuseHomeToken)throw Error('chatgpt_draft_present');
+      if(startsFresh&&!reuseHomeToken)await this.#startNewChat();
+      else if(!startsFresh&&wc.getURL()!==chatUrl)
+        await this.#safeLoad(chatUrl,{requireComposer:true,protectDraft:true});
+      else await this.#waitForComposer();
+      const readyComposer=await this.#composerState();
+      const readySelection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true});
+      const reusable=isStandaloneMcpSelection(readyComposer.text,readySelection);
+      if(readyComposer.text.trim()&&!reusable)throw Error('chatgpt_draft_present');
+      wc.focus();
+      const focusExpression='(()=>{const e='+composerExpression()+
+        ';if(!e)return false;e.focus();return document.activeElement===e||e.contains(document.activeElement)})()';
+      if(!await wc.executeJavaScript(focusExpression).catch(()=>false))
+        throw Error('composer_focus_not_observed');
+      try{if(!wc.debugger.isAttached())wc.debugger.attach('1.3');}
+      catch{if(!wc.debugger.isAttached())throw Error('chromium_input_channel_unavailable');}
+      let selected=readySelection;
+      if(!reusable){
+        const triggerExpression='(()=>{const inspect='+inspectProviderMcpAddContextTrigger.toString()+
+          ';return inspect(document,'+composerExpression()+')})()';
+        // BrowserView resize/navigation is asynchronous on Windows. Wait for
+        // the actual provider control to become hittable, never guess a click
+        // from a DOM element that exists but is still outside the viewport.
+        let trigger=null;
+        for(let attempt=0;attempt<25;attempt++){
+          trigger=await wc.executeJavaScript(triggerExpression).catch(()=>null);
+          if(trigger?.selectable===true)break;
+          if(attempt<24)await sleep(120);
+        }
+        if(!trigger?.selectable)throw Error('provider_mcp_picker_unavailable');
+        const nativeClick=async target=>{
+          await wc.debugger.sendCommand('Input.dispatchMouseEvent',{
+            type:'mouseMoved',x:target.x,y:target.y
+          });
+          await wc.debugger.sendCommand('Input.dispatchMouseEvent',{
+            type:'mousePressed',x:target.x,y:target.y,button:'left',clickCount:1
+          });
+          await wc.debugger.sendCommand('Input.dispatchMouseEvent',{
+            type:'mouseReleased',x:target.x,y:target.y,button:'left',clickCount:1
+          });
+        };
+        if(!trigger.open)await nativeClick(trigger);
+        const choiceExpression='(()=>{const inspect='+inspectProviderMcpPickerOption.toString()+
+          ';return inspect(document)})()';
+        let clicked=false;
+        selected=null;
+        for(let i=0;i<24;i++){
+          selected=await this.inspectMcpSelectionReadOnly({allowDuringRun:true});
+          if(selected.selectionObserved===true)break;
+          const choice=await wc.executeJavaScript(choiceExpression).catch(()=>null);
+          if(choice?.optionCount>1)throw Error('provider_mcp_picker_ambiguous');
+          if(!clicked&&choice?.selectable===true&&choice.optionCount===1){
+            // The provider's real app menu is the authority, not the app name
+            // typed as text or an injected/fabricated semantic mention.
+            await nativeClick(choice);
+            clicked=true;
+          }
+          await sleep(150);
+        }
+        if(selected?.selectionObserved!==true)throw Error('provider_mcp_selection_required');
+      }
+      if(!await wc.executeJavaScript(focusExpression).catch(()=>false))
+        throw Error('composer_focus_not_observed');
+      await wc.debugger.sendCommand('Input.insertText',{text:'\n\n'+core});
+      const observed=await this.#composerState();
+      const value=normalizeComposerText(observed.text),expected=normalizeComposerText(core);
+      if(!value.endsWith(expected)||value.length<=expected.length||
+        value.length-expected.length>96)
+        throw Error('provider_mcp_prepared_prompt_unverified');
+      requireSelectedMcpForPrompt(observed.text,
+        await this.inspectMcpSelectionReadOnly({allowDuringRun:true}),{requiresMcp:true});
+      const stagedText=observed.text.trim();
+      this.preparedMcpPrompt={providerPrompt:stagedText,sourcePrompt:prompt,
+        chatUrl:wc.getURL(),startsFresh};
+      return {providerPrompt:stagedText};
+    });
+  }
+
+  // A failed SQLite begin must never leave a stale prepared Run. Clear only
+  // the exact provider draft created by this worker, never a changed user draft.
+  async discardPreparedMcpPrompt(providerPrompt) {
+    return this.enqueue(async()=>{
+      const staged=this.preparedMcpPrompt;
+      if(!staged||staged.providerPrompt!==providerPrompt)return false;
+      this.preparedMcpPrompt=null;
+      const wc=this.view.webContents;
+      if(wc.getURL()!==staged.chatUrl)return false;
+      const current=await this.#composerState().catch(()=>null);
+      if(normalizeComposerText(current?.text)!==normalizeComposerText(providerPrompt))
+        return false;
+      const focusExpression='(()=>{const e='+composerExpression()+
+        ';if(!e)return false;e.focus();return document.activeElement===e||e.contains(document.activeElement)})()';
+      if(!await wc.executeJavaScript(focusExpression).catch(()=>false))return false;
+      if(!wc.debugger.isAttached())return false;
+      await wc.debugger.sendCommand('Input.dispatchKeyEvent',{
+        type:'keyDown',key:'a',code:'KeyA',modifiers:2,windowsVirtualKeyCode:65
+      });
+      await wc.debugger.sendCommand('Input.dispatchKeyEvent',{
+        type:'keyUp',key:'a',code:'KeyA',modifiers:2,windowsVirtualKeyCode:65
+      });
+      await wc.debugger.sendCommand('Input.dispatchKeyEvent',{
+        type:'keyDown',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8
+      });
+      await wc.debugger.sendCommand('Input.dispatchKeyEvent',{
+        type:'keyUp',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8
+      });
+      return !(await this.#composerState()).text.trim();
+    });
   }
 
   // Inspect the currently visible provider page; never navigate or submit.
@@ -960,7 +1073,9 @@ export class EmbeddedChatWorker {
   async #setComposerAndSend(prompt,{onSubmissionIntent=null,onMcpSelectionObserved=null}={}) {
     const wc = this.view.webContents;
     const initial = await this.#waitForComposer();
-    if (initial.text.trim()) throw new Error('chatgpt_draft_present');
+    const stagedMcp=this.preparedMcpPrompt?.providerPrompt===prompt&&
+      this.preparedMcpPrompt?.chatUrl===wc.getURL();
+    if (initial.text.trim()&&!stagedMcp) throw new Error('chatgpt_draft_present');
 
     const baseline = await this.#submissionState();
     // A web editor can remain mounted and visible after the app loses native
@@ -983,7 +1098,7 @@ export class EmbeddedChatWorker {
       if (!wc.debugger.isAttached()) throw new Error('chromium_input_channel_unavailable');
     }
 
-    await wc.debugger.sendCommand('Input.insertText', { text: prompt });
+    if(!stagedMcp)await wc.debugger.sendCommand('Input.insertText', { text: prompt });
     let recognized = false;
     for (let i = 0; i < 50; i++) {
       const state = await this.#composerState().catch(() => ({ found:false, text:'' }));
@@ -1417,17 +1532,24 @@ export class EmbeddedChatWorker {
       const currentDraft = await this.#composerState(); // fail closed before any send
       const draftCheckedAt = Date.now();
       const startsFresh = Boolean(newSession || !chatUrl);
-      assertProviderDraftAllowed({ newConversation: startsFresh, draftText: currentDraft.text });
+      const stagedMcp=requiresMcp===true&&
+        this.preparedMcpPrompt?.providerPrompt===String(prompt||'').trim()&&
+        this.preparedMcpPrompt?.chatUrl===wc.getURL()&&
+        this.preparedMcpPrompt?.startsFresh===Boolean(newSession||!chatUrl);
+      if(!stagedMcp)assertProviderDraftAllowed({
+        newConversation: startsFresh,draftText:currentDraft.text
+      });
       const previousSnapshot = await this.#assistantSnapshot().catch(() => ({ messages:[] }));
       for (const message of previousSnapshot.messages || []) {
         if (message?.id) this.seenAssistantMessageIds.add(String(message.id));
       }
 
-      if (startsFresh) await this.#startNewChat();
+      if(stagedMcp)await this.#waitForComposer();
+      else if (startsFresh) await this.#startNewChat();
       else if (wc.getURL() !== chatUrl) await this.#safeLoad(chatUrl, { requireComposer:true, protectDraft:true });
       else await this.#waitForComposer();
       // A persisted conversation is never allowed to overwrite a visible draft.
-      if (!startsFresh) {
+      if (!startsFresh&&!stagedMcp) {
         const preparedComposer = await this.#composerState();
         assertProviderDraftAllowed({ newConversation: false, draftText: preparedComposer.text });
       }
@@ -1456,6 +1578,7 @@ export class EmbeddedChatWorker {
       if(contextAttachment)await this.#attachContextFile(contextAttachment,onContextAttachmentObserved);
       this.#setStage('submit');
       await this.#setComposerAndSend(promptText,{onSubmissionIntent,onMcpSelectionObserved});
+      this.preparedMcpPrompt=null;
       if (!this.streamContext.submittedAt) this.streamContext.submittedAt = Date.now();
 
       // New chats may need time to acquire a canonical permalink. Existing
@@ -1638,6 +1761,7 @@ export class EmbeddedChatWorker {
         contextAttachmentVisibleStableObservations:ctx.contextAttachmentVisibleStableObservations||0
       } : { prepareStartedAt:Date.now(), completedAt:Date.now(), failedStage:stage, providerDeliveryState:'not_submitted' };
       this.streamContext = null;
+      this.preparedMcpPrompt=null;
       this.#setStage('idle');
       const failure=normalizeProviderFailure(error,{
         stage,submitAttemptAt:ctx?.submitAttemptAt||null,

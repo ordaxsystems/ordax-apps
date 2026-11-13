@@ -1,9 +1,31 @@
+import path from 'node:path';
 import {forgeProjectHandoffView} from './forge-project-handoff-view.mjs';
+
+// A physical path is provided to GPT only by the native Forge workspace owner.
+// This is location metadata, never an MCP grant or authority from chat text.
+function verifiedWorkspaceContext(projectId,resolveWorkspace) {
+  if(typeof resolveWorkspace!=='function')return {verified:false};
+  let status;
+  try {status=resolveWorkspace(projectId);}
+  catch{return {verified:false};}
+  const root=status?.path;
+  if(status?.projectId!==projectId||status?.configured!==true||
+     status?.verified!==true||!['default','selected'].includes(status?.kind)||
+     typeof root!=='string'||root.length>900||root.includes('\0')||
+     !(path.isAbsolute(root)||path.win32.isAbsolute(root)))
+    return {verified:false};
+  return {
+    verified:true,canonicalRoot:root,
+    source:'forge_owner_verified_workspace',
+    scope:'this_project_only',
+    note:'Path metadata is not an MCP grant. Use only independently owner-authorized tools and verify file readback.'
+  };
+}
 
 // Extra context on the FIRST GPT turn of a project-bound Task. Normal
 // continuation/rotation keeps using the existing Task checkpoint and
 // verified handoff attachment, not a second transcript.
-export function forgeFreshConversationContext(store,taskId,{maxChars=1800}={}) {
+export function forgeFreshConversationContext(store,taskId,{maxChars=1800,resolveWorkspace=null}={}) {
   if(typeof taskId!=='string'||!taskId.trim()||
     !Number.isSafeInteger(maxChars)||maxChars<600||maxChars>3000)
     throw Error('forge_fresh_context_invalid');
@@ -23,6 +45,7 @@ export function forgeFreshConversationContext(store,taskId,{maxChars=1800}={}) {
     selectedTaskId:taskId,
     verifiedExternalEffects:false,
     unresolvedCommands:snapshot.counts.unresolvedCommands,
+    workspace:verifiedWorkspaceContext(row.projectId,resolveWorkspace),
     memory:[]
   };
   const encode=()=>[

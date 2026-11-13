@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {classifyProviderMcpSelection,requireSelectedMcpForPrompt,requiresMcpForProjectPrompt} from '../src/provider-mcp-selection.mjs';
+import {classifyProviderMcpSelection,requireSelectedMcpForPrompt,requiresMcpForProjectPrompt,inspectProviderMcpComposerSelection,inspectProviderMcpAddContextTrigger,inspectProviderMcpPickerOption,isStandaloneMcpSelection} from '../src/provider-mcp-selection.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -49,6 +49,96 @@ test('natural project building requests require MCP even without a mention',()=>
     {requiresMcp:true}),true);
 });
 
+test('only an actual selected OrdaX app mention inside the editor attests selection',()=>{
+  const path='app://asdk_app_6ad82c252584819192ac71cf3389e4a6';
+  const attrs={
+    'app-mention-name':'ordax-mcp','app-mention-display-name':'Ordax mcp',
+    'app-mention-path':path,'data-prompt-link-href':path,
+    'data-prompt-link-label':'$ordax-mcp','data-appearance':'inline-mention',
+    'contenteditable':'false'
+  };
+  const mention=(overrides={})=>({
+    getAttribute:name=>({...attrs,...overrides})[name]??null,
+    getClientRects:()=>[{}]
+  });
+  const selection=nodes=>classifyProviderMcpSelection(
+    inspectProviderMcpComposerSelection({querySelectorAll:()=>nodes}));
+  assert.equal(selection([mention()]).state,'selection_visible');
+  assert.equal(selection([]).selectionObserved,false);
+  assert.equal(selection([mention({'app-mention-name':'other-app'})]).selectionObserved,false);
+  assert.equal(selection([mention({'contenteditable':'true'})]).state,'name_visible_unverified');
+  assert.equal(selection([mention({'app-mention-path':'app://unrelated'})]).selectionObserved,false);
+  assert.equal(selection([mention(),mention()]).selectionObserved,false);
+  assert.equal(inspectProviderMcpComposerSelection(null).composerPresent,false);
+});
+
+test('real app token alone is reusable on a clean composer, not a user draft',()=>{
+  const selected=classifyProviderMcpSelection({
+    composerPresent:true,exactNamedControl:true,exactSelectedControl:true
+  });
+  const absent=classifyProviderMcpSelection({composerPresent:true});
+  assert.equal(isStandaloneMcpSelection('OrdaX MCP',selected),true);
+  assert.equal(isStandaloneMcpSelection(' @ordax-mcp ',selected),true);
+  assert.equal(isStandaloneMcpSelection('OrdaX MCP',absent),false);
+  assert.equal(isStandaloneMcpSelection('@ordax-mcp',absent),false);
+  assert.equal(isStandaloneMcpSelection('OrdaX MCP crie um site',selected),false);
+  assert.equal(isStandaloneMcpSelection('Crie um site',selected),false);
+  assert.equal(isStandaloneMcpSelection('OrdaX MCP OrdaX MCP',selected),false);
+});
+
+test('real ChatGPT add-context control exposes one safe pointer target',()=>{
+  const rect={left:10,top:20,width:36,height:36};
+  const trigger={
+    disabled:false,getBoundingClientRect:()=>rect,
+    getAttribute:name=>name==='aria-expanded'?'false':null,
+    contains:node=>node===trigger
+  };
+  let buttons=[trigger],hit=trigger;
+  const form={querySelectorAll:()=>buttons};
+  const composer={closest:name=>name==='form'?form:null};
+  const doc={elementFromPoint:()=>hit};
+  assert.deepEqual(inspectProviderMcpAddContextTrigger(doc,composer),
+    {selectable:true,open:false,x:28,y:38});
+  buttons=[trigger,trigger];
+  assert.equal(inspectProviderMcpAddContextTrigger(doc,composer).selectable,false);
+  buttons=[trigger];hit={};
+  assert.equal(inspectProviderMcpAddContextTrigger(doc,composer).selectable,false);
+  assert.equal(inspectProviderMcpAddContextTrigger(doc,null).selectable,false);
+});
+
+test('real ChatGPT app picker requires a unique official app button and an open menu',()=>{
+  let y=750,scrolled=0,open=true;
+  const rect=(width=260)=>({left:40,top:y,width,height:36});
+  const option=(text,width=260)=>({
+    textContent:text,getBoundingClientRect:()=>rect(width),
+    scrollIntoView:()=>{scrolled++;y=240;},contains:()=>false
+  });
+  const first=option('Ordax mcpOrdax mcp');
+  const another=option('VercelVercel');
+  let values=[first,another],hit=first;
+  const openTrigger={getClientRects:()=>[{}]};
+  const doc={
+    defaultView:{innerWidth:900,innerHeight:700},
+    querySelector:()=>open?openTrigger:null,
+    querySelectorAll:()=>values,
+    elementFromPoint:()=>hit
+  };
+  const selected=inspectProviderMcpPickerOption(doc);
+  assert.equal(selected.optionCount,1);
+  assert.equal(selected.selectable,true);
+  assert.equal(scrolled,1);
+  assert.equal(selected.y,258);
+  values=[first,option('Ordax mcp')];
+  assert.equal(inspectProviderMcpPickerOption(doc).selectable,false);
+  values=[option('Ordax mcp',0),another];
+  assert.equal(inspectProviderMcpPickerOption(doc).optionCount,0);
+  values=[first];hit=another;
+  assert.equal(inspectProviderMcpPickerOption(doc).selectable,false);
+  hit=first;open=false;
+  assert.equal(inspectProviderMcpPickerOption(doc).selectable,false);
+  assert.equal(inspectProviderMcpPickerOption(null).selectable,false);
+});
+
 test('Forge displays explicit MCP state in Forjador and connections, without silent grant',()=>{
   const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
   const html=fs.readFileSync(path.join(root,'desktop/ui.html'),'utf8');
@@ -65,10 +155,39 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   assert.match(worker,/classifyProviderMcpSelection/);
   assert.match(worker,/requireSelectedMcpForPrompt\(prompt,selection,\{requiresMcp:this\.streamContext\?\.requiresMcp===true\}\)/);
   assert.match(main,/requiresMcpForProjectPrompt\(prompt\)/);
+  assert.match(main,/const runFallback=providerRunPresentationActive&&!panelUsable/);
+  assert.match(main,/worker\.view\.setVisible\(Boolean\(panelUsable\|\|runFallback\)\)/);
+  assert.match(main,/worker\.view\.setBounds\(runFallback/);
+  assert.ok(main.indexOf('providerRunPresentationActive=true;')<
+    main.indexOf('health=await runWorker.health();'),
+    'the existing provider view must become usable before checking readiness');
+  assert.ok(main.indexOf('providerRunPresentationActive=true;')<
+    main.indexOf('await runWorker.prepareMcpPrompt('),
+    'real provider view must be usable before opening the app picker');
+  assert.match(main,/\['anonymous','authenticating'\]\.includes\(health\?\.auth_state\)/);
+  assert.ok((main.match(/providerRunPresentationActive=false;/g)||[]).length>=4,
+    'all pre-commit failures and completed Runs must restore the layout');
+  const preparedAt=main.indexOf('await runWorker.prepareMcpPrompt(');
+  const committedAt=main.indexOf('store.beginProviderRun(taskId');
+  assert.ok(preparedAt>=0&&preparedAt<committedAt,
+    'real app token must be prepared before committing the Run');
+  assert.match(worker,/async prepareMcpPrompt\(/);
+  assert.match(worker,/isStandaloneMcpSelection\(initial\.text,initialSelection\)/);
+  assert.match(worker,/isStandaloneMcpSelection\(readyComposer\.text,readySelection\)/);
+  assert.match(worker,/if\(startsFresh&&!reuseHomeToken\)await this\.#startNewChat\(\)/);
+  assert.match(worker,/inspectProviderMcpAddContextTrigger\.toString\(\)/);
+  assert.match(worker,/for\(let attempt=0;attempt<25;attempt\+\+\)/);
+  assert.match(worker,/if\(trigger\?\.selectable===true\)break/);
+  assert.match(worker,/if\(!trigger\?\.selectable\)throw Error\('provider_mcp_picker_unavailable'\)/);
+  assert.match(worker,/inspectProviderMcpPickerOption\.toString\(\)/);
+  assert.doesNotMatch(worker,/Input\.insertText',\{text:'@'\}/);
+  assert.match(worker,/provider_mcp_prepared_prompt_unverified/);
+  assert.match(worker,/if\(!stagedMcp\)await wc\.debugger\.sendCommand\('Input\.insertText'/);
   assert.match(main,/runWorker\.inspectMcpSelectionReadOnly\(\)/);
   assert.ok(main.indexOf('await runWorker.inspectMcpSelectionReadOnly()')<main.indexOf('store.beginProviderRun(taskId'));
   assert.match(worker,/requiresMcp:requiresMcp===true/);
   assert.match(worker,/inspectMcpSelectionReadOnly\(\{allowDuringRun:true\}\)/);
+  assert.match(worker,/inspectProviderMcpComposerSelection\.toString\(\)/);
   const selectedAt=worker.indexOf('const selection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true})');
   const typedAt=worker.indexOf("if (!recognized) throw new Error('composer_input_not_recognized')");
   const submittedAt=worker.indexOf('await submitExactlyOnce({');

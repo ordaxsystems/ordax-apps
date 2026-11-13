@@ -257,6 +257,9 @@ function emitRendererEvent(channel,payload) {
 }
 let chatVisible = false;
 let providerViewBounds = null;
+// The existing ChatGPT view must be physically usable for native app-picker
+// interaction during MCP Runs even when its normal UI panel is not selected.
+let providerRunPresentationActive = false;
 let liveRun = null;
 const persistedObserverMode = store.getWorkspaceSession()?.metadata?.observer_mode;
 let observerMode = ['auto','fast','beta'].includes(persistedObserverMode) ? persistedObserverMode : 'auto';
@@ -378,8 +381,12 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   // A fresh Task chat inherits approved editorial context of its project.
   // Established Task segments keep their existing checkpoint/handoff path.
   const projectContext=!task.has_messages
-    ?forgeFreshConversationContext(store,taskId):null;
-  const providerPrompt = withForjadorMcpMention(
+    ?forgeFreshConversationContext(store,taskId,{
+      // Only the canonical native workspace binding can supply the location.
+      // The user prompt, GPT response and device-online state are not grants.
+      resolveWorkspace:projectId=>forgeLocalWorkspaces.status(projectId)
+    }):null;
+  let providerPrompt = withForjadorMcpMention(
     (projectContext?.text||'')+(continuationPacket?.prompt || prompt)+contextAttachmentNotice,{authorSource}
   );
   if(contextManifest&&contextAttachmentNotice){
@@ -387,20 +394,73 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
     contextManifest={...contextManifest,maxChars:16000,promptChars:providerPrompt.length,promptSha256:providerPromptDigest(providerPrompt)};
   }
   const mcpWorkRequired=requiresMcpForProjectPrompt(prompt)||mentionWasRequested(providerPrompt);
-  // Authoritative, fresh, read-only readiness gate BEFORE any Task/Run/message
-  // mutation or draft clearing. A signed-out/unknown provider creates no Run.
-  // Worker.sendPrompt independently checks again immediately before editing.
-  try { assertProviderSendReadiness(await runWorker.health()); }
-  catch(error) { throw normalizeProviderFailure(error,{stage:'health'}); }
+  // The provider is a native WebContentsView. When not selected in the UI,
+  // its 1x1 layout prevents ChatGPT from hydrating its real composer. The same
+  // view must become usable BEFORE health, app selection and SQLite commit.
   if(liveRun)throw Error('orchestrator_executor_busy');
+  if(mcpWorkRequired){
+    providerRunPresentationActive=true;
+    layoutViews();
+  }
+  // Fail closed after bounded first-party readiness observation. Resizing is
+  // not proof of login; anonymous, verification and restricted states still
+  // fail before creating a user message, Task Run or submission intent.
+  try {
+    let health=null;
+    for(let attempt=0;attempt<10;attempt++){
+      health=await runWorker.health();
+      if(health?.auth_state==='session_present'&&health?.composer_ready===true)break;
+      if(health?.verification_required===true||
+        ['anonymous','authenticating'].includes(health?.auth_state))break;
+      if(attempt<9)await new Promise(resolve=>setTimeout(resolve,350));
+    }
+    assertProviderSendReadiness(health);
+  } catch(error) {
+    if(mcpWorkRequired){
+      providerRunPresentationActive=false;
+      layoutViews();
+    }
+    throw normalizeProviderFailure(error,{stage:'health'});
+  }
   // A normal request to BUILD a site is MCP work even without @ordax-mcp.
   // Do not persist a user message or Run when no connected app was selected.
   // The worker observes again immediately before submit to close the race.
-  if(mcpWorkRequired) requireSelectedMcpForPrompt(providerPrompt,
-    await runWorker.inspectMcpSelectionReadOnly(),{requiresMcp:true});
-  const contextAttachment=handoffSnapshot?writeTaskHandoffFile(handoffRoot,handoffSnapshot):null;
-  // No provider interaction happens until this atomic transaction commits.
-  // The message, draft-clear and Run must never be persisted separately.
+  if(mcpWorkRequired){
+    // The previous read-only gate could not succeed for a natural Forge request:
+    // the GPT composer was still empty. Prepare the REAL app token first,
+    // without submitting or altering the Store, then check it fail-closed.
+    let staged=null;
+    try{
+      staged=await runWorker.prepareMcpPrompt({
+        prompt:providerPrompt,chatUrl:task.chat_url,newSession:conversationPlan.newSession
+      });
+      providerPrompt=staged.providerPrompt;
+      if(contextManifest&&contextAttachmentNotice){
+        if(providerPrompt.length>16000)throw Error('task_handoff_prompt_budget_exceeded');
+        contextManifest={...contextManifest,promptChars:providerPrompt.length,
+          promptSha256:providerPromptDigest(providerPrompt)};
+      }
+      requireSelectedMcpForPrompt(providerPrompt,
+        await runWorker.inspectMcpSelectionReadOnly(),{requiresMcp:true});
+    }catch(error){
+      if(staged)await runWorker.discardPreparedMcpPrompt(staged.providerPrompt).catch(()=>{});
+      providerRunPresentationActive=false;
+      layoutViews();
+      throw error;
+    }
+  }
+  let contextAttachment=null;
+  try { contextAttachment=handoffSnapshot?writeTaskHandoffFile(handoffRoot,handoffSnapshot):null; }
+  catch(error){
+    if(mcpWorkRequired){
+      await runWorker.discardPreparedMcpPrompt(providerPrompt).catch(()=>{});
+      providerRunPresentationActive=false;
+      layoutViews();
+    }
+    throw error;
+  }
+  // The provider composer may be staged, but NO MESSAGE IS SUBMITTED before
+  // this atomic transaction commits. Draft-clear, message and Run stay atomic.
   let begun;
   try {
     begun=store.beginProviderRun(taskId, prompt, {
@@ -408,6 +468,11 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
     });
   } catch(error) {
     if(contextAttachment)try{removeTaskHandoffFile(handoffRoot,contextAttachment.filePath);}catch{}
+    if(mcpWorkRequired){
+      await runWorker.discardPreparedMcpPrompt(providerPrompt).catch(()=>{});
+      providerRunPresentationActive=false;
+      layoutViews();
+    }
     throw error;
   }
   const { userMessage, runId } = begun;
@@ -606,6 +671,10 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
     if (liveRun===runContext) liveRun = null;
     clearInterval(heartbeat);
     if(contextAttachment)try{removeTaskHandoffFile(handoffRoot,contextAttachment.filePath);}catch{}
+    if(mcpWorkRequired){
+      providerRunPresentationActive=false;
+      layoutViews();
+    }
   }
 }
 
@@ -615,8 +684,12 @@ function layoutViews() {
   const bounds=providerViewBounds?normalizeProviderViewBounds(providerViewBounds,{
     contentWidth:width,contentHeight:height,zoomFactor:win.webContents.getZoomFactor()
   }):null;
-  worker.view.setBounds(bounds||{x:0,y:0,width:1,height:1});
-  worker.view.setVisible(Boolean(chatVisible&&bounds));
+  const panelUsable=Boolean(chatVisible&&bounds&&bounds.width>=400&&bounds.height>=250);
+  const runFallback=providerRunPresentationActive&&!panelUsable;
+  worker.view.setBounds(runFallback
+    ? {x:0,y:0,width:Math.max(1,width),height:Math.max(1,height)}
+    : (bounds||{x:0,y:0,width:1,height:1}));
+  worker.view.setVisible(Boolean(panelUsable||runFallback));
   interactiveHtmlPreview?.relayout();
 }
 
