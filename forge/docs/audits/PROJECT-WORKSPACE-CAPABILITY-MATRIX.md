@@ -1,3 +1,5 @@
+> **AUDITORIA HISTÓRICA — fotografia de 24/10/2026, não é contrato operacional vigente.** Esta matriz documenta capacidades observadas nos commits indicados abaixo; seus estados, owners e gates não devem ser reutilizados como verdade atual. Para implementar ou testar o Forge, comece no [plano canônico GPT-first](../FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md), [índice atual](../README.md), `AGENTS.md` e código/recibos atuais. Não reativar Project-First M0–M7, Groq obrigatória nem dependência do Runtime externo para arquivos locais.
+
 # M0 — matriz de capacidades Project-First e autonomia (2026-10-24)
 
 **Escopo:** leitura de `main` dos owners em 2026-10-24. Esta matriz descreve código e contratos; não habilita recursos nem certifica deploy, grants, conta, dispositivo ou execução real.
