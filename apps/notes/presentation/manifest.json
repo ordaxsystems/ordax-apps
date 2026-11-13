@@ -1,7 +1,7 @@
 {
   "schema": "ordax.app-presentation-manifest/1",
   "appId": "notes",
-  "appVersion": "0.4.3",
+  "appVersion": "0.4.4",
   "authority": "none",
   "sourceLocale": "pt-BR",
   "description": "Crie, organize e consulte suas notas pessoais em um espaço persistente.",

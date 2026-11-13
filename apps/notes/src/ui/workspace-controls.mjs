@@ -310,6 +310,37 @@ function buildShell(documentObject, t) {
     node(documentObject, "p", "ordax-notes-refs-caption", t("notes.references.caption")),
   );
 
+  // Stable semantic IDs describe controls that already exist. Notes is a
+  // singleton component in production, so one mounted app surface owns these
+  // document-local IDs. They never encode note/project identity or user text.
+  const semanticControls = [
+    [view, "notes-surface"],
+    [search, "notes-search"],
+    [newNote, "notes-new-note"],
+    [navList, "notes-navigation"],
+    [emptyTrash, "notes-empty-trash"],
+    [sort, "notes-sort"],
+    [list.querySelector(".ordax-notes-list"), "notes-list"],
+    [topActions.querySelector('[data-notes-action="favorite"]'), "notes-favorite"],
+    [topActions.querySelector('[data-notes-action="toggle-references"]'), "notes-references-toggle"],
+    [topActions.querySelector('[data-notes-action="toggle-menu"]'), "notes-more"],
+    [format, "notes-format"],
+    [toolbar.querySelector('[data-notes-action="bold"]'), "notes-bold"],
+    [toolbar.querySelector('[data-notes-action="italic"]'), "notes-italic"],
+    [toolbar.querySelector('[data-notes-action="add-task"]'), "notes-add-task"],
+    [toolbar.querySelector('[data-notes-action="undo"]'), "notes-undo"],
+    [toolbar.querySelector('[data-notes-action="intelligence-summary"]'), "notes-intelligence-summary"],
+    [title, "notes-title"],
+    [body, "notes-body"],
+    [intelligenceStatus, "notes-intelligence-status"],
+    [statistics, "notes-statistics"],
+    [refs, "notes-references"],
+    [addRef, "notes-add-reference"],
+  ];
+  for (const [element, id] of semanticControls) {
+    if (element) element.id = id;
+  }
+
   view.append(nav, list, editor, refs);
   return view;
 }

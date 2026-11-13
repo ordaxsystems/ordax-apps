@@ -1,0 +1,112 @@
+{
+  "schema": "ordax-apps.agentic-test-scenarios/1",
+  "appId": "notes",
+  "appVersion": "0.4.4",
+  "authority": "none",
+  "execution": "plan-only",
+  "defaults": {
+    "maxSteps": 20,
+    "maxReadRetries": 2,
+    "repeatUncertainEffects": false,
+    "coordinateFallback": false
+  },
+  "scenarios": [
+    {
+      "id": "notes.search-and-list",
+      "goal": "Confirmar que notas podem ser localizadas pela busca e lista sem visão ou coordenadas.",
+      "allowedCapabilities": [
+        "notes.inspect-notes"
+      ],
+      "probeCapabilities": [
+        "notes.inspect-notes"
+      ],
+      "semanticElements": [
+        "notes.search",
+        "notes.list"
+      ],
+      "success": [
+        {
+          "kind": "element-present",
+          "element": "notes.search"
+        },
+        {
+          "kind": "element-present",
+          "element": "notes.list"
+        }
+      ],
+      "evidence": [
+        "semantic-snapshot"
+      ]
+    },
+    {
+      "id": "notes.editor-structure",
+      "goal": "Confirmar que criação e edição usam controles semânticos estáveis sem capturar título ou conteúdo digitado.",
+      "allowedCapabilities": [
+        "notes.inspect-notes",
+        "notes.create-note",
+        "notes.update-note"
+      ],
+      "probeCapabilities": [
+        "notes.inspect-notes"
+      ],
+      "semanticElements": [
+        "notes.new",
+        "notes.title",
+        "notes.body",
+        "notes.format",
+        "notes.undo"
+      ],
+      "success": [
+        {
+          "kind": "element-present",
+          "element": "notes.new"
+        },
+        {
+          "kind": "element-present",
+          "element": "notes.title"
+        },
+        {
+          "kind": "element-present",
+          "element": "notes.body"
+        }
+      ],
+      "evidence": [
+        "semantic-snapshot"
+      ]
+    },
+    {
+      "id": "notes.tasks-and-references",
+      "goal": "Confirmar que tarefas e referências possuem controles identificáveis sem executar mutações automaticamente.",
+      "allowedCapabilities": [
+        "notes.inspect-notes",
+        "notes.add-task"
+      ],
+      "probeCapabilities": [
+        "notes.inspect-notes"
+      ],
+      "semanticElements": [
+        "notes.add-task",
+        "notes.references-toggle",
+        "notes.references",
+        "notes.add-reference"
+      ],
+      "success": [
+        {
+          "kind": "element-present",
+          "element": "notes.add-task"
+        },
+        {
+          "kind": "element-present",
+          "element": "notes.references"
+        },
+        {
+          "kind": "element-present",
+          "element": "notes.add-reference"
+        }
+      ],
+      "evidence": [
+        "semantic-snapshot"
+      ]
+    }
+  ]
+}
