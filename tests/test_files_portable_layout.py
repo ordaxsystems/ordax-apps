@@ -52,6 +52,7 @@ def fixture(root):
     ]}
     audit = {"sdk_boundary_clean": True, "source_commit": inventory["commit"],
              "sdk_bundle_version": "1.16.0",
+             "source_cutover_authorized": True,
              "public_contracts": ["system/contracts/first-party-app.mjs"],
              "transitive_public_contracts": ["system/contracts/file-space.mjs"]}
     return source, sdk, inventory, bundle, audit
