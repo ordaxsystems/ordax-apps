@@ -201,7 +201,7 @@ def derive_layout(source_root: Path, sdk_root: Path, inventory: dict,
         "runtime_entrypoint_provided": False,
         "external_app_manifest_provided": False,
         "package_built": False,
-        "source_cutover_authorized": False,
+        "source_cutover_authorized": dependency_audit["source_cutover_authorized"],
         "distribution_activation": "blocked",
     }
 
