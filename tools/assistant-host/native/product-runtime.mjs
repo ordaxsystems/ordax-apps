@@ -5,6 +5,7 @@ const fail = (message, status = 409) => Object.assign(new Error(message), { stat
 const identifier = value => typeof value === 'string' && value.length > 0 && value.length <= 128 && /^[a-zA-Z0-9:_-]+$/.test(value);
 const relative = value => typeof value === 'string' && value.length > 0 && value.length <= 1024 && !/[\x00-\x1f:*?"<>|]/.test(value) && !/^[\\/]/.test(value) && !value.replaceAll('\\', '/').split('/').includes('..');
 const sha = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+const blenderSelector = value => typeof value === 'string' && value.trim().length > 0 && value.trim().length <= 240 && !/[\x00-\x1f]/.test(value);
 const statuses = ['prepared','submitting','queued','running','succeeded','failed','cancelled','uncertain','not-sent','reviewed'];
 export const validOperations = data => data?.schemaVersion === 1 && Array.isArray(data.operations) && data.operations.length <= 40 && new Set(data.operations.map(o => o?.id)).size === data.operations.length && data.operations.every(o => o && identifier(o.id) && Object.hasOwn(PRODUCT_RUNTIME_OPERATIONS, o.kind) && statuses.includes(o.status) && identifier(o.deviceId) && (o.project == null || identifier(o.project)) && (o.path == null || relative(o.path)) && (o.requestId == null || identifier(o.requestId)) && typeof o.createdAt === 'string' && typeof o.label === 'string' && o.label.length <= 1200) && JSON.stringify(data).length <= 8000000;
 
@@ -388,6 +389,19 @@ export class ProductRuntime {
       const limit = data.kind === 'search' ? 200 : 500;
       if (typeof data.query !== 'string' || data.query.length > limit || (data.kind === 'search' && !data.query.trim()) || /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(data.query)) throw fail(`Informe uma busca de até ${limit} caracteres.`, 400);
       Object.assign(arguments_, { query: data.query, ...(data.kind === 'search' ? { max_results: 50, max_files: 1000, case_sensitive: false } : { recall_limit: 10 }) }); label = data.query || 'Contexto do projeto';
+    }
+    if (data.kind === 'blenderStatus') label = 'Consultar Blender live';
+    if (data.kind === 'blenderSchema') label = 'Consultar schema de modelagem Blender';
+    if (data.kind === 'blenderScene') {
+      Object.assign(arguments_, { max_objects: 120, timeout_seconds: 15 });
+      label = 'Consultar cena Blender';
+    }
+    if (data.kind === 'blenderInspect') {
+      const objectName = blenderSelector(data.objectName) ? data.objectName.trim() : '';
+      const objectId = blenderSelector(data.objectId) ? data.objectId.trim() : '';
+      if (Boolean(objectName) === Boolean(objectId)) throw fail('Informe exatamente um nome ou object id do Blender.', 400);
+      Object.assign(arguments_, { ...(objectName ? { object_name: objectName } : { ordax_object_id: objectId }), timeout_seconds: 15 });
+      label = `Inspecionar objeto Blender ${objectName || objectId}`;
     }
     if (data.kind === 'continuitySave') {
       if (typeof data.summary !== 'string' || !data.summary.trim() || data.summary.length > 4000 || typeof data.nextAction !== 'string' || data.nextAction.length > 2000 || /\0/.test(data.summary + data.nextAction)) throw fail('Informe o resumo e o próximo passo dentro dos limites.', 400);
