@@ -8,6 +8,13 @@ test('Studio tools cannot inject arbitrary actions, scope, or terminal arguments
   const selected = { deviceId: 'device-a', project: 'project-a' };
   assert.equal(runtime.input({ ...selected, kind: 'gitStatus' }).action, 'git.status');
   assert.equal(runtime.input({ ...selected, kind: 'preview' }).action, 'project.preview_status');
+  assert.equal(runtime.input({ ...selected, kind: 'blenderStatus' }).action, 'blender.live_status');
+  assert.equal(runtime.input({ ...selected, kind: 'blenderSchema' }).action, 'blender.live_modeling_schema');
+  assert.deepEqual(runtime.input({ ...selected, kind: 'blenderScene' }).arguments, { max_objects: 120, timeout_seconds: 15 });
+  assert.deepEqual(runtime.input({ ...selected, kind: 'blenderInspect', objectName: 'Cube' }).arguments, { object_name: 'Cube', timeout_seconds: 15 });
+  assert.deepEqual(runtime.input({ ...selected, kind: 'blenderInspect', objectId: 'ordax_object_42' }).arguments, { ordax_object_id: 'ordax_object_42', timeout_seconds: 15 });
+  assert.throws(() => runtime.input({ ...selected, kind: 'blenderInspect', objectName: '' }), /exatamente um nome/);
+  assert.throws(() => runtime.input({ ...selected, kind: 'blenderInspect', objectName: 'Cube', objectId: 'id' }), /exatamente um nome/);
   assert.throws(() => runtime.input({ ...selected, kind: 'gitStatus', argv: ['push'] }), /Campo/);
   assert.throws(() => runtime.input({ ...selected, kind: 'gitDiff', action: 'terminal.exec' }), /Campo/);
   assert.throws(() => runtime.input({ ...selected, kind: 'search', query: '' }), /busca/);

@@ -48,6 +48,9 @@ export function workspaceText(kind, result) {
     const states = { stopped: 'parado', running: 'em execução', ready: 'pronto', starting: 'iniciando', failed: 'falhou' }, state = data.runtime?.state;
     return [`Preview: ${value(data.mode)}`, state && `Estado: ${states[state] || value(state)}`, data.url && `Endereço: ${value(data.url)}`, data.latest_image && 'Existe uma captura disponível no Runtime.'].filter(Boolean).join('\n');
   }
+  if (['blenderStatus','blenderSchema','blenderScene','blenderInspect'].includes(kind)) {
+    return JSON.stringify(data, null, 2).slice(0, 150000);
+  }
   return JSON.stringify(data, null, 2).slice(0, 150000);
 }
 
@@ -63,4 +66,8 @@ export const workspaceTools = Object.freeze({
   continuity: { target: 'studioContinuityResult', title: 'Continuidade salva' },
   continuitySave: { target: 'studioContinuityResult', title: 'Continuidade atualizada' },
   preview: { target: 'studioPreviewResult', title: 'Preview supervisionado' },
+  blenderStatus: { target: 'studioBlenderResult', title: 'Estado Blender live' },
+  blenderSchema: { target: 'studioBlenderResult', title: 'Schema de modelagem Blender' },
+  blenderScene: { target: 'studioBlenderResult', title: 'Cena Blender' },
+  blenderInspect: { target: 'studioBlenderResult', title: 'Objeto Blender' },
 });
