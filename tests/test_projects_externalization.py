@@ -57,6 +57,13 @@ class ProjectsExternalizationTests(unittest.TestCase):
         self.assertTrue(self.plan["source_cutover_allowed"])
         self.assertFalse(self.plan["distribution_activation_allowed"])
 
+    def test_gate_b_sdk_bundle_provenance_cannot_follow_global_sdk_drift(self):
+        self.assertEqual(self.plan["gate_b"]["sdk_bundle_version"], "1.17.0")
+        self.plan["gate_b"]["sdk_bundle_version"] = "1.21.0"
+        self._write()
+        with self.assertRaisesRegex(SystemExit, "exact SDK bundle"):
+            self.verify()
+
     def test_sdk_merged_pr_is_required_and_cannot_revert_to_pending(self):
         self.plan["target_sdk"]["state"] = "pending-platform-merge"
         self._write()
