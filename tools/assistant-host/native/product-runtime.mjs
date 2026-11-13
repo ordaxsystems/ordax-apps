@@ -25,8 +25,15 @@ const blenderNumber = (value, label, minimum, maximum, { integer = false } = {})
   }
   return value;
 };
+const canonicalJson = value => {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return '[' + value.map(item => canonicalJson(item === undefined ? null : item)).join(',') + ']';
+  if (typeof value === 'object') return '{' + Object.keys(value).filter(key => value[key] !== undefined).sort().map(key => JSON.stringify(key) + ':' + canonicalJson(value[key])).join(',') + '}';
+  return JSON.stringify(value);
+};
+const digestJson = value => createHash('sha256').update(canonicalJson(value)).digest('hex');
 const statuses = ['prepared','submitting','queued','running','succeeded','failed','cancelled','uncertain','not-sent','reviewed'];
-export const validOperations = data => data?.schemaVersion === 1 && Array.isArray(data.operations) && data.operations.length <= 40 && new Set(data.operations.map(o => o?.id)).size === data.operations.length && data.operations.every(o => o && identifier(o.id) && Object.hasOwn(PRODUCT_RUNTIME_OPERATIONS, o.kind) && statuses.includes(o.status) && identifier(o.deviceId) && (o.project == null || identifier(o.project)) && (o.path == null || relative(o.path)) && (o.requestId == null || identifier(o.requestId)) && typeof o.createdAt === 'string' && typeof o.label === 'string' && o.label.length <= 1200) && JSON.stringify(data).length <= 8000000;
+export const validOperations = data => data?.schemaVersion === 1 && Array.isArray(data.operations) && data.operations.length <= 40 && new Set(data.operations.map(o => o?.id)).size === data.operations.length && data.operations.every(o => o && identifier(o.id) && Object.hasOwn(PRODUCT_RUNTIME_OPERATIONS, o.kind) && statuses.includes(o.status) && identifier(o.deviceId) && (o.project == null || identifier(o.project)) && (o.path == null || relative(o.path)) && (o.requestId == null || identifier(o.requestId)) && typeof o.createdAt === 'string' && typeof o.label === 'string' && o.label.length <= 1200 && (o.action == null || o.action === PRODUCT_RUNTIME_OPERATIONS[o.kind]?.action) && (o.requestSha256 == null || sha(o.requestSha256)) && (o.effectSha256 == null || sha(o.effectSha256))) && JSON.stringify(data).length <= 8000000;
 
 // An account's operation receipts are never stored under the old anonymous
 // key. The full verified Product subject is bound inside the critical journal;
@@ -498,7 +505,7 @@ export class ProductRuntime {
     if (this.submitting || this.operations.some(o => ['prepared','submitting','queued','running','uncertain'].includes(o.status))) throw fail('Confira ou aguarde a operação em andamento antes de iniciar outra.');
     const { label, ...payload } = this.input(data);
     if (Buffer.byteLength(JSON.stringify(payload)) > 56000) throw fail('O conteúdo da operação excedeu o limite do ControlPlane. Reduza o tamanho da alteração ou dos argumentos.', 413);
-    const operation = { id: randomUUID(), kind: data.kind, deviceId: data.deviceId, project: data.project || null, path: data.path || null, ...(data.slug ? { slug: data.slug } : {}), label, status: 'prepared', requestId: null, createdAt: new Date().toISOString(), ...(data.kind === 'write' ? { expectedSha256: data.expectedSha256, proposedSha256: createHash('sha256').update(data.content).digest('hex') } : {}) };
+    const operation = { id: randomUUID(), kind: data.kind, action: payload.action, requestSha256: digestJson(payload), deviceId: data.deviceId, project: data.project || null, path: data.path || null, ...(data.slug ? { slug: data.slug } : {}), label, status: 'prepared', requestId: null, createdAt: new Date().toISOString(), ...(data.kind === 'write' ? { expectedSha256: data.expectedSha256, proposedSha256: createHash('sha256').update(data.content).digest('hex') } : {}) };
     this.submitting = true;
     try {
       await this.refreshTargets();
@@ -536,7 +543,10 @@ export class ProductRuntime {
       next.status = remote.status; next.error = remote.error_code ? String(remote.error_code).slice(0, 200) : '';
       if (['succeeded','failed','cancelled'].includes(remote.status)) {
         if (JSON.stringify(remote.result ?? null).length > 120000) { next.status = 'failed'; next.error = 'Resultado muito extenso. Solicite um arquivo menor.'; }
-        else next.result = remote.result;
+        else {
+          next.result = remote.result;
+          next.effectSha256 = digestJson(remote.result ?? null);
+        }
         if (remote.result?.ok === false) { next.status = 'failed'; next.error = String(remote.result.summary || 'O Runtime recusou a operação.').slice(0, 500); }
         next.finishedAt = new Date().toISOString();
       }

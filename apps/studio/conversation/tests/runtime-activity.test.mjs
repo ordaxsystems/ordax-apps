@@ -8,9 +8,25 @@ test('activity isolates completed project history but keeps every blocking recei
   assert.deepEqual(operations.map(o => o.id), ['a','b','other-device','pending']);
 });
 test('copied receipts preserve correlation and omit command, result, context and credentials', () => {
-  const receipt = JSON.parse(operationReceipt({ id: 'local', requestId: 'remote', deviceId: 'device', project: 'a', status: 'succeeded', label: 'private command', result: { text: 'private context' }, token: 'secret' }));
+  const receipt = JSON.parse(operationReceipt({
+    id: 'local', requestId: 'remote', kind: 'blenderTransform', action: 'blender.live_object_transform',
+    requestSha256: 'd'.repeat(64), effectSha256: 'e'.repeat(64),
+    deviceId: 'device', project: 'a', status: 'succeeded', label: 'private command',
+    result: { text: 'private context' }, token: 'secret',
+  }));
   assert.equal(receipt.requestId, 'remote'); assert.equal(receipt.project, 'a');
+  assert.equal(receipt.action, 'blender.live_object_transform');
+  assert.equal(receipt.requestSha256, 'd'.repeat(64)); assert.equal(receipt.effectSha256, 'e'.repeat(64));
   assert.ok(!JSON.stringify(receipt).includes('private')); assert.ok(!JSON.stringify(receipt).includes('secret'));
+  const malformed = JSON.parse(operationReceipt({
+    id: 'malformed', requestId: 'remote-2', kind: 'terminal', action: 'bad action with spaces',
+    requestSha256: 'x'.repeat(64), effectSha256: 'e'.repeat(63), error: 'long error message with spaces',
+    deviceId: 'device', project: 'a', status: 'failed',
+  }));
+  assert.equal(malformed.action, null);
+  assert.equal(Object.hasOwn(malformed, 'requestSha256'), false);
+  assert.equal(Object.hasOwn(malformed, 'effectSha256'), false);
+  assert.equal(Object.hasOwn(malformed, 'errorCode'), false);
 });
 
 test('write receipts expose only verified content digests for independent audit', () => {
