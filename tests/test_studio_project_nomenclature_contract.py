@@ -11,7 +11,8 @@ class StudioProjectNomenclatureTest(unittest.TestCase):
         self.assertIn("historical repository path", doc.lower())
         self.assertIn("ordax.project-catalog/1", doc)
         self.assertIn("ordax_projects.project_id", doc)
-        self.assertIn("not authorize Gate A/B", doc)
+        self.assertIn("source_repository_current=ordaxsystems/ordax-apps", doc)
+        self.assertIn("Do not rerun Gate A/B", doc)
 
     def test_studio_local_creation_does_not_promise_cloud_project(self):
         doc = (ROOT / "docs/STUDIO-PROJECT-ONBOARDING.md").read_text(encoding="utf-8")
