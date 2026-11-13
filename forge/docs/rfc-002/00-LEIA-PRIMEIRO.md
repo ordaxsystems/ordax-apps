@@ -1,12 +1,14 @@
 # Comece por aqui — OrdaX Orchestrator Lab / RFC-002
 
-> **Estado vivo com evidência recente:** [STATUS-ATUAL.md](STATUS-ATUAL.md). As versões e gates neste guia são um retrato histórico de 19/10/2026; consulte o status antes de agir.\n\n**Pacote autônomo de arquitetura, decisões e execução.** Criado em 19/10/2026, com base em leitura estática dos repositórios e nos debates do proprietário com GPT, Google/Gemini e Claude. **Não é código implementado, PR integrado nem release.** O estado vivo deve sempre ser reconfirmado no GitHub.
+> **HISTÓRICO / SUPERSEDED.** Esta pasta registra a RFC-002 e o estado do Orchestrator Lab de 19–21/10/2026. **Não é mais ponto de entrada, SSOT nem playbook para nova IA/chat.** Trabalho atual do Forge começa em [../README.md](../README.md) e no [roadmap GPT-first](../FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md), além do código/contratos/recibos vigentes. [STATUS-ATUAL.md](STATUS-ATUAL.md) também é snapshot histórico. As instruções abaixo preservam a ordem original da RFC e não autorizam ressuscitar Groq-obrigatória, Project-First, branches antigas ou filas P0–P12.
 
-## Ordem de leitura (para qualquer nova IA/chat)
+**Pacote histórico de arquitetura, decisões e execução.** Criado em 19/10/2026, com base em leitura estática dos repositórios e nos debates do proprietário com GPT, Google/Gemini e Claude. **Não é código implementado, PR integrado nem release.**
 
-1. `01-RFC002-PLANO-MESTRE.md` — **SSOT de visão, requisitos de produto, arquitetura e limites**, com 27 seções, auditoria real e fonte dos termos.
-2. `02-HISTORICO-ANALISES-E-ADRS.md` — **por que cada decisão foi tomada**; contribuições de usuário/GPT/Google/Claude, falhas detectadas, divergências, ADRs e pendências.
-3. `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md` — **SSOT da ordem dos PRs P0–P12 e dos gates G00–G15**, cenários de falha e prompt de continuação para novo chat.
+## Ordem de leitura original da RFC-002 (histórica)
+
+1. `01-RFC002-PLANO-MESTRE.md` — antigo SSOT da proposta RFC-002, preservado para proveniência.
+2. `02-HISTORICO-ANALISES-E-ADRS.md` — histórico das decisões e divergências daquele ciclo.
+3. `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md` — antiga ordem P0–P12/G00–G15, **não fila vigente**.
 
 O conjunto de arquivos é autossuficiente: não depende da conversa original e contém URLs das fontes primárias de código. O RFC-001 permanece apenas como registro histórico.
 
@@ -29,8 +31,8 @@ O conjunto de arquivos é autossuficiente: não depende da conversa original e c
 - `ordaxsystems/ordax-flow@081a7ce989721106aaf27a0c9d09cf9d49713a65` foi lido via GitHub; contém `Store`, `EmbeddedChatWorker`, `submitExactlyOnce`, builder de contexto e testes de continuidade.
 - O Lab tem overlay do supervisor, testes em mocks, recuperação de planos, mas faltam E2E autenticado com ChatGPT Web no Lab, reconciliador real e protocolo de patch/Runtime.
 
-## Primeiro passo de engenharia
+## Primeiro passo de engenharia registrado em 19/10/2026
 
-**P0: auditar dependências e contratos reais do snapshot e planejar cutover para fonte canônica de produto no Lab; depois P1/P2/P3 antes da Alpha.3.** Não começar pela interface ou pelo agente autoreparador. Ver checklists, testes e DoD no playbook.
+**Histórico:** naquele ciclo, P0 era auditar dependências e contratos do snapshot antes de P1/P2/P3. **Não executar esta sequência como plano atual**; o roadmap GPT-first substitui a fila RFC-002. Ver checklists, testes e DoD no playbook.
 
 > **Pronto para novo chat:** cole integralmente a seção G de `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md` e anexe os três documentos; isso preserva o contexto sem precisar deste histórico de mensagens.

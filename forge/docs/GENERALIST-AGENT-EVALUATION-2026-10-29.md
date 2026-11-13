@@ -31,7 +31,7 @@ For every workload record input, expected invariant, tools invoked, observed act
 ## Learning loop
 Evaluate failure -> classify root cause -> change canonical app tooling, prompting or orchestration policy -> add regression -> verify with real external providers -> deploy via existing main and existing updater. Keep one store, one provider executor and one coordinator; no extra repo, parallel product, local duplicate install or hidden LLM memory.
 
-## Current status
+## Status observado em 29/10/2026 — histórico
 - Generic deterministic acceptance contract: implemented.
 - Eight domain-labelled unit tests: executed locally, 8/8 passed.
 - Production acceptance integration: **not done**.

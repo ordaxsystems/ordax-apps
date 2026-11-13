@@ -2,8 +2,8 @@
 
 > **PRIORIDADE DE PRODUTO ATUALIZADA — 2026-11-06:** resultados de preview e testes descritos aqui conservam sua proveniência, mas qualquer instrução de Groq como coordenador obrigatório ou pasta isolada como destino final foi substituída pelo [plano único Forge GPT-first](FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md). Não reabrir PRs antigas nem confundir previsão com efeito verificado.
 
-> Estado: **P1.3.8 integrada e homologada; P1.3.9 candidato — controles locais no navegador isolado** · 2026-11-05 · Owner: `ordaxsystems/ordax-apps` · SSOT: código em `main` + esta missão.
-> Continuidade: consultar `main`, CI e o manifesto `runtime-build.json` da instalação canônica no DESKTOP-4UFL03B. PRs #448 e #453–#461 já integradas; `main` e a instalação Windows observadas em `b4053f31` em 05/11/2026. As evidências anteriores abaixo são históricas, não pendências de merge. **Não recriar branch/PR antiga; executar lacuna real, testar proporcionalmente e integrar.**
+> **Checkpoint histórico de 05/11/2026:** naquele momento, P1.3.8 estava integrada/homologada e P1.3.9 era candidata. Esta missão **não é mais SSOT nem fila de execução**. A direção atual está no [plano único Forge GPT-first](FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md); implementação real é determinada por `main`, contratos e recibos atuais.
+> Continuidade histórica: PRs #448 e #453–#461 já estavam integradas e a instalação observada usava `b4053f31`. Esses valores preservam proveniência daquela prova, não a revisão atual. **Não recriar branch/PR antiga; revalidar qualquer lacuna no roadmap, código e instalação correntes.**
 
 ## Objetivo inegociável
 Usuário diz apenas **“Quero um site de página única para a cafeteria fictícia Estação Café.”**. O OrdaX organiza Groq (decisão), GPT Web (executor) e Runtime/app (ações). Um `index.html` efetivamente produzido deve ser recolhido com recibo e hash, **aparecer automaticamente na lateral direita**, ser revisável e eventualmente testável; nenhum resultado fictício, prompt técnico na conversa do usuário, publicação implícita ou reenvio de Run incerto.
