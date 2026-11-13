@@ -26,7 +26,7 @@ Repositório oficial dos aplicativos first-party do OrdaX.
 
 `ordax-apps` contém **aplicativos de produto**, não os serviços centrais do sistema operacional.
 
-A plataforma continua pertencendo ao repositório `ordaxsystems/ordax-os` e fornece contratos estáveis para Identity, Memory, Intelligence, permissions, Spaces/Projects, localization, component delivery e lifecycle.
+`ordax-os` continua sendo o compositor Native e owner dos contratos/serviços locais do sistema. O **control plane remoto** (sessão, OAuth/grants e autoridade cloud) pertence a `ordaxsystems/ordax-platform`; a fonte/runtime portátil de Intelligence pertence a `ordaxsystems/ordax-intelligence`, enquanto o OS mantém composição, autorização local, Memory e lifecycle que são de sua responsabilidade. Apps consomem apenas os contratos públicos desses owners, sem transformar `ordax-os` em owner genérico de todo o ecossistema.
 
 Os apps deste repositório devem consumir esses contratos; não podem criar implementações paralelas de identidade, Memory, autorização, sync ou update.
 
