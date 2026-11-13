@@ -6,6 +6,25 @@ const identifier = value => typeof value === 'string' && value.length > 0 && val
 const relative = value => typeof value === 'string' && value.length > 0 && value.length <= 1024 && !/[\x00-\x1f:*?"<>|]/.test(value) && !/^[\\/]/.test(value) && !value.replaceAll('\\', '/').split('/').includes('..');
 const sha = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const blenderSelector = value => typeof value === 'string' && value.trim().length > 0 && value.trim().length <= 240 && !/[\x00-\x1f]/.test(value);
+const blenderName = value => typeof value === 'string' && value.trim().length > 0 && Buffer.byteLength(value.trim(), 'utf8') <= 63 && !/[\x00-\x1f]/.test(value);
+const blenderObjectSelector = data => {
+  const objectName = blenderSelector(data.objectName) ? data.objectName.trim() : '';
+  const objectId = blenderSelector(data.objectId) ? data.objectId.trim() : '';
+  if (Boolean(objectName) === Boolean(objectId)) throw fail('Informe exatamente um nome ou object id do Blender.', 400);
+  return objectName ? { object_name: objectName } : { ordax_object_id: objectId };
+};
+const blenderVector3 = (value, label, minimum, maximum) => {
+  if (!Array.isArray(value) || value.length !== 3 || value.some(item => typeof item !== 'number' || !Number.isFinite(item) || item < minimum || item > maximum)) {
+    throw fail(`${label} deve conter três números entre ${minimum} e ${maximum}.`, 400);
+  }
+  return value.map(Number);
+};
+const blenderNumber = (value, label, minimum, maximum, { integer = false } = {}) => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < minimum || value > maximum || (integer && !Number.isInteger(value))) {
+    throw fail(`${label} deve ser ${integer ? 'inteiro' : 'numérico'} entre ${minimum} e ${maximum}.`, 400);
+  }
+  return value;
+};
 const statuses = ['prepared','submitting','queued','running','succeeded','failed','cancelled','uncertain','not-sent','reviewed'];
 export const validOperations = data => data?.schemaVersion === 1 && Array.isArray(data.operations) && data.operations.length <= 40 && new Set(data.operations.map(o => o?.id)).size === data.operations.length && data.operations.every(o => o && identifier(o.id) && Object.hasOwn(PRODUCT_RUNTIME_OPERATIONS, o.kind) && statuses.includes(o.status) && identifier(o.deviceId) && (o.project == null || identifier(o.project)) && (o.path == null || relative(o.path)) && (o.requestId == null || identifier(o.requestId)) && typeof o.createdAt === 'string' && typeof o.label === 'string' && o.label.length <= 1200) && JSON.stringify(data).length <= 8000000;
 
@@ -397,11 +416,60 @@ export class ProductRuntime {
       label = 'Consultar cena Blender';
     }
     if (data.kind === 'blenderInspect') {
-      const objectName = blenderSelector(data.objectName) ? data.objectName.trim() : '';
-      const objectId = blenderSelector(data.objectId) ? data.objectId.trim() : '';
-      if (Boolean(objectName) === Boolean(objectId)) throw fail('Informe exatamente um nome ou object id do Blender.', 400);
-      Object.assign(arguments_, { ...(objectName ? { object_name: objectName } : { ordax_object_id: objectId }), timeout_seconds: 15 });
-      label = `Inspecionar objeto Blender ${objectName || objectId}`;
+      const selector = blenderObjectSelector(data);
+      Object.assign(arguments_, selector, { timeout_seconds: 15 });
+      label = `Inspecionar objeto Blender ${selector.object_name || selector.ordax_object_id}`;
+    }
+    if (data.kind === 'blenderStart') {
+      Object.assign(arguments_, { wait_seconds: 10, timeout_seconds: 30, adopt_blank: false });
+      label = 'Iniciar Blender live';
+    }
+    if (data.kind === 'blenderTransform') {
+      const selector = blenderObjectSelector(data);
+      const field = { location: 'location', rotation: 'rotation_euler', scale: 'scale', dimensions: 'dimensions' }[data.transform];
+      if (!field) throw fail('Escolha location, rotation, scale ou dimensions.', 400);
+      const positive = data.transform === 'scale' || data.transform === 'dimensions';
+      const maximum = data.transform === 'scale' ? 1000 : 100000;
+      const vector = blenderVector3(data.vector, 'Vetor Blender', positive ? 0.0001 : -100000, maximum);
+      Object.assign(arguments_, selector, { [field]: vector, timeout_seconds: 30 });
+      label = `Transformar objeto Blender ${selector.object_name || selector.ordax_object_id}`;
+    }
+    if (data.kind === 'blenderCreate') {
+      if (!blenderName(data.name)) throw fail('Nome da primitiva Blender inválido.', 400);
+      const primitive = String(data.primitive || '').trim().toLowerCase();
+      if (!['cube','sphere','cylinder'].includes(primitive)) throw fail('Primitiva Blender deve ser cube, sphere ou cylinder.', 400);
+      const location = data.location == null ? [0,0,0] : blenderVector3(data.location, 'Localização Blender', -100000, 100000);
+      Object.assign(arguments_, { name: data.name.trim(), primitive, location, timeout_seconds: 30 });
+      const size = data.size == null ? (primitive === 'cube' ? 2 : 1) : blenderNumber(data.size, primitive === 'cube' ? 'Tamanho' : 'Raio', 0.0001, 10000);
+      if (primitive === 'cube') arguments_.size = size;
+      else {
+        arguments_.radius = size;
+        arguments_.segments = data.segments == null ? 32 : blenderNumber(data.segments, 'Segmentos', 8, 64, { integer: true });
+        if (primitive === 'cylinder') arguments_.depth = data.depth == null ? 2 : blenderNumber(data.depth, 'Profundidade', 0.0001, 10000);
+      }
+      label = `Criar ${primitive} Blender ${data.name.trim()}`;
+    }
+    if (data.kind === 'blenderMaterial') {
+      const selector = blenderObjectSelector(data);
+      if (!blenderName(data.materialName)) throw fail('Nome do material Blender inválido.', 400);
+      if (typeof data.baseColor !== 'string' || !/^#[0-9a-f]{6}$/i.test(data.baseColor)) throw fail('Cor base Blender deve usar #RRGGBB.', 400);
+      const roughness = data.roughness == null ? 0.4 : blenderNumber(data.roughness, 'Roughness', 0, 1);
+      const metallic = data.metallic == null ? 0 : blenderNumber(data.metallic, 'Metallic', 0, 1);
+      const hex = data.baseColor.slice(1);
+      const baseColor = [0,2,4].map(index => parseInt(hex.slice(index,index+2),16) / 255);
+      Object.assign(arguments_, selector, {
+        material_name: data.materialName.trim(),
+        base_color: [...baseColor, 1],
+        roughness, metallic, transmission: 0, alpha: 1, ior: 1.45,
+        surface_render_method: 'DITHERED', transparency_overlap: true, timeout_seconds: 30,
+      });
+      label = `Aplicar material ${data.materialName.trim()} em ${selector.object_name || selector.ordax_object_id}`;
+    }
+    if (data.kind === 'blenderSave') {
+      const targetPath = typeof data.targetPath === 'string' ? data.targetPath.trim() : '';
+      if (targetPath && (!relative(targetPath) || !/\.blend$/i.test(targetPath))) throw fail('Destino Blender deve ser um arquivo .blend relativo ao projeto.', 400);
+      Object.assign(arguments_, { ...(targetPath ? { target_path: targetPath } : {}), timeout_seconds: 120 });
+      label = targetPath ? `Salvar Blender em ${targetPath}` : 'Salvar Blender';
     }
     if (data.kind === 'continuitySave') {
       if (typeof data.summary !== 'string' || !data.summary.trim() || data.summary.length > 4000 || typeof data.nextAction !== 'string' || data.nextAction.length > 2000 || /\0/.test(data.summary + data.nextAction)) throw fail('Informe o resumo e o próximo passo dentro dos limites.', 400);
