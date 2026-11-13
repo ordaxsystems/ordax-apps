@@ -2,7 +2,7 @@
 
 > **REFERÊNCIA HISTÓRICA — substituída na direção do produto em 2026-11-06.** A única arquitetura e sequência executiva vigentes estão em [Forge GPT-first — plano canônico](FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md). Dados de PR/CI/E2E abaixo são evidências datadas; NÃO reativar Groq obrigatória, instância por projeto, caminhos privados como destino final ou dependência Runtime externo para arquivos locais. O código e as provas atuais determinam o que já funciona.
 
-## Decisão canônica (29/10/2026)
+## Decisão canônica naquele ciclo (29/10/2026) — histórica
 
 Manter **um** Store SQLite, **um** executor ChatGPT Web e **um** coordenador Groq.
 A missão autônoma oferece duas variantes, autorizadas uma vez:
@@ -58,7 +58,7 @@ efeitos idempotentes.
 - Temporal, *Tasks* — distinção falha da etapa e falha do workflow:
   https://docs.temporal.io/tasks
 
-## Limites ainda não homologados
+## Limites observados naquele ciclo — não usar como backlog atual
 
 Quatro cenas reais colaborativas no GPT Web precisam ser comprovadas no desktop.
 O teste automatizado usa executor de prova, **não** conversa de produção. Narrativa
