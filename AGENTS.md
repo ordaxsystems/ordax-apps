@@ -65,7 +65,7 @@ Se a tarefa alterar o `forge`, comece pelo [plano único Forge V3](forge/docs/FO
 
 ## Intelligence global, ChatGPT e plugin MCP
 
-Antes de alterar chat Studio, catálogo dos apps, provider adapters ou integração Web, consultar [INTELLIGENCE-HANDOFF.md no owner OS](https://github.com/ordaxsystems/ordax-os/blob/main/INTELLIGENCE-HANDOFF.md), [docs/STUDIO-CHATGPT-THREE-SURFACES.md](docs/STUDIO-CHATGPT-THREE-SURFACES.md) e [docs/APP-INTELLIGENCE.md](docs/APP-INTELLIGENCE.md). Intelligence é do OS; Studio é consumidor; o MCP do ecossistema OrdaX/Platform continua em seu owner, enquanto o **MCP de projetos do Forge** pertence ao próprio Forge App. Não confundir ChatGPT como provedor da UI com ChatGPT externo controlando OrdaX. PRs experimentais não são release.
+Antes de alterar chat Studio, catálogo dos apps, provider adapters ou integração Web, consultar [INTELLIGENCE-HANDOFF.md no owner OS](https://github.com/ordaxsystems/ordax-os/blob/main/INTELLIGENCE-HANDOFF.md), [docs/STUDIO-CHATGPT-THREE-SURFACES.md](docs/STUDIO-CHATGPT-THREE-SURFACES.md) e [docs/APP-INTELLIGENCE.md](docs/APP-INTELLIGENCE.md). `ordax-intelligence` é o owner da fonte/runtime portátil de Intelligence; `ordax-os` mantém somente composição, autorização local, Memory e adapters que lhe pertencem. Studio é consumidor; o MCP do ecossistema continua nos owners Runtime/Platform aplicáveis, enquanto o **MCP de projetos do Forge** pertence ao próprio Forge App. Não confundir ChatGPT como provedor da UI com ChatGPT externo controlando OrdaX. PRs experimentais não são release.
 
 ## Regras que não podem ser contornadas
 
