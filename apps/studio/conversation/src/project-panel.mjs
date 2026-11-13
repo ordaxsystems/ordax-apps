@@ -100,7 +100,9 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     const active = submitting || state.operations.some(pending), blocked = active || state.recoveryRequired || state.operations.some(op => op.status === 'uncertain');
     const ready = deviceAvailable(state, selected().deviceId) && selected().project;
     $('workspaceProjectConversations').disabled = blocked || !ready || !onProjectConversations;
-    for (const id of ['studioGitStatus','studioGitDiff','studioSearchRun','studioBriefing','studioContinuityRead','studioPreviewStatus','studioContinuityReview']) $(id).disabled = blocked || !ready;
+    for (const id of ['studioGitStatus','studioGitDiff','studioSearchRun','studioBriefing','studioContinuityRead','studioPreviewStatus','studioContinuityReview','studioBlenderStatus','studioBlenderSchema','studioBlenderScene','studioBlenderInspect']) $(id).disabled = blocked || !ready;
+    $('studioBlenderObject').disabled = blocked || !ready;
+    $('studioBlenderObjectKind').disabled = blocked || !ready;
     $('studioContinuityReview').disabled ||= !continuityBase;
     $('studioContinuityApply').disabled = blocked || !ready || !continuityProposal;
     $('studioContextAttach').disabled = !contextResult || blocked;
@@ -421,9 +423,16 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
       if (next === null) return; event.preventDefault(); tab(buttons[next].dataset.studioTab); buttons[next].focus();
     });
   }
-  for (const [id, kind] of Object.entries({ studioGitStatus: 'gitStatus', studioGitDiff: 'gitDiff', studioPreviewStatus: 'preview', studioBriefing: 'briefing', studioContinuityRead: 'continuity', studioSearchRun: 'search' })) {
+  for (const [id, kind] of Object.entries({ studioGitStatus: 'gitStatus', studioGitDiff: 'gitDiff', studioPreviewStatus: 'preview', studioBriefing: 'briefing', studioContinuityRead: 'continuity', studioSearchRun: 'search', studioBlenderStatus: 'blenderStatus', studioBlenderSchema: 'blenderSchema', studioBlenderScene: 'blenderScene' })) {
     $(id).addEventListener('click', () => task(() => submit({ kind, ...(['search','briefing'].includes(kind) ? { query: kind === 'search' ? $('studioSearchQuery').value : '' } : {}) })));
   }
+  $('studioBlenderInspect').addEventListener('click', () => task(() => {
+    const target = $('studioBlenderObject').value.trim();
+    return submit({
+      kind: 'blenderInspect',
+      ...($('studioBlenderObjectKind').value === 'id' ? { objectId: target } : { objectName: target }),
+    });
+  }));
   $('studioContextAttach').addEventListener('click', () => task(async () => {
     if (!contextResult || !workspaceResultBelongs(contextResult, selected())) throw new Error('Consulte novamente o contexto do projeto selecionado.');
     await attach({ kind: 'text', name: `${selected().project}/${contextResult.name}`, text: contextResult.text });
