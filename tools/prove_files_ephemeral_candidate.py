@@ -90,50 +90,7 @@ console.log(JSON.stringify({
 
 
 
-def _canonical_source_owner_gate_proof(channel_bin: Path, staging: Path,
-                                       release: Path, compatibility: Path) -> dict:
-    """Prove the real Go signer rejects Files before the OS->Apps ownership cutover.
-
-    This is an explicit negative proof, not a signed component staging proof.
-    No release descriptor or authority is modified to defeat the gate.
-    """
-    if not channel_bin.is_file() or channel_bin.is_symlink():
-        raise FilesProofError("canonical Native component channel is unavailable")
-    private_key = staging / "ephemeral-component-private.pem"
-    trust = staging / "ephemeral-component-public-trust.json"
-    envelope = staging / "files.runtime-component-envelope.json"
-    command = [str(channel_bin), "generate-key", "--private-key", str(private_key),
-               "--trust", str(trust), "--key-id", "files-disposable-proof-1"]
-    generated = subprocess.run(command, capture_output=True, text=True, timeout=35)
-    if generated.returncode != 0 or "RUNTIME_COMPONENT_KEY_GENERATED=YES" not in generated.stdout:
-        raise FilesProofError("canonical ephemeral Ed25519 setup failed")
-    if private_key.stat().st_mode & 0o077:
-        raise FilesProofError("disposable private key permissions are not restrictive")
-
-    attempted = subprocess.run(
-        [str(channel_bin), "sign-v2", "--release", str(release),
-         "--compatibility", str(compatibility), "--private-key", str(private_key),
-         "--trust", str(trust), "--out", str(envelope),
-         "--key-id", "files-disposable-proof-1"],
-        capture_output=True, text=True, timeout=35,
-    )
-    if attempted.returncode == 0 or envelope.exists():
-        raise FilesProofError("Files signing bypassed the canonical source ownership restriction")
-    if "runtime component source repository is not canonical for component" not in attempted.stderr:
-        raise FilesProofError("Files signing did not fail for the required canonical ownership gate")
-    if list(staging.rglob("activation-state.json")):
-        raise FilesProofError("negative Files ownership proof mutated an activation state")
-    return {
-        "canonical_go_signer_checked": True,
-        "precutover_source_owner_rejected": True,
-        "signed_slot_created": False,
-        "live_install_authorized": False,
-        "production_trust_used": False,
-    }
-
-
-def prove(root: Path, platform_root: Path, sdk_root: Path,
-          channel_bin: Path | None = None) -> dict:
+def prove(root: Path, platform_root: Path, sdk_root: Path) -> dict:
     root, platform_root, sdk_root = root.resolve(), platform_root.resolve(), sdk_root.resolve()
     _, plan, sdk_pin = cutover.load_plan(root)
     if (
@@ -147,11 +104,6 @@ def prove(root: Path, platform_root: Path, sdk_root: Path,
         or (root / "apps/files").exists()
     ):
         raise FilesProofError("ephemeral proof requires post-Gate-A source absence and pending Gate B")
-    if channel_bin is not None:
-        raise FilesProofError(
-            "precutover canonical-owner signer proof is obsolete after Gate A; "
-            "materialize Gate B before running signer/install proofs"
-        )
     layout = portable.audit(root, platform_root, sdk_root)
     if (
         layout["app_source_count"] != 10
@@ -321,8 +273,6 @@ def prove(root: Path, platform_root: Path, sdk_root: Path,
             "gate_a_complete": True,
             "gate_b_materialized": False,
             "second_permanent_files_source_created": False,
-            "canonical_owner_gate_verified": False,
-            "canonical_owner_gate_proof": owner_gate,
             "signed_install_verified": False,
             "bootstrap_delivery_verified": False,
             "distribution_activation_allowed": False,
@@ -337,12 +287,10 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--platform-root", type=Path, required=True)
     parser.add_argument("--sdk-platform-root", type=Path, required=True)
-    parser.add_argument("--channel-bin", type=Path)
     options = parser.parse_args()
     try:
         print(json.dumps(
-            prove(options.root, options.platform_root, options.sdk_platform_root,
-                  options.channel_bin.resolve() if options.channel_bin is not None else None),
+            prove(options.root, options.platform_root, options.sdk_platform_root),
             indent=2, sort_keys=True, ensure_ascii=False,
         ))
         return 0
