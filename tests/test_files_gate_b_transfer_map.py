@@ -36,9 +36,16 @@ class FilesGateBTransferMapTests(unittest.TestCase):
         self.assertTrue(self.mapping["rules"]["copy_native_filesystem_adapters"] is False)
         self.assertTrue(self.mapping["rules"]["copy_host_grant_or_install_authority"] is False)
 
-    def test_all_distribution_and_cutover_gates_remain_closed(self):
+    def test_gate_a_is_complete_but_gate_b_materialization_and_distribution_remain_closed(self):
         self.assertEqual(self.mapping["state"], "prepared-no-source-copy")
-        self.assertFalse(self.plan["source_cutover_allowed"])
+        self.assertTrue(self.plan["source_cutover_allowed"])
+        self.assertEqual(self.plan["source_of_truth_state"], "source-absent-after-platform-removal")
+        self.assertIsNone(self.plan["source_repository_current"])
+        self.assertIsNone(self.plan["source_path_current"])
+        self.assertTrue(self.plan["source_cutover"]["gate_a_complete"])
+        self.assertEqual(self.plan["source_cutover"]["target_materialization_state"], "pending")
+        self.assertFalse(self.plan["source_cutover"]["target_source_present"])
+        self.assertFalse((ROOT / "apps/files").exists())
         self.assertFalse(self.plan["distribution_activation_allowed"])
         self.assertFalse(self.plan["source_cutover"]["dual_source_allowed"])
         self.assertEqual(self.mapping["authority"], "none")

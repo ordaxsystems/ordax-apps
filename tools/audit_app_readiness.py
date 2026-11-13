@@ -165,6 +165,14 @@ def audit_workspace(root: Path = ROOT) -> dict:
             raise AuditError(
                 f"{app_id}: duplicate app source forbidden before platform cutover"
             )
+        if (
+            migration
+            and migration.get("source_of_truth_state") == "source-absent-after-platform-removal"
+            and ((apps_root / app_id).exists() or (apps_root / app_id).is_symlink())
+        ):
+            raise AuditError(
+                f"{app_id}: target source exists while Gate B materialization is still pending"
+            )
         blockers = []
         metadata = None
         if manifest.exists():
@@ -179,6 +187,9 @@ def audit_workspace(root: Path = ROOT) -> dict:
         else:
             if (apps_root / app_id).is_dir():
                 source_state = "planned-no-manifest"
+            elif migration and migration.get("source_of_truth_state") == "source-absent-after-platform-removal":
+                source_state = "source-absent-after-platform-removal"
+                blockers.append("source-materialization-pending")
             elif migration and migration.get("source_repository_current") not in (None, REPOSITORY):
                 source_state = "platform-until-cutover"
             elif app_id in BOOTSTRAP:

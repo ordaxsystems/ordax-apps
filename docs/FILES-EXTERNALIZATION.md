@@ -4,75 +4,16 @@
 
 ## Estado reconciliado com os repositórios atuais
 
-- O `ordax-os` conserva os serviços/contratos File Space, Recentes e Projetos,
-  mas não a implementação do app Files. O snapshot histórico dos blobs removidos
-  permanece a origem verificável para uma futura materialização em `ordax-apps`;
-  até isso ocorrer, não existe segunda fonte executável.
-- O snapshot dos dez arquivos foi recapturado da árvore canônica limpa
-  `ordax-os/main@cf8b07ba6d152856b34cc190079beaa8312252f2`. Os dez Git blob IDs
-  foram comparados com o snapshot anterior (`fe8d233`) e permanecem idênticos;
-  nenhum source do Files mudou nas integrações subsequentes. Este é o baseline
-  de source atual; o snapshot ainda deve ser recapturado no pai direto do Gate A
-  se qualquer arquivo inventariado mudar antes da remoção.
-- A PR [`ordax-os#2156`](https://github.com/ordaxsystems/ordax-os/pull/2156) foi
-  integrada por merge commit. Ela publica o App SDK 1.20.0 (73 contratos,
-  `authority:none`) e prepara o executor isolado e a porta File Space/11 com
-  escopo `device-local`. As 14 execuções no HEAD final passaram, incluindo boot
-  QEMU direto, fallback one-shot e UEFI/OVMF; essas provas validam a base USB,
-  não a montagem de Files como componente externo.
-- O commit integrado `fe8d233681801386ed8fb9fbfb47fe091d8d2e42` já implementa a
-  fronteira Native para um slot externo Files: o runtime executa em iframe de
-  origem opaca (`5ef5439a`), recebe File Space/11 device-local apenas pelo
-  provider ligado à identidade `current` verificada (`fd494f11`) e cada RPC
-  revalida a revisão/identidade exatas; perda da autoridade revoga o frame e
-  drena as chamadas em andamento. O gate
-  `native_files_slot_bound_file_space_enforced` está `true`. As suítes focadas
-  de executor isolado, contexto Files, loader current e probation passaram
-  localmente: 46/46.
-- `tools/prove_files_ephemeral_candidate.py`, contra OS `fe8d2336` e o SDK
-  pinado `ee2a50db` (1.20.0), confirmou os 10 blobs do app e 15 blobs de
-  contratos públicos. O builder gerou duas vezes o mesmo candidato não assinado
-  (`3db0bebc…e0b794a`) e importou o runtime diretamente do ZIP. Tudo ficou em
-  diretório temporário; não criou `apps/files`. A prova do pacote continua sem
-  montagem no host e não demonstra instalação assinada, bootstrap ou ativação.
-- A Foundation do Apps agora compila o signer Go canônico do owner OS pinado em
-  `migrations/notes.platform-lifecycle.lock.json` (`cf8b07ba`) e passa o
-  candidato efêmero ao `sign-v2`. O signer rejeita Files porque o source ainda
-  pertence ao OS. A CI exige explicitamente essa rejeição e confirma que nenhum
-  envelope/slot foi criado, nenhuma instalação foi autorizada e nenhuma trust
-  de produção ou ativação foi usada. Esta é uma prova negativa do gate de
-  ownership, não assinatura de release nem permissão para o cutover.
-- A prova revelou e corrigiu a divergência Windows/Unix na comparação dos blobs:
-  agora a auditoria e a materialização usam a mesma normalização CRLF→LF para
-  `.mjs`, `.js` e `.css`, com regressão dedicada ao checkout Windows.
-- Isso fecha a implementação do limite host/runtime, mas não prova a montagem
-  de um pacote Files assinado e instalado durante o boot. No mesmo HEAD, o
-  trust anchor canônico ainda não está pinado, ativação/promoção/rollback de
-  slots seguem desabilitados e não há provisionamento offline de Files nem
-  prova QEMU/USB de operações diárias com o pacote externo. A #2164 testa
-  probation com File Space sintético vazio e sem dados do usuário; ela não é
-  essa prova de entrega.
-- O SDK 1.20.0 continua sendo o mínimo pinado para validar o escopo do File
-  Space. `source_cutover_allowed=false` e `distribution_activation_allowed=false`
-  continuam corretos. Não criar `apps/files` até que a entrega assinada e o
-  handoff preservem as operações obrigatórias do USB sem dupla fonte.
-- A PR [`ordax-os#2164`](https://github.com/ordaxsystems/ordax-os/pull/2164) foi
-  integrada em `fe8d233681801386ed8fb9fbfb47fe091d8d2e42`, com todos os workflows
-  verdes, incluindo a prova QEMU/UEFI. Ela permite montar o candidato Files
-  durante probation em frame isolado, somente com File Space sintético vazio,
-  sem App Data, workspace real, mutações ou autoridade de promoção. Isso habilita
-  uma prova segura de contrato de montagem; não comprova distribuição offline
-  assinada, associação real do slot aos dados do usuário, recuperação em pendrive
-  físico nem autoriza o cutover.
-- O mapa de Gate B continua descrevendo a transformação dos dez arquivos sem
-  copiá-los nem liberar o corte. O Gate A ainda exige bootstrap offline assinado,
-  vínculo real do slot ao File Space, health/probation no host e nos dados reais,
-  rollback, reinstalação e recuperação USB comprovados; o handoff segue acompanhado
-  em [`ordax-os#1743`](https://github.com/ordaxsystems/ordax-os/issues/1743).
+- **Gate A concluído:** a remoção do source bundled ocorreu no commit exato `4bee05e1b2e707354217fe2a4dfa6d8540aecf0e` (`ordax-os#2184`). Seu pai imediato é `85d68ea0f4aae01ce63646f09b486bc43b8af8d7`.
+- **Snapshot histórico válido:** `cf8b07ba6d152856b34cc190079beaa8312252f2` continua sendo a captura dos dez paths app-owned. A comparação Git entre esse snapshot e o pai imediato do Gate A atravessa 75 commits e mostra **zero alteração nos paths Files inventariados**; portanto não é necessário recapturar os blobs para provar a remoção.
+- **Nenhuma fonte executável atual:** `system/apps/files/` já não existe no OS e `apps/files/` ainda não foi materializado. O estado machine-readable é `source-absent-after-platform-removal`; `source_repository_current` e `source_path_current` são `null`.
+- **Gate B pendente:** `source_cutover_allowed=true` significa apenas que a remoção/snapshot foram provados e a futura materialização em `ordax-apps/apps/files` pode ser executada. O plano mantém `target_materialization_state=pending` e `target_source_present=false`; criar o source e mudar para `ordax-apps-canonical` devem ocorrer juntos, com validação.
+- **Distribuição continua bloqueada:** `distribution_activation_allowed=false`. Não há package assinado autorizado, instalação, promoção, bootstrap offline nem prova de Files em hardware. Gate A não concede nenhuma dessas capacidades.
+- **Serviços estruturais permanecem no OS:** File Space, Recentes, Projects, grants/brokers e lifecycle sistêmico continuam em seus owners. A futura fonte do app deve consumir somente a fronteira pública/SDK; não copiar adapters ou serviços privados.
+- **SDK mínimo:** o App SDK 1.20.0 permanece a fronteira pública pinada usada pelas provas portáteis. A prova efêmera continua útil para demonstrar determinismo e ausência de source permanente, mas a antiga prova negativa “o OS ainda é owner e rejeita Apps no signer” foi aposentada porque esse fato deixou de ser verdadeiro após Gate A.
+- **CI atual:** Foundation verifica o snapshot histórico, o commit exato de Gate A e a ausência do target. O workflow de pacote só fica elegível quando o plano e o Git mostrarem `apps/files/app.json` materializado no estado canônico; enquanto Gate B estiver pendente ele termina honestamente como `FILES_PACKAGE=GATE_B_SOURCE_PENDING`.
 
-Os parágrafos abaixo identificados como evidência de 2026-10-08 são históricos;
-quando divergirem desta reconciliação, prevalecem os repositórios, pins e
-verificações atuais.
+Os parágrafos abaixo identificados como evidência de 2026-10-08 são históricos; quando mencionarem `source_cutover_allowed=false`, Files “platform-owned”, Gate A não executado, namespaces antigos ou próximos passos daquela época, **não são instrução operacional**. O plano machine-readable e a seção atual acima prevalecem.
 
 ## Evidência observada (2026-10-08)
 
@@ -227,19 +168,20 @@ A verificação final deverá executar `tools/verify_files_cutover.py --platform
 
 O Files atualmente mantém o contexto de Recentes e Lixeira quando uma navegação falha, e impede que respostas de navegação antigas alterem o índice do histórico, o destino de um projeto ou o fallback mais recente. A atualização do inventário é feita somente após o commit validado no owner OS; o Gate A continua bloqueado e o File Space permanece sob responsabilidade da plataforma.
 
-## Sequência de entrega
+## Sequência de entrega vigente
 
-1. Plataforma/owner confirma repositório final após a migração e captura snapshot **pinado** do source Files antes da remoção, com inventário de arquivos.
-2. Plataforma remove app bundled, UI e wiring específicos, preserva File Space/Recent Files/Projects e repara testes/smokes dependentes.
-3. Registrar commit exato do Gate A e prova de checkout limpo; somente então marcar `source_cutover_allowed=true`, com snapshot/inventário consistentes.
-4. Após Gate A, criar `apps/files` com manifest, compatibility, runtime, estilos e i18n, testes e port de navegação **sem** imports privados. O MVP inicial deve ser estritamente bounded e limitado às autorizações demonstradas.
-5. Validar package determinístico, SDK conformance, install/stage/health/promote, rollback, offline reinstall e App Data separadamente. Produção continua `distribution_activation_allowed=false` até os gates operacionais.
+1. **Gate A — concluído:** preservar o snapshot Git e o commit exato de remoção; não restaurar source no OS.
+2. **Gate B — próximo corte de source:** materializar em `apps/files` somente os paths app-owned descritos pelo mapa de transferência, transformando-os para os contratos públicos atuais e sem copiar File Space/adapters/serviços do OS.
+3. Na **mesma mudança** que cria e valida `apps/files/app.json`, avançar o plano para `source_of_truth_state=ordax-apps-canonical`, `source_repository_current=ordaxsystems/ordax-apps`, `source_path_current=apps/files`, `target_materialization_state=materialized` e `target_source_present=true`. Não publicar um estado canônico sem bytes, nem bytes sem atualizar o SSOT.
+4. Depois da materialização, provar package determinístico, compatibilidade SDK, signing/stage/install/health/probation, rollback, reinstalação offline e App Data conforme o canal aplicável.
+5. **Ativação/distribuição é gate separado:** manter `distribution_activation_allowed=false` até os critérios operacionais de trust, publicação e produto real serem satisfeitos.
 
-## Critérios de aceite desta etapa
+## Critérios de aceite do estado atual
 
-- A auditoria G0 identifica `files` como `platform-until-cutover`, e não como app instalado.
-- Os testes recusam source duplicado, SDK insuficiente, exclusão de port estrutural, ausência de snapshot, checkout dirty, SHA incorreto e imports legados.
-- A Foundation CI valida o plano e os testes; **não** executa `--require-cutover-ready` enquanto o OS ainda detém o source.
-- Não foi copiado código da plataforma nem alterado o OS.
+- A auditoria identifica `files` como `source-absent-after-platform-removal`, nunca como app instalado nem como source ainda pertencente ao OS.
+- O checkout exato de `4bee05e1...` prova que todos os paths app-owned foram removidos e que o snapshot histórico continua ancestral/íntegro.
+- `apps/files` permanece ausente enquanto `target_materialization_state=pending`; qualquer scaffold prematuro falha fechado.
+- O workflow de pacote não tenta empacotar o source inexistente e informa Gate B pendente; package/sign/install continuam inelegíveis.
+- `distribution_activation_allowed=false` e `authority=none` permanecem invariantes.
 
-Referências: `URGENTE-ROADMAP-ORDAX-APPS.md`, `HANDOFF.md`, `docs/APP-READINESS-AUDIT.md`, `migrations/projects.externalization.json`.
+Referências atuais: `migrations/files.externalization.json`, `migrations/files.gate-b-transfer-map.json`, `tools/verify_files_cutover.py`, `AGENTS.md` e o ownership canônico do OS. Os documentos/PRs antigos abaixo permanecem apenas como evidência de evolução.

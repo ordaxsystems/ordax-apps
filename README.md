@@ -70,13 +70,12 @@ Arquivos (`files`) e Internet (`internet`) são apps da classe `bootstrap`; isso
 não significa que ambos ainda tenham o mesmo owner de fonte ou distribuição
 independente aprovada.
 
-- **Arquivos:** a fonte bundled `ordax-os/system/apps/files` foi removida pela
-  PR `ordax-os#2184`. Ainda não existe uma fonte executável ativa em `apps/files`
-  nem distribuição externa habilitada; o produto Files está temporariamente
-  ausente enquanto o host conserva File Space/Recentes/Projetos. Não restaurar a
-  implementação no OS nem declarar Files instalado. O plano de externalização
-  preserva o snapshot e os gates para a futura materialização em `ordax-apps`;
-  seus campos de pré-cutover não substituem o estado atual provado no OS.
+- **Arquivos:** o Gate A foi concluído em `ordax-os#2184` / commit
+  `4bee05e1...`; a fonte bundled não existe mais. `apps/files` ainda não foi
+  materializado. O plano canônico registra explicitamente
+  `source-absent-after-platform-removal`, Gate A completo e Gate B pendente.
+  Não restaurar o app no OS, não criar scaffold paralelo e não declarar Files
+  instalado/distribuível antes da materialização e dos gates posteriores.
 - **Internet:** o Gate A de fonte já ocorreu. O owner portátil é
   `ordaxsystems/ordax-apps/apps/internet`, com `app.json` e código canônico
   presentes. A ativação de distribuição permanece bloqueada no

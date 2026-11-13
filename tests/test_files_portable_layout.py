@@ -52,6 +52,7 @@ def fixture(root):
     ]}
     audit = {"sdk_boundary_clean": True, "source_commit": inventory["commit"],
              "sdk_bundle_version": "1.16.0",
+             "source_cutover_authorized": True,
              "public_contracts": ["system/contracts/first-party-app.mjs"],
              "transitive_public_contracts": ["system/contracts/file-space.mjs"]}
     return source, sdk, inventory, bundle, audit
@@ -99,7 +100,7 @@ class PortableFilesLayoutTests(unittest.TestCase):
             self.assertEqual(report["sdk_contract_count"], 2)
             self.assertFalse(report["runtime_entrypoint_provided"])
             self.assertFalse(report["package_built"])
-            self.assertFalse(report["source_cutover_authorized"])
+            self.assertTrue(report["source_cutover_authorized"])
             self.assertEqual(report["distribution_activation"], "blocked")
             self.assertFalse((Path(temp) / "apps/files").exists())
 
