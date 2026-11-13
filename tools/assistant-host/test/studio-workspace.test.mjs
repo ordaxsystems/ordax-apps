@@ -27,6 +27,15 @@ test('workspace presentation bounds data and rejects results from another device
   assert.equal(workspaceText('gitDiff', { data: { diff: '+updated\n' } }), '+updated\n');
   assert.equal(workspaceText('gitDiff', { data: { stdout: '+runtime-output\n' } }), '+runtime-output\n');
   assert.equal(workspaceText('continuity', { data: { project: 'demo', state: { summary: 'Concluído', next_action: 'Testar', completed: ['Base pronta'], blockers: ['Revisar'], changed_paths: ['src/main.mjs'] } } }), 'Concluído\n\nPróximo passo: Testar\n\nConcluído: Base pronta\n\nPendência: Revisar\n\nArquivo alterado: src/main.mjs');
+  const briefing = workspaceText('briefing', { data: {
+    project: { slug: 'demo' }, repository: { branch: 'main' },
+    health: { git: { dirty: true, changed_entries: 2 }, adapters: { blender: { enabled: true, state: 'ready' }, unity: { enabled: false, state: 'disabled' } } },
+    preview: { mode: 'web', runtime: { state: 'running' } },
+    continuity: { project_state: { summary: 'Feature pronta', next_action: 'Publicar', completed: ['UI'], blockers: ['Revisão'], changed_paths: ['src/main.mjs'] }, open_tasks: [{ title: 'Validar release' }], latest_checkpoint: { summary: 'Checkpoint 7' }, memories: [{ snippet: 'Decisão arquitetural preservada' }] },
+    workspace: { context_files: ['README.md'], documents: [{ path: 'docs/PLAN.md' }], scripts: [{ path: 'scripts/check.mjs' }], models: [] }, attention: ['Git has 2 tracked changed entries'],
+  } });
+  for (const expected of ['Projeto: demo','Onde paramos: Feature pronta','Próximo passo: Publicar','Concluído: UI','Pendência: Revisão','Arquivo alterado: src/main.mjs','Git: branch main','Git: 2 alteração(ões) pendente(s)','Preview: web · running','Adapter: blender · ready','Tarefa aberta: Validar release','Checkpoint: Checkpoint 7','Memória do projeto: Decisão arquitetural preservada','Atenção: Git has 2 tracked changed entries','Arquivo de contexto: README.md','Documento: docs/PLAN.md','Script: scripts/check.mjs']) assert.ok(briefing.includes(expected), `briefing missing: ${expected}`);
+  assert.equal(briefing.includes('Adapter: unity'), false);
   assert.equal(workspaceText('gitDiff', { data: { diff: '' } }), 'Sem alterações no diff.');
   assert.equal(workspaceText('gitDiff', { data: { diff: 'x'.repeat(160000) } }).length, 150000);
   assert.equal(workspaceResultBelongs({ deviceId: 'a', project: 'one' }, { deviceId: 'b', project: 'one' }), false);
