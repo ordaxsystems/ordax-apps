@@ -48,7 +48,7 @@ export function workspaceText(kind, result) {
     const states = { stopped: 'parado', running: 'em execução', ready: 'pronto', starting: 'iniciando', failed: 'falhou' }, state = data.runtime?.state;
     return [`Preview: ${value(data.mode)}`, state && `Estado: ${states[state] || value(state)}`, data.url && `Endereço: ${value(data.url)}`, data.latest_image && 'Existe uma captura disponível no Runtime.'].filter(Boolean).join('\n');
   }
-  if (['blenderStatus','blenderSchema','blenderScene','blenderInspect'].includes(kind)) {
+  if (['blenderStatus','blenderSchema','blenderScene','blenderInspect','blenderStart','blenderTransform','blenderCreate','blenderMaterial','blenderSave'].includes(kind)) {
     return JSON.stringify(data, null, 2).slice(0, 150000);
   }
   return JSON.stringify(data, null, 2).slice(0, 150000);
@@ -70,4 +70,9 @@ export const workspaceTools = Object.freeze({
   blenderSchema: { target: 'studioBlenderResult', title: 'Schema de modelagem Blender' },
   blenderScene: { target: 'studioBlenderResult', title: 'Cena Blender' },
   blenderInspect: { target: 'studioBlenderResult', title: 'Objeto Blender' },
+  blenderStart: { target: 'studioBlenderResult', title: 'Blender live iniciado' },
+  blenderTransform: { target: 'studioBlenderResult', title: 'Transformação Blender' },
+  blenderCreate: { target: 'studioBlenderResult', title: 'Primitiva Blender' },
+  blenderMaterial: { target: 'studioBlenderResult', title: 'Material Blender' },
+  blenderSave: { target: 'studioBlenderResult', title: 'Cena Blender salva' },
 });
