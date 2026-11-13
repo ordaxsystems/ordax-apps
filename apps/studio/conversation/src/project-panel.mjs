@@ -10,6 +10,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   const $ = id => document.getElementById(id);
   let state = { targets: [], operations: [] }, refreshPromise = null, submitting = 0, file = null, entries = [], proposal = null, reviewed = null, stamp = '', handled = new Set();
   let continuityProposal = null, contextResult = null, continuityBase = null;
+  let blenderProposal = null;
   let pendingReversibleWrite = null, lastReversibleWrite = null;
   let continuityBaseline = JSON.stringify(['','','','','']);
   let desiredBinding = null;
@@ -19,6 +20,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   const continuityFields = Object.freeze(['studioSummary','studioNextAction','studioCompleted','studioBlockers','studioChangedPaths']);
   const continuityStamp = () => JSON.stringify(continuityFields.map(id => $(id).value));
   const continuityDirty = () => continuityStamp() !== continuityBaseline;
+  const blenderDirty = () => Boolean(blenderProposal);
   const safeContinuityList = value => Array.isArray(value) ? value.filter(item => typeof item === 'string').slice(0, 100) : [];
   function writeContinuity(value = null) {
     $('studioSummary').value = typeof value?.summary === 'string' ? value.summary : '';
@@ -45,7 +47,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   function assertContext(binding) {
     if (bindingEquals(binding, currentBinding())) return;
     $('activityScope').value = 'project';
-    if (dirty() || continuityDirty()) throw new Error('Revise ou descarte as alterações do espaço de trabalho antes de trocar de projeto.');
+    if (dirty() || continuityDirty() || blenderDirty()) throw new Error('Revise ou descarte as alterações do espaço de trabalho antes de trocar de projeto.');
     if (submitting || state.operations.some(op => pending(op) || op.status === 'uncertain')) throw new Error('Confira a operação do Runtime antes de trocar de projeto.');
   }
   function setContext(binding) {
@@ -65,7 +67,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   const message = text => { $('projectNotice').textContent = text; };
   const task = fn => Promise.resolve().then(fn).catch(error => message(error.message));
   const workspaceVisible = () => !$('projectDialog').hidden;
-  const canClose = () => !dirty() && !continuityDirty();
+  const canClose = () => !dirty() && !continuityDirty() && !blenderDirty();
   function showWorkspace(visible) {
     // Never hide an unreviewed file edit or continuity draft.
     if (!visible && !canClose()) {
@@ -92,6 +94,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   }
   function clearProjectTools() {
     continuityProposal = null; contextResult = null; continuityBase = null; $('studioContinuityReviewArea').hidden = true;
+    blenderProposal = null; $('studioBlenderReviewArea').hidden = true;
     $('studioContextSource').textContent = 'Nenhum contexto recuperado. Consulte o Runtime autorizado para este projeto.';
     writeContinuity();
     for (const tool of Object.values(workspaceTools)) $(tool.target).textContent = 'Consulte o projeto selecionado para atualizar.';
@@ -100,17 +103,17 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     const active = submitting || state.operations.some(pending), blocked = active || state.recoveryRequired || state.operations.some(op => op.status === 'uncertain');
     const ready = deviceAvailable(state, selected().deviceId) && selected().project;
     $('workspaceProjectConversations').disabled = blocked || !ready || !onProjectConversations;
-    for (const id of ['studioGitStatus','studioGitDiff','studioSearchRun','studioBriefing','studioContinuityRead','studioPreviewStatus','studioContinuityReview','studioBlenderStatus','studioBlenderSchema','studioBlenderScene','studioBlenderInspect']) $(id).disabled = blocked || !ready;
-    $('studioBlenderObject').disabled = blocked || !ready;
-    $('studioBlenderObjectKind').disabled = blocked || !ready;
+    for (const id of ['studioGitStatus','studioGitDiff','studioSearchRun','studioBriefing','studioContinuityRead','studioPreviewStatus','studioContinuityReview','studioBlenderStatus','studioBlenderSchema','studioBlenderScene','studioBlenderInspect','studioBlenderStartReview','studioBlenderTransformReview','studioBlenderCreateReview','studioBlenderMaterialReview','studioBlenderSaveReview']) $(id).disabled = blocked || !ready;
+    for (const id of ['studioBlenderObject','studioBlenderObjectKind','studioBlenderTransformField','studioBlenderVector','studioBlenderPrimitiveName','studioBlenderPrimitive','studioBlenderPrimitiveLocation','studioBlenderPrimitiveSize','studioBlenderPrimitiveDepth','studioBlenderPrimitiveSegments','studioBlenderMaterialName','studioBlenderBaseColor','studioBlenderRoughness','studioBlenderMetallic','studioBlenderSavePath']) $(id).disabled = blocked || !ready;
+    $('studioBlenderApply').disabled = blocked || !ready || !blenderProposal;
     $('studioContinuityReview').disabled ||= !continuityBase;
     $('studioContinuityApply').disabled = blocked || !ready || !continuityProposal;
     $('studioContextAttach').disabled = !contextResult || blocked;
-    $('runtimeConnect').disabled = active || state.recoveryRequired || Boolean(dirty()) || continuityDirty() || !state.configured;
+    $('runtimeConnect').disabled = active || state.recoveryRequired || Boolean(dirty()) || continuityDirty() || blenderDirty() || !state.configured;
     $('productAccountSection').hidden = !accountAvailable || state.configured || state.connected;
-    $('productSignIn').disabled = accountBusy || blocked || Boolean(dirty()) || continuityDirty();
+    $('productSignIn').disabled = accountBusy || blocked || Boolean(dirty()) || continuityDirty() || blenderDirty();
     $('runtimeConnect').textContent = state.connected ? 'Reconectar Runtime' : 'Conectar Runtime';
-    $('runtimeDevice').disabled = blocked || !state.connected || dirty() || continuityDirty(); $('runtimeProject').disabled = blocked || !state.connected || dirty() || continuityDirty();
+    $('runtimeDevice').disabled = blocked || !state.connected || dirty() || continuityDirty() || blenderDirty(); $('runtimeProject').disabled = blocked || !state.connected || dirty() || continuityDirty() || blenderDirty();
     for (const id of continuityFields) $(id).disabled = blocked;
     $('projectList').disabled = blocked || !ready || dirty(); $('projectPath').disabled = blocked || !ready || dirty();
     $('projectEditor').disabled = blocked || !file;
@@ -426,12 +429,72 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   for (const [id, kind] of Object.entries({ studioGitStatus: 'gitStatus', studioGitDiff: 'gitDiff', studioPreviewStatus: 'preview', studioBriefing: 'briefing', studioContinuityRead: 'continuity', studioSearchRun: 'search', studioBlenderStatus: 'blenderStatus', studioBlenderSchema: 'blenderSchema', studioBlenderScene: 'blenderScene' })) {
     $(id).addEventListener('click', () => task(() => submit({ kind, ...(['search','briefing'].includes(kind) ? { query: kind === 'search' ? $('studioSearchQuery').value : '' } : {}) })));
   }
-  $('studioBlenderInspect').addEventListener('click', () => task(() => {
+  function blenderSelectorInput() {
     const target = $('studioBlenderObject').value.trim();
-    return submit({
-      kind: 'blenderInspect',
-      ...($('studioBlenderObjectKind').value === 'id' ? { objectId: target } : { objectName: target }),
-    });
+    if (!target) throw new Error('Informe o nome ou object id do Blender.');
+    return $('studioBlenderObjectKind').value === 'id' ? { objectId: target } : { objectName: target };
+  }
+  function blenderVector(id, label) {
+    const values = $(id).value.split(',').map(value => Number(value.trim()));
+    if (values.length !== 3 || values.some(value => !Number.isFinite(value))) throw new Error(`${label}: informe três números separados por vírgula.`);
+    return values;
+  }
+  function blenderNumberInput(id, label, { integer = false } = {}) {
+    const value = Number($(id).value.trim());
+    if (!Number.isFinite(value) || (integer && !Number.isInteger(value))) throw new Error(`${label}: informe um número válido.`);
+    return value;
+  }
+  function reviewBlender(value) {
+    blenderProposal = Object.freeze({ ...selected(), ...value });
+    $('studioBlenderProposal').textContent = JSON.stringify(blenderProposal, null, 2);
+    $('studioBlenderReviewArea').hidden = false;
+    controls();
+    requestAnimationFrame(() => $('studioBlenderReviewArea').scrollIntoView({ block: 'nearest' }));
+  }
+  function invalidateBlenderReview() {
+    blenderProposal = null;
+    $('studioBlenderReviewArea').hidden = true;
+    controls();
+  }
+  $('studioBlenderInspect').addEventListener('click', () => task(() => submit({ kind: 'blenderInspect', ...blenderSelectorInput() })));
+  $('studioBlenderStartReview').addEventListener('click', () => task(() => reviewBlender({ kind: 'blenderStart' })));
+  $('studioBlenderTransformReview').addEventListener('click', () => task(() => reviewBlender({
+    kind: 'blenderTransform',
+    ...blenderSelectorInput(),
+    transform: $('studioBlenderTransformField').value,
+    vector: blenderVector('studioBlenderVector', 'Transformação'),
+  })));
+  $('studioBlenderCreateReview').addEventListener('click', () => task(() => reviewBlender({
+    kind: 'blenderCreate',
+    name: $('studioBlenderPrimitiveName').value.trim(),
+    primitive: $('studioBlenderPrimitive').value,
+    location: blenderVector('studioBlenderPrimitiveLocation', 'Localização'),
+    size: blenderNumberInput('studioBlenderPrimitiveSize', 'Tamanho ou raio'),
+    depth: blenderNumberInput('studioBlenderPrimitiveDepth', 'Profundidade'),
+    segments: blenderNumberInput('studioBlenderPrimitiveSegments', 'Segmentos', { integer: true }),
+  })));
+  $('studioBlenderMaterialReview').addEventListener('click', () => task(() => reviewBlender({
+    kind: 'blenderMaterial',
+    ...blenderSelectorInput(),
+    materialName: $('studioBlenderMaterialName').value.trim(),
+    baseColor: $('studioBlenderBaseColor').value,
+    roughness: blenderNumberInput('studioBlenderRoughness', 'Roughness'),
+    metallic: blenderNumberInput('studioBlenderMetallic', 'Metallic'),
+  })));
+  $('studioBlenderSaveReview').addEventListener('click', () => task(() => reviewBlender({
+    kind: 'blenderSave',
+    targetPath: $('studioBlenderSavePath').value.trim(),
+  })));
+  for (const id of ['studioBlenderObject','studioBlenderObjectKind','studioBlenderTransformField','studioBlenderVector','studioBlenderPrimitiveName','studioBlenderPrimitive','studioBlenderPrimitiveLocation','studioBlenderPrimitiveSize','studioBlenderPrimitiveDepth','studioBlenderPrimitiveSegments','studioBlenderMaterialName','studioBlenderBaseColor','studioBlenderRoughness','studioBlenderMetallic','studioBlenderSavePath']) {
+    $(id).addEventListener('input', invalidateBlenderReview);
+    $(id).addEventListener('change', invalidateBlenderReview);
+  }
+  $('studioBlenderCancel').addEventListener('click', invalidateBlenderReview);
+  $('studioBlenderApply').addEventListener('click', () => task(async () => {
+    const value = blenderProposal;
+    if (!value) return;
+    await submit(value);
+    invalidateBlenderReview();
   }));
   $('studioContextAttach').addEventListener('click', () => task(async () => {
     if (!contextResult || !workspaceResultBelongs(contextResult, selected())) throw new Error('Consulte novamente o contexto do projeto selecionado.');
