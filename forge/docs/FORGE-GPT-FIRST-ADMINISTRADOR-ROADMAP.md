@@ -275,11 +275,14 @@ históricos, não instruções de implementação. A realidade de cada funcional
   compartilhado com o ingress OrdaX por economia de infraestrutura;
   as autoridades, ferramentas, sessões e bindings são separados.
   **Autenticação:** o gateway usa o emissor Supabase já canônico
-  do OrdaX. O aplicativo Forge usa sessão normal do mesmo usuário
-  com prova de /auth/v1/user e refresh protegido por DPAPI;
-  não usa token de túnel, segredo embutido ou client_id de outro
-  cliente OAuth como autoridade nativa. A conexão inicial por
-  e-mail/OTP é uma etapa de Conta no aplicativo, sem criar usuário.
+  do OrdaX. O aplicativo Forge entra pela Conta OrdaX no navegador
+  padrão usando Authorization Code + PKCE e o cliente público nativo
+  próprio `6a94ae80-a59c-4f48-a32c-2e15da34374f`; não existe
+  client secret. O access token é provado em /auth/v1/user e o
+  refresh token fica protegido por DPAPI para continuidade após
+  reinício. Esse client_id é aceito somente pelas rotas nativas
+  /v1/forge/instance/* e não amplia a autoridade Owner nem a do
+  cliente MCP do ChatGPT. O Forge não coleta e-mail, senha ou OTP.
   **Cliente nativo remoto:** forge-product-session.mjs e
   forge-remote-gateway-client.mjs registram uma instância estável
   com o catálogo das ferramentas canônicas do próprio app e digest

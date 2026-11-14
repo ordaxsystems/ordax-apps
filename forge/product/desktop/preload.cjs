@@ -12,8 +12,7 @@ contextBridge.exposeInMainWorld('ordax', {
   forgeLocalMcpResumeDisable: () => ipcRenderer.invoke('ordax:forge:local-mcp:resume-disable'),
   forgeLocalMcpStop: () => ipcRenderer.invoke('ordax:forge:local-mcp:stop'),
   forgeProductAuthStatus: () => ipcRenderer.invoke('ordax:forge:product-auth:status'),
-  forgeProductAuthRequestOtp: email => ipcRenderer.invoke('ordax:forge:product-auth:request-otp',email),
-  forgeProductAuthVerifyOtp: input => ipcRenderer.invoke('ordax:forge:product-auth:verify-otp',input),
+  forgeProductAuthConnect: () => ipcRenderer.invoke('ordax:forge:product-auth:connect'),
   forgeProductAuthReconnect: () => ipcRenderer.invoke('ordax:forge:product-auth:reconnect'),
   forgeProductAuthDisconnect: () => ipcRenderer.invoke('ordax:forge:product-auth:disconnect'),
   onForgeRemoteGatewayChanged: callback => {

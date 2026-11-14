@@ -16,11 +16,7 @@ const mcpToken=localMcpElement('forgeLocalMcpToken');
 const mcpUrl=localMcpElement('forgeLocalMcpUrl');
 
 const remoteState=localMcpElement('forgeRemoteGatewayState');
-const productEmail=localMcpElement('forgeProductEmail');
-const productSendCode=localMcpElement('forgeProductSendCode');
-const productOtpControls=localMcpElement('forgeProductOtpControls');
-const productCode=localMcpElement('forgeProductCode');
-const productVerifyCode=localMcpElement('forgeProductVerifyCode');
+const productConnect=localMcpElement('forgeProductConnect');
 const productReconnect=localMcpElement('forgeProductReconnect');
 const productDisconnect=localMcpElement('forgeProductDisconnect');
 
@@ -31,8 +27,7 @@ const localUsable=typeof api?.forgeLocalMcpStatus==='function'&&
   typeof api?.forgeLocalMcpResumeDisable==='function'&&
   typeof api?.forgeLocalMcpStop==='function';
 const remoteUsable=typeof api?.forgeProductAuthStatus==='function'&&
-  typeof api?.forgeProductAuthRequestOtp==='function'&&
-  typeof api?.forgeProductAuthVerifyOtp==='function'&&
+  typeof api?.forgeProductAuthConnect==='function'&&
   typeof api?.forgeProductAuthReconnect==='function'&&
   typeof api?.forgeProductAuthDisconnect==='function';
 
@@ -70,17 +65,11 @@ function syncControls(){
   }
   if(mcpStop)mcpStop.disabled=busy||!localUsable||!active;
 
-  if(productEmail){
-    if(account.connected&&account.email)productEmail.value=account.email;
-    productEmail.disabled=busy||account.connected||!trusted;
+  if(productConnect){
+    productConnect.hidden=account.connected;
+    productConnect.disabled=busy||!remoteUsable||account.connected||!trusted||account.authPending===true;
+    productConnect.textContent=account.authPending===true?'Conectando no navegador…':'Entrar com Conta OrdaX';
   }
-  if(productSendCode)
-    productSendCode.disabled=busy||!remoteUsable||account.connected||!trusted||
-      !productEmail?.value?.trim();
-  if(productOtpControls)productOtpControls.hidden=account.connected||account.otpPending!==true;
-  if(productVerifyCode)
-    productVerifyCode.disabled=busy||!remoteUsable||account.connected||
-      !trusted||!/^[0-9]{6,8}$/.test(productCode?.value?.trim()||'');
   if(productReconnect){
     productReconnect.hidden=!account.connected||gateway.running===true;
     productReconnect.disabled=busy||!trusted;
@@ -103,10 +92,10 @@ function renderRemote(){
     return;
   }
   if(!account.connected){
-    setRemoteState(account.otpPending
-      ?'Código enviado. Digite o código recebido para conectar esta instância.'
-      :'Conta OrdaX ainda não conectada. Esta etapa é feita uma única vez e a sessão fica protegida pelo Windows.',
-      account.otpPending?'pending':'blocked');
+    setRemoteState(account.authPending
+      ?'Conclua a entrada da Conta OrdaX no navegador para conectar esta instância.'
+      :'Conta OrdaX ainda não conectada. A entrada é feita no navegador e a sessão fica protegida pelo Windows.',
+      account.authPending?'pending':'blocked');
     return;
   }
   const identity=account.email||'Conta OrdaX';
@@ -202,29 +191,13 @@ mcpResume?.addEventListener('click',async()=>{
   finally{busy=false;await refreshMcp();}
 });
 
-productEmail?.addEventListener('input',syncControls);
-productCode?.addEventListener('input',()=>{
-  if(productCode)productCode.value=productCode.value.replace(/\D/g,'').slice(0,8);
-  syncControls();
-});
-productSendCode?.addEventListener('click',async()=>{
+productConnect?.addEventListener('click',async()=>{
   if(busy||!remoteUsable)return;
   busy=true;syncControls();
-  try{
-    await api.forgeProductAuthRequestOtp(productEmail?.value||'');
-    if(productCode)productCode.value='';
-  }catch(error){
-    setRemoteState(String(error?.message||'Não foi possível enviar o código.').slice(0,160),'blocked');
-  }finally{busy=false;await refreshMcp();}
-});
-productVerifyCode?.addEventListener('click',async()=>{
-  if(busy||!remoteUsable)return;
-  busy=true;syncControls();
-  try{
-    await api.forgeProductAuthVerifyOtp({email:productEmail?.value||'',token:productCode?.value||''});
-    if(productCode)productCode.value='';
-  }catch(error){
-    setRemoteState(String(error?.message||'Código inválido ou expirado.').slice(0,160),'blocked');
+  setRemoteState('Abrindo a Conta OrdaX no navegador…','pending');
+  try{await api.forgeProductAuthConnect();}
+  catch(error){
+    setRemoteState(String(error?.message||'Não foi possível conectar a Conta OrdaX.').slice(0,160),'blocked');
   }finally{busy=false;await refreshMcp();}
 });
 productReconnect?.addEventListener('click',async()=>{
@@ -237,7 +210,7 @@ productReconnect?.addEventListener('click',async()=>{
 productDisconnect?.addEventListener('click',async()=>{
   if(busy||!remoteUsable)return;
   busy=true;syncControls();
-  try{await api.forgeProductAuthDisconnect();if(productEmail)productEmail.value='';}
+  try{await api.forgeProductAuthDisconnect();}
   catch{setRemoteState('Não foi possível desconectar a Conta OrdaX.','blocked');}
   finally{busy=false;await refreshMcp();}
 });
@@ -248,7 +221,6 @@ if(typeof api?.onForgeRemoteGatewayChanged==='function')
   api.onForgeRemoteGatewayChanged(()=>{if(!busy)void refreshMcp();});
 localMcpElement('appSettingsDialog')?.addEventListener('close',()=>{
   hideLocalSecret();
-  if(productCode)productCode.value='';
   syncControls();
 });
 void loadProjects();

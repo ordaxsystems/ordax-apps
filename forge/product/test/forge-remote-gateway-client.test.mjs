@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {createForgeProductSession,FORGE_SUPABASE_URL} from '../src/forge-product-session.mjs';
+import {createForgeProductSession,FORGE_SUPABASE_URL,FORGE_NATIVE_OAUTH_CLIENT_ID} from '../src/forge-product-session.mjs';
 import {ForgeRemoteGatewayClient,forgeRemoteCatalogDigest} from '../src/forge-remote-gateway-client.mjs';
 import {Store} from '../src/store.mjs';
 
@@ -27,55 +27,78 @@ function response(status,body){return new Response(JSON.stringify(body),{
   status,headers:{'content-type':'application/json'}
 });}
 
-test('product session uses one normal Supabase account session, sealed at rest and refreshed without client_id',async t=>{
+test('product session uses browser PKCE, seals refresh at rest and refreshes the exact Forge OAuth client',async t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'forge-product-session-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const calls=[];
   const fetchImpl=async(url,options={})=>{
-    calls.push({url:String(url),body:options.body?JSON.parse(options.body):null});
-    if(String(url).endsWith('/auth/v1/otp'))return response(200,{});
-    if(String(url).endsWith('/auth/v1/verify'))return response(200,{
-      access_token:jwt({exp:Math.floor(Date.now()/1000)+30}),refresh_token:'refresh-one',
-      user:{id:subject,email:'owner@example.com'}
-    });
+    const raw=String(options.body||'');
+    calls.push({url:String(url),body:raw,headers:options.headers||{}});
+    if(String(url).endsWith('/auth/v1/oauth/token')){
+      const form=new URLSearchParams(raw);
+      if(form.get('grant_type')==='authorization_code')return response(200,{
+        access_token:jwt({exp:Math.floor(Date.now()/1000)+30,client_id:FORGE_NATIVE_OAUTH_CLIENT_ID}),
+        refresh_token:'refresh-one'
+      });
+      if(form.get('grant_type')==='refresh_token')return response(200,{
+        access_token:jwt({client_id:FORGE_NATIVE_OAUTH_CLIENT_ID}),refresh_token:'refresh-two'
+      });
+    }
     if(String(url).endsWith('/auth/v1/user'))return response(200,{id:subject,email:'owner@example.com'});
-    if(String(url).includes('/auth/v1/token?grant_type=refresh_token'))return response(200,{
-      access_token:jwt(),refresh_token:'refresh-two',user:{id:subject,email:'owner@example.com'}
-    });
     throw Error('unexpected_fetch');
   };
-  // This mock exercises the Windows DPAPI contract on every CI host.
-  // Production still rejects secure-session persistence on non-Windows.
+  let authorizeUrl=null;
   const session=createForgeProductSession({
-    userRoot:root,safeStorage:safeStorage(),fetchImpl,platform:'win32'
+    userRoot:root,safeStorage:safeStorage(),fetchImpl,platform:'win32',oauthPort:0,
+    openExternal:async url=>{
+      authorizeUrl=new URL(url);
+      assert.equal(authorizeUrl.searchParams.get('client_id'),FORGE_NATIVE_OAUTH_CLIENT_ID);
+      assert.equal(authorizeUrl.searchParams.get('code_challenge_method'),'S256');
+      assert.match(authorizeUrl.searchParams.get('scope')||'',/offline_access/);
+      const callback=new URL(authorizeUrl.searchParams.get('redirect_uri'));
+      callback.searchParams.set('code','authorization-code-123456');
+      callback.searchParams.set('state',authorizeUrl.searchParams.get('state'));
+      setImmediate(()=>{void fetch(callback).catch(()=>{});});
+    }
   });
-  await session.requestOtp('owner@example.com');
-  const verified=await session.verifyOtp({email:'owner@example.com',token:'123456'});
-  assert.equal(verified.subjectId,subject);
+  const connected=await session.connectBrowser();
+  assert.equal(connected.subjectId,subject);
+  assert.equal(connected.clientId,FORGE_NATIVE_OAUTH_CLIENT_ID);
   assert.equal(session.status().connected,true);
+  assert.equal(session.status().mode,'oauth');
   const bytes=fs.readFileSync(path.join(root,'config','forge-product-session.enc')).toString();
   assert.doesNotMatch(bytes,/refresh-one|owner@example\.com/);
   assert.equal(typeof await session.accessToken(),'string');
-  assert.ok(calls.some(call=>call.url.includes('grant_type=refresh_token')));
-  assert.equal(session.status().connected,true);
+  const tokenCalls=calls.filter(call=>call.url.endsWith('/auth/v1/oauth/token'))
+    .map(call=>new URLSearchParams(call.body));
+  assert.equal(tokenCalls.length,2);
+  assert.equal(tokenCalls[0].get('grant_type'),'authorization_code');
+  assert.equal(tokenCalls[1].get('grant_type'),'refresh_token');
+  assert.equal(tokenCalls[1].get('client_id'),FORGE_NATIVE_OAUTH_CLIENT_ID);
+  assert.equal(tokenCalls[1].has('client_secret'),false);
 });
 
-test('product session refuses OAuth-server client tokens for native Forge authority',async t=>{
+test('product session refuses a signed OAuth token from another client',async t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'forge-product-client-token-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
-  const client='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
-  const fetchImpl=async url=>{
-    if(String(url).endsWith('/auth/v1/otp'))return response(200,{});
-    if(String(url).endsWith('/auth/v1/verify'))return response(200,{
-      access_token:jwt({client_id:client}),refresh_token:'refresh',
-      user:{id:subject,email:'owner@example.com'}
+  const other='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  const fetchImpl=async(url,options={})=>{
+    if(String(url).endsWith('/auth/v1/oauth/token'))return response(200,{
+      access_token:jwt({client_id:other}),refresh_token:'refresh'
     });
     throw Error('unexpected_fetch');
   };
-  const session=createForgeProductSession({userRoot:root,safeStorage:safeStorage(),fetchImpl});
-  await session.requestOtp('owner@example.com');
-  await assert.rejects(session.verifyOtp({email:'owner@example.com',token:'654321'}),
-    /forge_product_native_session_required/);
+  const session=createForgeProductSession({
+    userRoot:root,safeStorage:safeStorage(),fetchImpl,platform:'win32',oauthPort:0,
+    openExternal:async url=>{
+      const authorize=new URL(url);
+      const callback=new URL(authorize.searchParams.get('redirect_uri'));
+      callback.searchParams.set('code','authorization-code-654321');
+      callback.searchParams.set('state',authorize.searchParams.get('state'));
+      setImmediate(()=>{void fetch(callback).catch(()=>{});});
+    }
+  });
+  await assert.rejects(session.connectBrowser(),/forge_product_native_oauth_client_invalid/);
   assert.equal(session.status().connected,false);
 });
 
