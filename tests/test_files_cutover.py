@@ -37,6 +37,18 @@ def make_root(parent: Path) -> Path:
         "migrations/files.source-snapshot.json",
     ):
         shutil.copyfile(ROOT / path, root / path)
+
+    # Negative/historical fixtures intentionally model the pre-Gate-B state.
+    # The real repository may already be canonical in ordax-apps; never let that
+    # current state silently change the semantics of remove-first regression tests.
+    plan = load_plan(root)
+    plan["source_repository_current"] = None
+    plan["source_path_current"] = None
+    plan["source_of_truth_state"] = "source-absent-after-platform-removal"
+    plan["source_cutover"]["target_materialization_state"] = "pending"
+    plan["source_cutover"]["target_source_present"] = False
+    plan.pop("gate_b", None)
+    write_json(root / "migrations" / "files.externalization.json", plan)
     return root
 
 
