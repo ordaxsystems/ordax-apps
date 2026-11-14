@@ -44,6 +44,7 @@ export const PRODUCT_RUNTIME_OPERATIONS = Object.freeze({
   blenderInspect: profile("blender.live_object_inspect", ["objectName","objectId"], "project"),
   blenderStart: profile("blender.live_start", [], "project"),
   blenderTransform: profile("blender.live_object_transform", ["objectName","objectId","transform","vector"], "project"),
+  blenderBevel: profile("blender.live_add_modifier", ["objectName","objectId","modifierName","width","segments"], "project"),
   blenderCreate: profile("blender.live_create_primitive", ["name","primitive","location","size","depth","segments"], "project"),
   blenderMaterial: profile("blender.live_material_apply", ["objectName","objectId","materialName","baseColor","roughness","metallic"], "project"),
   blenderSave: profile("blender.live_save", ["targetPath"], "project"),

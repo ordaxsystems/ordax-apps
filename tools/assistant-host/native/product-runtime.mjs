@@ -441,6 +441,20 @@ export class ProductRuntime {
       Object.assign(arguments_, selector, { [field]: vector, timeout_seconds: 30 });
       label = `Transformar objeto Blender ${selector.object_name || selector.ordax_object_id}`;
     }
+    if (data.kind === 'blenderBevel') {
+      const selector = blenderObjectSelector(data);
+      if (!blenderName(data.modifierName)) throw fail('Nome do modifier Blender inválido.', 400);
+      const width = data.width == null ? 0.05 : blenderNumber(data.width, 'Largura do bevel', 0, 100);
+      const segments = data.segments == null ? 2 : blenderNumber(data.segments, 'Segmentos do bevel', 1, 6, { integer: true });
+      Object.assign(arguments_, selector, {
+        name: data.modifierName.trim(),
+        type: 'BEVEL',
+        width,
+        segments,
+        timeout_seconds: 30,
+      });
+      label = `Adicionar bevel ${data.modifierName.trim()} em ${selector.object_name || selector.ordax_object_id}`;
+    }
     if (data.kind === 'blenderCreate') {
       if (!blenderName(data.name)) throw fail('Nome da primitiva Blender inválido.', 400);
       const primitive = String(data.primitive || '').trim().toLowerCase();

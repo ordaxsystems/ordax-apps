@@ -103,8 +103,8 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     const active = submitting || state.operations.some(pending), blocked = active || state.recoveryRequired || state.operations.some(op => op.status === 'uncertain');
     const ready = deviceAvailable(state, selected().deviceId) && selected().project;
     $('workspaceProjectConversations').disabled = blocked || !ready || !onProjectConversations;
-    for (const id of ['studioGitStatus','studioGitDiff','studioSearchRun','studioBriefing','studioContinuityRead','studioPreviewStatus','studioContinuityReview','studioBlenderStatus','studioBlenderSchema','studioBlenderScene','studioBlenderInspect','studioBlenderStartReview','studioBlenderTransformReview','studioBlenderCreateReview','studioBlenderMaterialReview','studioBlenderSaveReview']) $(id).disabled = blocked || !ready;
-    for (const id of ['studioBlenderObject','studioBlenderObjectKind','studioBlenderTransformField','studioBlenderVector','studioBlenderPrimitiveName','studioBlenderPrimitive','studioBlenderPrimitiveLocation','studioBlenderPrimitiveSize','studioBlenderPrimitiveDepth','studioBlenderPrimitiveSegments','studioBlenderMaterialName','studioBlenderBaseColor','studioBlenderRoughness','studioBlenderMetallic','studioBlenderSavePath']) $(id).disabled = blocked || !ready;
+    for (const id of ['studioGitStatus','studioGitDiff','studioSearchRun','studioBriefing','studioContinuityRead','studioPreviewStatus','studioContinuityReview','studioBlenderStatus','studioBlenderSchema','studioBlenderScene','studioBlenderInspect','studioBlenderStartReview','studioBlenderTransformReview','studioBlenderBevelReview','studioBlenderCreateReview','studioBlenderMaterialReview','studioBlenderSaveReview']) $(id).disabled = blocked || !ready;
+    for (const id of ['studioBlenderObject','studioBlenderObjectKind','studioBlenderTransformField','studioBlenderVector','studioBlenderBevelName','studioBlenderBevelWidth','studioBlenderBevelSegments','studioBlenderPrimitiveName','studioBlenderPrimitive','studioBlenderPrimitiveLocation','studioBlenderPrimitiveSize','studioBlenderPrimitiveDepth','studioBlenderPrimitiveSegments','studioBlenderMaterialName','studioBlenderBaseColor','studioBlenderRoughness','studioBlenderMetallic','studioBlenderSavePath']) $(id).disabled = blocked || !ready;
     $('studioBlenderApply').disabled = blocked || !ready || !blenderProposal;
     $('studioContinuityReview').disabled ||= !continuityBase;
     $('studioContinuityApply').disabled = blocked || !ready || !continuityProposal;
@@ -464,6 +464,13 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     transform: $('studioBlenderTransformField').value,
     vector: blenderVector('studioBlenderVector', 'Transformação'),
   })));
+  $('studioBlenderBevelReview').addEventListener('click', () => task(() => reviewBlender({
+    kind: 'blenderBevel',
+    ...blenderSelectorInput(),
+    modifierName: $('studioBlenderBevelName').value.trim(),
+    width: blenderNumberInput('studioBlenderBevelWidth', 'Largura do bevel'),
+    segments: blenderNumberInput('studioBlenderBevelSegments', 'Segmentos do bevel', { integer: true }),
+  })));
   $('studioBlenderCreateReview').addEventListener('click', () => task(() => reviewBlender({
     kind: 'blenderCreate',
     name: $('studioBlenderPrimitiveName').value.trim(),
@@ -485,7 +492,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     kind: 'blenderSave',
     targetPath: $('studioBlenderSavePath').value.trim(),
   })));
-  for (const id of ['studioBlenderObject','studioBlenderObjectKind','studioBlenderTransformField','studioBlenderVector','studioBlenderPrimitiveName','studioBlenderPrimitive','studioBlenderPrimitiveLocation','studioBlenderPrimitiveSize','studioBlenderPrimitiveDepth','studioBlenderPrimitiveSegments','studioBlenderMaterialName','studioBlenderBaseColor','studioBlenderRoughness','studioBlenderMetallic','studioBlenderSavePath']) {
+  for (const id of ['studioBlenderObject','studioBlenderObjectKind','studioBlenderTransformField','studioBlenderVector','studioBlenderBevelName','studioBlenderBevelWidth','studioBlenderBevelSegments','studioBlenderPrimitiveName','studioBlenderPrimitive','studioBlenderPrimitiveLocation','studioBlenderPrimitiveSize','studioBlenderPrimitiveDepth','studioBlenderPrimitiveSegments','studioBlenderMaterialName','studioBlenderBaseColor','studioBlenderRoughness','studioBlenderMetallic','studioBlenderSavePath']) {
     $(id).addEventListener('input', invalidateBlenderReview);
     $(id).addEventListener('change', invalidateBlenderReview);
   }
