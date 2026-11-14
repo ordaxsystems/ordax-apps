@@ -10,7 +10,18 @@ const args = process.argv.slice(2);
 const staged = args.length === 1 && args[0] === '--staged';
 if (args.length && !staged) throw Error('usage: node scripts/start-lab.mjs [--staged]');
 
+function stagedE2eApproved() {
+  return process.env.ORDAX_LAB_E2E_APPROVED === '1'
+    && process.env.ORDAX_FORGE_STAGED_E2E === '1';
+}
+
 function start() {
+  // DEV SSOT: the normal desktop process always runs directly from this Git checkout.
+  // A second staged Electron is test-only and must be explicitly approved twice so an
+  // old persistent process cannot silently recreate a parallel local instance.
+  if (staged && !stagedE2eApproved()) {
+    throw Error('forge_staged_e2e_explicit_approval_required');
+  }
   const version = assertBootstrapVersion(root,
     JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')));
   const lock = JSON.parse(fs.readFileSync(path.join(root, 'source-lock.json'), 'utf8'));
