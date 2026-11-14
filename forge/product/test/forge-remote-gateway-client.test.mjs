@@ -141,7 +141,7 @@ test('remote gateway uses one catalog digest and one leased local MCP execution'
   assert.equal(report.body.result.structuredContent.name,'forge_projects_list');
 });
 
-test('oversized UTF-8 local result receives a terminal error receipt instead of a rejected report',async t=>{
+test('oversized UTF-8 local result preserves the local effect receipt without replay',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'forge-remote-large-result-'));
   const store=new Store(path.join(dir,'x.sqlite'));
   t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true});});
@@ -160,7 +160,7 @@ test('oversized UTF-8 local result receives a terminal error receipt instead of 
         // The gateway enforces a 384 KiB result payload limit.
         if(Buffer.byteLength(JSON.stringify(reported.result),'utf8')>384*1024)
           return response(413,{ok:false,error:'forge_action_result_too_large'});
-        return response(200,{ok:true,status:'failed'});
+        return response(200,{ok:true,status:'succeeded'});
       }
       throw Error('unexpected_request');
     }
@@ -171,12 +171,16 @@ test('oversized UTF-8 local result receives a terminal error receipt instead of 
     lease_id:'40000000-0000-4000-8000-000000000003',
     tool_name:'forge_work_messages',arguments:{}
   });
-  assert.equal(result.status,'failed');
+  assert.equal(result.status,'succeeded');
   assert.equal(invocations,1);
   assert.equal(reports,1);
-  assert.equal(reported.succeeded,false);
-  assert.equal(reported.error_code,'forge_remote_result_too_large');
-  assert.equal(reported.result,null);
+  assert.equal(reported.succeeded,true);
+  assert.equal(reported.error_code,null);
+  assert.equal(reported.result.isError,true);
+  assert.equal(reported.result.structuredContent.error,'forge_remote_result_too_large');
+  assert.equal(reported.result.structuredContent.local_tool_completed,true);
+  assert.equal(reported.result.structuredContent.requires_readback,true);
+  assert.equal(reported.result.structuredContent.do_not_retry,true);
   assert.deepEqual(client.status().activeRequestIds,[]);
 });
 

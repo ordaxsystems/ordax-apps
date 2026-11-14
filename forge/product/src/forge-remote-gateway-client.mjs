@@ -190,13 +190,19 @@ export class ForgeRemoteGatewayClient {
     try{
       const response=await this.toolInvoker(job.tool_name,job.arguments);
       if(response?.error)throw Error('forge_remote_local_mcp_error');
-      result=response?.result??null;
-      // The public gateway rejects results above 384 KiB. Fail this leased
-      // action explicitly rather than repeatedly reporting an oversized body
-      // and leaving the remote receipt pending after the local tool finished.
-      if(result!==null&&Buffer.byteLength(JSON.stringify(result),'utf8')>384*1024)
-        throw Error('forge_remote_result_too_large');
-      succeeded=Boolean(result&&result.isError!==true);
+      const localResult=response?.result??null;
+      succeeded=Boolean(localResult&&localResult.isError!==true);
+      // The public gateway accepts at most 384 KiB of result data. A result
+      // that cannot be transported must not turn a completed local write into
+      // a failed effect receipt: the caller must verify, not repeat, the action.
+      let resultBytes=Infinity;
+      try{resultBytes=Buffer.byteLength(JSON.stringify(localResult),'utf8');}catch{}
+      result=localResult!==null&&resultBytes>384*1024
+        ?{isError:true,
+          content:[{type:'text',text:'Forge result too large to transfer. The local call completed; do not repeat a write without checking its receipt or the actual file.'}],
+          structuredContent:{ok:false,error:'forge_remote_result_too_large',
+            local_tool_completed:succeeded,requires_readback:true,do_not_retry:true}}
+        :localResult;
       if(!succeeded)errorCode='forge_action_rejected';
     }catch(error){
       succeeded=false;errorCode=/^[a-z][a-z0-9_]{1,119}$/i.test(String(error?.message||''))
