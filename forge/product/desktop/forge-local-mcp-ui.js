@@ -1,114 +1,151 @@
-// The native Forge owns ONE application-level MCP connection.
-// Project selection below is exclusively for configuring physical folders.
-// Never move or persist tunnel credentials through project UI state.
+// One Forge application authorization + one product account + one remote gateway.
+// The loopback MCP below is optional development access; ChatGPT never depends
+// on that listener or on a local tunnel.
 const localMcpElement=id=>document.getElementById(id);
 const APP_SCOPE='forge_app';
+const api=window.ordax;
+
 const mcpStart=localMcpElement('forgeLocalMcpStart');
 const mcpStop=localMcpElement('forgeLocalMcpStop');
 const mcpRevoke=localMcpElement('forgeLocalMcpRevoke');
 const mcpResume=localMcpElement('forgeLocalMcpResume');
 const workspaceProject=localMcpElement('forgeLocalMcpProject');
 const mcpState=localMcpElement('forgeLocalMcpState');
-const officialTunnelState=localMcpElement('forgeOfficialTunnelState');
-const officialTunnelId=localMcpElement('forgeOfficialTunnelId');
-const officialTunnelKey=localMcpElement('forgeOfficialTunnelKey');
-const officialTunnelStart=localMcpElement('forgeOfficialTunnelStart');
-const officialTunnelStop=localMcpElement('forgeOfficialTunnelStop');
 const mcpCredentials=localMcpElement('forgeLocalMcpCredentials');
 const mcpToken=localMcpElement('forgeLocalMcpToken');
 const mcpUrl=localMcpElement('forgeLocalMcpUrl');
-const api=window.ordax;
-const usable=typeof api?.forgeLocalMcpStatus==='function'&&
+
+const remoteState=localMcpElement('forgeRemoteGatewayState');
+const productEmail=localMcpElement('forgeProductEmail');
+const productSendCode=localMcpElement('forgeProductSendCode');
+const productOtpControls=localMcpElement('forgeProductOtpControls');
+const productCode=localMcpElement('forgeProductCode');
+const productVerifyCode=localMcpElement('forgeProductVerifyCode');
+const productReconnect=localMcpElement('forgeProductReconnect');
+const productDisconnect=localMcpElement('forgeProductDisconnect');
+
+const localUsable=typeof api?.forgeLocalMcpStatus==='function'&&
   typeof api?.forgeLocalMcpStart==='function'&&
   typeof api?.forgeLocalMcpRevoke==='function'&&
   typeof api?.forgeLocalMcpResumeEnable==='function'&&
   typeof api?.forgeLocalMcpResumeDisable==='function'&&
   typeof api?.forgeLocalMcpStop==='function';
-let mcpBusy=false,lastMcpStatus=null;
+const remoteUsable=typeof api?.forgeProductAuthStatus==='function'&&
+  typeof api?.forgeProductAuthRequestOtp==='function'&&
+  typeof api?.forgeProductAuthVerifyOtp==='function'&&
+  typeof api?.forgeProductAuthReconnect==='function'&&
+  typeof api?.forgeProductAuthDisconnect==='function';
+
+let busy=false,lastStatus=null;
 const appActive=status=>status?.running===true&&status?.scopes?.length===1&&
   status.scopes[0]===APP_SCOPE;
-function hideSecret(){
+
+function hideLocalSecret(){
   if(mcpToken)mcpToken.value='';
   if(mcpUrl)mcpUrl.value='';
   if(mcpCredentials)mcpCredentials.hidden=true;
 }
-function setState(message){if(mcpState)mcpState.textContent=message;}
-function syncTunnelControls(){
-  const session=lastMcpStatus?.officialTunnelSession;
-  const running=Boolean(session?.state&&session.state!=='stopped');
-  if(officialTunnelStart)officialTunnelStart.disabled=mcpBusy||running||
-    !appActive(lastMcpStatus)||!lastMcpStatus?.appTrusted||
-    !lastMcpStatus?.officialTunnel?.installed||
-    !officialTunnelId?.value?.trim()||!officialTunnelKey?.value||
-    typeof api?.forgeOfficialTunnelStart!=='function';
-  if(officialTunnelStop)officialTunnelStop.disabled=mcpBusy||!running||
-    session?.state==='stopping'||typeof api?.forgeOfficialTunnelStop!=='function';
+function setLocalState(message){if(mcpState)mcpState.textContent=message;}
+function setRemoteState(message,state=''){
+  if(!remoteState)return;
+  remoteState.textContent=message;
+  remoteState.dataset.state=state;
 }
 function syncControls(){
-  const active=appActive(lastMcpStatus);
-  const trusted=lastMcpStatus?.appTrusted===true;
-  const autoResume=lastMcpStatus?.autoResumeApp===true;
+  const active=appActive(lastStatus);
+  const trusted=lastStatus?.appTrusted===true;
+  const autoResume=lastStatus?.autoResumeApp===true;
+  const account=lastStatus?.productAccount||{};
+  const gateway=lastStatus?.remoteGateway||{};
+
   if(mcpStart){
-    mcpStart.disabled=mcpBusy||!usable||active;
-    mcpStart.textContent=trusted?'Reativar MCP do Forge':'Autorizar MCP do Forge';
+    mcpStart.disabled=busy||!localUsable||active;
+    mcpStart.textContent=trusted?'Reativar listener local':'Autorizar MCP do Forge';
   }
-  if(mcpRevoke)mcpRevoke.disabled=mcpBusy||!usable||(!trusted&&!active);
+  if(mcpRevoke)mcpRevoke.disabled=busy||!localUsable||(!trusted&&!active);
   if(mcpResume){
-    mcpResume.textContent=autoResume?'Desativar reconexão automática':'Manter conectado após reinício';
-    mcpResume.disabled=mcpBusy||!usable||
-      (!autoResume&&(!active||!lastMcpStatus?.autoResumeAvailable));
+    mcpResume.textContent=autoResume?'Desativar reconexão do listener':'Manter listener após reinício';
+    mcpResume.disabled=busy||!localUsable||
+      (!autoResume&&(!active||!lastStatus?.autoResumeAvailable));
   }
-  if(mcpStop)mcpStop.disabled=mcpBusy||!usable||!active;
-  syncTunnelControls();
+  if(mcpStop)mcpStop.disabled=busy||!localUsable||!active;
+
+  if(productEmail){
+    if(account.connected&&account.email)productEmail.value=account.email;
+    productEmail.disabled=busy||account.connected||!trusted;
+  }
+  if(productSendCode)
+    productSendCode.disabled=busy||!remoteUsable||account.connected||!trusted||
+      !productEmail?.value?.trim();
+  if(productOtpControls)productOtpControls.hidden=account.connected||account.otpPending!==true;
+  if(productVerifyCode)
+    productVerifyCode.disabled=busy||!remoteUsable||account.connected||
+      !trusted||!/^[0-9]{6,8}$/.test(productCode?.value?.trim()||'');
+  if(productReconnect){
+    productReconnect.hidden=!account.connected||gateway.running===true;
+    productReconnect.disabled=busy||!trusted;
+  }
+  if(productDisconnect){
+    productDisconnect.hidden=!account.connected;
+    productDisconnect.disabled=busy;
+  }
+}
+function renderRemote(){
+  const trusted=lastStatus?.appTrusted===true;
+  const account=lastStatus?.productAccount||{};
+  const gateway=lastStatus?.remoteGateway||{};
+  if(!remoteUsable){
+    setRemoteState('Conexão Forge MCP remota indisponível nesta instalação.','blocked');
+    return;
+  }
+  if(!trusted){
+    setRemoteState('Autorize o MCP do Forge antes de conectar a Conta OrdaX.','blocked');
+    return;
+  }
+  if(!account.connected){
+    setRemoteState(account.otpPending
+      ?'Código enviado. Digite o código recebido para conectar esta instância.'
+      :'Conta OrdaX ainda não conectada. Esta etapa é feita uma única vez e a sessão fica protegida pelo Windows.',
+      account.otpPending?'pending':'blocked');
+    return;
+  }
+  const identity=account.email||'Conta OrdaX';
+  if(gateway.running&&gateway.connected){
+    setRemoteState(identity+' · Forge MCP conectado ao gateway canônico. Instância '+String(gateway.instanceId||'').slice(0,8)+'…','ready');
+  }else if(gateway.running){
+    setRemoteState(identity+' · gateway iniciando/reconectando'+
+      (gateway.lastError?' ('+gateway.lastError+')':'')+'.','pending');
+  }else{
+    setRemoteState(identity+' conectada, mas o gateway está offline. Use Reconectar gateway.','blocked');
+  }
 }
 async function refreshMcp(){
-  if(!usable){
-    lastMcpStatus=null;
-    setState('MCP disponível somente no Forge Electron local; GPT Web não conectado.');
-    syncControls();return;
+  if(!localUsable){
+    lastStatus=null;
+    setLocalState('Listener MCP local indisponível nesta instalação.');
+    renderRemote();syncControls();return;
   }
   try{
-    const status=await api.forgeLocalMcpStatus();
-    lastMcpStatus=status;
-    syncControls();
-    if(officialTunnelState){
-      const tunnel=status.officialTunnelSession;
-      officialTunnelState.textContent=tunnel?.state==='starting'
-        ?'Iniciando cliente oficial; conexão GPT Web ainda não verificada.'
-        :tunnel?.state==='stopping'
-          ?'Encerrando cliente oficial; conexão GPT Web ainda não verificada.'
-          :tunnel?.processRunning&&tunnel.clientReady
-            ?'Cliente oficial pronto no Windows (/readyz=200). Conexão GPT Web e chamada MCP ainda não comprovadas.'
-            :tunnel?.processRunning&&tunnel.clientReadiness==='not_ready'
-              ?'Cliente oficial ativo, mas ainda não pronto (/readyz=503). GPT Web não conectado.'
-              :tunnel?.processRunning
-                ?'Cliente oficial iniciado; prontidão /readyz ainda não verificada. GPT Web não conectado.'
-                :status.officialTunnel?.installed
-                  ?'Cliente oficial OpenAI '+status.officialTunnel.clientVersion+
-                    ' verificado. Túnel do Forge ainda não conectado ao GPT Web.'
-                  :'Cliente oficial não verificado neste perfil; GPT Web não conectado ao MCP Forge.';
-    }
-    if(appActive(status)){
-      setState('MCP do aplicativo Forge ativo em 127.0.0.1. Uma conexão para o catálogo de projetos; '+
-        'arquivos limitados às pastas vinculadas e verificadas. '+
-        (status.autoResumeBlocked?'Reconexão bloqueada; confira a autorização. ':'')+
-        'GPT Web não conectado automaticamente.');
+    lastStatus=await api.forgeLocalMcpStatus();
+    const active=appActive(lastStatus);
+    if(active){
+      setLocalState('Listener MCP local ativo em 127.0.0.1 para desenvolvimento. '+
+        (lastStatus.autoResumeBlocked?'Reconexão automática bloqueada; confira a autorização.':''));
     }else{
-      hideSecret();
-      setState('MCP do aplicativo desativado. '+
-        (status.appTrusted?'Autorização do Forge salva, sem token ativo.':
-          'Autorize o aplicativo Forge uma vez; não é necessário ativar o MCP em cada projeto.'));
+      hideLocalSecret();
+      setLocalState(lastStatus.appTrusted
+        ?'MCP do Forge autorizado. Listener local desligado; o gateway remoto funciona independentemente dele.'
+        :'MCP do Forge ainda não autorizado.');
     }
+    renderRemote();syncControls();
   }catch{
-    lastMcpStatus=null;
-    hideSecret();syncControls();
-    if(officialTunnelState)officialTunnelState.textContent=
-      'Estado do túnel indisponível; conexão GPT Web não comprovada.';
-    setState('Não foi possível verificar o MCP do aplicativo.');
+    lastStatus=null;hideLocalSecret();
+    setLocalState('Não foi possível verificar o estado do Forge MCP.');
+    setRemoteState('Não foi possível verificar Conta/gateway.','blocked');
+    syncControls();
   }
 }
 async function loadProjects(){
-  // This selector is for local workspace management only.
   try{
     const result=await api.orchestratorInvoke('projects_list',{});
     const projects=result?.projects||result?.result?.projects||[];
@@ -125,80 +162,93 @@ async function loadProjects(){
       if([...workspaceProject.options].some(option=>option.value===previous))
         workspaceProject.value=previous;
     }
-  }catch{/* The workspace selector has independent availability. */}
+  }catch{}
   await refreshMcp();
 }
+
 mcpStart?.addEventListener('click',async()=>{
-  if(mcpBusy||!usable)return;
-  mcpBusy=true;hideSecret();syncControls();
+  if(busy||!localUsable)return;
+  busy=true;hideLocalSecret();syncControls();
   try{
     const enabled=await api.forgeLocalMcpStart();
     if(enabled?.running&&enabled?.scope===APP_SCOPE&&enabled?.token&&enabled?.endpoint){
-      mcpUrl.value=enabled.endpoint;
-      mcpToken.value=enabled.token;
-      mcpCredentials.hidden=false;
-    }else if(enabled?.declined)setState('Autorização do MCP Forge cancelada.');
-  }catch{setState('Não foi possível ativar o MCP do aplicativo.');}
-  finally{mcpBusy=false;await refreshMcp();}
+      mcpUrl.value=enabled.endpoint;mcpToken.value=enabled.token;mcpCredentials.hidden=false;
+    }else if(enabled?.declined)setLocalState('Autorização do Forge cancelada.');
+  }catch{setLocalState('Não foi possível autorizar/ativar o Forge MCP.');}
+  finally{busy=false;await refreshMcp();}
 });
 mcpStop?.addEventListener('click',async()=>{
-  if(mcpBusy||!usable)return;
-  mcpBusy=true;syncControls();
-  try{await api.forgeLocalMcpStop();hideSecret();}
-  catch{setState('Não foi possível confirmar o encerramento do MCP.');}
-  finally{mcpBusy=false;await refreshMcp();}
+  if(busy||!localUsable)return;
+  busy=true;syncControls();
+  try{await api.forgeLocalMcpStop();hideLocalSecret();}
+  catch{setLocalState('Não foi possível confirmar o encerramento do listener.');}
+  finally{busy=false;await refreshMcp();}
 });
 mcpRevoke?.addEventListener('click',async()=>{
-  if(mcpBusy||!usable)return;
-  mcpBusy=true;syncControls();
-  try{await api.forgeLocalMcpRevoke();hideSecret();}
-  catch{setState('Não foi possível revogar a autorização do Forge.');}
-  finally{mcpBusy=false;await refreshMcp();}
+  if(busy||!localUsable)return;
+  busy=true;syncControls();
+  try{await api.forgeLocalMcpRevoke();hideLocalSecret();}
+  catch{setLocalState('Não foi possível revogar a autorização do Forge.');}
+  finally{busy=false;await refreshMcp();}
 });
 mcpResume?.addEventListener('click',async()=>{
-  if(mcpBusy||!usable)return;
-  mcpBusy=true;syncControls();
+  if(busy||!localUsable)return;
+  busy=true;syncControls();
   try{
     const info=await api.forgeLocalMcpStatus();
     if(info.autoResumeApp)await api.forgeLocalMcpResumeDisable();
     else await api.forgeLocalMcpResumeEnable();
-  }catch{setState('Reconexão segura não disponível neste perfil Windows.');}
-  finally{mcpBusy=false;await refreshMcp();}
+  }catch{setLocalState('Reconexão do listener não disponível neste perfil Windows.');}
+  finally{busy=false;await refreshMcp();}
 });
-officialTunnelId?.addEventListener('input',syncTunnelControls);
-officialTunnelKey?.addEventListener('input',syncTunnelControls);
-officialTunnelStart?.addEventListener('click',async()=>{
-  if(mcpBusy||!usable||!appActive(lastMcpStatus)||!officialTunnelKey?.value)return;
-  const request={tunnelId:officialTunnelId.value.trim(),runtimeKey:officialTunnelKey.value};
-  officialTunnelKey.value='';
-  mcpBusy=true;syncControls();
-  try{
-    const result=await api.forgeOfficialTunnelStart(request);
-    if(result?.declined)setState('Túnel do Forge não autorizado; nada foi iniciado.');
-  }catch{setState('Túnel não iniciado. Confira autorização, ID e chave restrita no Windows.');}
-  finally{request.runtimeKey=null;mcpBusy=false;await refreshMcp();}
-});
-officialTunnelStop?.addEventListener('click',async()=>{
-  if(mcpBusy||typeof api?.forgeOfficialTunnelStop!=='function')return;
-  mcpBusy=true;syncControls();
-  try{await api.forgeOfficialTunnelStop();}
-  catch{setState('Não foi possível confirmar o encerramento do túnel.');}
-  finally{mcpBusy=false;await refreshMcp();}
-});
-localMcpElement('settingsTabConnections')?.addEventListener('click',()=>{void loadProjects();});
-localMcpElement('openAppSettings')?.addEventListener('click',()=>{void loadProjects();});
-if(typeof api?.onForgeOfficialTunnelChanged==='function')
-  api.onForgeOfficialTunnelChanged(()=>{if(!mcpBusy)void refreshMcp();});
-localMcpElement('appSettingsDialog')?.addEventListener('close',()=>{
-  hideSecret();
-  if(officialTunnelKey)officialTunnelKey.value='';
+
+productEmail?.addEventListener('input',syncControls);
+productCode?.addEventListener('input',()=>{
+  if(productCode)productCode.value=productCode.value.replace(/\D/g,'').slice(0,8);
   syncControls();
 });
-let readinessPollPending=false;
-setInterval(async()=>{
-  if(readinessPollPending||mcpBusy||!lastMcpStatus?.officialTunnelSession?.processRunning||
-    !localMcpElement('appSettingsDialog')?.open)return;
-  readinessPollPending=true;
-  try{await refreshMcp();}finally{readinessPollPending=false;}
-},3000);
+productSendCode?.addEventListener('click',async()=>{
+  if(busy||!remoteUsable)return;
+  busy=true;syncControls();
+  try{
+    await api.forgeProductAuthRequestOtp(productEmail?.value||'');
+    if(productCode)productCode.value='';
+  }catch(error){
+    setRemoteState(String(error?.message||'Não foi possível enviar o código.').slice(0,160),'blocked');
+  }finally{busy=false;await refreshMcp();}
+});
+productVerifyCode?.addEventListener('click',async()=>{
+  if(busy||!remoteUsable)return;
+  busy=true;syncControls();
+  try{
+    await api.forgeProductAuthVerifyOtp({email:productEmail?.value||'',token:productCode?.value||''});
+    if(productCode)productCode.value='';
+  }catch(error){
+    setRemoteState(String(error?.message||'Código inválido ou expirado.').slice(0,160),'blocked');
+  }finally{busy=false;await refreshMcp();}
+});
+productReconnect?.addEventListener('click',async()=>{
+  if(busy||!remoteUsable)return;
+  busy=true;syncControls();
+  try{await api.forgeProductAuthReconnect();}
+  catch(error){setRemoteState(String(error?.message||'Não foi possível reconectar.').slice(0,160),'blocked');}
+  finally{busy=false;await refreshMcp();}
+});
+productDisconnect?.addEventListener('click',async()=>{
+  if(busy||!remoteUsable)return;
+  busy=true;syncControls();
+  try{await api.forgeProductAuthDisconnect();if(productEmail)productEmail.value='';}
+  catch{setRemoteState('Não foi possível desconectar a Conta OrdaX.','blocked');}
+  finally{busy=false;await refreshMcp();}
+});
+
+localMcpElement('settingsTabConnections')?.addEventListener('click',()=>{void loadProjects();});
+localMcpElement('openAppSettings')?.addEventListener('click',()=>{void loadProjects();});
+if(typeof api?.onForgeRemoteGatewayChanged==='function')
+  api.onForgeRemoteGatewayChanged(()=>{if(!busy)void refreshMcp();});
+localMcpElement('appSettingsDialog')?.addEventListener('close',()=>{
+  hideLocalSecret();
+  if(productCode)productCode.value='';
+  syncControls();
+});
 void loadProjects();

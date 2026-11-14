@@ -20,10 +20,12 @@ test('only confirmed autonomous work can inspect a real HTML attachment',()=>{
 
 test('post-Run handler reuses canonical capture and never dispatches a second prompt',()=>{
   const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
-  assert.match(main,/async function captureConfirmedHtmlArtifact\(requestedId\)/);
+  assert.match(main,/async function captureConfirmedHtmlArtifact\(requestedId,\{/);
   assert.match(main,/return captureConfirmedHtmlArtifact\(requestedId\)/);
   assert.match(main,/shouldAttemptAutomaticHtmlCapture\(\{/);
-  assert.match(main,/const captured=await captureConfirmedHtmlArtifact\(taskId\)/);
+  assert.match(main,/captureWorker:executionWorker,allowConcurrentProviderRuns:true/);
+  assert.match(main,/inspectProviderLinkedThread\(\{store,worker:captureWorker,taskId\}\)/);
+  assert.match(main,/captureWorker\.downloadLinkedHtmlArtifact\(/);
   const begin=main.indexOf("send:async({taskId,content,draftRevision,taskKind,authorSource='human'})=>");
   const end=main.indexOf("coordinator:createGroqCoordinatorConversation",begin);
   const text=main.slice(begin,end);

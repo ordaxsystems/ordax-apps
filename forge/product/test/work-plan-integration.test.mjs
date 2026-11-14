@@ -7,15 +7,18 @@ import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
 
-function fixture(t,{hostBusy=()=>false}={}){
+function fixture(t,{hostBusy=()=>false,hostCapacity=null}={}){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-dag-'));
   const file=path.join(dir,'lab.sqlite');
   let store=new Store(file);
   const context=Object.freeze({actorId:'test-owner',clientId:'test-client',
     workspaceSessionId:store.getWorkspaceSession().id});
   let effects=0,seq=0;
+  const provider=()=>({busy:hostBusy,
+    ...(typeof hostCapacity==='function'?{capacity:hostCapacity}:{}),
+    send:()=>{effects++;throw Error('unexpected_provider_send');}});
   let service=new OrchestratorService({store,authorize:({context:ctx})=>ctx===context,
-    provider:{busy:hostBusy,send:()=>{effects++;throw Error('unexpected_provider_send');}}});
+    provider:provider()});
   const call=(op,input={})=>service.invoke(context,op,{
     ...(!ORCHESTRATOR_TOOLS.find(x=>x.operation===op)?.readOnly
       ?{requestId:'request_'+(++seq)}:{}),...input
@@ -31,7 +34,7 @@ function fixture(t,{hostBusy=()=>false}={}){
   const reopen=()=>{
     store.close();store=new Store(file);
     service=new OrchestratorService({store,authorize:({context:ctx})=>ctx===context,
-      provider:{busy:hostBusy,send:()=>{effects++;throw Error('unexpected_provider_send');}}});
+      provider:provider()});
   };
   t.after(()=>{try{store.close();}catch{} fs.rmSync(dir,{recursive:true,force:true});});
   return {call,makeProject,reopen,getStore:()=>store,effects:()=>effects,
@@ -297,7 +300,7 @@ test('Groq sees 35 scoped work fronts, prioritizes failures and recovers the ove
   assert.equal(recovered.workOverview[0].readiness,'uncertain');
 });
 
-test('real transport admits only one lane although the DAG has 12 independent candidates',async t=>{
+test('service fallback remains single-lane when a host does not advertise pool capacity',async t=>{
   const f=fixture(t),{projectId,work}=await f.makeProject();
   for(let i=0;i<12;i++)await work('Front '+i);
   const plan=(await f.call('work_plan',{projectId,maxParallel:8})).plan;
@@ -313,6 +316,28 @@ test('real transport admits only one lane although the DAG has 12 independent ca
   assert.equal(plan.automaticDispatchAllowed,false);
   assert.equal(f.effects(),0);
 });
+test('advertised four-lane host exposes real parallel transport slots to the planner',async t=>{
+  let active=1;
+  const capacity=()=>({maxConcurrentSends:4,active,queued:0,pendingTasks:active,
+    availableSlots:4-active,closed:false});
+  const f=fixture(t,{hostBusy:()=>active>=4,hostCapacity:capacity});
+  const {projectId,work}=await f.makeProject();
+  for(let i=0;i<6;i++)await work('Pool '+i);
+  const plan=(await f.call('work_plan',{projectId,maxParallel:6})).plan;
+  assert.equal(plan.executor.mode,'embedded_chatgpt_worker_pool');
+  assert.equal(plan.executor.maxConcurrentSends,4);
+  assert.equal(plan.executor.activeProviderSends,1);
+  assert.equal(plan.executor.availableSlots,3);
+  assert.equal(plan.executor.isolatedWorkerSessions,true);
+  assert.equal(plan.executor.parallelProviderSendsEnabled,true);
+  assert.equal(plan.transportSlotCandidates.length,3);
+  active=4;
+  const full=(await f.call('work_plan',{projectId,maxParallel:6})).plan;
+  assert.equal(full.executor.availableSlots,0);
+  assert.deepEqual(full.transportSlotCandidates,[]);
+  assert.equal(f.effects(),0);
+});
+
 test('one in-flight Run from another project closes transport slots globally',async t=>{
   const f=fixture(t),a=await f.makeProject(),b=await f.makeProject();
   const first=await a.work('Work running elsewhere');

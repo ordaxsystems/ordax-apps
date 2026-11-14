@@ -6,16 +6,17 @@ import vm from 'node:vm';
 const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
 const inspectStart=main.indexOf("registerUiHandler('ordax:tasks:inspect-linked-thread'");
 const reconcileStart=main.indexOf("registerUiHandler('ordax:tasks:reconcile-linked-reply'",inspectStart);
-const nextHandler=main.indexOf('let htmlArtifactCaptureBusy=false;',reconcileStart);
+const nextHandler=main.indexOf('const htmlArtifactCaptureWorkers=new Set();',reconcileStart);
 assert.ok(inspectStart>=0&&reconcileStart>inspectStart&&nextHandler>reconcileStart,'linked_thread_ipc_handlers_missing');
 const inspectHandler=main.slice(inspectStart,reconcileStart);
 const reconcileHandler=main.slice(reconcileStart,nextHandler);
 
-function mount(source,{liveRun=null}={}) {
+function mount(source,{activeRun=false}={}) {
   let handler=null,trusted=0,calls=0,received=null,finalizations=0;
-  const store={},worker={};
+  const store={},worker={active:false};
   const context={
-    requireTrustedSupervisorRenderer:()=>{trusted++;},liveRun,store,worker,
+    requireTrustedSupervisorRenderer:()=>{trusted++;},
+    primaryProviderRunActive:()=>activeRun,store,worker,
     inspectProviderLinkedThread:async value=>{calls++;assert.equal(value.store,store);assert.equal(value.worker,worker);received=value.taskId;return {kind:'response_candidate',threadRendered:true};},
     reconcileProviderLinkedReply:async value=>{calls++;received=value;return {reconciled:true,reason:'reconciled'};},
     finalizeReconciledSiteDelivery:async(taskId,options)=>{
@@ -36,7 +37,7 @@ test('linked-thread inspection IPC is trusted, read-only, and refuses active run
   assert.equal(app.trusted(),1);
   assert.equal(app.calls(),1);
   assert.equal(app.received(),'task-1');
-  const active=mount(inspectHandler,{liveRun:{taskId:'task-1'}});
+  const active=mount(inspectHandler,{activeRun:true});
   assert.equal((await active.invoke('task-1')).reason,'run_active');
   assert.equal(active.calls(),0);
 });
@@ -46,8 +47,8 @@ test('reply reconciliation IPC requires trusted renderer and refuses active runs
   assert.deepEqual(await app.invoke({taskId:'task-2',responseSha256:'a'.repeat(64)}),{reconciled:true,reason:'reconciled'});
   assert.equal(app.trusted(),1);
   assert.equal(app.finalizations(),1,'confirmed recovery finalizes the same Run without another send');
-  assert.equal(JSON.stringify(app.received()),JSON.stringify({store:{},worker:{},taskId:'task-2',responseSha256:'a'.repeat(64)}));
-  const active=mount(reconcileHandler,{liveRun:{taskId:'task-2'}});
+  assert.equal(JSON.stringify(app.received()),JSON.stringify({store:{},worker:{active:false},taskId:'task-2',responseSha256:'a'.repeat(64)}));
+  const active=mount(reconcileHandler,{activeRun:true});
   await assert.rejects(active.invoke({taskId:'task-2',responseSha256:'a'.repeat(64)}),/provider_reply_recovery_run_active/);
   assert.equal(active.calls(),0);
   assert.equal(active.finalizations(),0);

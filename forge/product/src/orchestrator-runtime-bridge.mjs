@@ -4,15 +4,26 @@ import {ORCHESTRATOR_TOOLS} from './forge-contract.mjs';
 
 export const RUNTIME_BRIDGE_SCHEMA='ordax.forge-host/1';
 export const RUNTIME_READ_CAPABILITY='forge.app_read';
+export const RUNTIME_CONTROL_CAPABILITY='forge.app_control';
 export const RUNTIME_LEASE_RENEWAL='hmac-sha256-key-rotation/1';
-// Host v1 is a fixed authority boundary. New App/MCP reads must not silently
-// expand a previously granted Runtime capability.
+// Host v1 capabilities are fixed authority boundaries. New App/MCP operations
+// never silently expand a previously granted Runtime capability.
 export const RUNTIME_READ_OPERATIONS=Object.freeze([
   'status','projects_list','orchestrators_list','work_list','work_get','work_messages','command_get'
 ]);
-if(RUNTIME_READ_OPERATIONS.some(operation=>!ORCHESTRATOR_TOOLS.some(t=>t.operation===operation&&t.readOnly)))
+export const RUNTIME_CONTROL_OPERATIONS=Object.freeze([
+  ...RUNTIME_READ_OPERATIONS,
+  'project_create','project_quick_create','mission_create','orchestrator_create',
+  'project_memory_propose','work_create','work_batch_create','work_draft_set',
+  'work_dependency_set','work_parallel_launch','work_plan'
+]);
+if(RUNTIME_READ_OPERATIONS.some(operation=>!ORCHESTRATOR_TOOLS.some(t=>t.operation===operation&&t.readOnly))||
+   RUNTIME_CONTROL_OPERATIONS.some(operation=>!ORCHESTRATOR_TOOLS.some(t=>t.operation===operation)))
   throw Error('orchestrator_host_catalog_incompatible');
 const READS=new Set(RUNTIME_READ_OPERATIONS);
+const CONTROLS=new Set(RUNTIME_CONTROL_OPERATIONS);
+const operationsFor=capability=>capability===RUNTIME_READ_CAPABILITY?READS:
+  capability===RUNTIME_CONTROL_CAPABILITY?CONTROLS:null;
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 const keys=(value,expected)=>value&&typeof value==='object'&&!Array.isArray(value)&&
   Object.keys(value).sort().join(',')===[...expected].sort().join(',');
@@ -43,7 +54,7 @@ export function createOrchestratorRuntimeBridge({service,workspaceSessionId,buil
   const contexts=new WeakSet(),seen=new Set();
   function close(){if(closed)return;closed=true;key?.fill(0);key=null;session=null;onClosed();}
   function allows(context,operation){return !closed&&session!==null&&clock()<session.expiresAt&&
-    contexts.has(context)&&READS.has(operation);}
+    contexts.has(context)&&operationsFor(session.capability)?.has(operation)===true;}
   const failure=(id,code)=>({schema:RUNTIME_BRIDGE_SCHEMA,id,ok:false,error:code});
   return Object.freeze({
     close,allows,
@@ -57,7 +68,7 @@ export function createOrchestratorRuntimeBridge({service,workspaceSessionId,buil
           value.schema!==RUNTIME_BRIDGE_SCHEMA||value.type!=='bootstrap'||
           !uuid(value.sessionId)||!uuid(value.ownerUserId)||!uuid(value.deviceId)||!uuid(value.grantId)||
           typeof value.clientId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,159}$/.test(value.clientId)||
-          value.capability!==RUNTIME_READ_CAPABILITY||typeof value.key!=='string'||
+          !operationsFor(value.capability)||typeof value.key!=='string'||
           !/^[A-Za-z0-9+/]{43}=$/.test(value.key)||
           !Number.isSafeInteger(value.expiresAt)||value.expiresAt<=clock()||value.expiresAt>clock()+300000||
           value.expectedCommit!==buildProof.sourceCommit||value.expectedDigest!==buildProof.contentDigest||
@@ -67,10 +78,11 @@ export function createOrchestratorRuntimeBridge({service,workspaceSessionId,buil
         key=Buffer.from(value.key,'base64');
         if(key.length!==32||key.toString('base64')!==value.key){close();return failure(null,'host_bootstrap_rejected');}
         session=Object.freeze({sessionId:value.sessionId,ownerUserId:value.ownerUserId,clientId:value.clientId,
-          deviceId:value.deviceId,grantId:value.grantId,expiresAt:value.expiresAt});
+          deviceId:value.deviceId,grantId:value.grantId,capability:value.capability,expiresAt:value.expiresAt});
+        const operations=[...operationsFor(session.capability)];
         return {schema:RUNTIME_BRIDGE_SCHEMA,type:'ready',ok:true,sessionId:session.sessionId,
           sourceCommit:buildProof.sourceCommit,contentDigest:buildProof.contentDigest,
-          profileFingerprint,capability:RUNTIME_READ_CAPABILITY,operations:RUNTIME_READ_OPERATIONS,
+          profileFingerprint,capability:session.capability,operations,
           leaseRenewal:RUNTIME_LEASE_RENEWAL};
       }
       if(clock()>=session.expiresAt){close();return failure(id,'host_session_expired');}
@@ -108,7 +120,9 @@ export function createOrchestratorRuntimeBridge({service,workspaceSessionId,buil
         return {schema:RUNTIME_BRIDGE_SCHEMA,id,ok:true,
           result:{leaseRenewal:RUNTIME_LEASE_RENEWAL,expiresAt:session.expiresAt}};
       }
-      if(!READS.has(value.operation))return failure(id,'host_read_only');
+      const allowed=operationsFor(session.capability);
+      if(!allowed?.has(value.operation))
+        return failure(id,session.capability===RUNTIME_READ_CAPABILITY?'host_read_only':'host_control_scope');
       const context=Object.freeze({actorId:session.ownerUserId,clientId:session.clientId,workspaceSessionId});
       contexts.add(context);
       activeReads++;

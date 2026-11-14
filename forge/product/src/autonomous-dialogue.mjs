@@ -474,14 +474,18 @@ export class AutonomousDialogue {
     this.service.requireAccess(context,'autonomous_dialogue_start',projectId);
     const owner=this.service.orchestrator(projectId,orchestratorId);
     if(owner.status!=='ready')throw Error('orchestrator_paused');
+    const directFollowupPolicy=directUserPrompt
+      ?owner.continuous_execution_enabled===1?'two_send':'review_only'
+      :null;
     if(!noExtra(mission)||mission.length>4000||!['dialogue','story','technical'].includes(mode)||
        typeof directUserPrompt!=='boolean'||(directUserPrompt&&mode!=='technical')||
        (resumeSiteTaskId!==null&&(!directUserPrompt||typeof resumeSiteTaskId!=='string')))
       throw Error('autonomous_mission_invalid');
     if(resumeSiteTaskId&&latestSiteWork(this.store,projectId,orchestratorId)?.taskId!==resumeSiteTaskId)
       throw Error('autonomous_site_continuation_unverified');
-    if(typeof this.service.coordinator?.send!=='function'||
-       this.service.coordinator.available?.(projectId,orchestratorId)!==true||
+    const appOwnedDirect=directUserPrompt&&this.service.continuousExecutionByDefault===true;
+    if((!appOwnedDirect&&(typeof this.service.coordinator?.send!=='function'||
+         this.service.coordinator.available?.(projectId,orchestratorId)!==true))||
        typeof this.service.provider?.send!=='function')throw Error('autonomous_provider_unavailable');
     const existing=this.db.prepare(`SELECT * FROM lab_autonomous_dialogues WHERE
       workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
@@ -489,7 +493,7 @@ export class AutonomousDialogue {
     if(existing) {
       if(existing.project_id!==projectId||existing.orchestrator_id!==orchestratorId||existing.mission!==mission||
         (existing.mode==='story'?'story':existing.strategy==='semantic'?'technical':'dialogue')!==mode||
-        (directUserPrompt&&(existing.question_a!==mission||existing.followup_policy!=='review_only'||
+        (directUserPrompt&&(existing.question_a!==mission||existing.followup_policy!==directFollowupPolicy||
           (resumeSiteTaskId&&existing.task_a_id!==resumeSiteTaskId))))
         throw Error('autonomous_request_conflict');
       return this.summary(existing);
@@ -521,7 +525,8 @@ export class AutonomousDialogue {
           requestId,mission,directUserPrompt?'ready_a':mode==='story'?'story_queued_1':'queued',
           LIMIT,initialTask,directUserPrompt?mission:null,now,now,
           mode==='story'?'story':'dialogue',mode==='technical'?'semantic':'legacy',
-          directUserPrompt||missionPolicy?.maxGPTSends===1?'review_only':'two_send');
+          directUserPrompt?directFollowupPolicy:
+            missionPolicy?.maxGPTSends===1?'review_only':'two_send');
       this.db.exec('RELEASE SAVEPOINT autonomous_start_atomic');
     } catch(error) {
       this.db.exec('ROLLBACK TO SAVEPOINT autonomous_start_atomic');
@@ -551,7 +556,9 @@ export class AutonomousDialogue {
           throw Error('autonomous_request_conflict');
         return this.summary(existing);
       }
-      if(owner.status!=='ready'||this.service.coordinator.available?.(projectId,orchestratorId)!==true||
+      const appOwnedContinuation=this.service.continuousExecutionByDefault===true;
+      if(owner.status!=='ready'||
+         (!appOwnedContinuation&&this.service.coordinator.available?.(projectId,orchestratorId)!==true)||
          typeof this.service.provider?.send!=='function')
         throw Error('autonomous_provider_unavailable');
       const previous=this.db.prepare(`SELECT * FROM lab_autonomous_dialogues WHERE
@@ -666,9 +673,46 @@ export class AutonomousDialogue {
     if(phase==='b'&&proposal.content===row.question_a)throw Error('autonomous_duplicate_question');
     return proposal;
   }
-  // An engineering mission uses the existing coordinator receipt, NOT a
-  // synthetic "OK" detector. Each decision is anchored to the exact latest
-  // GPT Run and its canonical provider delivery provenance.
+  appOwnedTechnicalReview(row,phase) {
+    const taskId=phase==='a'?row.task_a_id:row.task_b_id;
+    const run=this.db.prepare("SELECT id,status FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1")
+      .get(taskId);
+    const source=run?.status==='succeeded'
+      ?this.service.reviewableGPTResult(row.project_id,row.orchestrator_id,run.id):null;
+    if(!source)throw Error('autonomous_review_source_unconfirmed');
+    const observedExcerpt=redactOrchestratorAnalysisText(source.observedAnswer,320)
+      .replace(/\s+/gu,' ').trim();
+    const verified=this.verifiedHtmlForRun(row.project_id,row.orchestrator_id,run.id);
+    if(verified) return {
+      sourceRunId:run.id,decision:'candidate_complete',
+      summary:'O Forge confirmou um arquivo HTML local vinculado a este Run.',
+      reason:'Há bytes HTML verificados no armazenamento local; publicação externa continua não comprovada.',
+      observedExcerpt,nextPrompt:null,reviewOnly:true,externalEffectVerified:false,
+      automaticGPTSendAuthorized:false,reviewProvider:'ordax_app_policy',
+      acceptance:{criterion:'HTML local verificável associado ao Run atual.',
+        status:'answer_indicates_progress',observedExcerpt}
+    };
+    const nextPrompt=[
+      'Continue autonomamente o pedido original do projeto:',
+      row.mission,
+      'Run confirmado para esta decisão: '+run.id+'.',
+      'Reinspecione o estado real do projeto e os efeitos já observados.',
+      'Use as ferramentas MCP disponíveis quando forem necessárias, valide proporcionalmente e avance o próximo bloqueio concreto.',
+      'Não repita efeitos incertos e não declare arquivos, testes ou publicação sem prova verificável.'
+    ].join(' ');
+    return {
+      sourceRunId:run.id,decision:'continue_same_conversation',
+      summary:'A resposta GPT foi observada, mas ainda não há artefato local verificável para encerrar o trabalho.',
+      reason:'O Forge mantém o objetivo original e solicita continuação baseada no estado real, sem inventar efeitos.',
+      observedExcerpt,nextPrompt,reviewOnly:true,externalEffectVerified:false,
+      automaticGPTSendAuthorized:false,reviewProvider:'ordax_app_policy',
+      acceptance:{criterion:'Avançar o objetivo original com evidência observável no projeto.',
+        status:'answer_indicates_progress',observedExcerpt}
+    };
+  }
+  // An engineering mission uses canonical Run evidence. In normal mode the
+  // coordinator may review it; supervised dev mode uses the App-owned policy
+  // above and never needs another model to authorize continuation.
   async reviewTechnical(row,phase,context) {
     const taskId=phase==='a'?row.task_a_id:row.task_b_id;
     const run=this.db.prepare("SELECT id,status FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1").get(taskId);
@@ -676,6 +720,8 @@ export class AutonomousDialogue {
        !this.service.reviewableGPTResult(row.project_id,row.orchestrator_id,run.id))
       throw Error('autonomous_review_source_unconfirmed');
     this.assertMissionSession(context,row);
+    if(this.service.continuousExecutionByDefault===true)
+      return this.appOwnedTechnicalReview(row,phase);
     const baseRequestId='technical_'+row.id+'_'+phase;
     const firstReceipt=this.db.prepare('SELECT status,result FROM lab_command_receipts WHERE '+
       'workspace_session_id=? AND request_id=?').get(row.workspace_session_id,baseRequestId);
@@ -734,7 +780,8 @@ export class AutonomousDialogue {
         .get(runId)?.task_id!==taskId)
       throw Error('autonomous_review_transcript_source_invalid');
     const receiptId='technical_'+row.id+'_'+phase;
-    if(!this.db.prepare(`SELECT 1 FROM lab_command_receipts
+    const appOwnedReview=decision?.reviewProvider==='ordax_app_policy';
+    if(!appOwnedReview&&!this.db.prepare(`SELECT 1 FROM lab_command_receipts
       WHERE workspace_session_id=? AND project_id=? AND status='succeeded'
         AND request_id IN (?,?) LIMIT 1`).get(
           row.workspace_session_id,row.project_id,receiptId,receiptId+'_recovery'))
@@ -766,8 +813,9 @@ export class AutonomousDialogue {
         ' ('+acceptanceLabels[acceptance.status]+').'
       :'';
     this.store.appendMessage(chatTaskId,'assistant',
-      'Ciclo '+cycle+': recebi a '+phaseLabel+' resposta GPT e registrei a revisão Groq. '+
-      'Avaliação Groq (não certificada): '+summary+'. '+
+      'Ciclo '+cycle+': recebi a '+phaseLabel+' resposta GPT e registrei a revisão '+
+      (appOwnedReview?'do Forge':'Groq')+'. '+
+      'Avaliação '+(appOwnedReview?'do Forge':'Groq')+' (não certificada): '+summary+'. '+
       'Motivo informado: '+reason+'. '+note+acceptanceNote+
       ' Nenhuma alteração externa foi certificada por esta revisão.');
     this.store.event(chatTaskId,'orchestrator.technical_review',{
@@ -846,7 +894,10 @@ export class AutonomousDialogue {
     if(!row)return {state:'idle'};
     this.assertMissionSession(context,row,{allowPaused:true});
     if(this.service.orchestrator(row.project_id,row.orchestrator_id).status!=='ready')return {state:'paused'};
-    if(this.service.coordinator.available?.(row.project_id,row.orchestrator_id)!==true)
+    const appOwnedSemantic=row.strategy==='semantic'&&
+      this.service.continuousExecutionByDefault===true&&Boolean(row.question_a);
+    if(!appOwnedSemantic&&
+       this.service.coordinator.available?.(row.project_id,row.orchestrator_id)!==true)
       return {state:'blocked_coordinator'};
     // Busy is a wait condition, not an uncertain autonomous API effect.
     if(this.service.coordinatorTurnBusy(this.service.orchestrator(row.project_id,row.orchestrator_id).chat_task_id))

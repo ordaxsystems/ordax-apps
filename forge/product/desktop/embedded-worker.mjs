@@ -24,7 +24,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import {HTML_ARTIFACT_LIMIT_BYTES,validateHtmlArtifactName} from '../src/provider-html-artifact.mjs';
-import {classifyProviderMcpSelection,requireSelectedMcpForPrompt,inspectProviderMcpComposerSelection,inspectProviderMcpAddContextTrigger,inspectProviderMcpPickerOption,isStandaloneMcpSelection} from '../src/provider-mcp-selection.mjs';
+import {classifyProviderMcpSelection,requireSelectedMcpForPrompt,inspectProviderMcpComposerSelection,inspectProviderMcpAddContextTrigger,inspectProviderMcpPickerOption,isStandaloneMcpSelection,providerMcpAppSpec} from '../src/provider-mcp-selection.mjs';
 import { fileURLToPath } from 'node:url';
 import { classifyProviderContextAttachmentObservation, selectProviderContextFileInput, PROVIDER_CONTEXT_FILE_INPUT_SELECTOR, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
 
@@ -100,8 +100,12 @@ function cleanBodyCandidate(raw) {
 }
 
 export class EmbeddedChatWorker {
-  constructor() {
-    this.partition = 'persist:ordax-forge-chatgpt';
+  constructor({id='primary',partition='persist:ordax-forge-chatgpt'}={}) {
+    if(typeof id!=='string'||!/^[a-zA-Z0-9_-]{1,80}$/.test(id)||
+       typeof partition!=='string'||!partition.startsWith('persist:'))
+      throw new Error('provider_worker_identity_invalid');
+    this.id = id;
+    this.partition = partition;
     this.session = session.fromPartition(this.partition);
     this.view = createView(this.partition);
     this.active = false;
@@ -293,6 +297,7 @@ export class EmbeddedChatWorker {
 
   status() {
     return {
+      id:this.id,
       connected: !this.view.webContents.isDestroyed(),
       active: this.active,
       ready: this.ready,
@@ -300,6 +305,7 @@ export class EmbeddedChatWorker {
       title: this.view.webContents.getTitle(),
       backend: 'electron-embedded-chatgpt',
       persistent_session: true,
+      shared_auth_partition: this.partition,
       single_visual_session: true,
       api_used: false,
       private_endpoint_used: false,
@@ -577,7 +583,8 @@ export class EmbeddedChatWorker {
 
   // Read only the currently composed ChatGPT message; no app-menu click,
   // credential handling, navigation, permission grant or provider send.
-  async inspectMcpSelectionReadOnly({allowDuringRun=false}={}) {
+  async inspectMcpSelectionReadOnly({allowDuringRun=false,app='ordax-mcp'}={}) {
+    const spec=providerMcpAppSpec(app);
     if((this.active&&!allowDuringRun) || !/^https:\/\/chatgpt\.com\//i.test(this.view.webContents.getURL()))
       return classifyProviderMcpSelection(null);
     const wc=this.view.webContents;
@@ -585,7 +592,7 @@ export class EmbeddedChatWorker {
       debugger:wc.debugger,expression:`(() => {
         const composer=${composerExpression()};
         const detect=${inspectProviderMcpComposerSelection.toString()};
-        return detect(composer);
+        return detect(composer,${JSON.stringify(spec)});
       })()`,timeoutMs:5000,timeoutCode:'provider_mcp_selection_observation_timeout'
     }).catch(()=>null);
     return classifyProviderMcpSelection(observation);
@@ -593,30 +600,34 @@ export class EmbeddedChatWorker {
 
   // Stage one real, selected ChatGPT app token before beginning the SQLite Run.
   // The provider app picker, not a textual @ mention, supplies the connection.
-  async prepareMcpPrompt({prompt,chatUrl=null,newSession=false}={}) {
+  async prepareMcpPrompt({prompt,chatUrl=null,newSession=false,mcpApp='ordax-mcp'}={}) {
     return this.enqueue(async()=>{
       if(this.preparedMcpPrompt)throw Error('provider_mcp_preparation_already_pending');
-      const core=String(prompt||'').trim().replace(/\s*@ordax-mcp\s*$/i,'').trim();
+      const spec=providerMcpAppSpec(mcpApp);
+      const raw=String(prompt||'').trim();
+      const suffix='@'+spec.mentionName;
+      const core=raw.toLowerCase().endsWith(suffix.toLowerCase())
+        ?raw.slice(0,-suffix.length).trim():raw;
       if(!core)throw Error('provider_mcp_prompt_empty');
       const wc=this.view.webContents;
       assertProviderSendReadiness(await this.health());
       const startsFresh=Boolean(newSession||!chatUrl);
       const initial=await this.#composerState();
-      const initialSelection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true});
+      const initialSelection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true,app:mcpApp});
       const atHome=(()=>{
         try{return new URL(wc.getURL()).origin==='https://chatgpt.com'&&
           new URL(wc.getURL()).pathname==='/';}catch{return false;}
       })();
       const reuseHomeToken=startsFresh&&atHome&&
-        isStandaloneMcpSelection(initial.text,initialSelection);
+        isStandaloneMcpSelection(initial.text,initialSelection,spec);
       if(initial.text.trim()&&!reuseHomeToken)throw Error('chatgpt_draft_present');
       if(startsFresh&&!reuseHomeToken)await this.#startNewChat();
       else if(!startsFresh&&wc.getURL()!==chatUrl)
         await this.#safeLoad(chatUrl,{requireComposer:true,protectDraft:true});
       else await this.#waitForComposer();
       const readyComposer=await this.#composerState();
-      const readySelection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true});
-      const reusable=isStandaloneMcpSelection(readyComposer.text,readySelection);
+      const readySelection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true,app:mcpApp});
+      const reusable=isStandaloneMcpSelection(readyComposer.text,readySelection,spec);
       if(readyComposer.text.trim()&&!reusable)throw Error('chatgpt_draft_present');
       wc.focus();
       const focusExpression='(()=>{const e='+composerExpression()+
@@ -652,11 +663,11 @@ export class EmbeddedChatWorker {
         };
         if(!trigger.open)await nativeClick(trigger);
         const choiceExpression='(()=>{const inspect='+inspectProviderMcpPickerOption.toString()+
-          ';return inspect(document)})()';
+          ';return inspect(document,'+JSON.stringify(spec)+')})()';
         let clicked=false;
         selected=null;
         for(let i=0;i<24;i++){
-          selected=await this.inspectMcpSelectionReadOnly({allowDuringRun:true});
+          selected=await this.inspectMcpSelectionReadOnly({allowDuringRun:true,app:mcpApp});
           if(selected.selectionObserved===true)break;
           const choice=await wc.executeJavaScript(choiceExpression).catch(()=>null);
           if(choice?.optionCount>1)throw Error('provider_mcp_picker_ambiguous');
@@ -679,10 +690,11 @@ export class EmbeddedChatWorker {
         value.length-expected.length>96)
         throw Error('provider_mcp_prepared_prompt_unverified');
       requireSelectedMcpForPrompt(observed.text,
-        await this.inspectMcpSelectionReadOnly({allowDuringRun:true}),{requiresMcp:true});
+        await this.inspectMcpSelectionReadOnly({allowDuringRun:true,app:mcpApp}),
+        {requiresMcp:true,app:mcpApp});
       const stagedText=observed.text.trim();
       this.preparedMcpPrompt={providerPrompt:stagedText,sourcePrompt:prompt,
-        chatUrl:wc.getURL(),startsFresh};
+        chatUrl:wc.getURL(),startsFresh,mcpApp};
       return {providerPrompt:stagedText};
     });
   }
@@ -1108,14 +1120,17 @@ export class EmbeddedChatWorker {
     if (!recognized) throw new Error('composer_input_not_recognized');
     // Observe the plugin marker AFTER the exact payload is in the editor.
     // A typed @ mention alone is never considered a tool execution receipt.
-    const selection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true});
+    const mcpApp=this.streamContext?.mcpApp||this.preparedMcpPrompt?.mcpApp||'ordax-mcp';
+    const selection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true,app:mcpApp});
     if(this.streamContext)this.streamContext.mcpSelectionState=selection.state;
     if(typeof onMcpSelectionObserved==='function'){
       try{await onMcpSelectionObserved(selection);}catch{/* optional observation */}
     }
     // No app selected means no authorized GPT->MCP tool path. Block BEFORE
     // submission intent and provider send, preserving the unsent composer.
-    requireSelectedMcpForPrompt(prompt,selection,{requiresMcp:this.streamContext?.requiresMcp===true});
+    requireSelectedMcpForPrompt(prompt,selection,{
+      requiresMcp:this.streamContext?.requiresMcp===true,app:mcpApp
+    });
 
     // Wait until React renders a usable submit control before attempting
     // exactly one standards-based form submission. No fallback clicks.
@@ -1518,7 +1533,7 @@ export class EmbeddedChatWorker {
 
   async sendPrompt({ prompt, chatUrl = null, newSession = false, contextAttachment = null,
     onContextAttachmentObserved = null, onDeliveryObserved = null, onProvisionalProgress = null,
-    requiresMcp = false, onSubmissionIntent = null, onMcpSelectionObserved = null }) {
+    requiresMcp = false, mcpApp='ordax-mcp', onSubmissionIntent = null, onMcpSelectionObserved = null }) {
     return this.enqueue(async () => {
       const wc = this.view.webContents;
       this.lastFailureMetrics = null;
@@ -1532,10 +1547,12 @@ export class EmbeddedChatWorker {
       const currentDraft = await this.#composerState(); // fail closed before any send
       const draftCheckedAt = Date.now();
       const startsFresh = Boolean(newSession || !chatUrl);
+      providerMcpAppSpec(mcpApp);
       const stagedMcp=requiresMcp===true&&
         this.preparedMcpPrompt?.providerPrompt===String(prompt||'').trim()&&
         this.preparedMcpPrompt?.chatUrl===wc.getURL()&&
-        this.preparedMcpPrompt?.startsFresh===Boolean(newSession||!chatUrl);
+        this.preparedMcpPrompt?.startsFresh===Boolean(newSession||!chatUrl)&&
+        this.preparedMcpPrompt?.mcpApp===mcpApp;
       if(!stagedMcp)assertProviderDraftAllowed({
         newConversation: startsFresh,draftText:currentDraft.text
       });
@@ -1573,7 +1590,7 @@ export class EmbeddedChatWorker {
       const baseline = signatureFor(beforeLast);
       const baselineReadyAt = Date.now();
       const promptText = String(prompt || '').trim();
-      this.streamContext = { requiresMcp:requiresMcp===true, beforeCount, baseline, promptText, beforeImageSources:new Set(beforeImages), currentAssistantMessageId:null, lastSignature:'', firstActivityAt:null, firstDeltaAt:null, firstObserver:null, fastFirstDeltaAt:null, betaFirstDeltaAt:null, submitAttemptAt:null, providerRequestSeenAt:null, submittedAt:null, networkFirstByteAt:null, fastSeen:false, betaSeen:false, fastDelivered:false, fastSuppressed:false, fastSuppressionReason:null, lastDeliveredText:'', lastDeliveredSource:null, prepareStartedAt, healthCompletedAt, draftCheckedAt, conversationReadyAt, observerReadyAt, baselineReadyAt };
+      this.streamContext = { requiresMcp:requiresMcp===true, mcpApp, beforeCount, baseline, promptText, beforeImageSources:new Set(beforeImages), currentAssistantMessageId:null, lastSignature:'', firstActivityAt:null, firstDeltaAt:null, firstObserver:null, fastFirstDeltaAt:null, betaFirstDeltaAt:null, submitAttemptAt:null, providerRequestSeenAt:null, submittedAt:null, networkFirstByteAt:null, fastSeen:false, betaSeen:false, fastDelivered:false, fastSuppressed:false, fastSuppressionReason:null, lastDeliveredText:'', lastDeliveredSource:null, prepareStartedAt, healthCompletedAt, draftCheckedAt, conversationReadyAt, observerReadyAt, baselineReadyAt };
 
       if(contextAttachment)await this.#attachContextFile(contextAttachment,onContextAttachmentObserved);
       this.#setStage('submit');

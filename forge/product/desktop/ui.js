@@ -2294,29 +2294,36 @@ const mcpCheckButtons=['forjadorMcpCheck','settingsMcpCheck']
   .map(id=>document.getElementById(id)).filter(Boolean);
 const mcpStatusLabels=['forjadorMcpStatus','settingsMcpState']
   .map(id=>document.getElementById(id)).filter(Boolean);
-const mcpStatusText=Object.freeze({
-  selection_visible:'OrdaX MCP marcado no compositor do GPT. Ainda não há recibo de execução; a seleção precisa ser verificada a cada mensagem.',
-  mention_requested:'Forjador incluiu @ordax-mcp no envio ao GPT. A menção não confirma autorização do dispositivo nem execução de ferramentas.',
-  name_visible_unverified:'OrdaX MCP aparece no compositor, mas a seleção efetiva não foi confirmada. Nenhuma ação MCP comprovada.',
-  not_observed:'OrdaX MCP não foi observado na mensagem atual do GPT. Selecione o plugin no ChatGPT antes do envio; não basta escrever seu nome no prompt.',
-  unavailable:'Não foi possível verificar a seleção MCP nesta sessão. Nenhum envio ou permissão foi criado.'
-});
-function displayMcpSelectionState(rawState){
-  const state=Object.hasOwn(mcpStatusText,rawState)?rawState:'unavailable';
+function mcpStatusText(state,app='forge-mcp'){
+  const name=app==='ordax-mcp'?'OrdaX MCP':'Forge MCP';
+  const mention=app==='ordax-mcp'?'@ordax-mcp':'@forge-mcp';
+  const messages={
+    selection_visible:name+' marcado no compositor do GPT. Ainda não há recibo de execução; a seleção precisa ser verificada a cada mensagem.',
+    mention_requested:'A mensagem incluiu '+mention+', mas texto não confirma seleção, autorização nem execução de ferramentas.',
+    name_visible_unverified:name+' aparece no compositor, mas a seleção efetiva não foi confirmada. Nenhuma ação MCP comprovada.',
+    not_observed:name+' não foi observado na mensagem atual do GPT. Selecione o app no ChatGPT antes do envio; escrever o nome no prompt não basta.',
+    unavailable:'Não foi possível verificar '+name+' nesta sessão. Nenhum envio ou permissão foi criado.'
+  };
+  return messages[state]||messages.unavailable;
+}
+function displayMcpSelectionState(rawState,app='forge-mcp'){
+  const state=['selection_visible','mention_requested','name_visible_unverified','not_observed','unavailable']
+    .includes(rawState)?rawState:'unavailable';
   for(const label of mcpStatusLabels){
-    label.textContent=mcpStatusText[state];
+    label.textContent=mcpStatusText(state,app);
     label.dataset.state=state==='selection_visible'?'unverified':'blocked';
   }
 }
-window.ordax?.onProviderMcpObserved?.(observation=>displayMcpSelectionState(observation?.state));
+window.ordax?.onProviderMcpObserved?.(observation=>
+  displayMcpSelectionState(observation?.state,observation?.app||'forge-mcp'));
 async function inspectMcpForForjador(){
   for(const button of mcpCheckButtons)button.disabled=true;
-  for(const label of mcpStatusLabels)label.textContent='Observando somente o compositor do GPT…';
+  for(const label of mcpStatusLabels)label.textContent='Observando somente Forge MCP no compositor do GPT…';
   try{
-    const result=await window.ordax?.providerMcpSelection?.();
-    displayMcpSelectionState(result?.state);
+    const result=await window.ordax?.providerMcpSelection?.('forge-mcp');
+    displayMcpSelectionState(result?.state,'forge-mcp');
   }catch{
-    displayMcpSelectionState('unavailable');
+    displayMcpSelectionState('unavailable','forge-mcp');
   }finally{for(const button of mcpCheckButtons)button.disabled=false;}
 }
 for(const button of mcpCheckButtons)button.addEventListener('click',inspectMcpForForjador);

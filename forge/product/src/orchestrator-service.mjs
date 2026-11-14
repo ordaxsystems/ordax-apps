@@ -8,7 +8,7 @@ import {interpretGPTWorkReview} from './gpt-work-review.mjs';
 import {findProviderSubmissionProvenance} from './provider-submission-provenance.mjs';
 import {LabContinuation} from './lab-continuation.mjs';
 import {AutonomousDialogue} from './autonomous-dialogue.mjs';
-import {classifyExistingSiteChange} from './natural-site-intent.mjs';
+import {appOwnedSiteDecision,classifyExistingSiteChange} from './natural-site-intent.mjs';
 import {latestSiteWork} from './site-work-context.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
 import {forgeProjectContext,forgeMcpDiscovery} from './forge-executor-context.mjs';
@@ -31,10 +31,11 @@ function missionProjectName(mission) {
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
 export class OrchestratorService {
-  constructor({store,authorize,provider=null,coordinator=null,confirmProposal=null,confirmProposalSend=null,workspacePort=null,fileBroker=null,repositoryPort=null,verifyLocalArtifact=null}={}) {
+  constructor({store,authorize,provider=null,coordinator=null,confirmProposal=null,confirmProposalSend=null,workspacePort=null,fileBroker=null,repositoryPort=null,verifyLocalArtifact=null,continuousExecutionByDefault=false}={}) {
     if(!store?.db || typeof authorize!=='function')throw Error('orchestrator_ports_required');
     this.store=store; this.db=store.db; this.authorize=authorize;
     this.provider=provider; this.coordinator=coordinator;
+    this.continuousExecutionByDefault=continuousExecutionByDefault===true;
     // Optional App-owned, read-only local proof port. No filesystem authority
     // is inferred from a persisted model answer, asset path or remote URL.
     this.verifyLocalArtifact=typeof verifyLocalArtifact==='function'?verifyLocalArtifact:null;
@@ -338,6 +339,47 @@ export class OrchestratorService {
     return this.receipt(this.db.prepare('SELECT * FROM lab_command_receipts WHERE id=?').get(commandId));
   }
 
+  startDevAutonomousForjador(context,raw={}) {
+    if(!this.continuousExecutionByDefault)return null;
+    const {input}=validateOrchestratorInput('forjador_send',raw);
+    this.requireAccess(context,'forjador_send',input.projectId);
+    const owner=this.orchestrator(input.projectId,input.orchestratorId);
+    if(owner.status!=='ready')throw Error('orchestrator_paused');
+    this.assertProviderTaskAvailable(owner.chat_task_id,{allowCoordinator:true});
+    const existingSite=latestSiteWork(this.store,input.projectId,input.orchestratorId);
+    const route=appOwnedSiteDecision({
+      delegateWork:true,currentRequest:input.content,existingSite:Boolean(existingSite)
+    });
+    if(!route)return null;
+    return this.transaction(()=>{
+      const reserved=this.reserve(context,'forjador_send',input);
+      if(reserved.existing)return reserved.existing;
+      const draft=this.store.getTaskDraft(owner.chat_task_id);
+      if(input.draftRevision!=null&&
+         (draft?.draft_revision!==input.draftRevision||draft?.draft!==input.content))
+        throw Error('task_draft_revision_conflict');
+      const enabled=this.db.prepare(`UPDATE lab_orchestrators
+        SET continuous_execution_enabled=1 WHERE id=? AND project_id=?`)
+        .run(owner.id,input.projectId).changes;
+      if(enabled!==1)throw Error('autonomous_continuous_owner_changed');
+      this.store.appendMessage(owner.chat_task_id,'user',input.content,{authorSource:'human'});
+      if(input.draftRevision!=null)
+        this.store.setDraft(owner.chat_task_id,'',input.draftRevision+1);
+      const accepted=this.autonomous.start(context,{
+        projectId:input.projectId,orchestratorId:input.orchestratorId,
+        mission:input.content,mode:'technical',directUserPrompt:true,
+        ...(route.workIntent==='edit'&&existingSite?.taskId
+          ?{resumeSiteTaskId:existingSite.taskId}:{}),
+        requestId:'dev_'+reserved.commandId
+      });
+      return this.finish(reserved.commandId,{
+        taskId:owner.chat_task_id,autonomousMissionId:accepted.missionId,
+        provider:'forge_autonomy',delegation:'technical',
+        responseObserved:false,effectVerified:false
+      });
+    });
+  }
+
   async invoke(context,operation,raw={}) {
     const {tool,input}=validateOrchestratorInput(operation,raw);
     // A completed delete has a projectless tombstone so the same requestId
@@ -406,7 +448,9 @@ export class OrchestratorService {
       if(reserved.existing)return reserved.existing;
       const result=operation==='project_memory_propose'
         ?(this.task(input.projectId,input.taskId),this.store.memoryCandidates.proposeFromAssistant(input.taskId,input))
-        :operation==='proposal_review'?this.reviewProposal(context,input):this.mutate(operation,input);
+        :operation==='proposal_review'?this.reviewProposal(context,input)
+        :operation==='work_parallel_launch'?this.prepareParallelLaunch(input,reserved.commandId)
+        :this.mutate(operation,input);
       if(['project_create','project_quick_create','mission_create'].includes(operation))this.db.prepare('UPDATE lab_command_receipts SET project_id=? WHERE id=?')
         .run(result.projectId,reserved.commandId);
       return this.finish(reserved.commandId,result);
@@ -680,29 +724,39 @@ export class OrchestratorService {
     });
   }
 
-  // The Electron host currently has ONE shared WebContentsView and ONE
-  // canonical provider transport. This capability is a verified ceiling,
-  // not an opt-in flag that may be raised without isolated workers.
+  // Provider admission is owned by the canonical Electron scheduler.
+  // SQLite remains the durable Run/receipt authority, while capacity reflects
+  // physical WebContents lanes rather than imposing a false global lock.
   executorAdmission() {
     const activeRuns=Number(this.db.prepare(
       "SELECT COUNT(*) n FROM runs WHERE status='running'"
     ).get().n);
-    // Only GPT Web submissions occupy the single WebContentsView executor.
-    // Groq/chat/analysis requests have their own coordinator lane and must
-    // not consume provider capacity, even while their receipts are running.
-    // Keep ALL in-flight GPT sends reserved until their durable receipt ends.
     const activeCommands=Number(this.db.prepare(`SELECT COUNT(*) n
       FROM lab_command_receipts WHERE status='running'
       AND operation IN ('work_send','proposal_send','forjador_send')`).get().n);
+    const capacity=this.provider?.capacity?.()||null;
+    const maxConcurrentSends=Number.isSafeInteger(capacity?.maxConcurrentSends)&&
+      capacity.maxConcurrentSends>0?capacity.maxConcurrentSends:1;
     const hostOccupied=Boolean(this.provider?.busy?.());
-    const occupied=activeRuns>0||activeCommands>0||hostOccupied;
+    const capacityKnown=Number.isSafeInteger(capacity?.maxConcurrentSends)&&
+      Number.isSafeInteger(capacity?.availableSlots);
+    const fallbackActive=Math.min(maxConcurrentSends,
+      Math.max(activeRuns,activeCommands,hostOccupied?1:0));
+    const activeProviderSends=Number.isSafeInteger(capacity?.active)
+      ?Math.max(0,capacity.active):fallbackActive;
+    const queuedProviderSends=Number.isSafeInteger(capacity?.queued)
+      ?Math.max(0,capacity.queued):0;
+    const availableSlots=capacityKnown
+      ?Math.max(0,Math.min(maxConcurrentSends,capacity.availableSlots))
+      :Math.max(0,maxConcurrentSends-fallbackActive);
+    const parallel=maxConcurrentSends>1;
     return Object.freeze({
-      mode:'single_embedded_chatgpt_worker',
-      maxConcurrentSends:1,
-      activeRuns,activeCommands,hostOccupied,
-      availableSlots:occupied?0:1,
-      isolatedWorkerSessions:false,
-      parallelProviderSendsEnabled:false
+      mode:parallel?'embedded_chatgpt_worker_pool':'single_embedded_chatgpt_worker',
+      maxConcurrentSends,
+      activeRuns,activeCommands,activeProviderSends,queuedProviderSends,hostOccupied,
+      availableSlots,
+      isolatedWorkerSessions:parallel,
+      parallelProviderSendsEnabled:parallel
     });
   }
 
@@ -1085,6 +1139,24 @@ export class OrchestratorService {
       }
       return {orchestratorId:input.orchestratorId,status:input.paused?'paused':'ready'};
     }
+    if(operation==='work_draft_set') {
+      this.task(input.projectId,input.taskId,'work');
+      if(this.db.prepare('SELECT 1 FROM messages WHERE task_id=? LIMIT 1').get(input.taskId)||
+         this.db.prepare('SELECT 1 FROM runs WHERE task_id=? LIMIT 1').get(input.taskId)||
+         this.db.prepare(`SELECT 1 FROM lab_command_receipt_scope
+           WHERE project_id=? AND task_id=? AND operation IN ('work_send','proposal_send')
+           LIMIT 1`).get(input.projectId,input.taskId))
+        throw Error('orchestrator_work_already_started');
+      const current=this.store.getTaskDraft(input.taskId);
+      if(input.draftRevision!==current.draft_revision+1)
+        throw Error('task_draft_revision_conflict');
+      const saved=this.store.setDraft(input.taskId,input.content,input.draftRevision);
+      if(saved.draft!==input.content||saved.draft_revision!==input.draftRevision)
+        throw Error('task_draft_revision_conflict');
+      return {taskId:input.taskId,draftRevision:saved.draft_revision,
+        contentSha256:createHash('sha256').update(input.content).digest('hex'),
+        providerMessagesSent:0};
+    }
     if(operation==='work_dependency_set') {
       this.task(input.projectId,input.taskId,'work');
       // Prerequisites are pre-execution policy, not retroactive evidence.
@@ -1221,6 +1293,125 @@ export class OrchestratorService {
     return result;
   }
 
+  prepareParallelLaunch(input,commandId) {
+    if(typeof commandId!=='string'||!commandId)throw Error('orchestrator_parallel_launch_invalid');
+    const taskIds=[...new Set(input.taskIds)];
+    if(taskIds.length!==input.taskIds.length||taskIds.length<2||taskIds.length>16)
+      throw Error('orchestrator_parallel_tasks_invalid');
+    const tasks=taskIds.map(taskId=>this.task(input.projectId,taskId,'work'));
+    const orchestratorIds=new Set(tasks.map(task=>task.orchestrator_id));
+    if(orchestratorIds.size!==1)throw Error('orchestrator_parallel_owner_mismatch');
+    const owner=this.orchestrator(input.projectId,tasks[0].orchestrator_id);
+    if(owner.status!=='ready')throw Error('orchestrator_paused');
+    if(owner.continuous_execution_enabled!==1)
+      throw Error('orchestrator_parallel_launch_disabled');
+
+    // One Work may belong to only one durable launch intent. A failed or
+    // uncertain child is never retried under a second launch; create a new
+    // Work milestone instead.
+    const historical=this.db.prepare(`SELECT result FROM lab_command_receipts
+      WHERE project_id=? AND operation='work_parallel_launch' AND status='succeeded'`)
+      .all(input.projectId);
+    const already=new Set();
+    for(const row of historical){
+      let parsed=null;try{parsed=JSON.parse(row.result||'null');}catch{}
+      for(const entry of parsed?.tasks||[])if(typeof entry?.taskId==='string')already.add(entry.taskId);
+    }
+    if(taskIds.some(taskId=>already.has(taskId)))
+      throw Error('orchestrator_parallel_work_already_launched');
+
+    const entries=[];
+    for(const task of tasks){
+      this.assertDependenciesSatisfied(input.projectId,task.id);
+      if(this.db.prepare('SELECT 1 FROM messages WHERE task_id=? LIMIT 1').get(task.id)||
+         this.db.prepare('SELECT 1 FROM runs WHERE task_id=? LIMIT 1').get(task.id)||
+         this.db.prepare(`SELECT 1 FROM lab_command_receipt_scope
+           WHERE project_id=? AND task_id=? AND operation IN ('work_send','proposal_send')
+           LIMIT 1`).get(input.projectId,task.id))
+        throw Error('orchestrator_parallel_work_already_started');
+      const draft=this.store.getTaskDraft(task.id);
+      if(typeof draft.draft!=='string'||!draft.draft.trim()||draft.draft.length>6000||
+         !Number.isSafeInteger(draft.draft_revision)||draft.draft_revision<1)
+        throw Error('orchestrator_parallel_draft_required');
+      const digest=createHash('sha256').update(draft.draft).digest('hex');
+      const requestId='parallel_'+createHash('sha256')
+        .update(commandId+'\0'+task.id).digest('hex').slice(0,48);
+      entries.push({taskId:task.id,orchestratorId:task.orchestrator_id,
+        content:draft.draft,draftRevision:draft.draft_revision,
+        contentSha256:digest,requestId});
+    }
+    const waitForRunIds=this.db.prepare(`SELECT r.id FROM runs r
+      JOIN lab_task_bindings b ON b.task_id=r.task_id
+      WHERE b.project_id=? AND r.status='running' ORDER BY r.started_at,r.id`)
+      .all(input.projectId).map(row=>row.id);
+    return {launchId:commandId,orchestratorId:owner.id,tasks:entries,waitForRunIds,
+      providerMessagesSent:0,dispatchQueued:true};
+  }
+
+  async tickParallelDispatch(context) {
+    const session=this.store.getWorkspaceSession();
+    if(session?.status!=='active'||context?.workspaceSessionId!==session.id)
+      return {state:'blocked_workspace'};
+    const admission=this.executorAdmission();
+    if(admission.availableSlots<1)return {state:'executor_busy',availableSlots:0};
+
+    const launches=this.db.prepare(`SELECT id,project_id,result,created_at
+      FROM lab_command_receipts
+      WHERE workspace_session_id=? AND actor_id=? AND client_id=?
+        AND operation='work_parallel_launch' AND status='succeeded'
+      ORDER BY created_at,id LIMIT 32`)
+      .all(context.workspaceSessionId,context.actorId,context.clientId);
+    const ready=[];
+    for(const launch of launches){
+      let result=null;try{result=JSON.parse(launch.result||'null');}catch{}
+      if(!Array.isArray(result?.tasks)||!Array.isArray(result?.waitForRunIds)||
+         typeof result?.orchestratorId!=='string')continue;
+      let owner=null;try{owner=this.orchestrator(launch.project_id,result.orchestratorId);}catch{continue;}
+      if(owner.status!=='ready'||owner.continuous_execution_enabled!==1)continue;
+      if(result.waitForRunIds.some(runId=>this.db.prepare(
+        "SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)))continue;
+      for(const entry of result.tasks){
+        if(ready.length>=admission.availableSlots)break;
+        if(!entry||typeof entry.taskId!=='string'||typeof entry.requestId!=='string'||
+           typeof entry.content!=='string'||!/^[a-f0-9]{64}$/.test(entry.contentSha256||'')||
+           !Number.isSafeInteger(entry.draftRevision))continue;
+        const existing=this.db.prepare(`SELECT status FROM lab_command_receipts
+          WHERE workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
+          .get(context.workspaceSessionId,context.actorId,context.clientId,entry.requestId);
+        if(existing)continue;
+        ready.push({launch,entry});
+      }
+      if(ready.length>=admission.availableSlots)break;
+    }
+    if(!ready.length)return {state:'idle',availableSlots:admission.availableSlots};
+
+    const start=async({launch,entry})=>{
+      this.requireAccess(context,'work_parallel_launch',launch.project_id);
+      const task=this.task(launch.project_id,entry.taskId,'work');
+      const draft=this.store.getTaskDraft(entry.taskId);
+      const digest=createHash('sha256').update(String(draft.draft||'')).digest('hex');
+      const childInput={projectId:launch.project_id,taskId:entry.taskId,
+        content:entry.content,requestId:entry.requestId,draftRevision:entry.draftRevision+1};
+      if(draft.draft!==entry.content||draft.draft_revision!==entry.draftRevision||
+         digest!==entry.contentSha256){
+        return this.transaction(()=>{
+          const reserved=this.reserve(context,'work_send',childInput);
+          if(reserved.existing)return reserved.existing;
+          return this.finish(reserved.commandId,{taskId:entry.taskId,
+            reason:'parallel_launch_snapshot_changed',providerMessagesSent:0},'failed');
+        });
+      }
+      this.assertDependenciesSatisfied(launch.project_id,task.id);
+      return this.dispatch(context,'work_send',childInput,null,
+        {authorSourceOverride:'orchestrator'});
+    };
+    const settled=await Promise.allSettled(ready.map(start));
+    return {state:'dispatched',requested:ready.length,
+      fulfilled:settled.filter(item=>item.status==='fulfilled').length,
+      rejected:settled.filter(item=>item.status==='rejected').length,
+      availableSlots:Math.max(0,admission.availableSlots-ready.length)};
+  }
+
   preparedTask(projectId,orchestratorId,taskId) {
     return this.db.prepare(`SELECT t.id,t.title,t.draft,t.draft_revision,
       EXISTS(SELECT 1 FROM messages WHERE task_id=t.id) has_messages,
@@ -1351,19 +1542,24 @@ export class OrchestratorService {
     finally{this.activeCoordinatorTurns.delete(taskId);}
   }
 
-  async dispatch(context,operation,input,preparedSend=null) {
+  async dispatch(context,operation,input,preparedSend=null,internal={}) {
     if(operation==='work_send'||operation==='proposal_send')
-      return this.dispatchCore(context,operation,input,preparedSend);
+      return this.dispatchCore(context,operation,input,preparedSend,internal);
     // Repeated requestIds return their existing receipt even while busy.
     const existing=this.db.prepare(`SELECT id FROM lab_command_receipts
       WHERE workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
       .get(context.workspaceSessionId,context.actorId,context.clientId,input.requestId);
     if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
     const chatTaskId=this.orchestrator(input.projectId,input.orchestratorId).chat_task_id;
-    return this.withCoordinatorTurn(chatTaskId,()=>this.dispatchCore(context,operation,input,preparedSend));
+    return this.withCoordinatorTurn(chatTaskId,()=>this.dispatchCore(
+      context,operation,input,preparedSend,internal
+    ));
   }
 
-  async dispatchCore(context,operation,input,preparedSend=null) {
+  async dispatchCore(context,operation,input,preparedSend=null,internal={}) {
+    const authorSourceOverride=internal?.authorSourceOverride??null;
+    if(authorSourceOverride!==null&&!['human','orchestrator'].includes(authorSourceOverride))
+      throw Error('invalid_message_author_source');
     const existing=this.db.prepare(`SELECT id,input_hash FROM lab_command_receipts WHERE workspace_session_id=?
       AND actor_id=? AND client_id=? AND request_id=?`).get(context.workspaceSessionId,
       context.actorId,context.clientId,input.requestId);
@@ -1536,7 +1732,9 @@ export class OrchestratorService {
         draftRevision:isForjadorSend&&sendInput.draftRevision!=null
           ?sendInput.draftRevision+1:sendInput.draftRevision??null,
         taskKind:isForjadorSend?'orchestrator':isWorkSend?'work':null,
-        authorSource:isForjadorSend?'orchestrator':'human',
+        // Public UI/API sends remain human-authored. Only App-internal
+        // deferred child dispatch may set the private orchestrator override.
+        authorSource:authorSourceOverride||'human',
         mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork,
         completionProfile:reviewSource?'technical_review':'standard',workspaceObservation,repositoryUrl,
         delegateWork:operation==='orchestrator_chat'&&input.delegateWork===true});
@@ -1595,6 +1793,15 @@ export class OrchestratorService {
                 const editing=classifyExistingSiteChange(input.content);
                 const site=editing?latestSiteWork(this.store,input.projectId,input.orchestratorId):null;
                 if(editing&&!site)throw Error('orchestrator_site_to_edit_not_available');
+                // Development autonomy is an App setting, not another user
+                // message. The user's first request remains byte-for-byte the
+                // only owner-authored prompt; after it, Forge owns continuation.
+                if(this.continuousExecutionByDefault){
+                  const enabled=this.db.prepare(`UPDATE lab_orchestrators
+                    SET continuous_execution_enabled=1 WHERE id=? AND project_id=?`)
+                    .run(owner.id,input.projectId).changes;
+                  if(enabled!==1)throw Error('autonomous_continuous_owner_changed');
+                }
                 const accepted=this.autonomous.start(context,{
                   projectId:input.projectId,orchestratorId:input.orchestratorId,
                   mission:input.content,mode:'technical',directUserPrompt:true,

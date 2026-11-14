@@ -41,7 +41,7 @@ test('Forjador routes direct to GPT once, persists canonical reply, and never ca
   assert.equal(calls,1);
   assert.equal(ports.taskId,created.chatTaskId);
   assert.equal(ports.taskKind,'orchestrator');
-  assert.equal(ports.authorSource,'orchestrator');
+  assert.equal(ports.authorSource,'human');
   assert.equal(ports.draftRevision,2);
   assert.equal(f.store.getTaskDraft(created.chatTaskId).draft,'');
   assert.equal(f.store.getTaskDraft(created.chatTaskId).draft_revision,2);

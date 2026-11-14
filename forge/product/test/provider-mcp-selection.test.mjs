@@ -149,31 +149,32 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   const worker=fs.readFileSync(path.join(root,'desktop/embedded-worker.mjs'),'utf8');
   for(const id of ['forjadorMcpCheck','forjadorMcpStatus','settingsMcpCheck','settingsMcpState'])
     assert.match(html,new RegExp('id="'+id+'"'));
-  assert.match(ui,/providerMcpSelection\?\.\(\)/);
+  assert.match(ui,/providerMcpSelection\?\.\('forge-mcp'\)/);
   assert.match(main,/ordax:provider:mcp-selection/);
   assert.match(preload,/ordax:provider:mcp-selection/);
   assert.match(worker,/classifyProviderMcpSelection/);
-  assert.match(worker,/requireSelectedMcpForPrompt\(prompt,selection,\{requiresMcp:this\.streamContext\?\.requiresMcp===true\}\)/);
+  assert.match(worker,/requiresMcp:this\.streamContext\?\.requiresMcp===true,app:mcpApp/);
   assert.match(main,/requiresMcpForProjectPrompt\(prompt\)/);
-  assert.match(main,/const runFallback=providerRunPresentationActive&&!panelUsable/);
-  assert.match(main,/worker\.view\.setVisible\(Boolean\(panelUsable\|\|runFallback\)\)/);
-  assert.match(main,/worker\.view\.setBounds\(runFallback/);
-  assert.ok(main.indexOf('providerRunPresentationActive=true;')<
+  assert.match(main,/providerRunPresentationWorkers\.add\(runWorker\)/);
+  assert.match(main,/providerRunPresentationWorkers\.delete\(runWorker\)/);
+  assert.match(main,/candidate\.view\.setVisible\(true\)/);
+  assert.match(main,/width:offscreenWidth,height:offscreenHeight/);
+  assert.ok(main.indexOf('providerRunPresentationWorkers.add(runWorker);')<
     main.indexOf('health=await runWorker.health();'),
-    'the existing provider view must become usable before checking readiness');
-  assert.ok(main.indexOf('providerRunPresentationActive=true;')<
+    'the selected lane must get a usable viewport before health observation');
+  assert.ok(main.indexOf('providerRunPresentationWorkers.add(runWorker);')<
     main.indexOf('await runWorker.prepareMcpPrompt('),
-    'real provider view must be usable before opening the app picker');
+    'the selected lane must get a usable viewport before opening the app picker');
   assert.match(main,/\['anonymous','authenticating'\]\.includes\(health\?\.auth_state\)/);
-  assert.ok((main.match(/providerRunPresentationActive=false;/g)||[]).length>=4,
+  assert.ok((main.match(/providerRunPresentationWorkers\.delete\(runWorker\)/g)||[]).length>=3,
     'all pre-commit failures and completed Runs must restore the layout');
   const preparedAt=main.indexOf('await runWorker.prepareMcpPrompt(');
   const committedAt=main.indexOf('store.beginProviderRun(taskId');
   assert.ok(preparedAt>=0&&preparedAt<committedAt,
     'real app token must be prepared before committing the Run');
   assert.match(worker,/async prepareMcpPrompt\(/);
-  assert.match(worker,/isStandaloneMcpSelection\(initial\.text,initialSelection\)/);
-  assert.match(worker,/isStandaloneMcpSelection\(readyComposer\.text,readySelection\)/);
+  assert.match(worker,/isStandaloneMcpSelection\(initial\.text,initialSelection,spec\)/);
+  assert.match(worker,/isStandaloneMcpSelection\(readyComposer\.text,readySelection,spec\)/);
   assert.match(worker,/if\(startsFresh&&!reuseHomeToken\)await this\.#startNewChat\(\)/);
   assert.match(worker,/inspectProviderMcpAddContextTrigger\.toString\(\)/);
   assert.match(worker,/for\(let attempt=0;attempt<25;attempt\+\+\)/);
@@ -183,19 +184,20 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   assert.doesNotMatch(worker,/Input\.insertText',\{text:'@'\}/);
   assert.match(worker,/provider_mcp_prepared_prompt_unverified/);
   assert.match(worker,/if\(!stagedMcp\)await wc\.debugger\.sendCommand\('Input\.insertText'/);
-  assert.match(main,/runWorker\.inspectMcpSelectionReadOnly\(\)/);
-  assert.ok(main.indexOf('await runWorker.inspectMcpSelectionReadOnly()')<main.indexOf('store.beginProviderRun(taskId'));
+  assert.match(main,/runWorker\.inspectMcpSelectionReadOnly\(\{app:mcpApp\}\)/);
+  assert.ok(main.indexOf('await runWorker.inspectMcpSelectionReadOnly({app:mcpApp})')<
+    main.indexOf('store.beginProviderRun(taskId'));
   assert.match(worker,/requiresMcp:requiresMcp===true/);
-  assert.match(worker,/inspectMcpSelectionReadOnly\(\{allowDuringRun:true\}\)/);
+  assert.match(worker,/inspectMcpSelectionReadOnly\(\{allowDuringRun:true,app:mcpApp\}\)/);
   assert.match(worker,/inspectProviderMcpComposerSelection\.toString\(\)/);
-  const selectedAt=worker.indexOf('const selection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true})');
+  const selectedAt=worker.indexOf('const selection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true,app:mcpApp})');
   const typedAt=worker.indexOf("if (!recognized) throw new Error('composer_input_not_recognized')");
   const submittedAt=worker.indexOf('await submitExactlyOnce({');
   assert.ok(typedAt>=0&&typedAt<selectedAt&&selectedAt<submittedAt);
   assert.match(main,/provider\.mcp\.selection_observed/);
   assert.match(main,/invocation_verified:false/);
   assert.match(preload,/onProviderMcpObserved/);
-  assert.match(html,/A menção não substitui seleção do dispositivo/);
+  assert.match(html,/menções textuais nunca substituem seleção, autorização ou recibos/);
   assert.match(ui,/mention_requested/);
   assert.match(coordinatorUi,/provider_mcp_selection_required/);
   assert.match(coordinatorUi,/rascunho foi preservado/);

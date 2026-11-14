@@ -3,11 +3,24 @@ import {randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
 
 export const FORGE_APP_MCP_SCOPE='forge_app';
 export const FORGE_LOCAL_MCP_OPERATIONS=Object.freeze([
-  'projects_list','forge_discover','project_context','project_memory','project_administrator_snapshot','project_handoff',
+  'projects_list','forge_discover','project_context','project_memory','project_memory_propose',
+  'project_administrator_snapshot','project_handoff',
   'project_files_status','project_files_list','project_file_read','project_file_write',
-  // Bounded, project-bound work inspection is needed for a tool-using GPT to
-  // reference actual task IDs and messages, never invent them from chat text.
-  'work_list','work_get','work_messages'
+  'orchestrators_list','continuity_status','autonomous_dialogue_status',
+  // A tool-using GPT may organize durable work in the already authorized
+  // project. Raw provider dispatch remains App-owned: work_send/forjador_send
+  // are deliberately NOT exposed. work_parallel_launch records a deferred
+  // durable intent; the App scheduler creates child work_send receipts only
+  // after the current parent Run settles.
+  'work_create','work_batch_create','work_draft_set','work_dependency_set',
+  'work_parallel_launch','work_list','work_plan','work_get','work_messages'
+]);
+// The native Forge uses one owner-approved application grant. That connection
+// may create local synthetic projects/coordinators for autonomous lab work,
+// while a project-scoped grant can never escape its selected project.
+export const FORGE_APP_MCP_OPERATIONS=Object.freeze([
+  ...FORGE_LOCAL_MCP_OPERATIONS,
+  'project_create','project_quick_create','mission_create','orchestrator_create'
 ]);
 const MAX_REQUEST_BYTES=180_000;
 const MAX_RESPONSE_BYTES=450_000;
@@ -137,7 +150,7 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
         newSessionId=randomUUID();
         session=createMcp({projectId:grant.projectId===FORGE_APP_MCP_SCOPE?null:grant.projectId,
           allowedOperations:grant.projectId===FORGE_APP_MCP_SCOPE
-            ?FORGE_LOCAL_MCP_OPERATIONS
+            ?FORGE_APP_MCP_OPERATIONS
             :FORGE_LOCAL_MCP_OPERATIONS.filter(op=>op!=='projects_list')});
       }else{
         if(typeof sessionId!=='string'||!SESSION.test(sessionId))

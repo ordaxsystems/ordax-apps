@@ -27,6 +27,12 @@ export class ForgeMcpOwnerTrust {
       scope_hash TEXT NOT NULL,
       approved_at TEXT NOT NULL
     )`);
+    this.db.exec(`CREATE TABLE IF NOT EXISTS forge_mcp_remote_owner_identity(
+      workspace_session_id TEXT PRIMARY KEY REFERENCES forge_mcp_app_owner_approval(workspace_session_id) ON DELETE CASCADE,
+      subject_id TEXT NOT NULL,
+      issuer TEXT NOT NULL,
+      bound_at TEXT NOT NULL
+    )`);
   }
   appScopeHash(){
     const session=this.currentSession();
@@ -48,6 +54,36 @@ export class ForgeMcpOwnerTrust {
       ON CONFLICT(workspace_session_id) DO UPDATE SET scope_hash=excluded.scope_hash,
       approved_at=excluded.approved_at`).run(session.id,scopeHash,this.store.now());
     return {appTrusted:true,credentialsPersisted:false};
+  }
+  bindRemoteOwnerIdentity({subjectId,issuer}={}){
+    const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if(!this.isAppTrusted())throw Error('forge_mcp_app_untrusted');
+    if(typeof subjectId!=='string'||!UUID.test(subjectId)||
+       typeof issuer!=='string'||issuer!=='https://jhfphsjptrpmtnzkpwud.supabase.co/auth/v1')
+      throw Error('forge_mcp_remote_owner_identity_invalid');
+    const session=this.currentSession();
+    this.db.prepare(`INSERT INTO forge_mcp_remote_owner_identity
+      (workspace_session_id,subject_id,issuer,bound_at) VALUES(?,?,?,?)
+      ON CONFLICT(workspace_session_id) DO UPDATE SET
+        subject_id=excluded.subject_id,issuer=excluded.issuer,bound_at=excluded.bound_at`)
+      .run(session.id,subjectId.toLowerCase(),issuer,this.store.now());
+    return {bound:true,issuer};
+  }
+  remoteOwnerIdentity(){
+    if(!this.isAppTrusted())return null;
+    const session=this.currentSession();
+    const row=this.db.prepare(
+      'SELECT subject_id AS subjectId,issuer,bound_at AS boundAt FROM forge_mcp_remote_owner_identity WHERE workspace_session_id=?'
+    ).get(session.id);
+    return row?Object.freeze({...row}):null;
+  }
+  remoteOwnerSubject(){return this.remoteOwnerIdentity()?.subjectId??null;}
+  clearRemoteOwnerIdentity(){
+    const session=this.currentSession();
+    const result=this.db.prepare(
+      'DELETE FROM forge_mcp_remote_owner_identity WHERE workspace_session_id=?'
+    ).run(session.id);
+    return {bound:false,removed:result.changes===1};
   }
   revokeApp(){
     const session=this.currentSession();

@@ -213,7 +213,7 @@
             </section>
             <section class="coordinator-analysis-actions" aria-label="Ferramentas do executor GPT">
               <strong>Executor GPT · Ferramentas MCP</strong>
-              <small>O Forjador usa Groq e solicita o OrdaX MCP nas tarefas delegadas ao GPT Web incluindo @ordax-mcp. A menção não substitui seleção do dispositivo, autorização nem recibos de execução.</small>
+              <small>O Forjador coordena o próprio Forge pelo Forge MCP. As Works executoras usam OrdaX MCP para agir no computador/projeto. Cada envio seleciona apenas a autoridade necessária; menções textuais nunca substituem seleção, autorização ou recibos.</small>
               <button id="forjadorMcpCheck" class="mini-secondary" type="button">Verificar seleção no GPT</button>
               <small id="forjadorMcpStatus" role="status" aria-live="polite">Seleção de ferramentas não verificada. Nenhuma execução MCP comprovada nesta conversa.</small>
             </section>
@@ -647,7 +647,7 @@
           </section>
           <section id="settingsPanelConnections" class="app-settings-panel" role="tabpanel" aria-labelledby="settingsTabConnections" data-settings-panel="connections" tabindex="0" hidden>
             <div class="app-settings-card"><span class="app-settings-eyebrow">GITHUB</span><h3>Repositórios</h3><p>O endereço do repositório é configurado dentro de cada projeto. A leitura de branches, PRs e verificações depende de uma conexão autorizada pelo Platform; este perfil ainda não a confirma.</p><button id="settingsOpenProject" type="button" class="mini-secondary">Configurar projeto</button></div>
-            <div class="app-settings-card"><span class="app-settings-eyebrow">FERRAMENTAS DO GPT</span><h3>OrdaX MCP · conexão de teste</h3><p>O Forjador envia mensagens comuns ao GPT Web; Groq é opcional para análise. O marcador @ordax-mcp pode ser solicitado nas tarefas enviadas ao GPT Web. O plugin precisa estar disponível na conta; a seleção Owner do dispositivo continua obrigatória. A verificação não envia mensagens nem cria arquivos.</p><button id="settingsMcpCheck" type="button" class="mini-secondary">Verificar seleção no ChatGPT</button><p id="settingsMcpState" class="settings-connection-state" role="status" aria-live="polite">Seleção do plugin não verificada.</p><p class="diagnostics-hint">O marcador visual do plugin não comprova uma ação. Arquivos e comandos só contam como feitos quando houver recibo verificável. O MCP Forge local abaixo é separado do OrdaX MCP e ainda não está conectado ao GPT Web.</p></div>
+            <div class="app-settings-card"><span class="app-settings-eyebrow">FERRAMENTAS DO GPT</span><h3>Forge MCP + OrdaX MCP</h3><p>O Forjador coordena projetos e agents pelo Forge MCP. Cada Work executora usa OrdaX MCP somente quando precisa agir no computador/projeto. O Forge seleciona o app correto por Run; escrever @forge-mcp ou @ordax-mcp não concede autoridade.</p><button id="settingsMcpCheck" type="button" class="mini-secondary">Verificar Forge MCP no ChatGPT</button><p id="settingsMcpState" class="settings-connection-state" role="status" aria-live="polite">Seleção do Forge MCP não verificada.</p><p class="diagnostics-hint">Seleção visual não comprova efeito. Task, Run, receipt e evidência local continuam sendo a fonte de verdade.</p></div>
             <div class="app-settings-card">
               <span class="app-settings-eyebrow">ARQUIVOS DOS PROJETOS</span><h3>Pastas dos projetos</h3>
               <p>Escolha uma pasta física para cada projeto. Essa seleção é independente da conexão MCP do aplicativo.</p>
@@ -665,31 +665,40 @@
               </div>
             </div>
             <div id="forgeLocalMcpPanel" class="app-settings-card">
-              <span class="app-settings-eyebrow">MCP DO APLICATIVO</span><h3>Uma conexão para o OrdaX Forge</h3>
-              <p>Autorize o Forge uma única vez. O MCP poderá descobrir projetos e tarefas, mas só poderá ler ou escrever arquivos nas pastas de projeto vinculadas e verificadas. Não concede acesso geral ao Windows nem inicia conexão remota automaticamente.</p>
-              <div class="settings-connection-actions">
-                <button id="forgeLocalMcpStart" type="button" class="mini-secondary">Autorizar MCP do Forge</button>
-                <button id="forgeLocalMcpRevoke" type="button" class="mini-secondary">Revogar autorização do Forge</button>
-                <button id="forgeLocalMcpResume" type="button" class="mini-secondary" disabled>Manter conectado após reinício</button>
-                <button id="forgeLocalMcpStop" type="button" class="mini-secondary">Desativar MCP do Forge</button>
+              <span class="app-settings-eyebrow">FORGE MCP</span><h3>Conta OrdaX e conexão remota</h3>
+              <p>Use a mesma conta OrdaX uma única vez. O Forge guarda a sessão cifrada pelo Windows, registra esta instância no gateway canônico e recebe somente actions do catálogo Forge autorizado. Não usa túnel local.</p>
+              <p id="forgeRemoteGatewayState" class="settings-connection-state" role="status" aria-live="polite">Conta OrdaX ainda não conectada.</p>
+              <div id="forgeProductAuthControls" class="app-settings-card">
+                <label for="forgeProductEmail">E-mail da conta OrdaX</label>
+                <input id="forgeProductEmail" type="email" autocomplete="email" spellcheck="false" placeholder="seu@email.com" />
+                <button id="forgeProductSendCode" type="button" class="mini-secondary">Enviar código</button>
+                <div id="forgeProductOtpControls" hidden>
+                  <label for="forgeProductCode">Código recebido por e-mail</label>
+                  <input id="forgeProductCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="000000" />
+                  <button id="forgeProductVerifyCode" type="button" class="mini-secondary">Conectar conta</button>
+                </div>
+                <div class="settings-connection-actions">
+                  <button id="forgeProductReconnect" type="button" class="mini-secondary" hidden>Reconectar gateway</button>
+                  <button id="forgeProductDisconnect" type="button" class="mini-secondary" hidden>Desconectar conta</button>
+                </div>
               </div>
-              <p id="forgeLocalMcpState" class="settings-connection-state" role="status" aria-live="polite">O MCP local está desativado.</p>
-              <p id="forgeOfficialTunnelState" class="settings-connection-state" role="status" aria-live="polite">Conexão com GPT Web ainda não verificada.</p>
-              <div id="forgeOfficialTunnelControls" class="app-settings-card">
-                <label for="forgeOfficialTunnelId">ID do túnel autorizado na OpenAI Platform</label>
-                <input id="forgeOfficialTunnelId" type="text" autocomplete="off" spellcheck="false" placeholder="tunnel_…" />
-                <label for="forgeOfficialTunnelKey">Chave restrita de execução (somente nesta sessão)</label>
-                <input id="forgeOfficialTunnelKey" type="password" autocomplete="off" spellcheck="false" placeholder="Não compartilhe esta chave no chat" />
-                <button id="forgeOfficialTunnelStart" type="button" class="mini-secondary" disabled>Iniciar túnel oficial</button>
-                <button id="forgeOfficialTunnelStop" type="button" class="mini-secondary" disabled>Desligar túnel</button>
-              </div>
-              <div id="forgeLocalMcpCredentials" hidden>
-                <label for="forgeLocalMcpUrl">Endpoint (somente clientes MCP locais)</label>
-                <input id="forgeLocalMcpUrl" type="text" readonly autocomplete="off" spellcheck="false"/>
-                <label for="forgeLocalMcpToken">Token temporário (não compartilhar)</label>
-                <textarea id="forgeLocalMcpToken" rows="3" readonly autocomplete="off" spellcheck="false"></textarea>
-                <p class="diagnostics-hint">Configure o cliente local com Authorization: Bearer &lt;token&gt;. Esta chave aparece uma só vez: para recuperá-la, desative e reative a conexão.</p>
-              </div>
+              <details>
+                <summary>MCP local · desenvolvimento</summary>
+                <p>O listener 127.0.0.1 é opcional e serve somente clientes MCP locais. O ChatGPT usa o gateway remoto acima, não este listener.</p>
+                <div class="settings-connection-actions">
+                  <button id="forgeLocalMcpStart" type="button" class="mini-secondary">Autorizar MCP do Forge</button>
+                  <button id="forgeLocalMcpRevoke" type="button" class="mini-secondary">Revogar autorização do Forge</button>
+                  <button id="forgeLocalMcpResume" type="button" class="mini-secondary" disabled>Manter listener após reinício</button>
+                  <button id="forgeLocalMcpStop" type="button" class="mini-secondary">Desativar listener local</button>
+                </div>
+                <p id="forgeLocalMcpState" class="settings-connection-state" role="status" aria-live="polite">O listener local está desativado.</p>
+                <div id="forgeLocalMcpCredentials" hidden>
+                  <label for="forgeLocalMcpUrl">Endpoint local</label>
+                  <input id="forgeLocalMcpUrl" type="text" readonly autocomplete="off" spellcheck="false"/>
+                  <label for="forgeLocalMcpToken">Token temporário local</label>
+                  <textarea id="forgeLocalMcpToken" rows="3" readonly autocomplete="off" spellcheck="false"></textarea>
+                </div>
+              </details>
             </div>
             <div class="app-settings-card"><span class="app-settings-eyebrow">RUNTIME</span><h3>Execução local</h3><p>Arquivos, testes e alterações no computador exigem um dispositivo conectado e um grant válido do Runtime/Platform. Nenhum grant é criado por esta tela.</p><p class="settings-connection-state" data-state="blocked">Aguardando conexão autorizada</p></div>
             <div class="app-settings-card"><span class="app-settings-eyebrow">CONTINUIDADE</span><h3>Operação em segundo plano</h3><p>O estado de segundo plano aparece em Geral quando o Windows oferece esse recurso. Operação contínua só será indicada após integração e verificação pelo Runtime/Scheduler.</p></div>

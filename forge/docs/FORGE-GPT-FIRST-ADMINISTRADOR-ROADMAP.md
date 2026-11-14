@@ -3,6 +3,28 @@
 Status: **implementação integrada progressivamente à main e validada no Windows**; homologação longa e conector GPT→MCP remoto continuam pendentes. Owner único: `ordaxsystems/ordax-apps`, `forge`.
 Atualizado: 2026-11-12. **Precedência para direção Forge V3: este plano único > documentos históricos anteriores.** Para afirmações de entrega, código + testes + prova física prevalecem. `ORCHESTRATOR-CANONICAL-PRODUCT.md` permanece apenas como registro histórico do desenho de 01/11.
 
+## Plano executivo — checkout Windows como execução DEV canônica (12/11/2026)
+
+**Decisão:** desenvolver e executar o Forge diretamente de `C:\Users\ordax\Documents\GitHub\ordax-apps\forge\product`, usando `npm run start:electron` já existente. **Não criar novo lançador, serviço, cópia de código, perfil ou SQLite.** A instalação redundante `%LOCALAPPDATA%\Programs\OrdaX Forge` e três diretorios `.forge-rollback-*` foram removidos após verificar identidade, ausência de SQLite, ausência de processos ativos e referências de inicialização; o único atalho Forge do menu Iniciar foi redirecionado para o comando oficial no checkout. Não reinstalar o executável empacotado como segundo ambiente de desenvolvimento.
+
+**Estado físico observado após a limpeza:** `ordax-apps/main` local e remoto em `81cb514a907cd8a54bee143b7b3690e6e7475407`; instância `electron.exe` ativa com `--app-path` apontando ao checkout e perfil único `%LOCALAPPDATA%\OrdaX\Forge`. A instalação empacotada em `Programs` e os três rollbacks foram removidos; leitura posterior confirmou a inexistência das quatro pastas, a presença do checkout e a preservação do perfil. Há alterações locais **não commitadas** em `desktop/embedded-worker.mjs`, `src/provider-mcp-selection.mjs`, `test/provider-mcp-selection.test.mjs` e neste roadmap; preservar e reconciliar antes de `pull`, `commit`, `push` ou troca de branch. Snapshot, não garantia futura.
+
+**Operação DEV:** `cd C:\Users\ordax\Documents\GitHub\ordax-apps\forge\product`; `npm run start:electron`. Editar a única árvore Git e reiniciar o processo quando realmente necessário; não alegar hot reload. O código pode estar sujo durante desenvolvimento; `git pull --ff-only` somente depois de analisar/guardar no fluxo Git as alterações existentes. `push` somente de commit validado e com owner correto, respeitando revisão/CI. Nunca fazer pull/push automático no início do aplicativo. Projetos dos clientes, cookies, grants e SQLite permanecem no perfil/workspaces autorizados, fora do Git. Não habilitar simultaneamente instância instalada e DEV no mesmo perfil.
+
+**Bloqueio E2E observado no SQLite operacional após a limpeza:** `PRAGMA quick_check=ok`, 1 projeto, 1 Task, 0 Runs, 0 missões autônomas; coordenador `ready`, `continuous_execution_enabled=0`. Um recibo `forjador_send` falhou com `provider_not_submitted`, `providerStage=preflight`, `failureCode=provider_mcp_selection_required`. Portanto, o pedido natural nem chegou ao GPT. O pré-flight em `desktop/main.mjs` confere seleção MCP antes do `beginProviderRun` e antes de `embedded-worker.mjs` inserir a mensagem; a nova inspeção local de `app-mention` no editor valida seleção real, mas não a cria. **Correção P0 necessária:** preparar/selecionar a ferramenta já conectada e autorizada na sessão do GPT antes do commit do Run, verificar a seleção sem confundi-la com grant ou invocação, preservar o rascunho em falha e somente então enviar uma vez; concluir com chamada GPT→MCP e recibo de arquivo atribuível. Não desabilitar o pré-flight nem simular uma seleção. A inspeção CDP externa na porta `9445` não estava disponível nesta verificação; nenhum envio GPT foi tentado.
+
+**Execução local do P0 (12/11/2026, após a remoção da instalação antiga):** a preparação de seleção MCP foi implementada no worker existente antes de `store.beginProviderRun`; usa o seletor visível do ChatGPT e entrada nativa, exige token semântico real no compositor e revalida antes de submeter. Não inventa app, grant, recibo ou chamada GPT→MCP. O mesmo Run transacional foi preservado e o rascunho de preparação tem descarte condicionado à comparação do conteúdo físico em falhas antes do commit. Testes direcionados 19/19 aprovados e sintaxe/diff limpos; **E2E real ainda não aprovado**. A instância Git foi reiniciada fisicamente após recuperar o lock transitório de SQLite (quick_check=ok; BEGIN IMMEDIATE/ROLLBACK aprovados). O WebView ChatGPT chegou a rota de autenticação sem editor, impedindo o teste real de invocação e arquivo. Nenhum prompt de trabalho foi enviado. Não criar credenciais falsas nem usar script externo para fingir entrega. Manter alterações no checkout local até o E2E ser comprovado; não publicar no GitHub como concluído. Após diagnóstico remoto por CDP, desligar o debug local antes de deixar o app para uso normal.
+
+**Etapas de execução, na ordem de valor do MVP:**
+
+1. **P0 — modo local direto (em uso):** confirmar processo principal `electron.exe` no checkout, integridade da instância e estado da sessão; manter um único perfil e binário ativo. Rodar diagnóstico somente leitura; não reinstalar, duplicar execução nem mexer no trabalho local de outros agentes.
+2. **P0 — GPT→MCP real:** concluir as correções já em andamento nos três arquivos acima; provar entrada natural do usuário, seleção/autorização real, **invocação MCP pelo próprio GPT** e gravação física com recibo/sha256 atribuíveis. Seleção visual não é invocação. Sem acesso, falhar antes de enviar e preservar rascunho.
+3. **P0 — ciclo de produto:** supervisor do SQLite lê operações e arquivos efetivos, verifica incremento, usa GPT ou Groq opcional para decidir próximo passo, envia sem teto total de dois turnos quando opt-in e sem recibos incertos; feedback visível na interface canônica. Não criar outro banco, fila, serviço ou agente fictício.
+4. **P0 — aceite real:** site Doce Grão criado pelo GPT via MCP na pasta de projeto autorizada; preview e navegação mobile verificadas, erro corrigido pelo GPT e retomada após reinício sem replay. Nenhuma publicação externa; falha no vínculo GPT→MCP reprova o MVP.
+5. **P1 — operação prolongada e distribuição:** validar bandeja/autostart/watchdog/sessão GPT por várias horas, com testes reais de recuperação. O modo unpackaged direto hoje não habilita `backgroundSupported`; tratar essa diferença no owner e testar antes de afirmar 24h. Só depois decidir sobre limpeza de Programs e manter instalador para distribuição pública, sem código divergente.
+
+**Regra de prioridade:** executar primeiro P0 físico, testar proporcionalmente; evitar nova interface, relatório, documento, PR paralela, build Windows ou alteração de foundation enquanto a conexão GPT→MCP não funcionar. Este roadmap é o único plano vigente do Forge.
+
 ## Regra de produto obrigatória — GPT executa pelo MCP; Forge acompanha (12/11/2026)
 
 > **Leitura obrigatória para qualquer chat, IA, engenheiro ou teste do Forge.** Esta seção é a definição normativa do fluxo de usuário comum. Não confundir "GPT respondeu", "outro agente escreveu um arquivo" ou "MCP local funciona" com "GPT executor trabalhou usando MCP". Em conflito com relatos históricos, esta regra define o comportamento esperado; o código, os recibos e a prova física definem o que de fato foi entregue. Este arquivo permanece o único SSOT de direção do Forge.
@@ -188,8 +210,8 @@ históricos, não instruções de implementação. A realidade de cada funcional
 ### Prioridade de integração no desenvolvimento (2026-11-08)
 
 - **Primeiro, OrdaX MCP já conectado:** operar e homologar o Forge Windows por `computer.windows`, terminal, arquivos e ações físicas autorizadas do OrdaX MCP, em perfil DEV isolado; não pedir ao usuário IDs, caminhos ou comandos já disponíveis pelas ferramentas.
-- **Forge MCP próprio depois:** o servidor local que já existe permanece no código e nos testes, mas não criar nem registrar agora outro plugin ou túnel externo do ChatGPT. Só conectar o Forge como plugin independente depois do ciclo E2E real de projeto, GPT, arquivos, recibos, memória e retomada.
-- **Não confundir autoridades:** OrdaX MCP acessa o computador; o Forge mantém seu SQLite e os grants dos projetos. O controle via OrdaX não concede acesso arbitrário ao MCP interno do Forge e não comprova uma chamada GPT→Forge MCP remoto.
+- **Forge MCP remoto canônico:** o gateway HTTPS de plataforma está pronto, sem túnel local, e o app possui uma ponte autenticada pelo mesmo Supabase; a instalação/seleção do MCP na conta ChatGPT e um recibo real GPT→Forge ainda exigem prova E2E.
+- **Não confundir autoridades:** Forge MCP coordena o próprio Forge/SQLite; OrdaX MCP executa no computador. Nenhuma menção textual é grant, e uma conexão de transporte não prova execução da ferramenta.
 
 ### Produto e interfaces
 
@@ -245,90 +267,44 @@ históricos, não instruções de implementação. A realidade de cada funcional
   a conexão falha fechada. Desativar o MCP também desativa a reconexão;
   revogar o aplicativo elimina o registro cifrado em cascata. A restauração
   local não inicia o túnel externo do ChatGPT.
-  **Transporte com GPT Web:** priorizar o Secure MCP Tunnel oficial da OpenAI
-  em vez de expor uma URL HTTPS pública; requer tunnel_id, runtime key, app
-  de conexão autorizado e validação real de permissões do plano/workspace.
-  **Padrão de plugin ChatGPT:** criar uma conexão MCP personalizada chamada
-  `OrdaX Forge` em Plugins, usando Tunnel e o `tunnel_id` autorizado (ou um
-  endpoint HTTPS válido), com consentimento do Owner e ferramentas descobertas
-  via `tools/list`, descrições, schemas e ações de escrita explícitas. O
-  Forge não pode registrar sozinho a conexão na conta ChatGPT; nem a presença
-  do cliente local nem um processo do túnel provam instalação, autenticação
-  ou chamadas reais ao plugin. Não apresentar a conexão como pronta antes
-  de uma execução GPT→MCP→recibo comprovada.
-  **Preparação oficial implementada (`forge-mcp-official-tunnel.mjs`):**
-  valida túnel, escopo do aplicativo e endpoint estritamente em `127.0.0.1`; gera apenas
-  argumentos documentados para o `tunnel-client` oficial, com referências
-  `env:` para Authorization em chamadas e em descoberta, incluindo porta
-  de saúde efêmera. Usa a sintaxe real do CLI `--mcp.server-url=url=http://127.0.0.1:<porta>/mcp`, não uma URL nua. Nunca inclui API key ou bearer no argv e rejeita
-  parâmetros externos, binários não correspondentes e autorização ausente.
-  A preparação é intencionalmente inativa; não inicia novo processo sem
-  consentimento, binário oficial, tunnel_id e chave de Runtime válidos.
-  **Compatibilidade de ID corrigida (07/11/2026):** preservar sem alteração
-  os dois formatos oficiais do `tunnel-client`: `tunnel_<32 caracteres
-  alfanuméricos minúsculos>` e `tunnel_<namespace de 4>_<32 caracteres
-  alfanuméricos minúsculos>`. A validação anterior aceitava apenas dígitos
-  hexadecimais no ID legado. Agora rejeita tamanho incorreto, caracteres
-  não ASCII, namespace de comprimento indevido e lixo após o identificador.
-  Testes com ambos os formatos passam; CLI Windows v0.0.20 aceitou o
-  namespaced de teste e bloqueou somente por falta de runtime key, sem
-  acesso remoto. Não assumir que um ID aceito é um túnel existente/autorizado.
-  **Cliente oficial instalado e verificado em 06/11/2026:** release
-  `openai/tunnel-client v0.0.20` (Windows amd64), baixado diretamente do
-  GitHub oficial; SHA-256 do ZIP conferido contra release e SHA256SUMS,
-  versão e opções do CLI conferidas no executável físico. Uma única cópia
-  do componente opcional reside em `%LOCALAPPDATA%/OrdaX/Forge/Components/`
-  com manifesto de procedência; não é outro instalador de Forge, não cria
-  serviço e não inicia sozinho. `forge-mcp-tunnel-readiness.mjs` valida
-  o SHA-256 do executável fixado e informa o estado sem reivindicar conexão
-  GPT Web. Status incorporado à tela Conexões, sem receber credenciais.
-  **Ciclo de vida do cliente oficial implementado na branch:**
-  `forge-mcp-official-tunnel-session.mjs` cria no máximo um processo auxiliar
-  `tunnel-client` após confirmação Owner; a UI Conexões recebe `tunnel_id`
-  e chave restrita localmente, limpa a chave ao enviar e não a persiste.
-  O Main só entrega ao cliente o bearer único do aplicativo Forge autorizado
-  e a localização do executável verificado. Revogar o Forge, desativar MCP
-  ou fechar o aplicativo encerra o cliente, sem manter túnel autônomo.
-  O controlador aguarda a saída física do processo anterior antes de
-  permitir outra inicialização (sem túnel duplo);
-  cancelamento durante o startup permanece bloqueado até `exit`.
-  Mudar uma pasta de projeto não recria nem amplia o túnel. O broker verifica
-  a identidade física dessa pasta em cada acesso e bloqueia escopos inválidos.
-  **Prova do CLI real no Windows:** `tunnel-client v0.0.20 run` recebeu
-  `--mcp.server-url=url=http://127.0.0.1:65000/mcp` e os headers por
-  referências `env:` e terminou com falta de `CONTROL_PLANE_API_KEY` (esperado,
-  sem credencial real nem processo residual). Isto confirma a sintaxe até o
-  preflight local; não prova conexão de rede com a OpenAI.
-  **Prova oficial local adicional (06/11/2026, sem credenciais externas):**
-  o `tunnel-client v0.0.20 dev proxy --backend=go` apontou para o
-  `createForgeLoopbackMcp` real em um projeto SQLite descartável. Em
-  rastreamento HTTP limitado a método/status, executou `initialize` (200,
-  protocolo MCP `2025-11-25`), `notifications/initialized` (202) e `DELETE`
-  da sessão (200), com bearer de projeto aceito. As sondagens preliminares
-  `POST` sem JSON e `GET` sem SSE retornaram 415/405; URLs opcionais OAuth
-  inexistentes retornaram 404. Não houve `tools/list`, JSON de conexão
-  nem prova de despacho remoto: **catálogo/ready ainda não homologados**.
-  Controle comparativo: o MESMO `dev proxy` com `dev mcp-stub` da própria
-  OpenAI também não publicou conexão pronta neste Windows (sem credentials
-  reais); portanto o resultado isolado não prova um defeito do Forge.
-  Não adicionar OAuth ou SSE artificiais para forçar sucesso.
-  O estado `processRunning` **não** significa `remoteChatGptConnected`:
-  chamadas reais do ChatGPT continuam pendentes.
-  Testes de ciclo de vida usam subprocesso simulado, não credenciais reais
-  da organização. Prova de UI no Electron Windows isolado `31077`: os quatro
-  controles do túnel carregaram, cliente oficial v0.0.20 identificado,
-  MCP local e túnel desligados por padrão, botões desabilitados sem escopo,
-  segredo de entrada vazio e mascarado; nenhuma conexão remota iniciada.
-  A instalação operacional do Forge não é reiniciada por essa validação.
-  **Bloqueio externo atual:** tunnel_id e chave Runtime da organização
-  ainda não verificados, além da permissão de custom MCP no ChatGPT.
-  Não tentar forçar uma conexão não autorizada nem instalar outro gateway.
-  A documentação oficial reserva custom MCP completo/escrita no ChatGPT Web
-  para Business e Enterprise/Edu; em conta Plus, não declarar esse acesso.
-  O transporte real permanece não conectado. Não receber tokens em logs
-  ou parâmetros de linha de comando.
-  Fontes: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
-  e https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt.
+  **Transporte público canônico (14/11/2026):** o hostname
+  forge-mcp.ordax.com.br/mcp é servido pelo gateway Forge lógico
+  de ordax-platform, com catálogo e fila próprios, não por um túnel
+  do Windows. /health e /ready retornaram 200, auth e Postgres
+  configurados, com local_tunnel_required=false. O Worker é
+  compartilhado com o ingress OrdaX por economia de infraestrutura;
+  as autoridades, ferramentas, sessões e bindings são separados.
+  **Autenticação:** o gateway usa o emissor Supabase já canônico
+  do OrdaX. O aplicativo Forge usa sessão normal do mesmo usuário
+  com prova de /auth/v1/user e refresh protegido por DPAPI;
+  não usa token de túnel, segredo embutido ou client_id de outro
+  cliente OAuth como autoridade nativa. A conexão inicial por
+  e-mail/OTP é uma etapa de Conta no aplicativo, sem criar usuário.
+  **Cliente nativo remoto:** forge-product-session.mjs e
+  forge-remote-gateway-client.mjs registram uma instância estável
+  com o catálogo das ferramentas canônicas do próprio app e digest
+  SHA-256; publicam presença e consomem ações duráveis. Cada
+  ação requer claim -> start -> renew -> report e lease próprio.
+  Até quatro operações independentes podem estar em execução;
+  efeitos incertos não são reenviados automaticamente.
+  **Sem duplicar o executor:** a execução usa createOrchestratorMcp
+  e OrchestratorService existentes, respeitando o owner, o
+  workspace verificado e a autoridade do projeto. Não existe
+  servidor Forge alternativo nem dispatch bruto exposto a GPT.
+  **ChatGPT:** o Owner deve adicionar/conectar uma vez o MCP
+  personalizado usando o endpoint HTTPS público acima e o OAuth
+  Supabase. A conexão do gateway não prova seleção da ferramenta
+  no ChatGPT nem recibo GPT -> Forge: verificar isso num Run real
+  antes de chamar a integração de ponta a ponta concluída.
+  O aplicativo conserva o listener 127.0.0.1 apenas para dev.
+  **Legado encerrado:** Secure MCP Tunnel/OpenAI tunnel-client
+  e Cloudflare Tunnel local não são dependências desta arquitetura.
+  Os módulos e testes obsoletos de túnel foram retirados; não
+  reviver túnel apagado, segredo de runtime ou configuração paralela.
+  Verificação local: sintaxe canônica, seleção MCP e execução
+  concorrente com recibos independentes aprovadas. O aplicativo
+  Windows ainda não foi reiniciado com esse novo checkout.
+
 - **Autodescoberta do Forge aplicativo:** `projects_list` apresenta os
   projetos disponíveis, `forge://app/guide` anuncia as regras e cada
   operação específica exige um `projectId` válido. As respostas do broker

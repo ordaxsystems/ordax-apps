@@ -9,6 +9,7 @@
     "validate": "npm run version:check && npm test",
     "start": "node product/scripts/start-host.mjs",
     "start:electron": "node scripts/start-lab.mjs",
+    "start:dev:supervised": "node scripts/dev-supervisor.mjs",
     "version:check": "node scripts/verify-version.mjs",
     "start:staged": "node scripts/start-lab.mjs --staged",
     "version:show": "node scripts/verify-version.mjs",

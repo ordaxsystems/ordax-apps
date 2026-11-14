@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {withForjadorMcpMention,mentionWasRequested,FORJADOR_MCP_MENTION} from '../src/provider-mcp-mention.mjs';
+import {withForjadorMcpMention,withProviderMcpMention,mentionWasRequested,FORJADOR_MCP_MENTION} from '../src/provider-mcp-mention.mjs';
 
 test('Groq-delegated GPT turns request OrdaX MCP exactly once',()=>{
   assert.equal(FORJADOR_MCP_MENTION,'@ordax-mcp');
@@ -21,4 +21,30 @@ test('MCP mention is an invocation request, never a grant or proof',()=>{
   assert.equal(mentionWasRequested(payload),true);
   assert.ok(!payload.includes('grant='));
   assert.ok(!payload.includes('authorized=true'));
+});
+
+test('coordinator requests only Forge MCP and delegated Works only OrdaX MCP',()=>{
+  const coordinator=withForjadorMcpMention('Organize as tarefas',{
+    authorSource:'orchestrator',app:'forge-mcp'
+  });
+  const work=withForjadorMcpMention('Crie a página',{
+    authorSource:'orchestrator',app:'ordax-mcp'
+  });
+  assert.equal(coordinator,'Organize as tarefas\n\n@forge-mcp');
+  assert.equal(work,'Crie a página\n\n@ordax-mcp');
+  assert.equal(mentionWasRequested(coordinator,'forge-mcp'),true);
+  assert.equal(mentionWasRequested(coordinator,'ordax-mcp'),false);
+  assert.equal(mentionWasRequested(work,'forge-mcp'),false);
+  assert.throws(
+    ()=>withProviderMcpMention('Envie @ordax-mcp',{app:'forge-mcp'}),
+    /provider_mcp_app_conflict/
+  );
+  assert.throws(
+    ()=>withProviderMcpMention('Envie @forge-mcp',{app:'ordax-mcp'}),
+    /provider_mcp_app_conflict/
+  );
+  assert.throws(
+    ()=>withProviderMcpMention('Envie @forge-mcp e @ordax-mcp',{app:'forge-mcp'}),
+    /provider_mcp_app_conflict/
+  );
 });
