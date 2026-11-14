@@ -20,7 +20,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   const continuityFields = Object.freeze(['studioSummary','studioNextAction','studioCompleted','studioBlockers','studioChangedPaths']);
   const continuityStamp = () => JSON.stringify(continuityFields.map(id => $(id).value));
   const continuityDirty = () => continuityStamp() !== continuityBaseline;
-  const blenderDirty = () => Boolean(blenderProposal);
+  const blenderDirty = () => Boolean(blenderProposal) || Boolean(blenderBooleanPreview);
   const safeContinuityList = value => Array.isArray(value) ? value.filter(item => typeof item === 'string').slice(0, 100) : [];
   function writeContinuity(value = null) {
     $('studioSummary').value = typeof value?.summary === 'string' ? value.summary : '';
@@ -80,6 +80,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
       $('runtimeProject').append(new Option(binding.project, binding.project)); $('runtimeProject').value = binding.project;
       message(state.connected ? 'Projeto vinculado. Consulte o contexto ou os arquivos deste projeto.' : 'Projeto vinculado. Conecte o Runtime para consultar o dispositivo autorizado.');
     } else { $('runtimeDevice').value = ''; message('Selecione um projeto autorizado para abrir o espaço de trabalho.'); }
+    syncBlenderBooleanPreview();
     renderEntries(); renderOperations(); controls();
   }
   const message = text => { $('projectNotice').textContent = text; };
