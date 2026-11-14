@@ -141,6 +141,45 @@ test('remote gateway uses one catalog digest and one leased local MCP execution'
   assert.equal(report.body.result.structuredContent.name,'forge_projects_list');
 });
 
+test('oversized UTF-8 local result receives a terminal error receipt instead of a rejected report',async t=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'forge-remote-large-result-'));
+  const store=new Store(path.join(dir,'x.sqlite'));
+  t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true});});
+  let invocations=0,reports=0,reported=null;
+  const client=new ForgeRemoteGatewayClient({store,
+    session:{status:()=>({connected:true,subjectId:subject,issuer:'https://jhfphsjptrpmtnzkpwud.supabase.co/auth/v1'}),
+      accessToken:async()=>jwt()},
+    catalogProvider:async()=>[],bindOwnerIdentity:()=>{},
+    toolInvoker:async()=>{invocations++;return {result:{
+      content:[{type:'text',text:'é'.repeat(200_000)}]
+    }};},
+    fetchImpl:async(url,options)=>{
+      if(String(url).endsWith('/start'))return response(200,{ok:true});
+      if(String(url).endsWith('/report')){
+        reports++;reported=JSON.parse(options.body);
+        // The gateway enforces a 384 KiB result payload limit.
+        if(Buffer.byteLength(JSON.stringify(reported.result),'utf8')>384*1024)
+          return response(413,{ok:false,error:'forge_action_result_too_large'});
+        return response(200,{ok:true,status:'failed'});
+      }
+      throw Error('unexpected_request');
+    }
+  });
+  const result=await client.executeJob({
+    request_id:'40000000-0000-4000-8000-000000000001',
+    attempt_id:'40000000-0000-4000-8000-000000000002',
+    lease_id:'40000000-0000-4000-8000-000000000003',
+    tool_name:'forge_work_messages',arguments:{}
+  });
+  assert.equal(result.status,'failed');
+  assert.equal(invocations,1);
+  assert.equal(reports,1);
+  assert.equal(reported.succeeded,false);
+  assert.equal(reported.error_code,'forge_remote_result_too_large');
+  assert.equal(reported.result,null);
+  assert.deepEqual(client.status().activeRequestIds,[]);
+});
+
 test('remote gateway preserves HTTP status when an error response has no JSON body',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'forge-remote-http-status-'));
   const store=new Store(path.join(dir,'x.sqlite'));
