@@ -1,11 +1,11 @@
 {
   "$schema": "ordax.app-externalization-plan/1",
   "app_id": "files",
-  "source_repository_current": null,
-  "source_path_current": null,
+  "source_repository_current": "ordaxsystems/ordax-apps",
+  "source_path_current": "apps/files",
   "target_repository": "ordaxsystems/ordax-apps",
   "target_path": "apps/files",
-  "source_of_truth_state": "source-absent-after-platform-removal",
+  "source_of_truth_state": "ordax-apps-canonical",
   "source_cutover_allowed": true,
   "distribution_activation_allowed": false,
   "platform_contracts_required": [
@@ -28,7 +28,25 @@
   "target_sdk": {
     "minimum_bundle_version": "1.20.0",
     "lock_file": "platform-sdk.lock.json",
-    "reason": "O SDK 1.20 publica a porta File Space/11 com escopo device-local imutável necessário ao host Native vinculado ao slot Files; autorização, instalação e verificação de integridade continuam sob o owner da plataforma."
+    "reason": "O SDK 1.20 publica a porta File Space/11 com escopo device-local imutável necessário ao host Native vinculado ao slot Files; autorização, instalação e verificação de integridade continuam sob o owner da plataforma.",
+    "published_bundle_commit": "5ef654236da1f2d343e3e33cd46bb747d52bc24c",
+    "sdk_contract_source_paths": [
+      "system/contracts/app-activation.mjs",
+      "system/contracts/file-space.mjs",
+      "system/contracts/recent-files.mjs",
+      "system/contracts/project-catalog.mjs",
+      "system/contracts/surface-render-lifecycle.mjs",
+      "system/contracts/component-runtime.mjs",
+      "system/contracts/component-manifest.mjs",
+      "system/contracts/first-party-app.mjs",
+      "system/contracts/app-intelligence-manifest.mjs",
+      "system/contracts/application-action-manifest.mjs",
+      "system/contracts/application-action-provider.mjs",
+      "system/contracts/localization.mjs",
+      "system/contracts/localization-pack.mjs",
+      "system/contracts/application-action-capability.mjs",
+      "system/contracts/locale-profile.mjs"
+    ]
   },
   "unresolved_capabilities": [
     {
@@ -58,8 +76,8 @@
     "platform_repository": "ordaxsystems/ordax-os",
     "platform_source_path": "system/apps/files",
     "platform_absence_proven_at": "4bee05e1b2e707354217fe2a4dfa6d8540aecf0e",
-    "target_materialization_state": "pending",
-    "target_source_present": false,
+    "target_materialization_state": "materialized",
+    "target_source_present": true,
     "gate_a_complete": true
   },
   "source_snapshot": {
@@ -148,5 +166,14 @@
     "install_owner": "platform-component-lifecycle",
     "auto_install": false
   },
-  "authority": "none"
+  "authority": "none",
+  "gate_b": {
+    "state": "source-materialized-unsigned",
+    "sdk_bundle_version": "1.21.0",
+    "platform_absence_proven": true,
+    "app_source_authority": "ordaxsystems/ordax-apps",
+    "signed_distribution_verified": false,
+    "native_install_verified": false,
+    "rollback_verified": false
+  }
 }
