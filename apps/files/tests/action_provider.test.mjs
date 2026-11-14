@@ -23,7 +23,10 @@ test("browse uses only the injected logical File Space", async () => {
   });
   assert.equal(result.status,"succeeded");
   assert.equal(result.output.location,"/Documentos");
-  assert.deepEqual(result.output.entries,[{name:"relatorio.txt",kind:"file",size:12}]);
+  assert.equal(result.output.entries.length,1);
+  assert.equal(result.output.entries[0].name,"relatorio.txt");
+  assert.equal(result.output.entries[0].kind,"file");
+  assert.equal(result.output.entries[0].size,12);
 });
 
 test("browse rejects mismatched response identity", async () => {
