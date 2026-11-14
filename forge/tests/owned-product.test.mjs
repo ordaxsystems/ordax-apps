@@ -72,11 +72,13 @@ test('start defaults to the Node host while explicit Electron retains its isolat
   assert.doesNotMatch(worker,/persist:ordax-gratis-chatgpt|ORDAX_CHATGPT_PARTITION/);
 });
 
-test('owned product keeps manual ChatGPT Web as required and supervisor gated', () => {
+test('owned product keeps GPT Web as the only model runtime and Forge MCP as the sole app', () => {
   const main=read('product/desktop/main.mjs');
   const worker=read('product/desktop/embedded-worker.mjs');
   assert.match(worker,/class EmbeddedChatWorker/);
-  assert.match(main,/ORDAX_LAB_SUPERVISOR_ENABLE/);
+  assert.match(main,/coordinator:null/);
+  assert.match(main,/const mcpApp='forge-mcp'/);
+  assert.doesNotMatch(main,/createGroqCoordinatorConversation|createGroqSupervisorPlanner/);
   assert.match(main,/runTask/);
   const store=read('product/src/store.mjs');
   assert.match(main,/store\.beginProviderRun\(taskId, prompt/);
