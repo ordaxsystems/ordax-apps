@@ -106,7 +106,7 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   assert.match(preload,/ordax:provider:mcp-selection/);
   assert.match(worker,/classifyProviderMcpSelection/);
   assert.match(worker,/requireSelectedMcpForPrompt\(prompt,selection,\{requiresMcp:this\.streamContext\?\.requiresMcp===true\}\)/);
-  assert.match(main,/requiresMcpForProjectPrompt\(prompt\)/);
+  assert.match(main,/requiresMcpForProjectPrompt\(prompt,\{projectContinuation\}\)/);
   assert.match(main,/runWorker\.inspectMcpSelectionReadOnly\(\)/);
   assert.ok(main.indexOf('await runWorker.inspectMcpSelectionReadOnly()')<main.indexOf('store.beginProviderRun(taskId'));
   assert.match(worker,/requiresMcp:requiresMcp===true/);
