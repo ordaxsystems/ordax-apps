@@ -70,12 +70,7 @@ Arquivos (`files`) e Internet (`internet`) são apps da classe `bootstrap`; isso
 não significa que ambos ainda tenham o mesmo owner de fonte ou distribuição
 independente aprovada.
 
-- **Arquivos:** o Gate A foi concluído em `ordax-os#2184` / commit
-  `4bee05e1...`; a fonte bundled não existe mais. `apps/files` ainda não foi
-  materializado. O plano canônico registra explicitamente
-  `source-absent-after-platform-removal`, Gate A completo e Gate B pendente.
-  Não restaurar o app no OS, não criar scaffold paralelo e não declarar Files
-  instalado/distribuível antes da materialização e dos gates posteriores.
+- **Arquivos:** Gate A foi concluído em `ordax-os#2184` / `4bee05e1...` e Gate B materializou a fonte única em `apps/files`. O app usa somente contratos públicos vendorizados do App SDK, mantém provider sem autoridade e `distribution_activation_allowed=false`. Package/sign/install/ativação continuam gates posteriores; não restaurar source no OS nem criar segunda implementação.
 - **Internet:** o Gate A de fonte já ocorreu. O owner portátil é
   `ordaxsystems/ordax-apps/apps/internet`, com `app.json` e código canônico
   presentes. A ativação de distribuição permanece bloqueada no

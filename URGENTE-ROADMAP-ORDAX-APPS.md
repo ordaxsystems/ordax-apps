@@ -679,8 +679,8 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 
 - PRs #129/#130 prepararam o inventário e o verificador quando `source_cutover_allowed=false` e o OS ainda continha Files.
 - O Gate A **já foi executado** em `ordax-os#2184`, commit exato `4bee05e1b2e707354217fe2a4dfa6d8540aecf0e`. O snapshot `cf8b07ba...` foi comparado até o pai imediato do Gate A sem alteração nos paths app-owned.
-- Estado atual: `source_of_truth_state=source-absent-after-platform-removal`, source atual ausente, `source_cutover_allowed=true`, `apps/files` ausente e `target_materialization_state=pending`.
-- Isso autoriza **somente Gate B/materialização de source**. Package/sign/install/ativação permanecem bloqueados; `distribution_activation_allowed=false`.
+- Estado atual: `source_of_truth_state=ordax-apps-canonical`, `source_repository_current=ordaxsystems/ordax-apps`, `apps/files` materializado e `target_materialization_state=materialized`.
+- Gate B conclui somente a autoridade de source. O package unsigned pode ser validado pelo workflow dedicado; signing/install/ativação permanecem bloqueados e `distribution_activation_allowed=false`.
 - File Space/Recentes/Projects e demais serviços estruturais continuam no OS. A futura materialização não pode copiar esses owners para o app.
 
 ### Execução G0 — SSOT dos inventários de CI (PR #131 integrada)
