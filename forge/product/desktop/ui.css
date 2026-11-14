@@ -624,6 +624,11 @@ body.orchestrator-focus #orchestratorWorkRail{padding:19px 15px 16px}
 .app-settings-card h3{margin:0 0 8px;font-size:16px;font-weight:710;line-height:1.3}
 .app-settings-card p{margin:7px 0;color:#b2b4ac;font-size:12px;line-height:1.55}
 .app-settings-card .app-settings-eyebrow+h3{margin-top:0}
+.app-settings-card[aria-label="Modo GPT único"]{border-color:var(--border-strong);background:linear-gradient(142deg,var(--panel-3),var(--panel-2))}
+.app-settings-card[aria-label="Modo GPT único"] h3{font-weight:760;letter-spacing:-.02em}
+.app-settings-card[aria-label="Modo GPT único"] p{max-width:64ch}
+#forgeRemoteGatewayState[data-state="ready"]{color:var(--green)}
+#forgeRemoteGatewayState[data-state="blocked"]{color:var(--amber)}
 .app-settings-provider-card button,.app-settings-key button,.app-settings-card>button{min-height:38px;padding:9px 12px;border:1px solid #4a4c42;border-radius:9px;background:#30312b;color:#f2eee5;font-size:12px;cursor:pointer}
 .app-settings-provider-card button:hover,.app-settings-key button:hover,.app-settings-card>button:hover{background:#3d3e35}
 .app-settings-key summary{cursor:pointer;font-size:14px;font-weight:700}

@@ -28,20 +28,12 @@ const STATIC_FILES = new Map([
 // Store-backed handlers, shared by the Node host and Electron shell.
 export const HOST_BROWSER_METHODS = Object.freeze({
   coordinatorChatStatus:['ordax:orchestrator:chat-status',()=>[]],
-  chatgptPlanStatus:['ordax:chatgpt-plan:status',()=>[]],
-  chatgptPlanLogin:['ordax:chatgpt-plan:login',()=>[]],
-  chatgptPlanDisconnect:['ordax:chatgpt-plan:disconnect',()=>[]],
   orchestratorInvoke:['ordax:orchestrator:invoke',a=>[{operation:a[0],input:a[1]??{}}]],
   orchestratorMcp:['ordax:orchestrator:mcp',a=>[a[0]]],
   supervisorStatus:['ordax:supervisor:status',()=>[]],
-  supervisorSaveKey:['ordax:supervisor:key:save',a=>[a[0]]],
-  supervisorRemoveKey:['ordax:supervisor:key:remove',()=>[]],
   setTaskSupervisorRole:['ordax:tasks:supervisor-role:set',a=>[{taskId:a[0],role:a[1]}]],
-  supervisorPlan:['ordax:supervisor:plan',a=>[a[0]]],
   supervisorRecoverable:['ordax:supervisor:recoverable',a=>[a[0]]],
   supervisorInspect:['ordax:supervisor:inspect',a=>[a[0]]],
-  supervisorApprove:['ordax:supervisor:approve',a=>[a[0]]],
-  supervisorDispatch:['ordax:supervisor:dispatch',a=>[a[0]]],
   workspace:['ordax:workspace:get',()=>[]],
   setWorkspaceNavigation:['ordax:workspace:navigation:set',a=>[a[0]]],
   listTasks:['ordax:tasks:list',()=>[]],
@@ -118,7 +110,7 @@ function sanitizeResult(value) {
   return result;
 }
 
-export function createHostBrowserServer({productRoot,assetsRoot,invoke,readAsset,onChatGPTCallback=async()=>{},onShutdown=()=>{},clock=Date.now}) {
+export function createHostBrowserServer({productRoot,assetsRoot,invoke,readAsset,onShutdown=()=>{},clock=Date.now}) {
   if(typeof invoke!=='function')throw new TypeError('host_browser_invoke_required');
   const root=path.resolve(productRoot);
   const sessions=new Map();
@@ -179,19 +171,10 @@ export function createHostBrowserServer({productRoot,assetsRoot,invoke,readAsset
     const session=authenticated(req);
     if(!session)return json(res,401,{error:'host_session_required'});
 
-    if(req.method==='GET'&&url.pathname==='/auth/callback') {
-      const redirectUri=`${origin}/auth/callback`;
-      let destination='error';
-      try {
-        const result=await onChatGPTCallback({session,callbackUrl:url.href,redirectUri});
-        destination=result?.planUsageAuthorized===true?'connected':'consent';
-      } catch(error) {
-        destination=error?.message==='chatgpt_authorization_denied'?'denied':'error';
-      }
-      res.writeHead(303,{'Location':`/?chatgpt=${destination}`,'Cache-Control':'no-store',
-        'Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'});
-      return res.end();
-    }
+    // Model-provider OAuth callbacks were removed. The Forge MCP account
+    // uses its separate native PKCE flow, never this Host endpoint.
+    if(req.method==='GET'&&url.pathname==='/auth/callback')
+      return json(res,410,{error:'model_provider_oauth_removed'});
 
     if(req.method==='GET'&&url.pathname==='/api/events') {
       res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-store','Connection':'keep-alive',

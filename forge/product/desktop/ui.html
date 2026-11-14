@@ -38,7 +38,7 @@
         <span class="workspace-modes-caption">Áreas do projeto</span>
         <button id="openOrchestrator" class="workspace-mode workspace-mode-coordinator" type="button" aria-pressed="false" disabled>
           <span class="workspace-mode-symbol" aria-hidden="true">◇</span>
-          <span class="workspace-mode-copy"><strong>Forjador</strong><small id="coordinatorNavProvider">Conversa principal · GPT</small></span>
+          <span class="workspace-mode-copy"><strong>Forjador</strong><small id="coordinatorNavProvider">GPT Web · Forge MCP</small></span>
           <span class="workspace-mode-arrow" aria-hidden="true">↗</span>
         </button>
         <button id="openWorks" class="workspace-mode workspace-mode-gpt" type="button" aria-pressed="false" aria-controls="orchestratorWorkRail" aria-expanded="false" disabled>
@@ -155,12 +155,12 @@
             <details id="forgeCoordinatorAdvanced" class="forge-coordinator-advanced"><summary aria-label="Ferramentas e diagnóstico" title="Ferramentas e diagnóstico">⋯</summary><div id="forgeCoordinatorAdvancedContent" class="forge-coordinator-advanced-content"></div></details>
             <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Sessões GPT</button>
             <button id="pauseOrchestrator" class="ghost-button" type="button" disabled>Pausar</button>
-            <button id="coordinatorApiSettings" class="ghost-button" type="button" aria-label="Abrir configurações de modelos" title="Configurar modelos conectados">Ajustes</button>
+            <button id="coordinatorApiSettings" class="ghost-button" type="button" aria-label="Abrir configurações do GPT" title="Configurar ChatGPT e Forge MCP">Ajustes</button>
           </div>
         </header>
         <div id="coordinatorTransport" class="coordinator-transport" role="status" aria-live="polite">
           <span class="transport-symbol" aria-hidden="true">●</span>
-          <span id="orchestrationConnection" class="orchestration-connection">Converse normalmente. O OrdaX organiza as tarefas com os serviços conectados.</span>
+          <span id="orchestrationConnection" class="orchestration-connection">GPT Web para conversar; Forge MCP para ações autorizadas.</span>
         </div>
         <details id="projectPulseDisclosure" class="command-advanced"><summary>Ferramentas de missão e diagnóstico local</summary>
         <section id="projectPulse" class="project-pulse" aria-label="Resumo operacional das frentes de trabalho" hidden>
@@ -178,24 +178,15 @@
           <p id="projectObservationState" role="status" aria-live="polite" data-state="idle">Pausado. Iniciar registra a intenção, consulta o inventário local e pode solicitar uma análise ao Administrador Geral se os gates permitirem.</p>
           <p id="projectPreflightState" class="project-preflight-state" data-state="idle" role="status" aria-live="polite">Diagnóstico ainda não solicitado. Uma URL GitHub não comprova acesso ao repositório.</p>
           <ul id="projectPreflightActions" class="project-preflight-actions" aria-label="Próximos passos verificados pelo diagnóstico local" hidden></ul>
-          <p id="analysisScopeHint">Iniciar consulta o preflight local e, quando coordenador, frentes e recibos passam pelos gates, solicita uma análise sem prompt. Ela usa somente frentes registradas: não lê GitHub, não envia GPT Web e não executa propostas. Use Reanalisar frentes para repetir manualmente.</p>
+          <p id="analysisScopeHint">Iniciar consulta o estado local e os recibos. Análise por IA externa foi removida; as frentes GPT continuam disponíveis, sem reenvio de operações incertas.</p>
         </section>
         </details>
         <div id="orchestrationCapabilitySummary" class="orchestration-capabilities" aria-label="Capacidades disponíveis no Host" hidden>
-          <span id="capabilityGroq" data-state="blocked">Groq · não configurado</span>
-          <span id="capabilityGpt" data-state="blocked">ChatGPT Plan · não conectado</span>
+          <span id="capabilityGpt" data-state="blocked">GPT Web · somente no desktop</span>
           <span id="capabilityGitHub" data-state="blocked">GitHub · sem leitura autenticada</span>
           <span id="capabilityRuntime" data-state="blocked">Runtime · sem conexão</span>
           <span id="capabilityContinuity" data-state="blocked">24 h · não operacional</span>
         </div>
-        <details id="forjadorGroqInspector" class="command-advanced forjador-prompt-inspector">
-          <summary>Diagnóstico DEV · prompts reais Groq e GPT</summary>
-          <div class="forjador-prompt-inspector-body">
-            <p>Somente nesta sessão: mensagens exatas preparadas para a Groq e prompt montado pelo Forge para o GPT, com estado da entrega. Sem chaves, cabeçalhos, arquivos gravados ou reenvios.</p>
-            <button id="inspectGroqPrompt" class="mini-secondary" type="button">Mostrar prompts reais</button>
-            <pre id="groqPromptDisplay" role="status" aria-live="polite">Nenhum prompt inspecionado.</pre>
-          </div>
-        </details>
         <details id="orchestrationIntegrations" class="orchestration-integrations">
           <summary><span>Projeto, conexões e automação</span><small>Configurações e limites de execução</small></summary>
           <div class="orchestration-integrations-content">
@@ -212,8 +203,8 @@
               <small id="remoteRepositoryCapabilityNote">A API recebe somente a URL. No desktop, tarefas podem pedir ao ChatGPT para usar a integração GitHub da sessão; isso não comprova que a integração está disponível. Nenhum arquivo local é lido nesta etapa.</small>
             </section>
             <section class="coordinator-analysis-actions" aria-label="Ferramentas do executor GPT">
-              <strong>Executor GPT · Ferramentas MCP</strong>
-              <small>O Forjador coordena o próprio Forge pelo Forge MCP. As Works executoras usam OrdaX MCP para agir no computador/projeto. Cada envio seleciona apenas a autoridade necessária; menções textuais nunca substituem seleção, autorização ou recibos.</small>
+              <strong>GPT Web · Forge MCP</strong>
+              <small>O Forjador e todas as conversas trabalham com o mesmo Forge MCP. Pastas e operações continuam restritas aos grants do projeto; nomes digitados não concedem acesso.</small>
               <button id="forjadorMcpCheck" class="mini-secondary" type="button">Verificar seleção no GPT</button>
               <small id="forjadorMcpStatus" role="status" aria-live="polite">Seleção de ferramentas não verificada. Nenhuma execução MCP comprovada nesta conversa.</small>
             </section>
@@ -230,14 +221,14 @@
               <button id="continuityFollowupPrepare" type="button" class="mini-secondary" hidden disabled>Preparar próximo passo na conversa GPT</button>
               <button id="prepareWork" type="button" class="mini-secondary" disabled>Preparar nova frente</button>
               <button id="continueAutonomousTechnical" type="button" class="mini-secondary" hidden disabled>Continuar missão técnica · próximo ciclo seguro</button>
-              <button id="startAutonomousTechnical" type="button" class="mini-primary" disabled>Iniciar missão técnica com GPT + Groq</button>
+              <button id="startAutonomousTechnical" type="button" class="mini-primary" hidden disabled>Missão técnica legada indisponível</button>
               <small id="autonomousDialogueState" role="status" aria-live="polite">Descreva uma missão para iniciar. O GPT executa as etapas autorizadas; novas etapas dependem de progresso revisado, acesso MCP real e ausência de operações incertas.</small>
               <div id="autonomousReviewActions" class="memory-review-actions" aria-label="Revisar conversas da missão" hidden></div>
               <details id="orchestratorExperiments" class="orchestrator-experiments">
-                <summary>Outros testes de coordenação GPT</summary>
+                <summary>Missões legadas desativadas</summary>
                 <div class="orchestrator-experiments-content">
-                  <button id="startAutonomousDialogue" type="button" class="mini-primary" disabled>Executar missão autônoma (2 perguntas GPT)</button>
-                  <button id="startAutonomousStory" type="button" class="mini-secondary" disabled>Criar história colaborativa (2 ciclos, 4 cenas GPT)</button>
+                  <button id="startAutonomousDialogue" type="button" class="mini-primary" hidden disabled>Executar missão autônoma (2 perguntas GPT)</button>
+                  <button id="startAutonomousStory" type="button" class="mini-secondary" hidden disabled>Criar história colaborativa (2 ciclos, 4 cenas GPT)</button>
                 </div>
               </details>
             </div>
@@ -288,10 +279,6 @@
         </header>
         <p id="linkedThreadStatus" class="composer-hint" role="status" aria-live="polite"></p>
         <p id="htmlArtifactStatus" class="composer-hint" role="status" aria-live="polite"></p>
-        <div id="runReviewActions" class="task-head-actions run-review-actions hidden">
-          <button id="reviewLatestRun" class="ghost-button" type="button" disabled>Revisar último Run com Groq</button>
-          <span id="runReviewState" class="composer-hint" role="status" aria-live="polite"></span>
-        </div>
         <details id="linkedReplyRecovery" class="linked-reply-recovery hidden">
           <summary>Resposta completa encontrada no ChatGPT, ainda fora do histórico OrdaX</summary>
           <p>Confira o texto. Ao importar, o app verificará a mesma conversa novamente e registrará a resposta uma única vez.</p>
@@ -400,7 +387,7 @@
           <div class="execution-section-heading"><h3>Atividade e verificação</h3></div>
           <ol id="executionActivity" class="execution-activity"><li>Sem atividade confirmada para esta missão.</li></ol>
         </section>
-        <details class="execution-monitor-details"><summary>Limites e evidências</summary><p>Os dados vêm do projeto local, dos Runs GPT e das decisões Groq registradas. Uma resposta GPT não comprova alterações, testes ou publicação. Nada é marcado como validado sem evidência externa.</p></details>
+        <details class="execution-monitor-details"><summary>Limites e evidências</summary><p>Os dados vêm dos projetos, dos Runs GPT e dos recibos canônicos do Forge. Uma resposta GPT não comprova alterações, testes ou publicação. Nada é marcado como validado sem evidência externa.</p></details>
       </section>
       <section id="filesPanel" class="right-pane-panel forge-files-panel" role="tabpanel" aria-labelledby="filesPaneTab" hidden>
         <div class="forge-files-heading"><span class="eyebrow">WORKSPACE DO PROJETO</span><h2 id="forgeFilesProjectName">Arquivos</h2><button id="forgeFilesRefresh" class="mini-secondary" type="button" aria-label="Atualizar estado do workspace">↻ Atualizar</button></div>
@@ -566,20 +553,14 @@
         <button id="rotateConversation" class="mini-secondary" type="button">Abrir outro chat GPT</button>
       </details>
       <details class="context-section" id="labSupervisorPanel">
-        <summary class="section-title-row"><span>Configuração desta tarefa</span></summary>
+        <summary class="section-title-row"><span>Recuperação de execuções anteriores</span></summary>
+        <p class="diagnostics-hint">Consulte operações pendentes sem criar novos planejamentos ou repetir envios incertos.</p>
         <label for="labSupervisorRole">Papel desta conversa</label>
-        <select id="labSupervisorRole" aria-describedby="labRoleDescription" disabled>
-          <option value="none">Sem papel definido</option>
-        </select>
-        <p id="labRoleDescription" role="status" class="diagnostics-hint">Selecione uma tarefa para preparar seu papel. Isso não inicia a IA.</p>
-        <label for="labSupervisorObjective">Objetivo do próximo passo (rascunho)</label>
-        <textarea id="labSupervisorObjective" rows="3" maxlength="4000" style="width:100%" placeholder="Descreva uma tarefa objetiva para os agentes"></textarea>
+        <select id="labSupervisorRole" aria-describedby="labRoleDescription" disabled><option value="none">Sem papel definido</option></select>
+        <p id="labRoleDescription" role="status" class="diagnostics-hint">Selecione uma conversa para consultar seu histórico.</p>
         <div class="memory-editor-actions">
-          <button type="button" class="mini-secondary" id="labSupervisorPlan">Planejar um passo</button>
-          <button type="button" class="mini-secondary" id="labSupervisorRecover">Recuperar plano</button>
-          <button type="button" class="mini-secondary" id="labSupervisorInspect" hidden>Verificar conversa (sem envio)</button>
-          <button type="button" class="mini-secondary" id="labSupervisorApprove" hidden>Aprovar</button>
-          <button type="button" class="mini-primary" id="labSupervisorSend" hidden>Enviar passo aprovado</button>
+          <button type="button" class="mini-secondary" id="labSupervisorRecover">Recuperar plano anterior</button>
+          <button type="button" class="mini-secondary" id="labSupervisorInspect" hidden>Inspecionar entrega (sem envio)</button>
         </div>
         <pre id="labSupervisorProposal" role="status" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
       </details>
@@ -589,13 +570,13 @@
   <dialog id="appSettingsDialog" class="app-settings-dialog" aria-labelledby="appSettingsTitle">
     <div class="app-settings-frame">
       <header class="app-settings-header">
-        <div class="app-settings-heading"><span class="app-settings-wordmark"><span class="app-settings-logo" aria-hidden="true">⬡</span><span id="productBrandEyebrow">OrdaX Forge</span></span><span class="app-settings-heading-copy"><h2 id="appSettingsTitle">Configurações</h2><p>Preferências do aplicativo, provedores e conexões.</p></span></div>
+        <div class="app-settings-heading"><span class="app-settings-wordmark"><span class="app-settings-logo" aria-hidden="true">⬡</span><span id="productBrandEyebrow">OrdaX Forge</span></span><span class="app-settings-heading-copy"><h2 id="appSettingsTitle">Configurações</h2><p>Preferências do Forge, sessão GPT e conexão MCP.</p></span></div>
         <button id="closeAppSettings" class="app-settings-close" type="button" aria-label="Fechar configurações">×</button>
       </header>
       <div class="app-settings-body">
         <nav class="app-settings-nav" role="tablist" aria-label="Seções de configurações" aria-orientation="vertical">
           <button id="settingsTabGeneral" class="app-settings-tab" type="button" role="tab" aria-selected="true" aria-controls="settingsPanelGeneral" tabindex="0" data-settings-tab="general"><span class="settings-tab-icon" aria-hidden="true">⚙</span>Geral</button>
-          <button id="settingsTabProviders" class="app-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsPanelProviders" tabindex="-1" data-settings-tab="providers"><span class="settings-tab-icon" aria-hidden="true">◇</span>IA e provedores</button>
+          <button id="settingsTabProviders" class="app-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsPanelProviders" tabindex="-1" data-settings-tab="providers"><span class="settings-tab-icon" aria-hidden="true">◇</span>GPT Web</button>
           <button id="settingsTabConnections" class="app-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsPanelConnections" tabindex="-1" data-settings-tab="connections"><span class="settings-tab-icon" aria-hidden="true">↗</span>Conexões</button>
         </nav>
         <div class="app-settings-content">
@@ -620,34 +601,15 @@
               <p>A sessão usa o perfil persistente deste aplicativo. O OrdaX não salva sua senha; os cookies podem expirar ou ser invalidados pelo próprio serviço.</p>
               <button id="settingsOpenChatGptLogin" type="button" class="mini-secondary">Abrir sessão do ChatGPT</button>
             </section>
-            <p id="labSupervisorState" class="diagnostics-hint">Verificando supervisor...</p>
-            <section id="chatgptPlanSettings" class="context-section chatgpt-plan-settings" aria-label="Conexão com ChatGPT Plan">
-              <h4>ChatGPT Plan</h4>
-              <p id="chatgptPlanState" role="status" aria-live="polite" class="diagnostics-hint">Verificando conexão segura…</p>
-              <div class="memory-editor-actions">
-                <button type="button" class="mini-primary" id="chatgptPlanConnect">Continuar com ChatGPT</button>
-                <button type="button" class="mini-secondary" id="chatgptPlanDisconnect" hidden>Desconectar</button>
-              </div>
-              <p class="diagnostics-hint">Conexão oficial para uso elegível do plano no coordenador Host. É separada do login ChatGPT Web e da chave Groq.</p>
+            <section class="app-settings-card" aria-label="Modo GPT único">
+              <span class="app-settings-eyebrow">MODELO ÚNICO</span><h3>GPT Web + Forge MCP</h3>
+              <p>O GPT trabalha nas conversas vinculadas a cada projeto. O Forge MCP controla Tasks, Runs e arquivos autorizados. Não há chaves de IA, modelos alternativos ou cobranças de inferência configuráveis no aplicativo.</p>
+              <p class="diagnostics-hint">A Conta OrdaX autentica o Forge MCP; o login do ChatGPT é separado e usa o próprio navegador do aplicativo.</p>
             </section>
-            <details id="labSupervisorKeySettings" class="app-settings-card app-settings-key" open>
-              <summary>Chave da API Groq</summary>
-              <p class="diagnostics-hint">Groq é o provedor do Administrador Geral. No Windows, a chave fica protegida no cofre do sistema e não é enviada à sessão ChatGPT Web.</p>
-              <form id="labSupervisorKeyForm" autocomplete="off">
-                <label for="labSupervisorKeyInput">Chave Groq</label>
-                <input id="labSupervisorKeyInput" type="password" autocomplete="new-password" spellcheck="false" placeholder="gsk_..." maxlength="244" aria-describedby="labSupervisorKeyState" />
-                <div class="memory-editor-actions">
-                  <button type="submit" class="mini-secondary" id="labSupervisorKeySave">Salvar chave no Windows</button>
-                  <button type="button" class="mini-secondary" id="labSupervisorKeyTest" disabled>Testar conexão</button>
-                  <button type="button" class="mini-secondary" id="labSupervisorKeyRemove">Remover chave</button>
-                </div>
-              </form>
-              <p id="labSupervisorKeyState" role="status" aria-live="polite" class="diagnostics-hint">Nenhuma chave enviada ou testada.</p>
-            </details>
           </section>
           <section id="settingsPanelConnections" class="app-settings-panel" role="tabpanel" aria-labelledby="settingsTabConnections" data-settings-panel="connections" tabindex="0" hidden>
             <div class="app-settings-card"><span class="app-settings-eyebrow">GITHUB</span><h3>Repositórios</h3><p>O endereço do repositório é configurado dentro de cada projeto. A leitura de branches, PRs e verificações depende de uma conexão autorizada pelo Platform; este perfil ainda não a confirma.</p><button id="settingsOpenProject" type="button" class="mini-secondary">Configurar projeto</button></div>
-            <div class="app-settings-card"><span class="app-settings-eyebrow">FERRAMENTAS DO GPT</span><h3>Forge MCP + OrdaX MCP</h3><p>O Forjador coordena projetos e agents pelo Forge MCP. Cada Work executora usa OrdaX MCP somente quando precisa agir no computador/projeto. O Forge seleciona o app correto por Run; escrever @forge-mcp ou @ordax-mcp não concede autoridade.</p><button id="settingsMcpCheck" type="button" class="mini-secondary">Verificar Forge MCP no ChatGPT</button><p id="settingsMcpState" class="settings-connection-state" role="status" aria-live="polite">Seleção do Forge MCP não verificada.</p><p class="diagnostics-hint">Seleção visual não comprova efeito. Task, Run, receipt e evidência local continuam sendo a fonte de verdade.</p></div>
+            <div class="app-settings-card"><span class="app-settings-eyebrow">FERRAMENTAS DO GPT</span><h3>Forge MCP</h3><p>Uma única conexão para projetos, agentes, Tasks, Runs e arquivos das pastas autorizadas. Todas as conversas usam GPT Web e Forge MCP. A seleção visual de um app não concede permissões nem comprova execução.</p><button id="settingsMcpCheck" type="button" class="mini-secondary">Verificar Forge MCP no ChatGPT</button><p id="settingsMcpState" class="settings-connection-state" role="status" aria-live="polite">Seleção do Forge MCP não verificada.</p><p class="diagnostics-hint">Seleção visual não comprova efeito. Task, Run, receipt e evidência local continuam sendo a fonte de verdade.</p></div>
             <div class="app-settings-card">
               <span class="app-settings-eyebrow">ARQUIVOS DOS PROJETOS</span><h3>Pastas dos projetos</h3>
               <p>Escolha uma pasta física para cada projeto. Essa seleção é independente da conexão MCP do aplicativo.</p>

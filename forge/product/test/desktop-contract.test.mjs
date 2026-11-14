@@ -153,14 +153,18 @@ test('desktop package ships only canonical desktop runtime', () => {
   assert.equal(pkg.main, 'desktop/bootstrap.mjs');
   // Runtime CJS helpers are shipped beside the ESM source; tests, userData
   // and cookies remain outside the packaged file set.
-  assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','src/*.cjs','supervisor/**/*','package.json']);
+  assert.deepEqual(pkg.build.files, [
+    'desktop/**/*','src/*.mjs','src/*.cjs','supervisor/**/*',
+    '!src/groq-*.mjs','!src/local-supervisor-credential.mjs',
+    '!supervisor/groq-*.mjs','!supervisor/chatgpt-plan-conversation.mjs','package.json'
+  ]);
   assert.match(main,/const hostBrowserMode=!app\.isPackaged&&/);
   assert.match(main,/await import\('\.\.\/host\/host-browser-server\.mjs'\)/);
   assert.match(main,/createTaskUiHandlers/);
-  assert.match(ui,/PRODUCT_SHORT_NAME\+' • Host Node de desenvolvimento'/);
+  assert.match(ui,/PRODUCT_SHORT_NAME\+' • GPT Web \+ Forge MCP'/);
   assert.equal(pkg.build.productName,PRODUCT_NAME);
-  assert.match(ui,/const observerRow=\$\('\.observer-row'\);/);
-  assert.match(ui,/observerRow\.classList\.add\('hidden'\)/);
+  assert.match(ui,/const observer=\$\('\.observer-row'\);/);
+  assert.match(ui,/observer\.classList\.add\('hidden'\)/);
   assert.equal(pkg.scripts.start,'node scripts/start-host.mjs');
   assert.equal(pkg.scripts['build:worker-preload'],'node scripts/build-worker-preload.mjs');
   assert.equal(pkg.scripts['start:electron'],'npm run build:worker-preload && electron .');
@@ -193,9 +197,8 @@ test('application settings remain accessible with no project and own global prov
     assert.equal((html.match(new RegExp(`data-settings-tab="${section}"`,'g'))||[]).length,1);
     assert.equal((html.match(new RegExp(`data-settings-panel="${section}"`,'g'))||[]).length,1);
   }
-  assert.match(html,/id="labSupervisorKeySettings" class="app-settings-card app-settings-key"/);
-  assert.match(html,/id="labSupervisorKeyInput" type="password"/);
-  assert.match(html,/id="labSupervisorKeyTest"[^>]*disabled>Testar conexão/);
+  assert.doesNotMatch(html,/id="labSupervisorKeySettings"|id="labSupervisorKeyInput"|id="labSupervisorKeyTest"/);
+  assert.match(html,/GPT Web \+ Forge MCP/);
   assert.match(html,/id="backgroundModePanel"[^>]*hidden/);
   assert.match(html,/id="settingsOpenChatGptLogin"/);
   assert.match(html,/id="settingsOpenProject"/);
@@ -220,7 +223,7 @@ test('project onboarding accepts a name without a written mission, without impli
   assert.match(html,/id="projectObjective"[^>]+placeholder="Pode deixar vazio:[^>]+><\/textarea>/);
   assert.equal((html.match(/id="analyzeWorks"/g)||[]).length,1);
   assert.ok(html.indexOf('id="analyzeWorks"')<html.indexOf('id="orchestrationIntegrations"'));
-  assert.match(html,/id="analysisScopeHint"[^>]*>[^<]*Iniciar consulta o preflight local/);
+  assert.match(html,/id="analysisScopeHint"[^>]*>[^<]*Iniciar consulta o estado local e os recibos/);
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.match(orchestration,/resolveProjectOnboardingMission\(name,\$\('projectObjective'\)\.value\)/);
   assert.match(orchestration,/command\('mission_create',input\)/);
@@ -287,7 +290,7 @@ test('preflight is read-only, project-scoped and cannot silently send GPT',()=>{
   // a registered URL must never masquerade as authenticated GitHub access.
   assert.match(uiSource,/snapshot\.repository\.authenticatedRead!=='unavailable'/);
   assert.match(uiSource,/snapshot\.provenance\.externalObservation!==false/);
-  assert.match(uiSource,/Este preflight não fez nova leitura GitHub, chamada Groq/);
+  assert.match(uiSource,/O diagnóstico não enviou mensagens GPT, alterou arquivos nem fez uma chamada de modelo/);
   assert.match(uiSource,/clearProjectPreflight\(\)/);
   assert.match(uiSource,/command\('orchestrator_analyze',\{projectId:p,orchestratorId:o\}\)/);
 });
@@ -355,7 +358,7 @@ test('Start inspects local evidence immediately and restores it without repeatin
   assert.equal(guide.state,'blocked');
   assert.match(guide.summary,/Inventário local: 4 frente/);
   assert.match(guide.summary,/Última análise registrada em 2026-11-02/);
-  assert.match(guide.summary,/Este preflight não fez nova leitura GitHub/);
+  assert.match(guide.summary,/O diagnóstico não enviou mensagens GPT/);
   assert.equal(guide.analysisLabel,'Reanalisar frentes');
   assert.match(guide.actions.join(' '),/Platform ainda indisponível/);
   assert.match(guide.actions.join(' '),/supervisão headless ainda não verificados/);
@@ -535,9 +538,9 @@ test('OrdaX UI exposes responsive conversation, chat and context columns', () =>
   assert.match(html, /id="providerClose"[^>]*Fechar navegador/);
   assert.match(html, /id="previewPaneTab"/);
   assert.match(html, /id="contextPaneTab"/);
-  assert.match(ui, /#login'\)\.hidden = true/);
-  assert.match(ui, /A conta ChatGPT Plan é conectada pelo fluxo oficial do navegador/);
-  assert.match(ui, /isso não vincula conversas existentes do ChatGPT Web/);
+  assert.match(ui, /\$\('#login'\)\.hidden=true/);
+  assert.match(ui, /GPT Web usa a sessão do Forge desktop/);
+  assert.doesNotMatch(ui, /chatgptPlanLogin\(|supervisorSaveKey\(/);
   assert.match(html, /id="sessionPersistenceNote"/);
 });
 
@@ -638,7 +641,7 @@ test('compact administrator navigation retains both accessible selectors and the
   assert.equal((css.match(/:root\{/g)||[]).length,1,'one visual token root');
   assert.match(html,/id="projectSelect"[^>]*aria-label="Selecionar projeto ativo"/);
   assert.match(html,/id="orchestratorSelect"[^>]*aria-label="Selecionar administrador do projeto"/);
-  assert.match(html,/id="coordinatorApiSettings"[^>]*aria-label="Abrir configurações de modelos"/);
+  assert.match(html,/id="coordinatorApiSettings"[^>]*aria-label="Abrir configurações do GPT"/);
   assert.match(css,/body\.orchestrator-focus \.app-shell\{grid-template-rows:98px minmax\(0,1fr\)\}/);
   assert.match(css,/body\.orchestrator-focus \.orchestration-navigation\{grid-column:1\/-1;grid-row:2;/);
   assert.match(css,/body\.orchestrator-focus \.left-footer\{grid-column:2;grid-row:1\}/);
@@ -821,7 +824,7 @@ test('Orchestrator workspace links project navigation, coordinator and scoped GP
   assert.match(orchestration,/const setWorkRailOpen=open=>/);
   assert.match(orchestration,/\$\('closeWorkRail'\)\.addEventListener\('click'/);
   assert.match(orchestration,/coordinatorDraftCommitAvailable/);
-  assert.match(orchestration,/envio seguro bloqueado até reiniciá-lo/);
+  assert.match(orchestration,/abra o aplicativo desktop|abra o Forge desktop/i);
   assert.match(orchestration,/GPT indisponível/);
   assert.match(orchestration,/O ChatGPT conectado responde no chat coordenador; envio às conversas de trabalho ainda não está ligado neste Host/);
   assert.match(orchestration,/URL salva no projeto: \$\{project\.repository_url\}\. Este Host não lê o GitHub nem envia mensagens às frentes de trabalho\./);
@@ -846,11 +849,11 @@ test('coordinator shows an actionable empty state and keeps mobile controls insi
   assert.match(orchestration,/Conte sua ideia ao Forjador/);
   assert.match(orchestration,/Criar um site/);
   assert.match(orchestration,/Desenvolver um app/);
-  assert.match(orchestration,/ChatGPT Plan · autorizado/);
+  assert.match(orchestration,/GPT Web · disponível no aplicativo desktop/);
   assert.match(html,/id="coordinatorApiSettings"[^>]*>Ajustes</);
   assert.match(css,/coordinator-head-actions #coordinatorApiSettings\{font-size:9px;width:auto/);
   assert.match(orchestration,/groq_auth_rejected:/);
-  assert.match(orchestration,/O tempo de resposta do \$\{provider\} expirou sem confirmação/);
+  assert.match(orchestration,/O tempo de resposta de um mecanismo legado expirou sem confirmação/);
   assert.match(orchestration,/input\.dispatchEvent\(new Event\('input',\{bubbles:true\}\)\)/);
   assert.match(html,/id="forgeCoordinatorAdvanced"/);
   assert.match(css,/\.coordinator-empty\{[^}]*text-align:center/);
@@ -862,13 +865,12 @@ test('coordinator shows an actionable empty state and keeps mobile controls insi
   assert.match(css,/body:not\(\.orchestrator-focus\) \.left-rail \.orchestration-navigation \.nav-item:not\(\.active\),\s*body:not\(\.orchestrator-focus\) \.left-rail \.orchestration-navigation \.nav-empty\{display:none\}/);
 });
 
-test('Groq finish diagnostics are actionable without revealing raw provider content',()=>{
+test('historical model failures remain readable without permitting a second model',()=>{
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
-  assert.match(orchestration,/groq_response_filtered:/);
-  assert.match(orchestration,/groq_unexpected_tool_call:/);
-  assert.match(orchestration,/diagnostics\.finishReason==='length'/);
-  assert.match(orchestration,/Nenhuma resposta parcial foi aceita ou enviada ao GPT/);
-  assert.match(orchestration,/const failureCode=receipt\.result\?\.failureCode/);
+  assert.match(orchestration,/const legacyFailure=String\(receipt\.result\?\.failureCode/);
+  assert.match(orchestration,/Execução de modelo legado bloqueada ou falhou/);
+  assert.match(orchestration,/nada foi reenviado/);
+  assert.doesNotMatch(orchestration,/api\.groq\.com|createGroqCoordinatorConversation/);
 });
 
 test('startup Task restoration initializes its controls before the first await',()=>{
@@ -884,7 +886,7 @@ test('Host keeps execution truth visible while collapsing project setup below th
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.match(html,/<div id="orchestrationCapabilitySummary"[^>]*hidden>/);
-  for(const id of ['capabilityGroq','capabilityGpt','capabilityGitHub','capabilityRuntime','capabilityContinuity'])
+  for(const id of ['capabilityGpt','capabilityGitHub','capabilityRuntime','capabilityContinuity'])
     assert.match(html,new RegExp(`id="${id}"`));
   assert.match(html,/<details id="orchestrationIntegrations" class="orchestration-integrations">/);
   assert.match(html,/Projeto, conexões e automação/);
@@ -897,14 +899,17 @@ test('Host keeps execution truth visible while collapsing project setup below th
   assert.match(css,/\.orchestration-integrations-content\{max-height:min\(42vh,340px\);overflow:auto/);
 });
 
-test('saving or removing the Groq key refreshes Orchestrator readiness and send actions',()=>{
-  const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
-  assert.match(ui,/async function refreshOrchestrationProviderStatus\(\)\{\s*try\{await orchestrationUi\?\.refreshStatus\?\.\(\);\}/);
-  assert.equal((ui.match(/await refreshOrchestrationProviderStatus\(\);/g)||[]).length,2);
-  assert.match(ui,/Chave salva, mas o estado local não atualizou/);
-  assert.match(ui,/Remoção concluída, mas o estado local não atualizou/);
-  assert.match(orchestration,/async function refreshApiStatus\(\)\s*\{[\s\S]*?syncCoordinatorActions\(\);/);
-  assert.match(orchestration,/refreshStatus:\(\)=>refreshApiStatus\(\)/);
+test('GPT-only settings omit external-model credentials and preserve connection status',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const main=fs.readFileSync(path.join(root,'desktop','main.mjs'),'utf8');
+  const host=fs.readFileSync(path.join(root,'host','host-application.mjs'),'utf8');
+  assert.match(html,/GPT Web \+ Forge MCP/);
+  assert.doesNotMatch(html,/id="labSupervisorKeyInput"|id="chatgptPlanConnect"/);
+  assert.doesNotMatch(main,/createGroqCoordinatorConversation|createGroqSupervisorPlanner|testGroqApiKey/);
+  assert.doesNotMatch(host,/createHostGroqCredential|createChatGPTPlanConnection/);
+  assert.match(host,/const coordinator=null/);
+  assert.match(main,/coordinator:null/);
+  assert.match(main,/provider:'chatgpt_web'/);
 });
 
 test('new missions are local drafts and never silently start a GPT work conversation',()=>{
@@ -1149,20 +1154,18 @@ test('late provider recovery refreshes both Electron and Host task views',()=>{
 });
 
 
-test('Groq analysis uses the configured credential automatically, never a volatile enable button',()=>{
+test('single GPT model and Forge MCP replace the external coordinator',()=>{
   const host=fs.readFileSync(path.join(root,'host','host-application.mjs'),'utf8');
   const orchestratorUI=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
-  assert.match(main,/const coordinatorChatEnabled=\(\)=>Boolean\(currentGroqKey\(\)\)/);
-  assert.match(host,/const coordinatorEnabled=\(\)=>Boolean\(apiKey\(\)\|\|chatgptConnection\.isPlanAvailable\(\)\)/);
-  assert.match(host,/const activeCoordinatorProvider=\(\)=>apiKey\(\)\?'groq'/);
-  assert.doesNotMatch(main,/localCoordinatorChatEnabled|ordax:orchestrator:chat-enable/);
-  assert.doesNotMatch(host,/chatEnabled|ordax:orchestrator:chat-enable/);
-  assert.doesNotMatch(uiHtml,/coordinatorApiEnable|Ativar Groq para análises/);
-  assert.doesNotMatch(orchestratorUI,/coordinatorApiEnable|coordinatorChatEnable/);
-  assert.doesNotMatch(preload,/coordinatorChatEnable/);
-  assert.doesNotMatch(hostBridge,/coordinatorChatEnable/);
-  assert.doesNotMatch(hostServer,/coordinatorChatEnable/);
-  assert.match(main,/createGroqCoordinatorConversation/);
+  assert.match(main,/const coordinatorChatStatus=\(\)=>/);
+  assert.match(main,/const mcpApp='forge-mcp'/);
+  assert.match(main,/coordinator:null/);
+  assert.match(host,/const coordinator=null/);
+  assert.doesNotMatch(main,/GROQ_API_KEY|createGroqCoordinatorConversation|supervisor:key:save/);
+  assert.doesNotMatch(host,/GROQ_API_KEY|api\.groq\.com|createChatGPTPlanConnection/);
+  assert.doesNotMatch(uiHtml,/labSupervisorKeySettings|chatgptPlanSettings|capabilityGroq/);
+  assert.doesNotMatch(preload,/supervisorSaveKey|forjadorGroqPrompt/);
+  assert.match(orchestratorUI,/gptWebTransportAvailable/);
 });
 
 test('Forjador GPT-first and optional Groq analyses have distinct fail-closed routes',()=>{

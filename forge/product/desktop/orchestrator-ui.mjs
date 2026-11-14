@@ -119,7 +119,7 @@ export function describeProjectPreflight(snapshot) {
       `${latestAnalysis} `+(snapshot.gates.recordedWorkAnalysisEligible?
         'Análise das frentes registradas elegível. ':
         'Análise das frentes registradas bloqueada. ')+
-      'Fonte: Store local. Este preflight não fez nova leitura GitHub, chamada Groq, mensagem GPT ou ação Runtime.',
+      'Fonte: Store local. O diagnóstico não enviou mensagens GPT, alterou arquivos nem fez uma chamada de modelo.',
     actions,analysisLabel
   };
 }
@@ -161,7 +161,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   // remain canonical and available on demand.
   const advancedContent=$('forgeCoordinatorAdvancedContent');
   for(const id of ['projectPulseDisclosure','orchestrationCapabilitySummary',
-      'forjadorGroqInspector','orchestrationIntegrations']){
+      'orchestrationIntegrations']){
     const node=$(id);
     if(advancedContent&&node)advancedContent.append(node);
   }
@@ -173,8 +173,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   let coordinatorOpen=false,coordinatorAvailable=false,orchestratorChatAvailable=false,coordinatorDraftCommitAvailable=false;
   let gptWebTransportAvailable=false;
   let observedGptHealth=null;
-  let chatgptPlanStatus={connected:false,planUsageAuthorized:false,secureStorageAvailable:false};
-  let groqConfigured=false,coordinatorProvider=null;
   let analysisBusy=false,preflightBusy=false,preflightGeneration=0,repositoryBusy=false,observationBusy=false,repositoryPortAvailable=false,coordinatorSubmitting=false,quickProjectCreating=false,nodeHost=false;
   let coordinatorDraftTaskId=null,coordinatorDraftRevision=0,coordinatorDraftTimer=null;
   let coordinatorDraftGeneration=0,pendingCoordinatorDraft=null,coordinatorDraftWrite=Promise.resolve();
@@ -190,12 +188,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const set=(id,label,state)=>{
       const item=$(id);item.textContent=label;item.dataset.state=state;
     };
-    set('capabilityGroq',!groqConfigured?'Groq · opcional, sem chave':coordinatorProvider==='groq'&&coordinatorAvailable
-      ?'Groq · ativo':'Groq · alternativo inativo',
-      coordinatorProvider==='groq'&&coordinatorAvailable?'ready':groqConfigured?'partial':'blocked');
-    set('capabilityGpt',!chatgptPlanStatus.connected?'ChatGPT Plan · não conectado':
-      chatgptPlanStatus.planUsageAuthorized?'ChatGPT Plan · autorizado':'ChatGPT · uso do plano não autorizado',
-      chatgptPlanStatus.planUsageAuthorized?'ready':chatgptPlanStatus.connected?'partial':'blocked');
+    set('capabilityGpt','GPT Web · disponível no aplicativo desktop','blocked');
     set('capabilityGitHub',repositoryPortAvailable&&project?.repository_url
       ?'GitHub · adaptador disponível, acesso não verificado'
       :project?.repository_url?'GitHub · URL salva, leitura ausente':'GitHub · sem leitura autenticada',
@@ -234,7 +227,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   function setCoordinatorDraftState(text='') {
     const compatibility=coordinatorDraftCommitAvailable?'':
-      'Rascunhos seguem salvos. Este Host está com backend anterior; envio seguro bloqueado até reiniciá-lo. A chave Groq desta sessão está só em memória.';
+      'Rascunhos seguem salvos. O Host não possui um executor GPT Web; abra o aplicativo desktop.';
     $('coordinatorDraftState').textContent=[text,compatibility].filter(Boolean).join(' ');
   }
   async function drainCoordinatorDrafts() {
@@ -404,9 +397,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const state=active?.state||'idle';
     const stateLabels={
       idle:'Sem missão',queued:'Preparando',ready_a:'Aguardando GPT',
-      sending_a:'Enviando ao GPT',ready_b:'Revisando GPT',reviewing_a:'Revisão Groq',
+      sending_a:'Enviando ao GPT',ready_b:'Revisando GPT',reviewing_a:'Revisão legada indisponível',
       ready_final:'Aguardando GPT',sending_b:'Enviando ao GPT',
-      ready_review_final:'Revisando GPT',reviewing_final:'Revisão Groq',
+      ready_review_final:'Revisando GPT',reviewing_final:'Revisão legada indisponível',
       budget_exhausted:'Aguardando autorização',
       verification_required:'Verificação necessária',
       reconciliation_required:'Reconciliação necessária',blocked:'Bloqueada'
@@ -782,41 +775,18 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(receipt.status==='succeeded')requestKeys.delete(key);
     else if(receipt.status==='failed') {
       requestKeys.delete(key);
-      const failures={
-        groq_auth_rejected:'Groq rejeitou a autenticação. Confira a chave nas configurações; nenhuma resposta foi registrada.',
-        groq_rate_limited:'Groq aplicou limite de requisições. Aguarde o limite resetar antes de tentar novamente.',
-        groq_service_unavailable:'Groq está indisponível no momento. A solicitação terminou sem resposta registrada.',
-        groq_request_rejected:'Groq recusou a solicitação. Confira o modelo e a configuração da API.',
-        groq_invalid_response:'Groq retornou uma resposta inválida; o app não a aceitou.',
-        groq_incomplete_response:'Groq encerrou a resposta antes de concluí-la; o app não a aceitou.',
-        groq_response_filtered:'A resposta do Groq foi interrompida pelo filtro do provedor. Não foi aceita nem repetida.',
-        groq_unexpected_tool_call:'Groq tentou concluir com uma ação não solicitada. O app não executou ferramentas nem aceitou a resposta.',
-        groq_invalid_work_proposal:'Groq não retornou uma proposta de frente válida; nenhuma frente foi criada.',
-        chatgpt_auth_rejected:'A autorização do ChatGPT Plan foi rejeitada. Reconecte a conta e tente novamente.',
-        chatgpt_access_denied:'A política de acesso ao plano ChatGPT impediu a solicitação. Nenhuma resposta foi registrada.',
-        chatgpt_rate_limited:'O limite de uso do plano ChatGPT foi atingido. Aguarde antes de iniciar outra solicitação.',
-        chatgpt_service_unavailable:'O serviço ChatGPT Plan está indisponível. A solicitação terminou sem resposta registrada.',
-        chatgpt_request_rejected:'O serviço ChatGPT Plan recusou a solicitação. Revise o modelo e as permissões concedidas.',
-        chatgpt_plan_scope_missing:'O login não concedeu permissão de uso do plano ChatGPT. Reconecte e aprove essa permissão.',
-        chatgpt_no_supported_models:'Não há modelos disponíveis para esta conta ChatGPT.',
-        chatgpt_models_unavailable:'Não foi possível consultar os modelos da conta ChatGPT; nenhuma inferência foi enviada.',
-        chatgpt_invalid_response:'O ChatGPT retornou uma resposta inválida; o app não a aceitou.',
-        chatgpt_invalid_work_proposal:'O ChatGPT não retornou uma proposta válida; nenhuma frente foi criada.'
-      };
-      const diagnostics=receipt.result||{};
-      const groqLength=diagnostics.failureCode==='groq_incomplete_response'&&
-        diagnostics.finishReason==='length';
-      status(groqLength
-        ?'Groq atingiu o limite de geração antes de concluir a resposta. Nenhuma resposta parcial foi aceita ou enviada ao GPT.'
-        :failures[diagnostics.failureCode]||
-          'A solicitação falhou e não foi repetida. Confira a configuração e tente novamente quando estiver pronta.');
+      // Historical provider failures remain readable, but neither Groq nor
+      // the old ChatGPT API endpoint can be invoked by this application.
+      const legacyFailure=String(receipt.result?.failureCode||'');
+      status(legacyFailure
+        ?'Execução de modelo legado bloqueada ou falhou ('+legacyFailure+'). Consulte o recibo antes de continuar; nada foi reenviado.'
+        :'O comando falhou. Consulte o histórico antes de tentar outra ação.');
     } else {
       const failureCode=receipt.result?.failureCode||'';
-      const provider=failureCode.startsWith('chatgpt_')?'ChatGPT Plan':'Groq';
       status(failureCode.endsWith('_request_timeout')
-        ?`O tempo de resposta do ${provider} expirou sem confirmação. Confira o histórico antes de enviar outra solicitação; nada será repetido automaticamente.`
+        ?`O tempo de resposta de um mecanismo legado expirou sem confirmação. Confira o histórico antes de enviar outra solicitação; nada será repetido automaticamente.`
         :failureCode.endsWith('_network_unavailable')
-          ?`Não foi possível confirmar o resultado enviado ao ${provider}. Confira o histórico antes de enviar outra solicitação; nada será repetido automaticamente.`
+          ?`Não foi possível confirmar o resultado legado. Confira o histórico antes de enviar outra solicitação; nada será repetido automaticamente.`
           :'O resultado do comando não foi confirmado. Confira a conversa antes de iniciar outro envio; nada será repetido automaticamente.');
     }
     return receipt;
@@ -878,9 +848,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   async function refreshApiStatus() {
     const state=await api.coordinatorChatStatus();
-    chatgptPlanStatus=state.chatgpt||chatgptPlanStatus;
-    groqConfigured=state.groqConfigured===true;
-    coordinatorProvider=state.provider||null;
     nodeHost=state.executionSurface==='node_host';
     $('orchestratorWorkRail').setAttribute('aria-label',nodeHost?'Frentes de trabalho do projeto':'Conversas do projeto no GPT');
     $('workRailTitle').textContent=nodeHost?'Frentes de trabalho':'Conversas no GPT';
@@ -897,7 +864,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     workspacePortAvailable=engineStatus.workspacePortAvailable===true;
     gptWebTransportAvailable=engineStatus.providerExecutionAvailable===true&&!nodeHost;
     // GPT-first: the same canonical Forjador Task is now served by GPT Web.
-    // Groq is optional for the advanced analyst, not the normal chat.
+    // There is no secondary model coordinator; GPT Web is the sole executor.
     coordinatorDraftCommitAvailable=engineStatus.coordinatorDraftCommitAvailable===true;
     if(!coordinatorDraftCommitAvailable)setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
     else if($('coordinatorDraftState').textContent.includes('backend anterior'))
@@ -1252,14 +1219,14 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const messages=$('coordinatorMessages');
       if(messages.lastElementChild!==outcomePanel)messages.append(outcomePanel);
     }
-    const labels={queued:'Missão aceita; planejamento automático pendente',planning_a:'Groq preparando GPT A',ready_a:'Preparado para enviar GPT A',sending_a:'GPT A em execução',ready_b:'GPT A confirmado; preparando GPT B',planning_b:'Groq analisando resposta A',ready_final:'Pergunta B pronta',sending_b:'GPT B em execução',planning_final:'Groq interpretando resposta B',succeeded:'Concluído: duas respostas GPT e proposta final confirmadas',blocked:'Falha comprovada; sem reenvio automático',reconciliation_required:'Resultado incerto: exige reconciliação, sem reenvio'};
+    const labels={queued:'Missão aceita; planejamento automático pendente',planning_a:'Planejamento legado',ready_a:'Preparado para enviar GPT A',sending_a:'GPT A em execução',ready_b:'GPT A confirmado; preparando GPT B',planning_b:'Análise legada indisponível',ready_final:'Pergunta B pronta',sending_b:'GPT B em execução',planning_final:'Análise legada indisponível',succeeded:'Concluído: duas respostas GPT e proposta final confirmadas',blocked:'Falha comprovada; sem reenvio automático',reconciliation_required:'Resultado incerto: exige reconciliação, sem reenvio'};
     const technicalLabel=job?.mode==='technical'?(
       job.state==='verification_required'
         ?job.maxGPTSends===1
           ?'Primeira resposta recebida; outras ações precisam de novo pedido do usuário'
           :'GPT respondeu; verificação externa de alterações/testes é necessária'
         :job.state==='budget_exhausted'
-          ?'Ciclo de trabalho revisado; decisão Groq registrada'+
+          ?'Ciclo de trabalho revisado; decisão histórica registrada'+
             (job.canContinue?'; é possível autorizar outro ciclo':'')
           :job.state==='blocked'
             ?'Missão técnica bloqueada; nenhum envio será repetido'
@@ -1270,10 +1237,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const storyLabel=job?.mode==='story'?(job.quality?.passed===false
       ?'História produzida, mas reprovada na qualidade: '+job.quality.violations.join(', ')
       :job.state==='succeeded'
-      ?'História final montada pelo Groq, após duas rodadas GPT A/B'
+      ?'História legada finalizada após duas rodadas GPT A/B'
       :job.state.startsWith('story_')?'História colaborativa: '+job.state.replaceAll('_',' '):null):null;
     // A technical consent may span several bounded, explicitly authorized
-    // cycles. Show only reviews backed by canonical confirmed Runs and Groq
+    // cycles. Show only reviews backed by canonical confirmed Runs and
     // receipts; never describe unverified external effects as complete.
     const chain=currentJob?.mode==='technical'?currentJob.chainProgress:null;
     const progress=chain?.cycles
@@ -1731,33 +1698,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   });
   // One keyboard submission path: Enter or Ctrl/Cmd+Enter submits; Shift+Enter
   // inserts a newline and IME composition must never trigger an early send.
-  // DEV-only, explicit read of the last exact Groq request for this project.
-  // The Forjador's ordinary chat never exposes internal model messages.
-  $('inspectGroqPrompt').addEventListener('click',async()=>{
-    const selected=projectId,button=$('inspectGroqPrompt'),display=$('groqPromptDisplay');
-    if(!selected){display.textContent='Selecione um projeto para inspecionar.';return;}
-    button.disabled=true;
-    display.textContent='Consultando o último payload da Groq, sem enviar mensagem…';
-    try{
-      const trace=await api.forjadorGroqPrompt?.(selected);
-      if(selected!==projectId)return;
-      display.textContent=trace&&(trace.groq||trace.gpt)
-        ?JSON.stringify({
-          groq:trace.groq&&Array.isArray(trace.groq.messages)?{
-            observedAt:trace.groq.observedAt,model:trace.groq.model,
-            phase:trace.groq.phase,messages:trace.groq.messages}:null,
-          gpt:trace.gpt?{preparedAt:trace.gpt.preparedAt,
-            taskId:trace.gpt.taskId,runId:trace.gpt.runId,
-            authorSource:trace.gpt.authorSource,
-            originalRequest:trace.gpt.originalRequest,
-            composedPrompt:trace.gpt.composedPrompt,
-            deliveryObserved:trace.gpt.deliveryObserved}:null
-        },null,2)
-        :'Não há requisição Groq ou GPT preparada nesta sessão para este projeto. Nenhum envio foi iniciado.';
-    }catch{
-      if(selected===projectId)display.textContent='Diagnóstico local indisponível. Nenhuma mensagem foi enviada.';
-    }finally{button.disabled=false;}
-  });
   $('coordinatorPrompt').addEventListener('keydown',event=>{
     if(event.key!=='Enter'||event.isComposing||event.shiftKey)return;
     event.preventDefault();
@@ -1868,7 +1808,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     analysisBusy=true;syncCoordinatorActions();
     status(nodeHost
       ?'Analisando frentes locais pelo coordenador disponível; o GitHub não será lido e nenhuma frente GPT será acionada…'
-      :'Analisando frentes locais pelo Groq; o GitHub não será lido e nenhuma frente GPT será acionada…');
+      :'Análise externa desativada. Use as frentes GPT e seus recibos para revisar progresso.');
     try {
       await analyzeRegisteredWorks(p,o);
     }catch{error();}
@@ -1896,7 +1836,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       }
       const receipt=await command('autonomous_dialogue_start',{projectId:p,orchestratorId:o,mission,mode});
       if(p!==projectId||o!==orchestratorId)return;
-      if(receipt.status==='succeeded')status('Missão aceita. Groq coordena as etapas e GPT responde sem novas orientações.');
+      if(receipt.status==='succeeded')status('Missão registrada. A próxima etapa depende de Runs GPT verificados.');
       await refreshAutonomousDialogue();
     }catch{error();}finally{await refreshAutonomousDialogue();}
   }
@@ -1927,7 +1867,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const snapshot=await call('autonomous_dialogue_status',{projectId:p,orchestratorId:o});
       if(p!==projectId||o!==orchestratorId)return;
       if(snapshot?.mission?.canContinue!==true){
-        status('A decisão Groq anterior não está disponível para continuação. Nenhum envio realizado.');
+        status('A decisão histórica não foi confirmada. Nenhum envio realizado.');
         return;
       }
       let availability;
@@ -2051,7 +1991,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       throw Error('orchestrator_run_review_scope_changed');
     return work.latestRunReview;
   }
-  // Explicit, Run-scoped review using the existing administrative Groq path.
+  // Historical Run-scoped analysis remains inaccessible without a coordinator.
   // The service verifies the Run, owning project, delivery receipt and quoted
   // response before persisting a review decision. This never sends GPT work.
   async function reviewGptRun({taskId,runId}={}) {

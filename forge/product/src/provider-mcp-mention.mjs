@@ -1,18 +1,17 @@
 // Provider app mentions request a ChatGPT App; they never grant access or
 // prove tool execution. Forge coordinates itself through Forge MCP, while
-// delegated execution Works use OrdaX MCP.
+// every execution Work uses the same Forge MCP.
 export const ORDAX_MCP_MENTION='@ordax-mcp';
 export const FORGE_MCP_MENTION='@forge-mcp';
 // Backwards-compatible name used by existing delegated Work code/tests.
-export const FORJADOR_MCP_MENTION=ORDAX_MCP_MENTION;
+export const FORJADOR_MCP_MENTION=FORGE_MCP_MENTION;
 
-export function providerMcpMention(app='ordax-mcp') {
-  if(app==='ordax-mcp')return ORDAX_MCP_MENTION;
+export function providerMcpMention(app='forge-mcp') {
   if(app==='forge-mcp')return FORGE_MCP_MENTION;
   throw new Error('provider_mcp_app_invalid');
 }
 
-export function withProviderMcpMention(prompt,{app='ordax-mcp'}={}) {
+export function withProviderMcpMention(prompt,{app='forge-mcp'}={}) {
   const text=String(prompt??'');
   if(!text.trim())return text;
   const mention=providerMcpMention(app);
@@ -22,7 +21,7 @@ export function withProviderMcpMention(prompt,{app='ordax-mcp'}={}) {
   return text.trimEnd()+'\n\n'+mention;
 }
 
-export function withForjadorMcpMention(prompt,{authorSource='human',app='ordax-mcp'}={}) {
+export function withForjadorMcpMention(prompt,{authorSource='human',app='forge-mcp'}={}) {
   const text=String(prompt??'');
   providerMcpMention(app); // Validate requested app even for human messages.
   if(mentionWasRequested(text,app==='forge-mcp'?'ordax-mcp':'forge-mcp'))

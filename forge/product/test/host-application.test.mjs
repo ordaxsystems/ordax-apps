@@ -60,7 +60,7 @@ test('Node host runs the shared project and task services over its authenticated
 
   const provider=await invoke('providerStatus');
   assert.equal(provider.provider_execution_available,false);
-  assert.equal(provider.unavailable_reason,'provider_transport_unavailable_on_host');
+  assert.equal(provider.unavailable_reason,'gpt_web_executor_requires_desktop');
   const blockedSend=await fetch(`${origin}/api/invoke`,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookie},
     body:JSON.stringify({method:'send',args:[{taskId:draft.id,content:'Implemente a loja.'}]})});
   assert.equal(blockedSend.status,400);
@@ -88,102 +88,49 @@ test('Node host profile lock prevents concurrent owners and releases for restart
   await recovered();
 });
 
-test('Node Host refuses to keep a Groq key in memory when the OS vault is unavailable',async t=>{
-  const root=await fs.mkdtemp(path.join(os.tmpdir(),'ordax-host-no-vault-'));
-  const application=createHostApplication({productRoot,dataRoot:path.join(root,'profile'),environment:{},credentialStore:null});
+test('Node Host exposes no external model credentials, routes or inference',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'ordax-host-gpt-only-'));
+  let apiCalls=0,credentialCalls=0;
+  const store={
+    getPassword:async()=>{credentialCalls++;throw Error('vault_should_not_be_read');},
+    setPassword:async()=>{credentialCalls++;throw Error('vault_should_not_be_written');},
+    deletePassword:async()=>{credentialCalls++;throw Error('vault_should_not_be_deleted');}
+  };
+  const application=createHostApplication({
+    productRoot,dataRoot:path.join(root,'profile'),
+    environment:{GROQ_API_KEY:'gsk_do_not_consume'},
+    credentialStore:store,
+    fetchImpl:async()=>{apiCalls++;throw Error('model_api_should_not_be_called');}
+  });
   t.after(async()=>{application.close();await fs.rm(root,{recursive:true,force:true});});
   const invoke=(channel,args=[])=>application.invoke('test',channel,args,{session:'test-host-session'});
-  const initial=await invoke('ordax:supervisor:status');
-  assert.equal(initial.secureStorageAvailable,false);
-  assert.equal(initial.configured,false);
-  await assert.rejects(invoke('ordax:supervisor:key:save',['gsk_'+('d'.repeat(40))]),/supervisor_secure_storage_unavailable/);
-  const after=await invoke('ordax:supervisor:status');
-  assert.equal(after.configured,false);
-  assert.equal(after.keySaved,false);
+  const status=await invoke('ordax:orchestrator:chat-status');
+  assert.equal(status.enabled,false);
+  assert.equal(status.provider,null);
+  assert.equal(status.reason,'gpt_web_executor_requires_desktop');
+  const supervisor=await invoke('ordax:supervisor:status');
+  assert.equal(supervisor.enabled,false);
+  assert.equal(supervisor.configured,false);
+  assert.equal(supervisor.provider,'chatgpt_web');
+  await assert.rejects(invoke('ordax:supervisor:key:save',['gsk_anything']),/host_method_unavailable/);
+  await assert.rejects(invoke('ordax:chatgpt-plan:login'),/host_method_unavailable/);
+  assert.equal(apiCalls,0);
+  assert.equal(credentialCalls,0);
 });
 
-test('Host routes coordinator chat to Groq and keeps the credential across restart',async t=>{
-  const root=await fs.mkdtemp(path.join(os.tmpdir(),'ordax-host-groq-'));
+test('Host restart preserves projects without reviving external-model routes',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'ordax-host-gpt-only-restart-'));
   const dataRoot=path.join(root,'profile');
-  const fakeKey='gsk_aaaaaaaaaaaaaaaaaaaaaaaa';
-  const credentials=credentialStore();
-  const requests=[];
-  const fetchImpl=async(url,options)=>{
-    requests.push({url,headers:options.headers,body:JSON.parse(options.body)});
-    if(requests.length===3)return new Response('authentication rejected',{status:401});
-    if(requests.length===4){const error=Error('timeout');error.name='TimeoutError';throw error;}
-    return new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{
-      content:requests.length===1?'Resposta exclusiva do Groq ao Orquestrador':
-        JSON.stringify({title:'Revisar OrdaX',content:'Testar contrato',reason:'Planejar com a Groq'})}}]}),
-      {status:200,headers:{'content-type':'application/json'}});
-  };
-  let application=createHostApplication({productRoot,dataRoot,environment:{},fetchImpl,credentialStore:credentials});
-  let server=application.createServer();
-  let {origin}=await server.listen();
-  t.after(async()=>{await server?.close().catch(()=>{});application?.close();await fs.rm(root,{recursive:true,force:true});});
-  let cookie=(await fetch(origin+'/api/session',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'})).headers.get('set-cookie').split(';',1)[0];
-  const post=async(method,args=[])=>{
-    const res=await fetch(origin+'/api/invoke',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookie},body:JSON.stringify({method,args})});
-    return {status:res.status,body:await res.json()};
-  };
-  const initial=(await post('supervisorStatus')).body;
-  assert.equal(initial.secureStorageAvailable,true);
-  assert.equal(initial.credentialPersistence,'os_credential_vault');
-  assert.equal((await post('supervisorSaveKey',[fakeKey])).status,200);
-  const automaticallyAvailable=(await post('coordinatorChatStatus')).body;
-  assert.equal(automaticallyAvailable.enabled,true);
-  assert.equal(automaticallyAvailable.provider,'groq');
-  const project=(await post('orchestratorInvoke',['project_create',{requestId:'groq-project',name:'Teste Groq',objective:'Planejar'}])).body.result.projectId;
-  const coordinator=(await post('orchestratorInvoke',['orchestrator_create',{
-    requestId:'groq-orchestrator',projectId:project,name:'Coordenador',mission:'Coordenar'
-  }])).body.result;
-  await post('setDraft',[coordinator.chatTaskId,'Pergunte ao GPT qual meu nome.',1]);
-  const groqChat=await post('orchestratorInvoke',['orchestrator_chat',{
-    requestId:'groq-chat-direct',projectId:project,orchestratorId:coordinator.orchestratorId,
-    content:'Pergunte ao GPT qual meu nome.',draftRevision:1
-  }]);
-  assert.equal(groqChat.status,200);
-  assert.equal(groqChat.body.status,'succeeded');
-  assert.equal(groqChat.body.result.provider,'groq');
-  assert.equal(requests.length,1,'coordinator chat uses Groq; the Host has no GPT work transport');
-  assert.equal(requests[0].url,'https://api.groq.com/openai/v1/chat/completions');
-  assert.equal((await post('getTaskDraft',[coordinator.chatTaskId])).body.draft,'');
-  const plan=async(requestId,content)=>post('orchestratorInvoke',['orchestrator_prepare',{
-    requestId,projectId:project,orchestratorId:coordinator.orchestratorId,content
-  }]);
-  const first=await plan('groq-plan-1','Planejar OrdaX.');
-  assert.equal(first.status,200);
-  assert.equal(first.body.status,'succeeded');
-  assert.equal(requests.length,2);
-  assert.equal(requests[1].url,'https://api.groq.com/openai/v1/chat/completions');
-  assert.equal(requests[1].headers.Authorization,'Bearer '+fakeKey);
-  assert.equal(JSON.stringify(first.body).includes(fakeKey),false);
-  const rejected=await plan('groq-plan-401','Planejar alternativa.');
-  assert.equal(rejected.body.status,'failed');
-  assert.equal(rejected.body.result.failureCode,'groq_auth_rejected');
-  const timeout=await plan('groq-plan-timeout','Planejar outra alternativa.');
-  assert.equal(timeout.body.status,'uncertain');
-  assert.equal(timeout.body.result.failureCode,'groq_request_timeout');
-  assert.equal(requests.length,4);
-  assert.equal((await post('orchestratorInvoke',['status',{}])).body.uncertainCommands,1);
-  assert.equal((await post('getTaskDraft',[coordinator.chatTaskId])).body.draft,'');
-  const dbBytes=await fs.readFile(path.join(dataRoot,'ordax-forge.sqlite'));
-  assert.equal(dbBytes.includes(Buffer.from(fakeKey)),false);
-  await server.close();server=null;application.close();application=null;
-  application=createHostApplication({productRoot,dataRoot,environment:{},fetchImpl,credentialStore:credentials});
-  server=application.createServer();({origin}=await server.listen());
-  cookie=(await fetch(origin+'/api/session',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'})).headers.get('set-cookie').split(';',1)[0];
-  const status=(await post('supervisorStatus')).body;
-  assert.equal(status.configured,true);assert.equal(status.keySaved,true);
-  assert.equal(status.credentialPersistence,'os_credential_vault');
-  assert.equal(JSON.stringify(status).includes(fakeKey),false);
-  assert.equal((await post('coordinatorChatStatus')).body.enabled,true,
-    'Groq must be available again after restart without manual enable');
-  const continued=await plan('groq-plan-after-restart','Continue planejamento.');
-  assert.equal(continued.body.status,'succeeded');
-  assert.equal(requests.length,5);
-  assert.equal(requests[4].headers.Authorization,'Bearer '+fakeKey);
-  const page=(await post('orchestratorInvoke',['work_messages',{projectId:project,taskId:coordinator.chatTaskId,limit:50}])).body;
-  assert.equal(page.messages.filter(m=>m.role==='assistant').length,3);
-  assert.equal((await post('orchestratorInvoke',['status',{}])).body.uncertainCommands,1);
+  let application=createHostApplication({productRoot,dataRoot,environment:{GROQ_API_KEY:'gsk_ignored'}});
+  t.after(async()=>{application?.close();await fs.rm(root,{recursive:true,force:true});});
+  const invoke=(channel,args=[])=>application.invoke('test',channel,args,{session:'test-host-session'});
+  const created=await invoke('ordax:orchestrator:invoke',[{operation:'project_create',
+    input:{requestId:'gpt-only-project',name:'Projeto GPT',objective:'Somente GPT Web e Forge MCP'}}]);
+  assert.equal(created.status,'succeeded');
+  const projectId=created.result.projectId;
+  application.close();
+  application=createHostApplication({productRoot,dataRoot,environment:{}});
+  const projects=await invoke('ordax:orchestrator:invoke',[{operation:'projects_list',input:{}}]);
+  assert.deepEqual(projects.projects.map(p=>p.id),[projectId]);
+  assert.equal((await invoke('ordax:orchestrator:chat-status')).available,false);
 });

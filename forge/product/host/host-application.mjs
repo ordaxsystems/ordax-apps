@@ -4,13 +4,8 @@ import {randomUUID,createHash} from 'node:crypto';
 import {Store,MESSAGE_PAGE_SIZE} from '../src/store.mjs';
 import {createOrchestratorKernel} from '../src/orchestrator-kernel.mjs';
 import {createTaskUiHandlers} from '../src/task-ui-handlers.mjs';
-import {createGroqCoordinatorConversation} from '../supervisor/groq-conversation.mjs';
-import {createChatGPTPlanCoordinatorConversation} from '../supervisor/chatgpt-plan-conversation.mjs';
 import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
 import {createHostBrowserServer} from './host-browser-server.mjs';
-import {createChatGPTPlanConnection,defaultCredentialStore} from './chatgpt-plan-connection.mjs';
-import {createHostGroqCredential} from './local-groq-credential.mjs';
-import {isValidGroqKey} from '../src/groq-key-contract.mjs';
 
 const MIME_EXT=new Map([['image/png','png'],['image/jpeg','jpg'],['image/webp','webp'],['image/gif','gif'],['image/avif','avif']]);
 const providerUnavailable=()=>{throw Error('provider_transport_unavailable_on_host');};
@@ -40,48 +35,9 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
   if(sessionMetadata.ext_agent_host_id!==hostId)store.updateWorkspaceMetadata({ext_agent_host_id:hostId});
   let observerMode=['auto','fast','beta'].includes(store.getWorkspaceSession()?.metadata?.observer_mode)
     ?store.getWorkspaceSession().metadata.observer_mode:'auto';
-  const environmentGroqKey=typeof environment.GROQ_API_KEY==='string'&&isValidGroqKey(environment.GROQ_API_KEY.trim())
-    ?environment.GROQ_API_KEY.trim():null;
-  let hostGroqKey=null;
-  let hostGroqKeySource=null;
-  let groqCredentialLoad=null;
-  let groqCredentialLoadError=null;
-  const osCredentialStore=credentialStore===undefined?defaultCredentialStore():credentialStore;
-  const groqCredential=createHostGroqCredential({hostId,credentialStore:osCredentialStore});
-  const loadGroqCredential=()=>{
-    if(groqCredentialLoad)return groqCredentialLoad;
-    groqCredentialLoad=(async()=>{
-      try{
-        hostGroqKey=await groqCredential.read();
-        hostGroqKeySource=hostGroqKey?'os_credential_vault':null;
-      }catch{groqCredentialLoadError='supervisor_secure_storage_unavailable';}
-      if(!hostGroqKey&&environmentGroqKey){hostGroqKey=environmentGroqKey;hostGroqKeySource='environment';}
-      return hostGroqKey;
-    })();
-    return groqCredentialLoad;
-  };
-  const apiKey=()=>hostGroqKey;
-  const coordinatorEnabled=()=>Boolean(apiKey()||chatgptConnection.isPlanAvailable());
-  const groqCoordinator=createGroqCoordinatorConversation({store,getApiKey:apiKey,isEnabled:coordinatorEnabled,fetchImpl});
-  const chatgptConnection=createChatGPTPlanConnection({hostId,fetchImpl,credentialStore:osCredentialStore});
-  let chatgptAuthStatus={connected:false,planUsageAuthorized:false,secureStorageAvailable:chatgptConnection.secureStorageAvailable()};
-  let chatgptAuthStatusLoaded=false;
-  void loadGroqCredential();
-  const refreshChatGPTAuthStatus=async()=>{
-    chatgptAuthStatus=await chatgptConnection.status();chatgptAuthStatusLoaded=true;return chatgptAuthStatus;
-  };
-  void refreshChatGPTAuthStatus().catch(()=>{});
-  const chatgptCoordinator=createChatGPTPlanCoordinatorConversation({connection:chatgptConnection,store,isEnabled:coordinatorEnabled});
-  const activeCoordinatorProvider=()=>apiKey()?'groq':chatgptConnection.isPlanAvailable()?'chatgpt_plan':null;
-  const coordinator={
-    available:()=>coordinatorEnabled()&&Boolean(activeCoordinatorProvider()),
-    async send(input) {
-      const provider=activeCoordinatorProvider();
-      if(provider==='chatgpt_plan')return chatgptCoordinator.send(input);
-      if(provider==='groq')return groqCoordinator.send(input);
-      throw Error('orchestrator_provider_unavailable');
-    }
-  };
+  // The browser Host has no verified GPT Web executor. Never fall back
+  // to an external model API or to a second model coordinator.
+  const coordinator=null;
   let kernel;
   kernel=createOrchestratorKernel({
     store,
@@ -117,10 +73,6 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
   const notify=()=>hostServer?.publish('orchestrator-changed',{});
 
   add('ordax:orchestrator:invoke',async(_event,payload)=>{
-    if(['orchestrator_chat','orchestrator_prepare','orchestrator_analyze'].includes(payload?.operation)){
-      await loadGroqCredential();
-      await refreshChatGPTAuthStatus();
-    }
     const result=await service.invoke(context,payload?.operation,payload?.input??{});
     if(ORCHESTRATOR_TOOLS.some(tool=>tool.operation===payload?.operation&&!tool.readOnly))notify();
     return result;
@@ -132,40 +84,15 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
     if(operation&&ORCHESTRATOR_TOOLS.some(tool=>tool.operation===operation&&!tool.readOnly))notify();
     return result;
   });
-  add('ordax:orchestrator:chat-status',async()=>{
-    await Promise.all([loadGroqCredential(),refreshChatGPTAuthStatus()]);
-    const provider=activeCoordinatorProvider();
-    return {enabled:coordinatorEnabled(),configured:Boolean(provider),groqConfigured:Boolean(apiKey()),available:coordinator.available(),provider,
-      chatgpt:{connected:chatgptAuthStatus.connected===true,
-        planUsageAuthorized:chatgptAuthStatus.planUsageAuthorized===true,
-        secureStorageAvailable:chatgptAuthStatus.secureStorageAvailable===true,email:chatgptAuthStatus.email||null,
-        reason:chatgptAuthStatus.reason||null},executionSurface:'node_host'};
-  });
-  add('ordax:chatgpt-plan:status',async()=>{
-    return refreshChatGPTAuthStatus();
-  });
-  add('ordax:chatgpt-plan:login',async(event)=>{
-    if(!hostServer)throw Error('host_browser_server_unavailable');
-    return chatgptConnection.beginLogin({session:event?.hostSession,
-      redirectUri:hostServer.getAuthorizationRedirectUri()});
-  });
-  add('ordax:chatgpt-plan:disconnect',async()=>{
-    const result=await chatgptConnection.disconnect();
-    chatgptAuthStatus={connected:false,planUsageAuthorized:false,secureStorageAvailable:chatgptConnection.secureStorageAvailable(),reason:'not_connected'};
-    chatgptAuthStatusLoaded=true;notify();
-    return result;
-  });
-  add('ordax:provider:status',async()=>{
-    if(!chatgptAuthStatusLoaded)await refreshChatGPTAuthStatus();
-    return {ready:false,active:false,composer_ready:false,health_observed:false,
-      verification_required:false,auth_state:chatgptAuthStatus.connected?'session_present':'unavailable',
-      provider_execution_available:false,
-      unavailable_reason:chatgptAuthStatus.planUsageAuthorized?'chatgpt_plan_coordinator_only':'provider_transport_unavailable_on_host',
-      chatgpt_plan_connected:chatgptAuthStatus.connected===true,
-      chatgpt_plan_authorized:chatgptAuthStatus.planUsageAuthorized===true,
-      chatgpt_plan_secure_storage:chatgptAuthStatus.secureStorageAvailable===true,
-      chatgpt_plan_email:chatgptAuthStatus.email||null,executionSurface:'node_host'};
-  });
+  add('ordax:orchestrator:chat-status',async()=>({
+    enabled:false,configured:false,available:false,provider:null,executionSurface:'node_host',
+    reason:'gpt_web_executor_requires_desktop'
+  }));
+  add('ordax:provider:status',async()=>({
+    ready:false,active:false,composer_ready:false,health_observed:false,
+    provider_execution_available:false,auth_state:'unavailable',
+    unavailable_reason:'gpt_web_executor_requires_desktop',executionSurface:'node_host'
+  }));
   add('ordax:provider:diagnostic',()=>({available:false,reason:'provider_transport_unavailable_on_host'}));
   add('ordax:provider:observer-mode:get',()=>observerMode);
   add('ordax:provider:observer-mode:set',(_event,mode)=>{
@@ -184,28 +111,9 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
   add('ordax:lab:build-proof',()=>({status:'unattested',reason:'node_host_source_build'}));
   add('ordax:lab:profile-proof',()=>({schema:'ordax.lab.profile-proof.v1',
     fingerprint:createHash('sha256').update(process.platform==='win32'?resolvedDataRoot.toLowerCase():resolvedDataRoot).digest('hex')}));
-  add('ordax:supervisor:status',async()=>{
-    await loadGroqCredential();
-    return {enabled:false,configured:Boolean(apiKey()),keySaved:hostGroqKeySource==='os_credential_vault',
-      secureStorageAvailable:groqCredential.secureStorageAvailable()&&!groqCredentialLoadError,
-      chatgptSecureStorageAvailable:chatgptConnection.secureStorageAvailable(),
-      environment:'node_host',credentialSource:hostGroqKeySource||null,
-      credentialPersistence:hostGroqKeySource||'os_credential_vault',credentialError:groqCredentialLoadError,
-      requires_owner_approval:true,version:'node-host'};
-  });
-  add('ordax:supervisor:key:save',async(_event,key)=>{
-    await loadGroqCredential();
-    const normalized=String(key||'').trim();
-    const result=await groqCredential.save(normalized);
-    hostGroqKey=normalized;hostGroqKeySource='os_credential_vault';groqCredentialLoadError=null;notify();
-    return result;
-  });
-  add('ordax:supervisor:key:remove',async()=>{
-    await loadGroqCredential();
-    const result=await groqCredential.remove();
-    hostGroqKey=environmentGroqKey;hostGroqKeySource=environmentGroqKey?'environment':null;notify();
-    return result;
-  });
+  add('ordax:supervisor:status',async()=>({
+    enabled:false,configured:false,provider:'chatgpt_web',environment:'node_host',version:'node-host'
+  }));
   add('ordax:tasks:supervisor-role:set',(_event,payload)=>
     store.setTaskSupervisorRole(String(payload?.taskId||''),payload?.role));
   add('ordax:supervisor:recoverable',(_event,payload)=>({items:[],taskId:payload?.taskId||null,
@@ -222,13 +130,10 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
   const createServer=({onShutdown=()=>{}}={})=>{
     const server=createHostBrowserServer({productRoot:resolvedProductRoot,assetsRoot,invoke,
       readAsset:id=>store.getAsset(String(id)),
-      onChatGPTCallback:async({session,callbackUrl,redirectUri})=>{
-        const result=await chatgptConnection.completeCallback({session,callbackUrl,redirectUri});
-        chatgptAuthStatus=result;chatgptAuthStatusLoaded=true;notify();return result;
-      },onShutdown});
+      onShutdown});
     hostServer=server;
     return server;
   };
   return Object.freeze({store,service,context,assetsRoot,invoke,createServer,
-    close(){hostServer=null;hostGroqKey=null;groqCredentialLoad=null;store.close();}});
+    close(){hostServer=null;store.close();}});
 }
