@@ -141,6 +141,21 @@ test('remote gateway uses one catalog digest and one leased local MCP execution'
   assert.equal(report.body.result.structuredContent.name,'forge_projects_list');
 });
 
+test('remote gateway preserves HTTP status when an error response has no JSON body',async t=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'forge-remote-http-status-'));
+  const store=new Store(path.join(dir,'x.sqlite'));
+  t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true});});
+  const client=new ForgeRemoteGatewayClient({store,
+    session:{status:()=>({connected:true,subjectId:subject,issuer:'https://jhfphsjptrpmtnzkpwud.supabase.co/auth/v1'}),
+      accessToken:async()=>jwt()},
+    catalogProvider:async()=>[{name:'forge_projects_list',description:'List',
+      inputSchema:{type:'object',properties:{},required:[],additionalProperties:false}}],
+    toolInvoker:async()=>({result:{content:[]}}),
+    bindOwnerIdentity:()=>{},
+    fetchImpl:async()=>new Response(null,{status:503})});
+  await assert.rejects(client.register(),/forge_remote_gateway_http_503/);
+});
+
 test('rejected remote start never invokes the local MCP effect',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'forge-remote-start-reject-'));
   const store=new Store(path.join(dir,'x.sqlite'));

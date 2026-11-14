@@ -29,7 +29,13 @@ function validCatalog(catalog){
 }
 async function jsonResponse(res,errorCode){
   let body=null;try{body=await res.json();}catch{}
-  if(!res.ok||body?.ok===false)throw Error(typeof body?.error==='string'?body.error:errorCode);
+  if(!res.ok||body?.ok===false){
+    if(typeof body?.error==='string')throw Error(body.error);
+    const status=Number(res?.status);
+    if(Number.isInteger(status)&&status>=400&&status<=599)
+      throw Error('forge_remote_gateway_http_'+status);
+    throw Error(errorCode);
+  }
   return body;
 }
 export class ForgeRemoteGatewayClient {
