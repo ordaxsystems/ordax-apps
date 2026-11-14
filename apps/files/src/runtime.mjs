@@ -55,9 +55,12 @@ export const componentRuntime = Object.freeze({
     recentFiles = null,
     projects = null,
   } = {}) {
-    assertDedicatedRoot(root);
+    // Validate host capabilities before touching DOM globals. In a headless or
+    // capability-less host this must fail through the public contract, never
+    // through an incidental ReferenceError such as a missing global Element.
     const filePort = assertFileSpacePort(fileSpace);
     const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
+    assertDedicatedRoot(root);
 
     // Never mount a capability-less fake explorer: missing host authority is
     // a health failure, not permission to access the filesystem directly.
