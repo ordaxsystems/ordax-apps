@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
@@ -42,4 +43,20 @@ test('staged launcher explicitly binds candidate profile and debug port', () => 
   assert.match(binding, /lab_staged_profile_explicit_binding_required/);
   assert.match(launcher, /delete env\.GROQ_API_KEY/);
   assert.match(launcher, /ORDAX_LAB_SUPERVISOR_ENABLE = '0'/);
+});
+
+test('staged launcher is fail-closed outside an explicitly approved E2E', () => {
+  const launcher = read('scripts/start-lab.mjs');
+  const bootstrap = JSON.parse(read('package.json'));
+  assert.match(launcher, /ORDAX_LAB_E2E_APPROVED === '1'/);
+  assert.match(launcher, /ORDAX_FORGE_STAGED_E2E === '1'/);
+  assert.ok(!('start:staged' in bootstrap.scripts));
+  const env={...process.env};
+  delete env.ORDAX_LAB_E2E_APPROVED;
+  delete env.ORDAX_FORGE_STAGED_E2E;
+  const result=spawnSync(process.execPath,['scripts/start-lab.mjs','--staged'],{
+    cwd:root,env,encoding:'utf8'
+  });
+  assert.equal(result.status,1);
+  assert.match(result.stderr,/forge_staged_e2e_explicit_approval_required/);
 });
