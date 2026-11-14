@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.app-presentation-manifest/1",
+  "appId": "activity",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "sourceLocale": "pt-BR",
+  "description": "Revise trabalhos, progresso e resultados do Personal OrdaX com as autorizações da plataforma.",
+  "monogram": "AT",
+  "singleton": true,
+  "translations": {
+    "en-US": {
+      "title": "Activity",
+      "description": "Review work, progress, and results from Personal OrdaX under platform authorization."
+    }
+  }
+}

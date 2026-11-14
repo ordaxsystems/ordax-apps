@@ -1,0 +1,190 @@
+{
+  "schema": "ordax-apps.ui-semantic-map/1",
+  "appId": "notes",
+  "appVersion": "0.4.4",
+  "authority": "none",
+  "execution": "descriptive-only",
+  "privacy": {
+    "captureInputValues": false,
+    "captureCredentials": false,
+    "maxTextLength": 240
+  },
+  "elements": [
+    {
+      "id": "notes.workspace",
+      "selector": "#notes-surface",
+      "role": "region",
+      "surface": "workspace",
+      "intent": "notes-surface",
+      "interaction": "read"
+    },
+    {
+      "id": "notes.search",
+      "selector": "#notes-search",
+      "role": "searchbox",
+      "surface": "navigation",
+      "intent": "search-notes",
+      "interaction": "text"
+    },
+    {
+      "id": "notes.new",
+      "selector": "#notes-new-note",
+      "role": "button",
+      "surface": "navigation",
+      "intent": "create-note",
+      "interaction": "activate"
+    },
+    {
+      "id": "notes.navigation",
+      "selector": "#notes-navigation",
+      "role": "navigation",
+      "surface": "navigation",
+      "intent": "notes-filters",
+      "interaction": "read"
+    },
+    {
+      "id": "notes.list",
+      "selector": "#notes-list",
+      "role": "list",
+      "surface": "list",
+      "intent": "notes-list",
+      "interaction": "read"
+    },
+    {
+      "id": "notes.empty-trash",
+      "selector": "#notes-empty-trash",
+      "role": "button",
+      "surface": "list",
+      "intent": "empty-trash",
+      "interaction": "activate"
+    },
+    {
+      "id": "notes.sort",
+      "selector": "#notes-sort",
+      "role": "button",
+      "surface": "list",
+      "intent": "sort-notes",
+      "interaction": "activate"
+    },
+    {
+      "id": "notes.favorite",
+      "selector": "#notes-favorite",
+      "role": "button",
+      "surface": "editor",
+      "intent": "toggle-favorite",
+      "interaction": "activate"
+    },
+    {
+      "id": "notes.references-toggle",
+      "selector": "#notes-references-toggle",
+      "role": "button",
+      "surface": "editor",
+      "intent": "toggle-references",
+      "interaction": "activate"
+    },
+    {
+      "id": "notes.more",
+      "selector": "#notes-more",
+      "role": "button",
+      "surface": "editor",
+      "intent": "open-note-menu",
+      "interaction": "activate"
+    },
+    {
+      "id": "notes.format",
+      "selector": "#notes-format",
+      "role": "combobox",
+      "surface": "editor",
+      "intent": "select-block-format",
+      "interaction": "select"
+    },
+    {
+      "id": "notes.bold",
+      "selector": "#notes-bold",
+      "role": "button",
+      "surface": "editor",
+      "intent": "toggle-bold",
+      "interaction": "activate"
+    },
+    {
+      "id": "notes.italic",
+      "selector": "#notes-italic",
+      "role": "button",
+      "surface": "editor",
+      "intent": "toggle-italic",
+      "interaction": "activate"
+    },
+    {
+      "id": "notes.add-task",
+      "selector": "#notes-add-task",
+      "role": "button",
+      "surface": "editor",
+      "intent": "add-task",
+      "interaction": "activate"
+    },
+    {
+      "id": "notes.undo",
+      "selector": "#notes-undo",
+      "role": "button",
+      "surface": "editor",
+      "intent": "undo-editor-change",
+      "interaction": "activate"
+    },
+    {
+      "id": "notes.intelligence-summary",
+      "selector": "#notes-intelligence-summary",
+      "role": "button",
+      "surface": "editor",
+      "intent": "summarize-note",
+      "interaction": "activate"
+    },
+    {
+      "id": "notes.title",
+      "selector": "#notes-title",
+      "role": "textbox",
+      "surface": "editor",
+      "intent": "edit-note-title",
+      "interaction": "text"
+    },
+    {
+      "id": "notes.body",
+      "selector": "#notes-body",
+      "role": "textbox",
+      "surface": "editor",
+      "intent": "edit-note-body",
+      "interaction": "text"
+    },
+    {
+      "id": "notes.intelligence-status",
+      "selector": "#notes-intelligence-status",
+      "role": "status",
+      "surface": "editor",
+      "intent": "intelligence-status",
+      "interaction": "read"
+    },
+    {
+      "id": "notes.statistics",
+      "selector": "#notes-statistics",
+      "role": "status",
+      "surface": "editor",
+      "intent": "note-statistics",
+      "interaction": "read"
+    },
+    {
+      "id": "notes.references",
+      "selector": "#notes-references",
+      "role": "complementary",
+      "surface": "references",
+      "intent": "note-references",
+      "interaction": "read"
+    },
+    {
+      "id": "notes.add-reference",
+      "selector": "#notes-add-reference",
+      "role": "button",
+      "surface": "references",
+      "intent": "add-reference",
+      "interaction": "activate"
+    }
+  ]
+}

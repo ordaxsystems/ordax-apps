@@ -18,7 +18,7 @@
 - `ordax-platform`: identidade, sessão, grants e autorização remota.
 - `ordax-creator` e `ordax-site`: mídia de instalação e site público, respectivamente.
 
-## Regras operacionais
+## Regras operacionais do modelo histórico
 1. Ler `AGENTS.md`, `docs/contracts/repository-ownership.json`, `docs/contracts/surface-source.json` e documentação atual de cada repositório antes da intervenção.
 2. Nunca executar shell/Git por interpretação de texto sem capability e grants atestados pelo Runtime. Propostas do Groq ou GPT **não** concedem autoridade.
 3. API Groq: coordenar, analisar e propor próximos passos; ChatGPT/GPT: trabalhar com contexto do projeto; Runtime: executar ações autorizadas. Não usar endpoints privados nem copiar credenciais em prompts/logs.
@@ -30,8 +30,8 @@
 9. A tarefa só é concluída se houver prova da mudança real; relatório descritivo ou resposta GPT não basta.
 10. Na ausência de workspace vinculado, sessão GPT confirmada ou grant real, registrar bloqueio, sem fingir automação.
 
-## Primeira frente controlada
-Auditar o mecanismo de atualização do shell Electron Windows e propor como ele passará a atualizar o próprio executável com proveniência, saúde e rollback; **não** alterar o executável instalado nem simular sucesso antes de obter grants Runtime e teste de instalação isolado.
+## Primeira frente controlada registrada naquele modelo — histórica
+Naquele ciclo, a primeira frente proposta era auditar o mecanismo de atualização do shell Electron Windows. **Não iniciar essa frente por este arquivo.** Qualquer necessidade atual deve ser derivada do roadmap GPT-first, do projeto real e dos owners/contratos vigentes; esta missão é somente exemplo/proveniência de configuração.
 
 ## Configuração por projeto
 Cada projeto possui missão própria persistente, URL canônica de repositório, coordenador e tarefas vinculadas, políticas de execução e critérios de aceite. O serviço `ordax.forge/1` usa `mission_create` com `requestId` idempotente e salva a missão como rascunho; arquivos de documentação **não** são automaticamente carregados como projetos.

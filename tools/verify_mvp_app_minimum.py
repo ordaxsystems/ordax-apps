@@ -81,8 +81,12 @@ def audit_mvp_minimum(root: Path, minimum_candidates: int = 0) -> dict:
             status = "blocked-missing-component-package-boundary"
             if "missing-compatibility-descriptor" not in blockers:
                 blockers.append("unsupported-component-delivery")
-        elif source in {"platform-until-cutover"}:
+        elif source == "platform-until-cutover":
             status = "blocked-platform-source-cutover"
+        elif source == "source-absent-after-platform-removal":
+            status = "blocked-source-materialization-pending"
+            if "source-materialization-pending" not in blockers:
+                blockers.append("source-materialization-pending")
         else:
             status = "blocked-no-canonical-source"
         rows.append({

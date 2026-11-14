@@ -29,11 +29,11 @@ Para declarar um app **funcional no escopo anunciado** é necessário, além de 
 5. **Atualizações pequenas e reversíveis:** cada correção/melhoria evolui a mesma fonte de app, com SemVer, CI e provas proporcionais ao risco. Atualização independente por app só quando o `component-slot` houver sido comprovado; até lá, distribuir pelo canal Stable assinado do `system/supervisor`. Não duplicar updater, Store ou inventário instalado.
 6. **Lançamento possível a qualquer momento:** manter sempre um candidato Stable coerente e testável, com funções fundamentais confiáveis e trabalho incompleto isolado em branches/flags de disponibilidade legítimas. Não rebaixar critérios de segurança para acelerar; não reter correções prontas artificialmente para o pós-lançamento.
 
-**Distinção de relatórios:** `unsigned-store-catalog-input` na auditoria G0 indica **elegibilidade técnica do pacote**, não o estado `functional`, `installed` ou `production-ready`. A existência de suíte de teste também não substitui a prova de host e o aceite funcional pelo owner. Os alvos ainda platform-owned e a rota especial Studio mantêm seus gates de ownership e seus testes no owner correto, sem skeleton paralelo no `ordax-apps`.
+**Distinção de relatórios:** `unsigned-store-catalog-input` na auditoria G0 indica **elegibilidade técnica do pacote**, não o estado `functional`, `installed` ou `production-ready`. A existência de suíte de teste também não substitui a prova de host e o aceite funcional pelo owner. Alvos ainda sem source materializado/ativado (como Files) e rotas especiais de distribuição (como Studio) mantêm seus gates próprios, sem skeleton paralelo nem restauração de source no OS.
 
-## Estado real — baseline de outubro/2026
+## Baseline histórico de outubro/2026 — não usar como estado corrente
 
-A execução de `python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown` deriva cada status a partir do inventário original e **não grava um segundo catálogo**.
+Este quadro preserva o resultado daquela auditoria de outubro; **não é o owner/status operacional de novembro**. A execução de `python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown` deriva o estado verificável do checkout atual e **não grava um segundo catálogo**. Para source ownership corrente, prevalecem `migrations/*.externalization.json`, `docs/PORTFOLIO-FIRST-PARTY.md` e a árvore real do OS/Apps.
 
 | Situação | Alvos | Próxima ação |
 | --- | --- | --- |
@@ -45,19 +45,11 @@ A execução de `python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13
 
 A verificação de **13** é um piso de regressão, não uma contagem manual de identidades nem um compromisso de 13 releases em produção. Aumentar o piso conforme novos apps tornam-se elegíveis, nunca diminuí-lo para esconder regressões. Estado de instalação pública validada permanece **zero** nessa auditoria, porque o verificador não consulta a autoridade nativa.
 
-**Ownership atual:** `migrations/{files,internet,assistant,activity,network,projects}.externalization.json`
-define os gates por aplicativo. Internet, Assistente, Atividade, Rede e
-Projetos já possuem fonte em Apps; Arquivos continua no OS até o handoff
-bootstrap assinado. Para Internet, o motor WebKitGTK e os adaptadores Native
-continuam no OS: não transferi-los com a UI. A implementação portátil do
-Studio pertence a Apps, enquanto o OS ainda precisa concluir sua integração
-externa. `tools/verify_mvp_app_minimum.py` e
-`tests/test_mvp_platform_ownership.py` verificam os estados sem criar uma
-segunda fonte. A política de entrega do OS não equivale à instalação real.
+**Ownership atual:** `migrations/{files,internet,assistant,activity,network,projects}.externalization.json` e os contratos específicos de Notes/Studio definem os gates por aplicativo. Internet, Assistente, Atividade, Rede, Projetos e Notas já possuem fonte canônica em Apps. **Files não continua no OS:** `system/apps/files` foi removido e `apps/files` ainda não foi materializado; o produto permanece ausente até o próximo gate de source/handoff autorizar um único owner. Para Internet, o motor WebKitGTK e os adaptadores Native continuam no OS: não transferi-los com a UI. Studio pertence a Apps e o antigo `system/apps/studio`/`git-app` já foi removido; disponibilidade depende agora de pacote externo, trust/lifecycle e observação Native verificadas. `tools/verify_mvp_app_minimum.py` e `tests/test_mvp_platform_ownership.py` verificam os estados sem criar uma segunda fonte. A política de entrega do OS não equivale à instalação real.
 
 ## Sequência acelerada de implementação
 
-1. **P0: mínimo e catalogação para o conjunto.** Preservar o piso verificado de 13 candidatos não assinados, fechar o handoff de Arquivos sem interromper o bootstrap USB e consolidar a integração local do Studio com o lifecycle externo. Para os demais apps já transferidos, avançar apenas os gates reais de distribuição e host; não reabrir Gates A concluídos nem criar fontes paralelas para aumentar a contagem.
+1. **P0: mínimo e catalogação para o conjunto.** Preservar o piso de regressão derivado pelo auditor atual; para Files, avançar o próximo gate de source/handoff **sem restaurar o source OS nem materializar Apps prematuramente**; para Studio, provar pacote externo/trust/lifecycle/host sem recriar `git-app`. Para os apps já transferidos, avançar apenas os gates reais de distribuição e host; não reabrir Gates A/B concluídos nem criar fontes paralelas para aumentar a contagem.
 2. **P0: entrega inicial viável.** O owner da plataforma define quais apps entram no **MVP Stable assinado**; os opcionais podem ser acrescentados por atualizações oficiais de Stable, sem recriar USB. Manter Store UI instalada como superfície estrutural, mas não alegar instalação independente enquanto o executor/verificador não estiver pronto.
 3. **P0: contrato de catálogo/install independente.** Reutilizar o pipeline **já existente** de candidate/Store publication v2/envelopes; obter os gates reais de trust, monotonicidade de catálogo, inventory da ativação, install, reinstall offline, failed update, rollback e uninstall preservando dados. Não implantar segundo updater.
 4. **P1: melhorias individuais após baseline.** Ajustar UI, idioma, performance, funcionalidades extras e novas versões dos aplicativos; bug de segurança/corrupção de dados continua P0 e não é adiado.
@@ -69,7 +61,7 @@ O workflow \`Store Catalog Candidate\` agora materializa uma **única pasta de h
 
 O material de prova com chaves efêmeras, trust de CI, envelopes temporários de assinatura e publicação v2 de protocolo continua removido **antes** dessa cópia. O exportador copia somente uma allowlist positiva de arquivos e falha em qualquer identidade ou digest divergente; não faz glob de todos os arquivos de build. Nenhum artefato de CI concede confiança canônica, autoridade de Store, instalação, promoção ou rollback.
 
-**Uso:** reproduzir e conferir no mesmo commit todos os candidatos descobertos pelo catálogo (13 é o piso de regressão, não o total permanente); a cadeia oficial de assinatura, verificação de catálogo v2 e lifecycle de produção pertence à plataforma e permanece um gate separado. A existência de ZIP ou handoff público não coloca automaticamente o app na Loja e não altera o status do Studio ou dos alvos com source ainda pertencente à plataforma.
+**Uso:** reproduzir e conferir no mesmo commit todos os candidatos descobertos pelo catálogo (13 é o piso histórico de regressão, não o total permanente); a cadeia oficial de assinatura, verificação de catálogo v2 e lifecycle de produção pertence à plataforma e permanece um gate separado. A existência de ZIP ou handoff público não coloca automaticamente o app na Loja e não altera o status do Studio nem cria source para alvos deliberadamente ausentes como Files.
 
 \`\`\`sh
 python3 -m unittest tests/test_unsigned_store_handoff.py

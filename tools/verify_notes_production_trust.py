@@ -150,7 +150,7 @@ def main() -> None:
 
     if lock.get("$schema") != "ordax-apps.notes-platform-trust-lock/1":
         fail("unexpected Notes platform trust lock schema")
-    if lock.get("repository") != "washingtonmsdj/prototipo-ordax-os":
+    if lock.get("repository") != "ordaxsystems/ordax-os":
         fail("Notes platform trust repository drifted")
     commit = lock.get("commit")
     if not isinstance(commit, str) or len(commit) != 40 or any(c not in "0123456789abcdef" for c in commit):

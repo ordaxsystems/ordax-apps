@@ -1,6 +1,6 @@
 {
   "$schema": "ordax-apps.notes-platform-trust-lock/1",
-  "repository": "washingtonmsdj/prototipo-ordax-os",
+  "repository": "ordaxsystems/ordax-os",
   "commit": "ef319ba940fa36c81699b73ba4195a178891e70f",
   "policy_path": "docs/contracts/runtime-component-trust-policy.json",
   "policy_schema": "prototype-ordax.runtime-component-trust-policy/1",

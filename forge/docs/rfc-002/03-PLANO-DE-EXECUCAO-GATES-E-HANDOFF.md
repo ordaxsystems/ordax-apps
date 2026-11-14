@@ -1,12 +1,14 @@
 # OrdaX Orchestrator Lab — Plano Executável, Gates e Handoff Independente
 
+> **HISTÓRICO / NÃO EXECUTAR COMO FILA.** P0–P12 e G00–G15 pertencem ao plano de 19/10/2026. Para qualquer novo trabalho, começar em [../README.md](../README.md) e no [roadmap GPT-first](../FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md). Não recriar branches, PRs, gates ou arquitetura antiga apenas porque aparecem neste handoff.
+
 **ID:** ORDAX-ORCH-EXEC-002
 **Data-base:** 2026-10-19
-**Vinculado à SSOT:** `01-RFC002-PLANO-MESTRE.md`
+**Vinculado à SSOT histórica da RFC-002:** `01-RFC002-PLANO-MESTRE.md`
 **Origem de justificativas:** `02-HISTORICO-ANALISES-E-ADRS.md`
-**Propósito:** documento operacional para qualquer novo chat/IA desenvolver sem depender da conversa que originou o plano.
+**Propósito histórico:** preservar a ordem operacional proposta naquele ciclo; **não** é o handoff atual para novo chat/IA.
 
-## A. Como começar sem adivinhar
+## A. Como este plano começava naquele ciclo
 
 1. Ler **integralmente** o RFC-002, depois o histórico de análises e este plano; distinguir decisão de produto, proposta e evidência.
 2. Acessar `ordaxsystems/ordax-apps`, branch `feat/orchestrator-lab-isolated-20261019`; consultar `product-version.json`, `source-lock.json`, `README.md`, `CHANGELOG.md`, `supervisor/`, `lib/`, `tests/` e `.github/workflows/forge-windows-isolation.yml`.

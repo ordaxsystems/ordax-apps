@@ -2,6 +2,17 @@
 
 > **Execução DEV — Evolução Rápida (regra transversal obrigatória):** aplicar a [política canônica OrdaX](https://github.com/ordaxsystems/ordax-os/blob/main/docs/DEVELOPMENT-WORKFLOW.md#regra-operacional-transversal--evolucao-rapida-dev-2026-11-04) antes de iniciar trabalho. Entregar a alteração no owner correto primeiro e validar com testes proporcionais depois; não ampliar escopo com auditorias, documentação, CI ou workflows sem causalidade. Preservar gates obrigatórios, integridade, segurança e autorização.
 
+## Integração canônica no produto — 13/11/2026
+
+Este repo é **producer de aplicativos**, não compositor do sistema. A regra transversal está em [`ordax-os/docs/DEVELOPMENT-WORKFLOW.md`](https://github.com/ordaxsystems/ordax-os/blob/main/docs/DEVELOPMENT-WORKFLOW.md#integração-multi-repositório--composição-do-produto-2026-11-13) e ADR-031.
+
+- Apps publicam source/pacotes/componentes e catálogo pelos contratos já existentes.
+- `ordax-os` consome os artefatos/catálogo quando uma revisão deve entrar no produto Native; não copiar app source para o OS.
+- `ordax-surface` apresenta catálogo/estado/ações por ports; não importa implementação de apps.
+- Desktop e Creator não integram apps diretamente quando a composição OrdaX/OS já é a dependência direta.
+- Mudança compatível em um app/Forge termina neste owner; não abrir PR em OS/Surface/Desktop só para sincronizar SHA.
+- Só criar adoção cross-repo quando um contrato/artefato novo for realmente necessário.
+
 ## Retomada de apps, Aura e MCP — não reiniciar missão histórica (04/11/2026)
 
 **Somente quando a tarefa afetar a integração de apps com Aura/Fabric/MCP:**
@@ -23,16 +34,17 @@ físico e a limpeza de devices DEV foram concluídos na
 [`ordax-platform#291`](https://github.com/ordaxsystems/ordax-platform/issues/291);
 **não repetir essa missão**.
 
-**Pendente fora deste repo:** ponte Native Product
+**Integração cross-repo:** a ponte Native Product
 [`ordax-os#2400`](https://github.com/ordaxsystems/ordax-os/pull/2400)
-e observação autenticada da Store `CURRENT` pelo Runtime;
-a Aura ainda não executa automaticamente as tools Product.
-Quando uma ação específica de app for escolhida para provar o
-fluxo ponta a ponta, implementar **um único provider real no
-app** e validar contrato, consentimento, efeito/recibo/revogação
-no owner correspondente. Não assumir que a PR #2400 está integrada
-sem conferir a `main` atual. Este handoff **não substitui** a
-prioridade/contrato separado do Orchestrator abaixo.
+foi **integrada em 04/11/2026**; não reabrir nem duplicar essa ponte.
+Readiness atual do Runtime, observação autenticada da Store `CURRENT`,
+tools Product e gates de Aura são estados voláteis dos owners
+correspondentes e devem ser revalidados no source/contratos atuais antes
+de agir. Quando uma ação específica de app for escolhida para provar o
+fluxo ponta a ponta, implementar **um único provider real no app** e
+validar contrato, consentimento, efeito/recibo/revogação no owner
+correspondente. Este handoff **não substitui** a prioridade/contrato
+separado do Orchestrator abaixo.
 
 ## Prioridade canônica do OrdaX Forge V3 — 2026-11-06
 
@@ -54,7 +66,7 @@ Se a tarefa alterar o `forge`, comece pelo [plano único Forge V3](forge/docs/FO
 
 ## Intelligence global, ChatGPT e plugin MCP
 
-Antes de alterar chat Studio, catálogo dos apps, provider adapters ou integração Web, consultar [INTELLIGENCE-HANDOFF.md no owner OS](https://github.com/ordaxsystems/ordax-os/blob/main/INTELLIGENCE-HANDOFF.md), [docs/STUDIO-CHATGPT-THREE-SURFACES.md](docs/STUDIO-CHATGPT-THREE-SURFACES.md) e [docs/APP-INTELLIGENCE.md](docs/APP-INTELLIGENCE.md). Intelligence é do OS; Studio é consumidor; o MCP do ecossistema OrdaX/Platform continua em seu owner, enquanto o **MCP de projetos do Forge** pertence ao próprio Forge App. Não confundir ChatGPT como provedor da UI com ChatGPT externo controlando OrdaX. PRs experimentais não são release.
+Antes de alterar chat Studio, catálogo dos apps, provider adapters ou integração Web, consultar [INTELLIGENCE-HANDOFF.md no owner OS](https://github.com/ordaxsystems/ordax-os/blob/main/INTELLIGENCE-HANDOFF.md), [docs/STUDIO-CHATGPT-THREE-SURFACES.md](docs/STUDIO-CHATGPT-THREE-SURFACES.md) e [docs/APP-INTELLIGENCE.md](docs/APP-INTELLIGENCE.md). `ordax-intelligence` é o owner da fonte/runtime portátil de Intelligence; `ordax-os` mantém somente composição, autorização local, Memory e adapters que lhe pertencem. Studio é consumidor; o MCP do ecossistema continua nos owners Runtime/Platform aplicáveis, enquanto o **MCP de projetos do Forge** pertence ao próprio Forge App. Não confundir ChatGPT como provedor da UI com ChatGPT externo controlando OrdaX. PRs experimentais não são release.
 
 ## Regras que não podem ser contornadas
 

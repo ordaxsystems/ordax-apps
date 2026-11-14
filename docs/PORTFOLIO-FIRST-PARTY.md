@@ -2,13 +2,10 @@
 
 **Decisão:** `ordax-apps` é o destino oficial único para a **fonte portátil dos aplicativos first-party removíveis**. Estar presente no OrdaX OS por padrão **não** exige manter uma segunda fonte no repositório do sistema. O OrdaX OS mantém a Store, a imagem inicial, o verificador de pacotes, as permissões e a desinstalação. Conta, Ajustes, Sistema e Loja são superfícies estruturais do OS, não apps removíveis deste repositório.
 
-**Prontidão verificada em 2026-10-23:** a auditoria encontrou 19 fontes
+**Snapshot de prontidão de 2026-10-23 — histórico:** naquela auditoria havia 19 fontes
 canônicas para 20 alvos. Os 18 apps com descriptor de compatibilidade
 produziram candidatos não assinados idênticos em duas montagens temporárias.
-Internet e Assistente declaram agora seus ports públicos no App SDK pinado;
-Studio ainda precisa de um runtime portátil e descriptor compatível com o host.
-Files permanece platform-owned, sem fonte paralela. A prova de pacote não
-autoriza instalação, assinatura, publicação ou ativação de produção.
+Naquele checkpoint, Files ainda era platform-owned e o Studio ainda tinha integração local no OS; **ambos os estados foram superados posteriormente pelo corte remove-first**. O estado operacional atual está na seção de transferência abaixo e nos `migrations/*.externalization.json`. A prova de pacote nunca autoriza instalação, assinatura, publicação ou ativação de produção.
 
 O SSOT **da política de seleção inicial** pertence ao OS e foi implementado em [`first-run-selection.mjs`](https://github.com/ordaxsystems/ordax-os/blob/main/system/services/apps/first-run-selection.mjs). O SSOT **dos alvos e contratos portáteis** permanece `ordax-apps.workspace.json`. Esta documentação não adiciona uma segunda lista executável de defaults nem promove candidatos não assinados.
 
@@ -26,25 +23,12 @@ O SSOT **da política de seleção inicial** pertence ao OS e foi implementado e
   Isso **não** significa que a distribuição esteja autorizada. Os respectivos
   `migrations/<id>.externalization.json` ainda preservam os gates de pacote,
   assinatura, saúde, promoção e rollback.
-- **Arquivos ainda pertence ao OrdaX OS:** `system/apps/files` é a única
-  fonte executável. O handoff bootstrap depende de instalação externa assinada,
-  interface funcional no boot e provas do MVP USB. O OS já implementa execução
-  isolada e File Space ligado ao slot current por operação; o que ainda falta é
-  provisionar e provar o pacote externo assinado no boot, com recuperação e
-  rollback. O pacote de ensaio em diretório temporário não é uma segunda fonte
-  nem pode ser instalado; consulte
-  [o contrato Files](../migrations/files.externalization.json) e
-  [o acompanhamento no OS](https://github.com/ordaxsystems/ordax-os/issues/1743).
-- **Studio tem fonte portátil canônica em Apps**, mas o OS ainda mantém
-  `system/apps/studio` como integração `git-app`. Consolidar essa integração
-  no host e no lifecycle verificado exige prova de paridade antes de remover o
-  caminho local; o código portátil de produto não deve ser duplicado.
+- **Arquivos (Files) está temporariamente sem fonte executável ativa:** o source bundled `ordax-os/system/apps/files` foi removido pelo Gate A e **ainda não existe `apps/files` materializado**. O OS conserva File Space/Recentes/Projetos e a borda genérica de component-slot, mas isso não é a implementação do produto Files. O plano `migrations/files.externalization.json` permanece deliberadamente no estado pré-materialização e seus campos do source histórico não significam que `system/apps/files` ainda exista. Só materializar a fonte portátil quando o gate de handoff assinado/boot/lifecycle/rollback autorizar o próximo owner único; até lá, manter ausência é preferível a reintroduzir ou duplicar source. Consulte [o plano Files](FILES-EXTERNALIZATION.md) e [o acompanhamento no OS](https://github.com/ordaxsystems/ordax-os/issues/1743).
+- **Studio tem fonte portátil canônica em Apps e o owner local antigo já foi retirado do OS.** `system/apps/studio` não existe mais na `main`; a composição Native deve tratá-lo como ausente até existir pacote externo assinado/instalado e observado pelo inventário verificado. A aposentadoria do source legado está concluída, mas publicação, instalação e ativação continuam gates separados; não restaurar `git-app` nem criar segunda implementação.
 
 **Identidade Aura:** o branding do pacote `assistant` foi atualizado sem criar `apps/aura` nem alterar a autoridade de distribuição. `migrations/assistant.externalization.json` permanece deliberadamente com `distribution_activation_allowed:false`, e o plano inicial de apps do OS só pode ativar esse mesmo pacote após prova de assinatura, montagem Native, health e rollback. O motor e os pesos de IA local não fazem parte do app e continuam no OrdaX OS.
 
-**Regra única:** nunca criar `apps/files` permanente enquanto a fonte Files
-estiver ativa no OS, nunca reintroduzir cópias de Internet/Assistente/Projetos/
-Atividade/Rede no OS e nunca confundir source cutover com ativação de produção.
+**Regra única:** não restaurar Files/Studio no OS e não materializar `apps/files` antes de o gate de source/handoff avançar explicitamente para um único owner; nunca reintroduzir cópias de Internet/Assistente/Projetos/Atividade/Rede/Notas no OS e nunca confundir source cutover com ativação de produção.
 
 ## Como os apps básicos chegam ao usuário
 

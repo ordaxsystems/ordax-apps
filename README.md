@@ -1,12 +1,21 @@
 # OrdaX Apps
 
-**OrdaX Orchestrator — direção canônica de 2026-11-01:** [Instância de projeto único, Administrador Geral Groq e coordenação autônoma supervisionada](forge/docs/ORCHESTRATOR-CANONICAL-PRODUCT.md). A operação começa após conectar o projeto e clicar **Iniciar**, com inventário/análise de evidências e executores de escopo por repositório; comandos humanos são opcionais e podem redirecionar. A arquitetura vigente substitui o antigo modelo de muitos projetos por uma instalação, sem eliminar dados legados. Implementação, E2E GPT Web, grants, integração Aura e 24 h continuam sujeitos a gates próprios. **Esta é a referência inicial para novos agentes.**
+## Forge — direção canônica vigente
 
-**OrdaX Orchestrator — Project-First:** a versão corrente é definida no manifesto do produto e validada contra `forge/product-version.json` pelos gates de CI; consulte esses arquivos e o HEAD da `main` antes de qualquer release. Não mantenha números de versão copiados neste README. Essa identificação de fonte e os testes de CI **não** certificam envio GPT Web real, recuperação após interrupção física, grants Runtime/Platform em dispositivo, operação autônoma 24 h ou distribuição pública. O aplicativo deve consumir os contratos dos owners Intelligence, Runtime e Platform sem duplicá-los; OrdaX MCP serve o caminho ChatGPT → Runtime e não substitui um transporte App → ChatGPT autorizado. [Arquitetura](forge/docs/PROJECT-FIRST-ARCHITECTURE.md) · [Plano e gates](forge/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md) · [Matriz atual](forge/docs/audits/PROJECT-WORKSPACE-CAPABILITY-MATRIX.md) · [E2E VESTE](forge/docs/VESTE-PROJECT-FIRST-E2E.md) · [Handoff Codex](forge/CODEX-HANDOFF.md).
+O Forge é o fluxo ativo de execução GPT-first em `ordax-apps`. A autoridade de arquitetura, continuidade e E2E é **somente** [`forge/docs/FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md`](forge/docs/FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md), junto do source, SQLite e testes atuais.
+
+Fluxo esperado: pedido natural do usuário → **o próprio GPT executor** usa o MCP autorizado da sessão → arquivos e recibos verificáveis no workspace → Forge acompanha e exibe preview → Administrador opcional revisa/coordena. Resposta textual, HTML copiado por outro agente, plugin apenas selecionado ou ação MCP executada fora da sessão do GPT não provam o E2E.
+
+Os documentos anteriores de Orchestrator “instância única/Groq obrigatório”, Project-First M0–M7, handoffs antigos e provas datadas são **históricos**. Eles não devem ser usados como instrução operacional quando divergirem do roadmap GPT-first, do `AGENTS.md`, do source ou do estado verificável atual. Groq é opcional; não criar outro banco, MCP, fila, instalador ou SSOT.
+
+## Como Apps entra no OrdaX
+
+`ordax-apps` produz aplicativos e seus artefatos/catálogos. O produto Native os consome pelos contratos de componente/lifecycle do `ordax-os`; a Surface os apresenta por ports. Desktop e Creator não devem copiar nem pinçar source de apps individualmente.
+
+Uma alteração compatível em um app pode avançar e ser integrada aqui sem uma cascata de PRs. A adoção em uma composição OrdaX acontece somente quando houver candidato/artefato a consumir. Regra completa: [integração multi-repositório do OrdaX](https://github.com/ordaxsystems/ordax-os/blob/main/docs/DEVELOPMENT-WORKFLOW.md#integração-multi-repositório--composição-do-produto-2026-11-13).
 
 > [!IMPORTANT]
-> **Leitura prioritária:** antes de analisar, planejar ou implementar aplicativos, leia o [URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS](URGENTE-ROADMAP-ORDAX-APPS.md).
-> Para agentes e assistentes, consulte também [AGENTS.md](AGENTS.md). O roadmap é um plano vivo e não substitui os contratos, o CI nem os gates canônicos de trust e distribuição.
+> **Entrada para agentes:** leia [AGENTS.md](AGENTS.md) e os arquivos/contratos diretamente afetados. Consulte [URGENTE-ROADMAP-ORDAX-APPS.md](URGENTE-ROADMAP-ORDAX-APPS.md) apenas para portfólio, migração ou planejamento transversal; ele é um roteador histórico/subordinado e não substitui source, manifests, migrations, o roadmap GPT-first do Forge ou os contratos atuais.
 
 
 Repositório oficial dos aplicativos first-party do OrdaX.
@@ -17,7 +26,7 @@ Repositório oficial dos aplicativos first-party do OrdaX.
 
 `ordax-apps` contém **aplicativos de produto**, não os serviços centrais do sistema operacional.
 
-A plataforma continua pertencendo ao repositório `ordaxsystems/ordax-os` e fornece contratos estáveis para Identity, Memory, Intelligence, permissions, Spaces/Projects, localization, component delivery e lifecycle.
+`ordax-os` continua sendo o compositor Native e owner dos contratos/serviços locais do sistema. O **control plane remoto** (sessão, OAuth/grants e autoridade cloud) pertence a `ordaxsystems/ordax-platform`; a fonte/runtime portátil de Intelligence pertence a `ordaxsystems/ordax-intelligence`, enquanto o OS mantém composição, autorização local, Memory e lifecycle que são de sua responsabilidade. Apps consomem apenas os contratos públicos desses owners, sem transformar `ordax-os` em owner genérico de todo o ecossistema.
 
 Os apps deste repositório devem consumir esses contratos; não podem criar implementações paralelas de identidade, Memory, autorização, sync ou update.
 
@@ -61,13 +70,7 @@ Arquivos (`files`) e Internet (`internet`) são apps da classe `bootstrap`; isso
 não significa que ambos ainda tenham o mesmo owner de fonte ou distribuição
 independente aprovada.
 
-- **Arquivos:** a fonte executável permanece exclusivamente em
-  `ordaxsystems/ordax-os/system/apps/files`. O Gate A está bloqueado porque
-  remover Arquivos antes de provar o bootstrap por slot assinado quebra as
-  operações obrigatórias do MVP USB. A prova de pacote *efêmero e não assinado*
-  não cria `apps/files`, fonte paralela ou autorização de instalação. Consulte
-  [o plano Files](migrations/files.externalization.json) e
-  [a issue de handoff](https://github.com/ordaxsystems/ordax-os/issues/1743).
+- **Arquivos:** Gate A foi concluído em `ordax-os#2184` / `4bee05e1...` e Gate B materializou a fonte única em `apps/files`. O app usa somente contratos públicos vendorizados do App SDK, mantém provider sem autoridade e `distribution_activation_allowed=false`. Package/sign/install/ativação continuam gates posteriores; não restaurar source no OS nem criar segunda implementação.
 - **Internet:** o Gate A de fonte já ocorreu. O owner portátil é
   `ordaxsystems/ordax-apps/apps/internet`, com `app.json` e código canônico
   presentes. A ativação de distribuição permanece bloqueada no

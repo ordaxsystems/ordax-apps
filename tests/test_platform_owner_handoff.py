@@ -102,10 +102,10 @@ class PlatformOwnerHandoffTests(unittest.TestCase):
     def test_historical_assertion_exemption_is_exact_not_file_wide(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            path = root / "tools/verify_notes_platform_sdk.py"
+            path = root / "tools/verify_notes_externalization.py"
             path.parent.mkdir(parents=True)
             path.write_text(
-                'if lock["repository"] != "' + self.old + '":\n',
+                'if source_snapshot.get("repository") != "' + self.old + '":\n',
                 encoding="utf-8",
             )
             subprocess.run(["git", "init", "-q"], cwd=root, check=True, capture_output=True)
@@ -117,7 +117,7 @@ class PlatformOwnerHandoffTests(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertIn(
-                "tools/verify_notes_platform_sdk.py",
+                "tools/verify_notes_externalization.py",
                 mod.stale_references(root, self.old)["operational_paths"],
             )
 

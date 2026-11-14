@@ -1,4 +1,5 @@
 import {forgeProjectMemoryView} from './forge-project-memory-view.mjs';
+import {forgeProjectFileReceiptView} from './forge-project-file-receipts.mjs';
 
 // A project-wide, bounded read of real app evidence for the optional GPT Admin.
 // This does NOT run a model, read external files, or decide that work is done.
@@ -25,6 +26,7 @@ export function forgeProjectAdministratorView(store,projectId) {
     (SELECT COUNT(*) FROM lab_orchestrators WHERE project_id=?) AS coordinatorConversations`)
     .get(projectId,projectId,projectId);
   const memory=forgeProjectMemoryView(store,projectId,{maxItems:16,maxRuns:8});
+  const recentFileWrites=forgeProjectFileReceiptView(store,projectId,{limit:12});
   return {
     schema:'ordax.forge.project-administrator/1',project,
     provenance:{source:'canonical_app_sqlite',externalFilesInspected:false,
@@ -35,10 +37,12 @@ export function forgeProjectAdministratorView(store,projectId) {
     works:works.map(row=>({...row,
       providerReplyIsCompletionProof:false,physicalArtifactVerified:false})),
     unresolvedCommands:unresolved,
+    recentFileWriteReceipts:recentFileWrites.items,
     memory:{accepted:memory.canonical,pending:memory.suggested},
     limits:{worksTruncated:totals.works>works.length,
       unresolvedTruncated:totals.unresolvedCommands>unresolved.length,
-      memoryTruncated:memory.limitations.missingItemsBeyondPage},
+      memoryTruncated:memory.limitations.missingItemsBeyondPage,
+      fileWriteReceiptsTruncated:recentFileWrites.truncated},
     administrator:{
       role:'optional_gpt_semantic_review',status:'not_invoked',
       canProposeMemory:true,canApproveMemory:false,

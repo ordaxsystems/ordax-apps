@@ -1,7 +1,7 @@
 {
   "schema": "ordax.application-action-manifest/1",
   "appId": "assistant",
-  "appVersion": "0.1.2",
+  "appVersion": "0.1.3",
   "authority": "none",
   "execution": "proposal-only",
   "capabilities": [

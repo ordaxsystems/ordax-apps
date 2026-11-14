@@ -1,6 +1,10 @@
-# Prioridade atual do OrdaX Orchestrator — 2026-11-01
+# OrdaX Apps — roadmap transversal e registro histórico
 
-**SSOT de direção:** [Orchestrator — contrato autônomo/instância única](forge/docs/ORCHESTRATOR-CANONICAL-PRODUCT.md). Uma instância = um projeto; Administrador Geral Groq é entrada principal; após conectar e **Iniciar** pode realizar diagnóstico sem prompt, definir missões e coordenar executores por repo **somente nos gates autorizados**. O usuário pode direcionar a qualquer momento. O plano antigo multi-projeto e "GPT Web como chat principal" abaixo é **histórico e não deve orientar novas implementações**. Envio GPT é um canal distinto e não implícito. Nada nesta decisão habilita sozinho GPT autônomo, Runtime/grants ou 24 h.
+> **STATUS: PLANEJAMENTO/REFERÊNCIA, NÃO SSOT DE EXECUÇÃO.** A direção corrente do Forge está exclusivamente em [forge/docs/FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md](forge/docs/FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md). Para apps individuais, source, manifests, migrations e contratos atuais prevalecem. Não interpretar prioridades, SHAs, versões ou “próximos passos” datados abaixo como fila global.
+
+## Orchestrator de 2026-11-01 — decisão histórica substituída
+
+A antiga direção de instância única com Administrador Geral Groq foi substituída pela arquitetura GPT-first em 2026-11-06. O conteúdo abaixo permanece apenas para preservar contexto de evolução e não deve orientar novas implementações quando divergir do roadmap GPT-first ou do source atual.
 
 ## Direção Project-First do OrdaX Orchestrator — decisão do proprietário (2026-10-21; histórico)
 
@@ -360,12 +364,14 @@ O workspace (`ordax-apps.workspace.json`) declara **20 alvos first-party**. Em 2
 
 **Superfícies estruturais fora deste repositório:** `store`, `settings`, `account` e `system`. Não recriar esses serviços como apps removíveis.
 
-**Owners canônicos atuais:**
+**Owners canônicos atuais (corrigidos; use `repository-ownership.json` para a autoridade vigente):**
 
 - Apps first-party: `ordaxsystems/ordax-apps`.
-- Plataforma/core, Identity, Memory, Intelligence, permissions, trust, lifecycle: `washingtonmsdj/prototipo-ordax-os` (migração futura de owner conforme workspace, não presumir concluída).
+- OS/core, host Native, serviços e lifecycle sistêmico: `ordaxsystems/ordax-os`.
+- Intelligence portátil: `ordaxsystems/ordax-intelligence`, consumido pelo OS conforme o lock/cutover vigente.
 - Windows Runtime/Device Host/Computer Control: `ordaxsystems/ordax-runtime`.
-- Control Plane, Product MCP, grants e conectores de providers: `ordaxsystems/ordax-control-plane`.
+- Control Plane, Product MCP, grants remotos e conectores: `ordaxsystems/ordax-platform`.
+- Surface visual: `ordaxsystems/ordax-surface`; Desktop host/packaging: `ordaxsystems/ordax-desktop`.
 
 ## 3. Restrições inegociáveis
 
@@ -667,23 +673,15 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 - Uso/limitações: [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
 - **Estado:** primeira etapa de G0 integrada; G0 completo ainda depende de evidências de runtime/package/lifecycle por app.
 
-### Execução P0 Files — preflight de source cutover (PRs #129 e #130 integradas)
+### Execução P0 Files — histórico do preflight e estado atual
 
-- Plano: `migrations/files.externalization.json`, `source_cutover_allowed=false` e `distribution_activation_allowed=false`.
-- Auditor read-only: `tools/verify_files_cutover.py`; testes: `tests/test_files_cutover.py`.
-- PR #130: snapshot **derivado do histórico Git real**, com inventário completo de blobs, ancestralidade e remoção comprovada no Gate A. JSON sozinho **não** é prova de SSOT.
-- Evidência de ownership, dependências e lacunas do App SDK: [`docs/FILES-EXTERNALIZATION.md`](docs/FILES-EXTERNALIZATION.md).
-- **Estado:** proteção de cutover integrada; **cutover ainda bloqueado**. O Files pertence à plataforma; não criar `apps/files` nem copiar código até Gate A remove-first comprovado.
+> **A parte abaixo era o estado pré-Gate-A e foi superseded.** O estado corrente está em `migrations/files.externalization.json` e `docs/FILES-EXTERNALIZATION.md`.
 
-**Reconciliação verificada em 2026-10-23:** no OS `main@fe8d2336`, o runtime
-externo já executa em origem opaca e o broker Native entrega File Space/11
-device-local somente ao slot Files current cuja identidade é revalidada em
-cada RPC. As regressões locais do executor, binding trusted, loader current e
-probation passaram (46/46). O bloqueio restante é a entrega completa: trust
-canônico e ativação de slots continuam desabilitados, não há pacote Files
-assinado provisionado offline e ainda faltam as provas de boot/recuperação USB
-com esse pacote. Portanto, manter os gates fechados e a fonte única no OS até
-o handoff bootstrap comprovado.
+- PRs #129/#130 prepararam o inventário e o verificador quando `source_cutover_allowed=false` e o OS ainda continha Files.
+- O Gate A **já foi executado** em `ordax-os#2184`, commit exato `4bee05e1b2e707354217fe2a4dfa6d8540aecf0e`. O snapshot `cf8b07ba...` foi comparado até o pai imediato do Gate A sem alteração nos paths app-owned.
+- Estado atual: `source_of_truth_state=ordax-apps-canonical`, `source_repository_current=ordaxsystems/ordax-apps`, `apps/files` materializado e `target_materialization_state=materialized`.
+- Gate B conclui somente a autoridade de source. O package unsigned pode ser validado pelo workflow dedicado; signing/install/ativação permanecem bloqueados e `distribution_activation_allowed=false`.
+- File Space/Recentes/Projects e demais serviços estruturais continuam no OS. A futura materialização não pode copiar esses owners para o app.
 
 ### Execução G0 — SSOT dos inventários de CI (PR #131 integrada)
 

@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.app-presentation-manifest/1",
+  "appId": "files",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "sourceLocale": "pt-BR",
+  "description": "Organize e abra conteúdo persistente do usuário usando somente o espaço de arquivos autorizado pela plataforma.",
+  "monogram": "AR",
+  "singleton": true,
+  "translations": {
+    "en-US": {
+      "title": "Files",
+      "description": "Organize and open persistent user content using only the file space authorized by the platform."
+    }
+  }
+}

@@ -40,6 +40,8 @@ def main() -> None:
     gate_b = plan.get("gate_b") or {}
     if gate_b.get("state") != "source-materialized-unsigned" or gate_b.get("platform_absence_proven") is not True:
         fail("Projects Gate B must record proven platform absence")
+    if gate_b.get("sdk_bundle_version") != "1.17.0":
+        fail("Projects Gate B must pin the exact SDK bundle used for transferred contract blobs")
     if any(gate_b.get(name) is not False for name in (
         "signed_distribution_verified", "native_install_verified", "rollback_verified"
     )):

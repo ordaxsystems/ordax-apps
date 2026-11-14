@@ -49,6 +49,28 @@ class PlatformOwnerMvpTests(unittest.TestCase):
             self.assertIn("source-cutover-not-authorized", row["blockers"])
             self.assertFalse((ROOT / "apps" / app_id / "app.json").exists())
 
+    def test_files_gate_b_is_canonical_but_still_not_production_installable(self):
+        plan = json.loads((ROOT / "migrations/files.externalization.json").read_text(encoding="utf-8"))
+        self.assertEqual(plan["source_of_truth_state"], "ordax-apps-canonical")
+        self.assertEqual(plan["source_repository_current"], "ordaxsystems/ordax-apps")
+        self.assertEqual(plan["source_path_current"], "apps/files")
+        self.assertTrue(plan["source_cutover_allowed"])
+        self.assertTrue(plan["source_cutover"]["gate_a_complete"])
+        self.assertEqual(plan["source_cutover"]["target_materialization_state"], "materialized")
+        self.assertTrue((ROOT / "apps/files/app.json").is_file())
+        self.assertFalse(plan["distribution_activation_allowed"])
+
+        report = audit_workspace(ROOT)
+        row = next(item for item in report["apps"] if item["app_id"] == "files")
+        self.assertEqual(row["source_state"], "canonical-source")
+        self.assertNotIn("source-materialization-pending", row["blockers"])
+        self.assertIn("production-activation-not-authorized", row["blockers"])
+
+        minimum = audit_mvp_minimum(ROOT, minimum_candidates=13)
+        minimum_row = next(item for item in minimum["apps"] if item["app_id"] == "files")
+        self.assertEqual(minimum_row["minimum_entry_status"], "unsigned-store-catalog-input")
+        self.assertFalse(minimum_row["production_installable"])
+
     def test_internet_cutover_must_not_duplicate_native_browser_engine(self):
         plan = json.loads((ROOT / "migrations/internet.externalization.json").read_text(
             encoding="utf-8"

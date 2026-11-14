@@ -589,14 +589,14 @@
   <dialog id="appSettingsDialog" class="app-settings-dialog" aria-labelledby="appSettingsTitle">
     <div class="app-settings-frame">
       <header class="app-settings-header">
-        <div><span id="productBrandEyebrow" class="app-settings-eyebrow">ORDAX FORGE</span><h2 id="appSettingsTitle">Configurações</h2><p>Preferências do aplicativo, provedores e estado das conexões.</p></div>
+        <div class="app-settings-heading"><span class="app-settings-wordmark"><span class="app-settings-logo" aria-hidden="true">⬡</span><span id="productBrandEyebrow">OrdaX Forge</span></span><span class="app-settings-heading-copy"><h2 id="appSettingsTitle">Configurações</h2><p>Preferências do aplicativo, provedores e conexões.</p></span></div>
         <button id="closeAppSettings" class="app-settings-close" type="button" aria-label="Fechar configurações">×</button>
       </header>
       <div class="app-settings-body">
         <nav class="app-settings-nav" role="tablist" aria-label="Seções de configurações" aria-orientation="vertical">
-          <button id="settingsTabGeneral" class="app-settings-tab" type="button" role="tab" aria-selected="true" aria-controls="settingsPanelGeneral" tabindex="0" data-settings-tab="general">Geral</button>
-          <button id="settingsTabProviders" class="app-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsPanelProviders" tabindex="-1" data-settings-tab="providers">IA e provedores</button>
-          <button id="settingsTabConnections" class="app-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsPanelConnections" tabindex="-1" data-settings-tab="connections">Conexões</button>
+          <button id="settingsTabGeneral" class="app-settings-tab" type="button" role="tab" aria-selected="true" aria-controls="settingsPanelGeneral" tabindex="0" data-settings-tab="general"><span class="settings-tab-icon" aria-hidden="true">⚙</span>Geral</button>
+          <button id="settingsTabProviders" class="app-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsPanelProviders" tabindex="-1" data-settings-tab="providers"><span class="settings-tab-icon" aria-hidden="true">◇</span>IA e provedores</button>
+          <button id="settingsTabConnections" class="app-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsPanelConnections" tabindex="-1" data-settings-tab="connections"><span class="settings-tab-icon" aria-hidden="true">↗</span>Conexões</button>
         </nav>
         <div class="app-settings-content">
           <section id="settingsPanelGeneral" class="app-settings-panel" role="tabpanel" aria-labelledby="settingsTabGeneral" data-settings-panel="general" tabindex="0">
@@ -705,7 +705,7 @@
           </section>
         </div>
       </div>
-      <footer class="app-settings-footer"><span>As conexões ficam separadas por função e seguem suas autoridades próprias.</span><button id="settingsDone" type="button" class="mini-primary">Concluído</button></footer>
+      <footer class="app-settings-footer"><span>Conexões protegidas e restritas aos projetos autorizados.</span><button id="settingsDone" type="button" class="mini-primary">Concluir</button></footer>
     </div>
   </dialog>
   <section id="hostBrowserSessionNotice" class="host-browser-session-notice" role="alert" aria-live="assertive" hidden>

@@ -6,7 +6,7 @@
 
 > **NÃO É MAIS SSOT DE PRODUTO.** Esta versão histórica definia Groq central e uma instância por projeto. O plano Forge GPT-first atual a substituiu. O documento permanece somente para rastrear decisões, testes e gates observados em sua data; o código/contratos e as evidências físicas prevalecem para o estado entregue.
 
-> **Missão executiva em andamento — Work Surface / P1.3:** [WORK-SURFACE-EXECUTION.md](./WORK-SURFACE-EXECUTION.md) contém os critérios de aceite e a próxima etapa funcional. A PR #448 já integrou P1.1/P1.2 à `main` (`7202eef2`) e a versão foi homologada no Windows; o trabalho atual P1.3 evolui o histórico multi-etapa dentro do ledger canônico. A execução autônoma geral e a validação independente de efeitos externos **ainda não estão certificadas**.
+> **Checkpoint histórico — Work Surface / P1.3:** naquele ciclo, [WORK-SURFACE-EXECUTION.md](./WORK-SURFACE-EXECUTION.md) continha critérios de aceite e a próxima etapa funcional. Esse arquivo também foi reclassificado como histórico. PRs, versões e “trabalho atual” citados abaixo valem somente para a data registrada; **não** constituem a missão executiva vigente do Forge.
 
 ## 1. Identidade e experiência do produto
 

@@ -4,11 +4,14 @@
 An app is catalog-eligible when:
 - apps/<id>/app.json exists and declares component-slot delivery;
 - exactly one compatibility descriptor exists in either
-  apps/<id>/compatibility.json or migrations/<id>.compatibility.json.
+  apps/<id>/compatibility.json or migrations/<id>.compatibility.json;
+- apps/<id>/presentation/manifest.json exists and is a valid authority-free
+  presentation bound to the exact app id/version.
 
-No manual app-id allowlist is maintained here. The app source and compatibility
-artifacts are the source of truth. Apps without a compatibility descriptor are
-not distribution-ready and are excluded.
+No manual app-id allowlist is maintained here. The app source, compatibility,
+and presentation artifacts are the source of truth. Apps without a compatibility
+descriptor are not distribution-ready and are excluded; apps with compatibility
+but without canonical presentation are invalid Store candidate state.
 """
 
 from __future__ import annotations
@@ -107,6 +110,26 @@ def discover_catalog_apps(apps_root: Path, migrations_root: Path) -> list[dict]:
             builder.validate_compatibility(compatibility, manifest)
         except builder.AppPackageError as exc:
             raise CatalogInventoryError(f"{app_id} compatibility is invalid: {exc}") from exc
+
+        presentation_dir = app_dir / "presentation"
+        presentation_path = presentation_dir / "manifest.json"
+        if (
+            presentation_dir.is_symlink()
+            or not presentation_dir.is_dir()
+            or presentation_path.is_symlink()
+            or not presentation_path.is_file()
+        ):
+            raise CatalogInventoryError(
+                f"{app_id} Store candidate requires a regular non-symlink presentation/manifest.json"
+            )
+        try:
+            builder.presentation_contract.validate_manifest_bytes(
+                presentation_path.read_bytes(),
+                app_id=app_id,
+                version=manifest["version"],
+            )
+        except (builder.presentation_contract.PresentationContractError, OSError) as exc:
+            raise CatalogInventoryError(f"{app_id} presentation is invalid: {exc}") from exc
 
         entries.append({
             "appId": app_id,

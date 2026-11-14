@@ -100,9 +100,10 @@ jobs:
       - name: Prove Activity transfer source/SDK integrity and unsigned package
         run: python3 -m unittest tests.test_activity_gate_b -v
 
-      - name: Prove Files cutover stays blocked until platform source removal
+      - name: Prove Files Gate B canonical source with Gate A retained
         run: |
-          python3 -m unittest tests/test_files_cutover.py
+          python3 -m unittest tests/test_files_cutover.py tests/test_files_gate_b.py tests/test_files_gate_b_transfer_map.py
+          node --test apps/files/tests/action_provider.test.mjs
           python3 tools/verify_files_cutover.py --format markdown
 
       - name: Resolve exact Files source snapshot (read-only proof)
@@ -116,14 +117,22 @@ jobs:
           from pathlib import Path
 
           plan = json.loads(Path("migrations/files.externalization.json").read_text(encoding="utf-8"))
-          assert plan["source_repository_current"] == "ordaxsystems/ordax-os"
-          assert plan["source_cutover_allowed"] is False
+          assert plan["source_of_truth_state"] == "ordax-apps-canonical"
+          assert plan["source_repository_current"] == "ordaxsystems/ordax-apps"
+          assert plan["source_path_current"] == "apps/files"
+          assert plan["source_cutover_allowed"] is True
+          assert plan["source_cutover"]["gate_a_complete"] is True
+          assert plan["source_cutover"]["target_materialization_state"] == "materialized"
+          assert plan["source_cutover"]["target_source_present"] is True
+          assert plan["gate_b"]["state"] == "source-materialized-unsigned"
           assert plan["distribution_activation_allowed"] is False
           snapshot = plan["source_snapshot"]
           assert snapshot["state"] == "captured"
           assert snapshot["repository"] == "ordaxsystems/ordax-os"
           assert re.fullmatch(r"[0-9a-f]{40}", snapshot["commit"])
+          assert re.fullmatch(r"[0-9a-f]{40}", plan["gate_a_platform_commit"])
           print("commit=" + snapshot["commit"])
+          print("gate_a_commit=" + plan["gate_a_platform_commit"])
           PY
 
       - name: Checkout exact canonical Files snapshot
@@ -136,6 +145,21 @@ jobs:
 
       - name: Verify Files snapshot inventory against actual Git blobs
         run: python3 tools/verify_files_cutover.py --platform-root .ordax-files-source --verify-pinned-source
+
+      - name: Checkout exact Files Gate A removal commit with history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ordaxsystems/ordax-os
+          ref: ${{ steps.files-source-lock.outputs.gate_a_commit }}
+          fetch-depth: 0
+          path: .ordax-files-gate-a
+          persist-credentials: false
+
+      - name: Verify Files Gate A removal against the pinned historical snapshot
+        run: |
+          python3 tools/verify_files_cutover.py \
+            --platform-root .ordax-files-gate-a \
+            --require-cutover-ready
 
       - name: Resolve exact published App SDK bundle pin for Files
         id: files-sdk-lock
@@ -170,7 +194,7 @@ jobs:
           import json
           from pathlib import Path
           report = json.loads(Path("/tmp/ordax-files-public-boundary.json").read_text(encoding="utf-8"))
-          assert report["source_cutover_authorized"] is False
+          assert report["source_cutover_authorized"] is True
           assert report["distribution_activation"] == "blocked"
           assert report["unpublished_contracts"] == [], "Files has unpublished public dependencies"
           assert report["private_platform_imports"] == [], "Files still imports private platform source"
@@ -209,39 +233,16 @@ jobs:
           assert len(result["provider_entrypoint_sha256"]) == 64
           assert result["runtime_entrypoint_provided"] is False
           assert result["package_built"] is False
-          assert result["source_cutover_authorized"] is False
+          assert result["source_cutover_authorized"] is True
           assert result["distribution_activation"] == "blocked"
           print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
           PY
 
-      - name: Build and verify ephemeral Files release-v2 candidate from pinned source and SDK
-        shell: bash
+      - name: Prove materialized Files unsigned package is deterministic
         run: |
-          set -euo pipefail
-          python3 tools/prove_files_ephemeral_candidate.py \
-            --platform-root .ordax-files-source \
-            --sdk-platform-root .ordax-files-sdk > /tmp/ordax-files-ephemeral-proof.json
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          proof = json.loads(Path("/tmp/ordax-files-ephemeral-proof.json").read_text(encoding="utf-8"))
-          assert proof["schema"] == "ordax.files-ephemeral-candidate-proof/1"
-          assert proof["original_app_blobs_verified"] == 10
-          assert proof["canonical_source_graph_verified"] is True
-          assert proof["release_v2_candidate_verified"] is True
-          assert len(proof["deterministic_package_sha256"]) == 64
-          assert proof["packaged_runtime_import_verified"] is True
-          assert proof["empty_host_context_rejected"] is False
-          assert proof["real_host_mount_verified"] is False
-          assert proof["source_of_truth_repository"] == "ordaxsystems/ordax-os"
-          assert proof["second_permanent_files_source_created"] is False
-          assert proof["signed_install_verified"] is False
-          assert proof["bootstrap_delivery_verified"] is False
-          assert proof["distribution_activation_allowed"] is False
-          assert not Path("apps/files").exists()
-          print(json.dumps(proof, ensure_ascii=False, sort_keys=True))
-          print("FILES_EPHEMERAL_CANDIDATE=PASS")
-          PY
+          python3 -m unittest tests.test_files_gate_b -v
+          node --check apps/files/src/runtime.mjs
+          node --check apps/files/src/ui/file-space-controls.mjs
 
       - name: Prove independent business domains without unapproved persistence
         run: |
@@ -510,39 +511,8 @@ jobs:
           go-version-file: .ordax-platform-lifecycle/tools/runtime-component-channel/go.mod
           cache: false
 
-      - name: Prove canonical Files owner blocks premature Native signing
-        shell: bash
-        run: |
-          set -euo pipefail
-          channel_bin="$RUNNER_TEMP/ordax-files-ephemeral-component-channel"
-          (
-            cd .ordax-platform-lifecycle/tools/runtime-component-channel
-            go build -o "$channel_bin" .
-          )
-          python3 tools/prove_files_ephemeral_candidate.py \
-            --platform-root .ordax-files-source \
-            --sdk-platform-root .ordax-files-sdk \
-            --channel-bin "$channel_bin" > "$RUNNER_TEMP/ordax-files-signed-stage.json"
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          proof = json.loads(
-              (Path(os.environ["RUNNER_TEMP"]) / "ordax-files-signed-stage.json").read_text(encoding="utf-8")
-          )
-          assert proof["canonical_owner_gate_verified"] is True
-          gate = proof["canonical_owner_gate_proof"]
-          assert gate["canonical_go_signer_checked"] is True
-          assert gate["precutover_source_owner_rejected"] is True
-          assert gate["signed_slot_created"] is False
-          assert gate["live_install_authorized"] is False
-          assert gate["production_trust_used"] is False
-          assert proof["signed_install_verified"] is False
-          assert proof["bootstrap_delivery_verified"] is False
-          assert proof["distribution_activation_allowed"] is False
-          assert not Path("apps/files").exists()
-          print("FILES_CANONICAL_OWNER_GATE=PASS")
-          PY
+      # Files signer/install proof resumes after Gate B materializes apps/files.
+      # The former "OS is still canonical owner" negative proof was retired at Gate A.
 
       - name: Build real Notes component candidates
         run: |

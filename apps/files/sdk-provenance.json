@@ -1,0 +1,101 @@
+{
+  "$schema": "ordax.files-sdk-contract-provenance/1",
+  "sdk_bundle_version": "1.21.0",
+  "source_repository": "ordaxsystems/ordax-os",
+  "source_commit": "5ef654236da1f2d343e3e33cd46bb747d52bc24c",
+  "source_bundle": "sdk/app-sdk-v1/bundle.json",
+  "contracts": [
+    {
+      "name": "app-activation",
+      "source_path": "system/contracts/app-activation.mjs",
+      "git_blob_sha": "1de6af71e6f20b14f3d7892d4d4758d23a0d1e90",
+      "target": "apps/files/src/sdk/contracts/app-activation.mjs"
+    },
+    {
+      "name": "file-space",
+      "source_path": "system/contracts/file-space.mjs",
+      "git_blob_sha": "133d40904f48bbf981dbdfe7e34d275d1a7b1cd1",
+      "target": "apps/files/src/sdk/contracts/file-space.mjs"
+    },
+    {
+      "name": "recent-files",
+      "source_path": "system/contracts/recent-files.mjs",
+      "git_blob_sha": "06372c634f7fbb5e8d84bdea9e1c5a92761d37c0",
+      "target": "apps/files/src/sdk/contracts/recent-files.mjs"
+    },
+    {
+      "name": "project-catalog",
+      "source_path": "system/contracts/project-catalog.mjs",
+      "git_blob_sha": "a598f300ae53b30283e90ea0834e70799b56c609",
+      "target": "apps/files/src/sdk/contracts/project-catalog.mjs"
+    },
+    {
+      "name": "surface-render-lifecycle",
+      "source_path": "system/contracts/surface-render-lifecycle.mjs",
+      "git_blob_sha": "4808fd208be87926bc62fe192a841ad521e13783",
+      "target": "apps/files/src/sdk/contracts/surface-render-lifecycle.mjs"
+    },
+    {
+      "name": "component-runtime",
+      "source_path": "system/contracts/component-runtime.mjs",
+      "git_blob_sha": "32dcacae6962b48e17b0abac0d64355aca1cecd5",
+      "target": "apps/files/src/sdk/contracts/component-runtime.mjs"
+    },
+    {
+      "name": "component-manifest",
+      "source_path": "system/contracts/component-manifest.mjs",
+      "git_blob_sha": "af8dcfe56414e9725f118279785d850b699aa0a9",
+      "target": "apps/files/src/sdk/contracts/component-manifest.mjs"
+    },
+    {
+      "name": "first-party-app",
+      "source_path": "system/contracts/first-party-app.mjs",
+      "git_blob_sha": "8ec22f95e7d1a33bdaaeb7feb472d886d9ddf82b",
+      "target": "apps/files/src/sdk/contracts/first-party-app.mjs"
+    },
+    {
+      "name": "app-intelligence-manifest",
+      "source_path": "system/contracts/app-intelligence-manifest.mjs",
+      "git_blob_sha": "7cb63755687c3066633c3c2140315c7e01d527d8",
+      "target": "apps/files/src/sdk/contracts/app-intelligence-manifest.mjs"
+    },
+    {
+      "name": "application-action-manifest",
+      "source_path": "system/contracts/application-action-manifest.mjs",
+      "git_blob_sha": "a67197c4f3d25aa8ddbfe28a62b62b22bfda5ac6",
+      "target": "apps/files/src/sdk/contracts/application-action-manifest.mjs"
+    },
+    {
+      "name": "application-action-provider",
+      "source_path": "system/contracts/application-action-provider.mjs",
+      "git_blob_sha": "158664c2da836ee0cbc67edb275b87542933480f",
+      "target": "apps/files/src/sdk/contracts/application-action-provider.mjs"
+    },
+    {
+      "name": "localization",
+      "source_path": "system/contracts/localization.mjs",
+      "git_blob_sha": "df3fb7fc65f27d35cffc984c748b0e199b499bb4",
+      "target": "apps/files/src/sdk/contracts/localization.mjs"
+    },
+    {
+      "name": "localization-pack",
+      "source_path": "system/contracts/localization-pack.mjs",
+      "git_blob_sha": "9e72bcbf8b89a6d3f089331dcbbdc5d3c543a020",
+      "target": "apps/files/src/sdk/contracts/localization-pack.mjs"
+    },
+    {
+      "name": "application-action-capability",
+      "source_path": "system/contracts/application-action-capability.mjs",
+      "git_blob_sha": "c78daf23c859bb09fb2029c9908c10f9c7715f3c",
+      "target": "apps/files/src/sdk/contracts/application-action-capability.mjs"
+    },
+    {
+      "name": "locale-profile",
+      "source_path": "system/contracts/locale-profile.mjs",
+      "git_blob_sha": "2edd61c44e76d87e7fd1873ff833d48009b9a95c",
+      "target": "apps/files/src/sdk/contracts/locale-profile.mjs"
+    }
+  ],
+  "authority": "none",
+  "distribution_activation_allowed": false
+}

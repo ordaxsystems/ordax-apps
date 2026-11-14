@@ -10,23 +10,50 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   const $ = id => document.getElementById(id);
   let state = { targets: [], operations: [] }, refreshPromise = null, submitting = 0, file = null, entries = [], proposal = null, reviewed = null, stamp = '', handled = new Set();
   let continuityProposal = null, contextResult = null, continuityBase = null;
+  let blenderProposal = null;
+  let pendingReversibleWrite = null, lastReversibleWrite = null;
+  let continuityBaseline = JSON.stringify(['','','','','']);
   let desiredBinding = null;
   const accountHost = window.ordaxStudioAccountHost;
   let accountAvailable = false, accountBusy = false;
   const dirty = () => file && $('projectEditor').value !== file.content;
-  const continuityDirty = () => Boolean($('studioSummary').value.trim() || $('studioNextAction').value.trim());
+  const continuityFields = Object.freeze(['studioSummary','studioNextAction','studioCompleted','studioBlockers','studioChangedPaths']);
+  const continuityStamp = () => JSON.stringify(continuityFields.map(id => $(id).value));
+  const continuityDirty = () => continuityStamp() !== continuityBaseline;
+  const blenderDirty = () => Boolean(blenderProposal);
+  const safeContinuityList = value => Array.isArray(value) ? value.filter(item => typeof item === 'string').slice(0, 100) : [];
+  function writeContinuity(value = null) {
+    $('studioSummary').value = typeof value?.summary === 'string' ? value.summary : '';
+    $('studioNextAction').value = typeof value?.next_action === 'string' ? value.next_action : '';
+    $('studioCompleted').value = safeContinuityList(value?.completed).join('\n');
+    $('studioBlockers').value = safeContinuityList(value?.blockers).join('\n');
+    $('studioChangedPaths').value = safeContinuityList(value?.changed_paths).join('\n');
+    continuityBaseline = continuityStamp();
+  }
+  function continuityList(id, label) {
+    const values = $(id).value.split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+    if (values.length > 100) throw new Error(`${label}: use no máximo 100 itens.`);
+    if (values.some(item => item.length > 4000 || item.includes('\0'))) throw new Error(`${label}: cada item deve ter até 4000 caracteres.`);
+    return values;
+  }
   const selected = () => ({ deviceId: $('runtimeDevice').value, project: $('runtimeProject').value });
   const currentBinding = () => selected().deviceId && selected().project ? selected() : null;
+  function clearReversibleWrite() {
+    pendingReversibleWrite = null;
+    lastReversibleWrite = null;
+  }
+  const reversibleWriteMatches = value => Boolean(value && file &&
+    value.deviceId === file.deviceId && value.project === file.project && value.path === file.path);
   function assertContext(binding) {
     if (bindingEquals(binding, currentBinding())) return;
     $('activityScope').value = 'project';
-    if (dirty() || continuityDirty()) throw new Error('Revise ou descarte as alterações do espaço de trabalho antes de trocar de projeto.');
+    if (dirty() || continuityDirty() || blenderDirty()) throw new Error('Revise ou descarte as alterações do espaço de trabalho antes de trocar de projeto.');
     if (submitting || state.operations.some(op => pending(op) || op.status === 'uncertain')) throw new Error('Confira a operação do Runtime antes de trocar de projeto.');
   }
   function setContext(binding) {
     assertContext(binding); desiredBinding = binding;
     if (bindingEquals(binding, currentBinding())) return;
-    file = null; entries = []; reviewed = null; proposal = null; clearProjectTools();
+    clearReversibleWrite(); file = null; entries = []; reviewed = null; proposal = null; clearProjectTools();
     $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('projectPath').value = '.';
     $('runtimeProject').replaceChildren(new Option('Selecione um projeto', ''));
     if (binding) {
@@ -40,7 +67,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   const message = text => { $('projectNotice').textContent = text; };
   const task = fn => Promise.resolve().then(fn).catch(error => message(error.message));
   const workspaceVisible = () => !$('projectDialog').hidden;
-  const canClose = () => !dirty() && !continuityDirty();
+  const canClose = () => !dirty() && !continuityDirty() && !blenderDirty();
   function showWorkspace(visible) {
     // Never hide an unreviewed file edit or continuity draft.
     if (!visible && !canClose()) {
@@ -67,27 +94,34 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   }
   function clearProjectTools() {
     continuityProposal = null; contextResult = null; continuityBase = null; $('studioContinuityReviewArea').hidden = true;
+    blenderProposal = null; $('studioBlenderReviewArea').hidden = true;
     $('studioContextSource').textContent = 'Nenhum contexto recuperado. Consulte o Runtime autorizado para este projeto.';
-    $('studioSummary').value = ''; $('studioNextAction').value = '';
+    writeContinuity();
     for (const tool of Object.values(workspaceTools)) $(tool.target).textContent = 'Consulte o projeto selecionado para atualizar.';
   }
   function controls() {
     const active = submitting || state.operations.some(pending), blocked = active || state.recoveryRequired || state.operations.some(op => op.status === 'uncertain');
     const ready = deviceAvailable(state, selected().deviceId) && selected().project;
     $('workspaceProjectConversations').disabled = blocked || !ready || !onProjectConversations;
-    for (const id of ['studioGitStatus','studioGitDiff','studioSearchRun','studioBriefing','studioContinuityRead','studioPreviewStatus','studioContinuityReview']) $(id).disabled = blocked || !ready;
+    for (const id of ['studioGitStatus','studioGitDiff','studioSearchRun','studioBriefing','studioContinuityRead','studioPreviewStatus','studioContinuityReview','studioBlenderStatus','studioBlenderSchema','studioBlenderScene','studioBlenderInspect','studioBlenderStartReview','studioBlenderTransformReview','studioBlenderBevelReview','studioBlenderCreateReview','studioBlenderMaterialReview','studioBlenderSaveReview']) $(id).disabled = blocked || !ready;
+    for (const id of ['studioBlenderObject','studioBlenderObjectKind','studioBlenderTransformField','studioBlenderVector','studioBlenderBevelName','studioBlenderBevelWidth','studioBlenderBevelSegments','studioBlenderPrimitiveName','studioBlenderPrimitive','studioBlenderPrimitiveLocation','studioBlenderPrimitiveSize','studioBlenderPrimitiveDepth','studioBlenderPrimitiveSegments','studioBlenderMaterialName','studioBlenderBaseColor','studioBlenderRoughness','studioBlenderMetallic','studioBlenderSavePath']) $(id).disabled = blocked || !ready;
+    $('studioBlenderApply').disabled = blocked || !ready || !blenderProposal;
     $('studioContinuityReview').disabled ||= !continuityBase;
     $('studioContinuityApply').disabled = blocked || !ready || !continuityProposal;
     $('studioContextAttach').disabled = !contextResult || blocked;
-    $('runtimeConnect').disabled = active || state.recoveryRequired || Boolean(dirty()) || continuityDirty() || !state.configured;
+    $('runtimeConnect').disabled = active || state.recoveryRequired || Boolean(dirty()) || continuityDirty() || blenderDirty() || !state.configured;
     $('productAccountSection').hidden = !accountAvailable || state.configured || state.connected;
-    $('productSignIn').disabled = accountBusy || blocked || Boolean(dirty()) || continuityDirty();
+    $('productSignIn').disabled = accountBusy || blocked || Boolean(dirty()) || continuityDirty() || blenderDirty();
     $('runtimeConnect').textContent = state.connected ? 'Reconectar Runtime' : 'Conectar Runtime';
-    $('runtimeDevice').disabled = blocked || !state.connected || dirty() || continuityDirty(); $('runtimeProject').disabled = blocked || !state.connected || dirty() || continuityDirty();
-    $('studioSummary').disabled = blocked; $('studioNextAction').disabled = blocked;
+    $('runtimeDevice').disabled = blocked || !state.connected || dirty() || continuityDirty() || blenderDirty(); $('runtimeProject').disabled = blocked || !state.connected || dirty() || continuityDirty() || blenderDirty();
+    for (const id of continuityFields) $(id).disabled = blocked;
     $('projectList').disabled = blocked || !ready || dirty(); $('projectPath').disabled = blocked || !ready || dirty();
     $('projectEditor').disabled = blocked || !file;
     $('projectAttach').disabled = !file || dirty() || blocked; $('projectDiscard').disabled = !dirty() || active;
+    const undoReady = reversibleWriteMatches(lastReversibleWrite) && Boolean(lastReversibleWrite.afterSha256) &&
+      file.sha256 === lastReversibleWrite.afterSha256 && !dirty();
+    $('projectUndo').hidden = !lastReversibleWrite;
+    $('projectUndo').disabled = blocked || !ready || !undoReady;
     $('projectReview').disabled = !dirty() || blocked; $('projectApply').disabled = reviewed?.kind !== 'write' || blocked || !ready;
     $('terminalReview').disabled = blocked || !ready; $('terminalRun').disabled = blocked || !ready || !reviewed || reviewed.kind !== 'terminal';
     for (const button of $('projectFiles').querySelectorAll('button')) button.disabled = blocked || dirty() || !ready;
@@ -142,6 +176,25 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   function handleResults() {
     for (const op of state.operations) {
       if (handled.has(op.id) || pending(op)) continue; handled.add(op.id);
+      if (pendingReversibleWrite?.operationId === op.id) {
+        const transaction = pendingReversibleWrite;
+        pendingReversibleWrite = null;
+        if (op.status === 'succeeded') {
+          if (transaction.mode === 'apply') {
+            lastReversibleWrite = {
+              deviceId: transaction.deviceId,
+              project: transaction.project,
+              path: transaction.path,
+              beforeContent: transaction.beforeContent,
+              afterContent: transaction.afterContent,
+              afterSha256: null,
+              receiptId: op.requestId || op.id,
+            };
+          } else if (transaction.mode === 'undo') {
+            lastReversibleWrite = null;
+          }
+        }
+      }
       if (op.status !== 'succeeded') continue;
       const data = resultData(op);
       if (op.deviceId !== selected().deviceId) continue;
@@ -162,15 +215,29 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
         }
         if (['continuity','continuitySave'].includes(op.kind) && Object.hasOwn(data, 'state')) {
           const saved = data.state;
-          if (saved == null || (typeof saved === 'object' && !Array.isArray(saved))) continuityBase = { completed: saved?.completed ?? [], blockers: saved?.blockers ?? [], changedPaths: saved?.changed_paths ?? [] };
+          if (saved == null || (typeof saved === 'object' && !Array.isArray(saved))) {
+            continuityBase = saved ?? {};
+            writeContinuity(continuityBase);
+            continuityProposal = null;
+            $('studioContinuityReviewArea').hidden = true;
+          }
         }
-        if (op.kind === 'continuitySave') { $('studioSummary').value = ''; $('studioNextAction').value = ''; }
         message(`${tool.title} atualizado.`);
       }
       if (op.kind === 'directory') { entries = (Array.isArray(data.entries) ? data.entries : []).map(e => ({ ...e, path: e.relative_path || e.path })).filter(e => typeof e.path === 'string' && ['file','directory'].includes(e.kind)); renderEntries(); message(data.truncated ? 'A lista foi limitada. Abra uma subpasta para continuar.' : `${entries.length} itens encontrados.`); }
       if (op.kind === 'read') {
         if (typeof data.content !== 'string' || !/^[a-f0-9]{64}$/.test(data.sha256 || '') || (data.end_line !== undefined && data.end_line < data.line_count)) { message('O Runtime retornou somente parte do arquivo. Escolha um arquivo menor para editar.'); continue; }
         file = { ...selected(), path: data.relative_path || data.path || op.path, content: data.content, sha256: data.sha256 };
+        if (lastReversibleWrite) {
+          if (!reversibleWriteMatches(lastReversibleWrite)) {
+            lastReversibleWrite = null;
+          } else if (lastReversibleWrite.afterSha256 === null) {
+            if (data.content === lastReversibleWrite.afterContent) lastReversibleWrite.afterSha256 = data.sha256;
+            else lastReversibleWrite = null;
+          } else if (data.sha256 !== lastReversibleWrite.afterSha256) {
+            lastReversibleWrite = null;
+          }
+        }
         $('projectEditor').value = proposal ?? file.content; proposal = null; reviewed = null; $('projectReviewArea').hidden = true; message('Arquivo aberto. Edite e revise a alteração antes de aplicar.');
       }
       if (op.kind === 'write') {
@@ -188,9 +255,19 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     })().finally(() => { refreshPromise = null; });
     return refreshPromise;
   }
-  async function submit(data) {
+  async function submit(data, reversibleTransaction = null) {
     submitting++; controls();
-    try { const request = { ...selected(), ...data }; const op = assertOperationBinding(request, await host.runtimeSubmit(request)); state.operations.push(op); message(`${labels[op.status]} · ${op.label}`); }
+    try {
+      const request = { ...selected(), ...data };
+      const op = assertOperationBinding(request, await host.runtimeSubmit(request));
+      if (reversibleTransaction) {
+        reversibleTransaction.operationId = op.id;
+        pendingReversibleWrite = reversibleTransaction;
+      }
+      state.operations.push(op);
+      message(`${labels[op.status]} · ${op.label}`);
+      return op;
+    }
     catch (error) { await refresh(); throw error; }
     finally { await refresh({ fresh: true }); submitting--; controls(); }
   }
@@ -245,7 +322,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   $('projectClose').addEventListener('click', () => { showWorkspace(false); });
   async function applyConnectedState(connected) {
     state = connected; handled = new Set(state.operations.map(op => op.id));
-    file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries();
+    clearReversibleWrite(); file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries();
     $('runtimeDevice').replaceChildren(new Option('Selecione um dispositivo', ''));
     for (const device of state.targets) $('runtimeDevice').append(new Option(deviceLabel(device), device.deviceId));
     const deviceId = desiredBinding ? state.targets.find(target => target.deviceId === desiredBinding.deviceId)?.deviceId : state.targets.length === 1 ? state.targets[0].deviceId : null;
@@ -284,8 +361,8 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   if (accountHost?.available) void Promise.resolve().then(() => accountHost.available())
     .then(available => { accountAvailable = available === true; controls(); })
     .catch(() => { accountAvailable = false; controls(); });
-  $('runtimeDevice').addEventListener('change', () => task(async () => { desiredBinding = null; file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries(); controls(); if (deviceAvailable(state, selected().deviceId)) await submit({ kind: 'projects' }); }));
-  $('runtimeProject').addEventListener('change', () => { desiredBinding = currentBinding(); file = null; reviewed = null; entries = []; clearProjectTools(); $('projectReviewArea').hidden = true; $('projectPath').value = '.'; $('projectEditor').value = ''; $('activityScope').value = 'project'; renderEntries(); renderOperations(); controls(); });
+  $('runtimeDevice').addEventListener('change', () => task(async () => { desiredBinding = null; clearReversibleWrite(); file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries(); controls(); if (deviceAvailable(state, selected().deviceId)) await submit({ kind: 'projects' }); }));
+  $('runtimeProject').addEventListener('change', () => { desiredBinding = currentBinding(); clearReversibleWrite(); file = null; reviewed = null; entries = []; clearProjectTools(); $('projectReviewArea').hidden = true; $('projectPath').value = '.'; $('projectEditor').value = ''; $('activityScope').value = 'project'; renderEntries(); renderOperations(); controls(); });
   $('projectList').addEventListener('click', () => task(() => submit({ kind: 'directory', path: $('projectPath').value })));
   $('projectFilter').addEventListener('input', renderEntries);
   $('projectEditor').addEventListener('input', () => { reviewed = null; $('projectReviewArea').hidden = true; controls(); });
@@ -296,7 +373,43 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     review({ deviceId: file.deviceId, project: file.project, kind: 'write', path: file.path, content: $('projectEditor').value, expectedSha256: file.sha256 }, `Alterar ${file.project}/${file.path} em ${file.deviceId}. O Runtime recusará a gravação se o arquivo tiver mudado.`);
     $('projectDiff').textContent = changePreview(file.content, reviewed.content); $('projectApply').hidden = false; $('terminalRun').hidden = true;
   });
-  $('projectApply').addEventListener('click', () => task(async () => { const current = reviewed; if (current?.kind !== 'write') return; reviewed = null; $('projectReviewArea').hidden = true; await submit(current); }));
+  $('projectUndo').addEventListener('click', () => {
+    const undo = lastReversibleWrite;
+    if (!reversibleWriteMatches(undo) || !undo.afterSha256 || file.sha256 !== undo.afterSha256 || dirty()) {
+      return message('Releia a versão atual do arquivo antes de tentar desfazer.');
+    }
+    review({
+      deviceId: undo.deviceId,
+      project: undo.project,
+      kind: 'write',
+      path: undo.path,
+      content: undo.beforeContent,
+      expectedSha256: undo.afterSha256,
+      undoCandidate: true,
+    }, `Desfazer a última alteração confirmada de ${undo.project}/${undo.path}. O Runtime recusará a reversão se o arquivo tiver mudado desde o recibo ${undo.receiptId}.`);
+    $('projectDiff').textContent = changePreview(file.content, undo.beforeContent);
+    $('projectApply').hidden = false;
+    $('terminalRun').hidden = true;
+  });
+  $('projectApply').addEventListener('click', () => task(async () => {
+    const current = reviewed;
+    if (current?.kind !== 'write') return;
+    const { undoCandidate = false, ...request } = current;
+    const transaction = undoCandidate
+      ? { mode: 'undo', operationId: null }
+      : {
+          mode: 'apply',
+          operationId: null,
+          deviceId: file.deviceId,
+          project: file.project,
+          path: file.path,
+          beforeContent: file.content,
+          afterContent: request.content,
+        };
+    reviewed = null;
+    $('projectReviewArea').hidden = true;
+    await submit(request, transaction);
+  }));
   $('terminalReview').addEventListener('click', () => task(() => {
     const argv = JSON.parse($('terminalArgv').value);
     if (!Array.isArray(argv) || !argv.length || argv.some(a => typeof a !== 'string' || !a)) throw new Error('Informe os argumentos como uma lista JSON de textos.');
@@ -313,9 +426,83 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
       if (next === null) return; event.preventDefault(); tab(buttons[next].dataset.studioTab); buttons[next].focus();
     });
   }
-  for (const [id, kind] of Object.entries({ studioGitStatus: 'gitStatus', studioGitDiff: 'gitDiff', studioPreviewStatus: 'preview', studioBriefing: 'briefing', studioContinuityRead: 'continuity', studioSearchRun: 'search' })) {
+  for (const [id, kind] of Object.entries({ studioGitStatus: 'gitStatus', studioGitDiff: 'gitDiff', studioPreviewStatus: 'preview', studioBriefing: 'briefing', studioContinuityRead: 'continuity', studioSearchRun: 'search', studioBlenderStatus: 'blenderStatus', studioBlenderSchema: 'blenderSchema', studioBlenderScene: 'blenderScene' })) {
     $(id).addEventListener('click', () => task(() => submit({ kind, ...(['search','briefing'].includes(kind) ? { query: kind === 'search' ? $('studioSearchQuery').value : '' } : {}) })));
   }
+  function blenderSelectorInput() {
+    const target = $('studioBlenderObject').value.trim();
+    if (!target) throw new Error('Informe o nome ou object id do Blender.');
+    return $('studioBlenderObjectKind').value === 'id' ? { objectId: target } : { objectName: target };
+  }
+  function blenderVector(id, label) {
+    const values = $(id).value.split(',').map(value => Number(value.trim()));
+    if (values.length !== 3 || values.some(value => !Number.isFinite(value))) throw new Error(`${label}: informe três números separados por vírgula.`);
+    return values;
+  }
+  function blenderNumberInput(id, label, { integer = false } = {}) {
+    const value = Number($(id).value.trim());
+    if (!Number.isFinite(value) || (integer && !Number.isInteger(value))) throw new Error(`${label}: informe um número válido.`);
+    return value;
+  }
+  function reviewBlender(value) {
+    blenderProposal = Object.freeze({ ...selected(), ...value });
+    $('studioBlenderProposal').textContent = JSON.stringify(blenderProposal, null, 2);
+    $('studioBlenderReviewArea').hidden = false;
+    controls();
+    requestAnimationFrame(() => $('studioBlenderReviewArea').scrollIntoView({ block: 'nearest' }));
+  }
+  function invalidateBlenderReview() {
+    blenderProposal = null;
+    $('studioBlenderReviewArea').hidden = true;
+    controls();
+  }
+  $('studioBlenderInspect').addEventListener('click', () => task(() => submit({ kind: 'blenderInspect', ...blenderSelectorInput() })));
+  $('studioBlenderStartReview').addEventListener('click', () => task(() => reviewBlender({ kind: 'blenderStart' })));
+  $('studioBlenderTransformReview').addEventListener('click', () => task(() => reviewBlender({
+    kind: 'blenderTransform',
+    ...blenderSelectorInput(),
+    transform: $('studioBlenderTransformField').value,
+    vector: blenderVector('studioBlenderVector', 'Transformação'),
+  })));
+  $('studioBlenderBevelReview').addEventListener('click', () => task(() => reviewBlender({
+    kind: 'blenderBevel',
+    ...blenderSelectorInput(),
+    modifierName: $('studioBlenderBevelName').value.trim(),
+    width: blenderNumberInput('studioBlenderBevelWidth', 'Largura do bevel'),
+    segments: blenderNumberInput('studioBlenderBevelSegments', 'Segmentos do bevel', { integer: true }),
+  })));
+  $('studioBlenderCreateReview').addEventListener('click', () => task(() => reviewBlender({
+    kind: 'blenderCreate',
+    name: $('studioBlenderPrimitiveName').value.trim(),
+    primitive: $('studioBlenderPrimitive').value,
+    location: blenderVector('studioBlenderPrimitiveLocation', 'Localização'),
+    size: blenderNumberInput('studioBlenderPrimitiveSize', 'Tamanho ou raio'),
+    depth: blenderNumberInput('studioBlenderPrimitiveDepth', 'Profundidade'),
+    segments: blenderNumberInput('studioBlenderPrimitiveSegments', 'Segmentos', { integer: true }),
+  })));
+  $('studioBlenderMaterialReview').addEventListener('click', () => task(() => reviewBlender({
+    kind: 'blenderMaterial',
+    ...blenderSelectorInput(),
+    materialName: $('studioBlenderMaterialName').value.trim(),
+    baseColor: $('studioBlenderBaseColor').value,
+    roughness: blenderNumberInput('studioBlenderRoughness', 'Roughness'),
+    metallic: blenderNumberInput('studioBlenderMetallic', 'Metallic'),
+  })));
+  $('studioBlenderSaveReview').addEventListener('click', () => task(() => reviewBlender({
+    kind: 'blenderSave',
+    targetPath: $('studioBlenderSavePath').value.trim(),
+  })));
+  for (const id of ['studioBlenderObject','studioBlenderObjectKind','studioBlenderTransformField','studioBlenderVector','studioBlenderBevelName','studioBlenderBevelWidth','studioBlenderBevelSegments','studioBlenderPrimitiveName','studioBlenderPrimitive','studioBlenderPrimitiveLocation','studioBlenderPrimitiveSize','studioBlenderPrimitiveDepth','studioBlenderPrimitiveSegments','studioBlenderMaterialName','studioBlenderBaseColor','studioBlenderRoughness','studioBlenderMetallic','studioBlenderSavePath']) {
+    $(id).addEventListener('input', invalidateBlenderReview);
+    $(id).addEventListener('change', invalidateBlenderReview);
+  }
+  $('studioBlenderCancel').addEventListener('click', invalidateBlenderReview);
+  $('studioBlenderApply').addEventListener('click', () => task(async () => {
+    const value = blenderProposal;
+    if (!value) return;
+    await submit(value);
+    invalidateBlenderReview();
+  }));
   $('studioContextAttach').addEventListener('click', () => task(async () => {
     if (!contextResult || !workspaceResultBelongs(contextResult, selected())) throw new Error('Consulte novamente o contexto do projeto selecionado.');
     await attach({ kind: 'text', name: `${selected().project}/${contextResult.name}`, text: contextResult.text });
@@ -324,14 +511,22 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   $('studioContinuityReview').addEventListener('click', () => {
     if (!$('studioSummary').value.trim()) return message('Informe um resumo antes de revisar.');
     if (!continuityBase) return message('Consulte a continuidade para preservar o registro existente antes de salvar.');
-    continuityProposal = Object.freeze({ ...selected(), ...structuredClone(continuityBase), kind: 'continuitySave', summary: $('studioSummary').value, nextAction: $('studioNextAction').value });
+    continuityProposal = Object.freeze({
+      ...selected(),
+      kind: 'continuitySave',
+      summary: $('studioSummary').value,
+      nextAction: $('studioNextAction').value,
+      completed: continuityList('studioCompleted', 'Concluídos'),
+      blockers: continuityList('studioBlockers', 'Bloqueios'),
+      changedPaths: continuityList('studioChangedPaths', 'Arquivos alterados'),
+    });
     $('studioContinuityProposal').textContent = JSON.stringify(continuityProposal, null, 2); $('studioContinuityReviewArea').hidden = false; controls();
   });
   function invalidateContinuity() { continuityProposal = null; $('studioContinuityReviewArea').hidden = true; controls(); }
-  for (const id of ['studioSummary','studioNextAction']) $(id).addEventListener('input', invalidateContinuity);
+  for (const id of continuityFields) $(id).addEventListener('input', invalidateContinuity);
   $('studioContinuityCancel').addEventListener('click', invalidateContinuity);
-  $('studioContinuityDiscard').addEventListener('click', () => { $('studioSummary').value = ''; $('studioNextAction').value = ''; invalidateContinuity(); });
-  $('studioContinuityApply').addEventListener('click', () => task(async () => { const value = continuityProposal; if (!value) return; continuityBase = null; invalidateContinuity(); await submit(value); }));
+  $('studioContinuityDiscard').addEventListener('click', () => { writeContinuity(continuityBase); invalidateContinuity(); });
+  $('studioContinuityApply').addEventListener('click', () => task(async () => { const value = continuityProposal; if (!value) return; invalidateContinuity(); await submit(value); }));
   const timer = setInterval(() => { if (workspaceVisible() || state.operations.some(pending)) refresh(); }, 1000);
   $('workspaceProjectConversations').addEventListener('click', () => task(() => onProjectConversations({ binding: selected(), name: $('runtimeProject').selectedOptions[0]?.textContent || selected().project })));
   window.addEventListener('beforeunload', () => clearInterval(timer));

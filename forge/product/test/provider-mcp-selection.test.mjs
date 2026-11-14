@@ -12,6 +12,16 @@ test('a visible plugin name never constitutes an MCP invocation receipt',()=>{
   assert.equal(selected.state,'selection_visible');
   assert.equal(selected.selectionObserved,true);
   assert.equal(selected.invocationVerified,false);
+  const forge=classifyProviderMcpSelection({
+    composerPresent:true,exactNamedControl:true,exactSelectedControl:true,
+    selectedIntegration:'forge'
+  });
+  assert.equal(forge.integration,'forge');
+  assert.equal(forge.invocationVerified,false);
+  const fallback=classifyProviderMcpSelection({
+    composerPresent:true,exactSelectedControl:true,selectedIntegration:'ordax'
+  });
+  assert.equal(fallback.integration,'ordax');
   assert.equal(classifyProviderMcpSelection({composerPresent:true,exactNamedControl:true}).selectionObserved,false);
   assert.equal(classifyProviderMcpSelection({composerPresent:true}).state,'not_observed');
   assert.equal(classifyProviderMcpSelection(null).state,'unavailable');
@@ -31,7 +41,17 @@ test('natural project building requests require MCP even without a mention',()=>
     'Faça uma página HTML para celular.',
     'Desenvolva um aplicativo para meu negócio.',
     'Corrija o layout do projeto.',
-    'Teste o site localmente.'
+    'Teste o site localmente.',
+    'Adicione um arquivo README no projeto.',
+    'Remova o arquivo temporário.',
+    'Renomeie a branch do Git.',
+    'Rode os testes do projeto.',
+    'Execute o build do frontend.',
+    'Salve o arquivo HTML.',
+    'Verifique o status do Git.',
+    'Faça commit no repositório.',
+    'Delete the file in this project.',
+    'Run tests for the repository.'
   ]) {
     assert.equal(requiresMcpForProjectPrompt(request),true,request);
     assert.throws(()=>requireSelectedMcpForPrompt(request,
@@ -42,7 +62,9 @@ test('natural project building requests require MCP even without a mention',()=>
     'Como criar um site para minha cafeteria?',
     'Explique como corrigir layout.',
     'Quanto é 2 + 2?',
-    'Escreva uma mensagem de agradecimento.'
+    'Escreva uma mensagem de agradecimento.',
+    'Resuma o objetivo do projeto.',
+    'Faça uma poesia.'
   ]) assert.equal(requiresMcpForProjectPrompt(request),false,request);
   assert.equal(requireSelectedMcpForPrompt('Crie um site para minha cafeteria',
     classifyProviderMcpSelection({composerPresent:true,exactSelectedControl:true}),
@@ -139,6 +161,26 @@ test('real ChatGPT app picker requires a unique official app button and an open 
   assert.equal(inspectProviderMcpPickerOption(null).selectable,false);
 });
 
+test('project continuation preserves MCP preflight without gating standalone text chats',()=>{
+  for(const prompt of [
+    'continue','Continue.', 'prossiga', 'pode continuar', 'retome o trabalho',
+    'avance a implementação', 'continue trabalhando', 'continue no projeto',
+    'finalize', 'execute o próximo passo', 'Keep going', 'continue working'
+  ]) {
+    assert.equal(requiresMcpForProjectPrompt(prompt,{projectContinuation:true}),true,prompt);
+    assert.equal(requiresMcpForProjectPrompt(prompt),false,prompt);
+    assert.throws(()=>requireSelectedMcpForPrompt(prompt,
+      classifyProviderMcpSelection({composerPresent:true}),{requiresMcp:true}),
+      /provider_mcp_selection_required/);
+  }
+  for(const prompt of ['continue explicando','continue a história','resuma o projeto']) {
+    assert.equal(requiresMcpForProjectPrompt(prompt,{projectContinuation:true}),false,prompt);
+  }
+  const main=fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../desktop/main.mjs'),'utf8');
+  assert.match(main,/projectContinuation=task\.has_messages&&Boolean\(store\.db\.prepare\(/);
+  assert.match(main,/requiresMcpForProjectPrompt\(prompt,\{projectContinuation\}\)/);
+});
+
 test('Forge displays explicit MCP state in Forjador and connections, without silent grant',()=>{
   const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
   const html=fs.readFileSync(path.join(root,'desktop/ui.html'),'utf8');
@@ -154,7 +196,7 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   assert.match(preload,/ordax:provider:mcp-selection/);
   assert.match(worker,/classifyProviderMcpSelection/);
   assert.match(worker,/requiresMcp:this\.streamContext\?\.requiresMcp===true,app:mcpApp/);
-  assert.match(main,/requiresMcpForProjectPrompt\(prompt\)/);
+  assert.match(main,/requiresMcpForProjectPrompt\(prompt,\{projectContinuation\}\)/);
   assert.match(main,/providerRunPresentationWorkers\.add\(runWorker\)/);
   assert.match(main,/providerRunPresentationWorkers\.delete\(runWorker\)/);
   assert.match(main,/candidate\.view\.setVisible\(true\)/);

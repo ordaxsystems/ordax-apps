@@ -23,8 +23,12 @@ export function withProviderMcpMention(prompt,{app='ordax-mcp'}={}) {
 }
 
 export function withForjadorMcpMention(prompt,{authorSource='human',app='ordax-mcp'}={}) {
-  if(authorSource!=='orchestrator')return String(prompt??'');
-  return withProviderMcpMention(prompt,{app});
+  const text=String(prompt??'');
+  providerMcpMention(app); // Validate requested app even for human messages.
+  if(mentionWasRequested(text,app==='forge-mcp'?'ordax-mcp':'forge-mcp'))
+    throw Error('provider_mcp_app_conflict');
+  // The provider-owned picker selects the app. Never fake a grant by adding @text.
+  return text;
 }
 
 export function mentionWasRequested(prompt,app=null) {

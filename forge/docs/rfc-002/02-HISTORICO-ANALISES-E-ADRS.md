@@ -1,9 +1,11 @@
 # OrdaX Orchestrator Lab — Histórico de Análises, Divergências e Decisões
 
+> **HISTÓRICO / SUPERSEDED COMO FONTE NORMATIVA.** Este arquivo permanece útil apenas para proveniência de decisões da RFC-002. Para direção atual, usar [../README.md](../README.md) e [../FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md](../FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md).
+
 **Identificador:** ORDAX-ORCH-HISTORY-002  
 **Referência:** 2026-10-19  
 **Natureza:** registro de proveniência e motivação, **não** uma segunda fonte de regras de produto.  
-**Fonte normativa principal:** `01-RFC002-PLANO-MESTRE.md`. Quando este histórico divergir do RFC-002, prevalece o RFC-002 após revisão explícita.
+**Fonte normativa daquele ciclo:** `01-RFC002-PLANO-MESTRE.md`. Essa relação vale apenas para interpretar a RFC-002 histórica; o roadmap GPT-first prevalece para trabalho atual.
 
 ## Como interpretar este documento
 

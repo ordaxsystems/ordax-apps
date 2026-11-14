@@ -34,8 +34,21 @@ def make_root(parent: Path) -> Path:
         "ordax-apps.workspace.json",
         "platform-sdk.lock.json",
         "migrations/files.externalization.json",
+        "migrations/files.source-snapshot.json",
     ):
         shutil.copyfile(ROOT / path, root / path)
+
+    # Negative/historical fixtures intentionally model the pre-Gate-B state.
+    # The real repository may already be canonical in ordax-apps; never let that
+    # current state silently change the semantics of remove-first regression tests.
+    plan = load_plan(root)
+    plan["source_repository_current"] = None
+    plan["source_path_current"] = None
+    plan["source_of_truth_state"] = "source-absent-after-platform-removal"
+    plan["source_cutover"]["target_materialization_state"] = "pending"
+    plan["source_cutover"]["target_source_present"] = False
+    plan.pop("gate_b", None)
+    write_json(root / "migrations" / "files.externalization.json", plan)
     return root
 
 
@@ -73,6 +86,10 @@ def authorize(root: Path) -> dict:
     plan.pop("prelaunch_package_staging", None)
     plan["source_cutover_allowed"] = True
     plan["gate_a_platform_commit"] = GATE_SHA
+    plan["source_cutover"]["platform_absence_proven_at"] = GATE_SHA
+    plan["source_cutover"]["gate_a_complete"] = True
+    plan["source_cutover"]["target_materialization_state"] = "pending"
+    plan["source_cutover"]["target_source_present"] = False
     plan["source_snapshot"]["state"] = "captured"
     plan["source_snapshot"]["commit"] = SNAPSHOT_SHA
     plan["source_snapshot"]["inventory_file"] = "migrations/files.source-snapshot.json"
@@ -80,7 +97,7 @@ def authorize(root: Path) -> dict:
     write_json(root / "migrations" / "files.source-snapshot.json", {
         "$schema": "ordax.source-snapshot-inventory/1",
         "app_id": "files",
-        "repository": plan["source_repository_current"],
+        "repository": plan["source_cutover"]["platform_repository"],
         "commit": SNAPSHOT_SHA,
         "file_count": 2,
         "files": [
@@ -111,10 +128,12 @@ def make_pinned_source(parent: Path, root: Path) -> tuple[Path, dict]:
     git(platform, "init", "-q")
     git(platform, "config", "user.name", "OrdaX CI Fixture")
     git(platform, "config", "user.email", "ci-fixture@ordax.invalid")
-    git(platform, "remote", "add", "origin", "https://github.com/" + plan["source_repository_current"] + ".git")
+    git(platform, "remote", "add", "origin", "https://github.com/" + plan["source_cutover"]["platform_repository"] + ".git")
     git(platform, "add", "--all")
     git(platform, "commit", "-qm", "source before Files removal")
-    inventory = files.capture_source_snapshot(platform, plan)
+    capture_plan = json.loads(json.dumps(plan))
+    capture_plan["source_cutover_allowed"] = False
+    inventory = files.capture_source_snapshot(platform, capture_plan)
     plan["source_snapshot"]["state"] = "captured"
     plan["source_snapshot"]["commit"] = inventory["commit"]
     plan["source_snapshot"]["inventory_file"] = "migrations/files.source-snapshot.json"
@@ -147,6 +166,10 @@ def make_git_gate(parent: Path, root: Path, *, change_after_snapshot: bool = Fal
     plan["source_snapshot"]["commit"] = inventory["commit"]
     plan["source_snapshot"]["inventory_file"] = "migrations/files.source-snapshot.json"
     plan["gate_a_platform_commit"] = gate_commit
+    plan["source_cutover"]["platform_absence_proven_at"] = gate_commit
+    plan["source_cutover"]["gate_a_complete"] = True
+    plan["source_cutover"]["target_materialization_state"] = "pending"
+    plan["source_cutover"]["target_source_present"] = False
     write_json(root / "migrations" / "files.externalization.json", plan)
     write_json(root / "migrations" / "files.source-snapshot.json", inventory)
     return platform, gate_commit, inventory
@@ -164,18 +187,22 @@ class FilesCutoverTests(unittest.TestCase):
         self.assertEqual(transfer["source_commit"], snapshot["commit"])
         self.assertEqual(transfer["source_file_count"], snapshot["file_count"])
 
-    def test_current_plan_blocks_cutover_without_claiming_release(self):
+    def test_current_plan_records_gate_a_but_requires_platform_history_proof(self):
         with tempfile.TemporaryDirectory() as temp:
             root = make_root(Path(temp))
             report = files.report(root)
             lock = json.loads((root / "platform-sdk.lock.json").read_text(encoding="utf-8"))
             self.assertEqual(report["sdk_pin"]["version"], lock["bundle_version"])
             self.assertFalse(report["source_cutover"]["ready"])
-            self.assertIn("source-cutover-not-authorized", report["source_cutover"]["blockers"])
+            self.assertNotIn("source-cutover-not-authorized", report["source_cutover"]["blockers"])
             self.assertIn("platform-absence-not-inspected", report["source_cutover"]["blockers"])
+            self.assertEqual(report["source_state"], "source-absent-after-platform-removal")
+            self.assertIsNone(report["source_repository"])
+            self.assertEqual(report["source_materialization"]["state"], "pending")
+            self.assertFalse(report["source_materialization"]["target_source_present"])
             self.assertEqual(report["distribution_activation"], "blocked")
             self.assertEqual(report["authority"], "none")
-            self.assertIn("source-cutover-not-authorized", files.render_markdown(report))
+            self.assertIn("Materialização Gate B: pending", files.render_markdown(report))
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(files.main(["--root", str(root), "--require-cutover-ready"]), 2)
 
@@ -206,7 +233,7 @@ class FilesCutoverTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = make_root(Path(temp))
             write_json(root / "apps" / "files" / "app.json", {"id": "files"})
-            with self.assertRaisesRegex(files.FilesCutoverError, "second canonical"):
+            with self.assertRaisesRegex(files.FilesCutoverError, "materialization state is still pending"):
                 files.report(root)
 
     def test_unmanifested_duplicate_files_runtime_fails_closed(self):
@@ -215,14 +242,17 @@ class FilesCutoverTests(unittest.TestCase):
             runtime = root / "apps" / "files" / "src" / "runtime.mjs"
             runtime.parent.mkdir(parents=True)
             runtime.write_text("export const componentRuntime = {};\n", encoding="utf-8")
-            with self.assertRaisesRegex(files.FilesCutoverError, "second canonical"):
+            with self.assertRaisesRegex(files.FilesCutoverError, "materialization state is still pending"):
                 files.report(root)
 
     def test_empty_premature_files_tree_fails_closed(self):
         with tempfile.TemporaryDirectory() as temp:
             root = make_root(Path(temp))
             (root / "apps" / "files").mkdir()
-            with self.assertRaisesRegex(files.FilesCutoverError, "second canonical"):
+            with self.assertRaisesRegex(
+                files.FilesCutoverError,
+                "materialization state is still pending",
+            ):
                 files.report(root)
 
     def test_platform_owned_port_cannot_be_deleted_in_gate_a(self):
@@ -258,10 +288,9 @@ class FilesCutoverTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = make_root(Path(temp))
             plan = load_plan(root)
-            plan.pop("prelaunch_package_staging", None)
-            plan["source_cutover_allowed"] = True
+            plan["source_snapshot"]["inventory_file"] = None
             write_json(root / "migrations" / "files.externalization.json", plan)
-            with self.assertRaisesRegex(files.FilesCutoverError, "distinct snapshot"):
+            with self.assertRaisesRegex(files.FilesCutoverError, "post-Gate-A state requires"):
                 files.report(root)
 
     def test_app_owned_files_component_has_no_parallel_platform_definition(self):
@@ -281,7 +310,14 @@ class FilesCutoverTests(unittest.TestCase):
         self.assertIn("system/contracts/first-party-app.mjs",
                       plan["gate_a_platform_removal"]["retain_platform_owned"])
         self.assertIn("ordax.first-party-app/1", plan["platform_contracts_required"])
-        self.assertFalse(plan["source_cutover_allowed"])
+        self.assertTrue(plan["source_cutover_allowed"])
+        self.assertEqual(plan["source_of_truth_state"], "ordax-apps-canonical")
+        self.assertEqual(plan["source_repository_current"], "ordaxsystems/ordax-apps")
+        self.assertEqual(plan["source_path_current"], "apps/files")
+        self.assertTrue(plan["source_cutover"]["gate_a_complete"])
+        self.assertEqual(plan["source_cutover"]["target_materialization_state"], "materialized")
+        self.assertTrue(plan["source_cutover"]["target_source_present"])
+        self.assertEqual(plan["gate_b"]["state"], "source-materialized-unsigned")
         self.assertFalse(plan["distribution_activation_allowed"])
 
     def test_files_sdk_import_graph_uses_snapshot_and_published_contract_inventory(self):
@@ -443,7 +479,7 @@ class FilesCutoverTests(unittest.TestCase):
                     with self.assertRaises(files.FilesCutoverError):
                         files.audit_files_sdk_dependencies(platform, inventory, sdk)
 
-    def test_pinned_source_proof_succeeds_without_authorizing_cutover(self):
+    def test_historical_pinned_source_proof_succeeds_after_gate_a(self):
         with tempfile.TemporaryDirectory() as temp:
             parent = Path(temp)
             root = make_root(parent)
@@ -453,7 +489,7 @@ class FilesCutoverTests(unittest.TestCase):
             self.assertEqual(proof["source_commit"], inventory["commit"])
             self.assertEqual(proof["file_count"], inventory["file_count"])
             self.assertEqual(proof["distribution_activation"], "blocked")
-            self.assertFalse(proof["source_cutover_allowed"])
+            self.assertTrue(proof["source_cutover_allowed"])
             with contextlib.redirect_stdout(io.StringIO()) as stdout:
                 self.assertEqual(files.main([
                     "--root", str(root), "--platform-root", str(platform),
@@ -656,10 +692,10 @@ class FilesCutoverTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/files-external-package.yml").read_text(encoding="utf-8")
         self.assertIn("python3 tools/verify_files_cutover.py --format json", workflow)
         self.assertIn("--platform-root .ordax-files-os-main --require-cutover-ready", workflow)
-        self.assertIn("if: needs.ownership.outputs.cutover_allowed == 'true'", workflow)
-        self.assertIn("if: steps.plan.outputs.cutover_allowed == 'true'", workflow)
-        self.assertIn("source-cutover-not-authorized", workflow)
-        self.assertIn("Gate A declared but Files app source is missing", workflow)
+        self.assertIn("if: needs.ownership.outputs.package_allowed == 'true'", workflow)
+        self.assertIn("target_materialized", workflow)
+        self.assertIn('elif state == "ordax-apps-canonical":', workflow)
+        self.assertIn("package_allowed=true", workflow)
         self.assertIn("if-no-files-found: error", workflow)
 
     def test_missing_coupling_owner_fails_closed(self):

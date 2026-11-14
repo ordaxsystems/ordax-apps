@@ -81,8 +81,10 @@ jobs:
           from pathlib import Path
           root = Path(".ordax-os-removal")
           bundle = json.loads((root / "sdk/app-sdk-v1/bundle.json").read_text())
-          lock = json.loads(Path("platform-sdk.lock.json").read_text())
-          assert bundle["bundle_version"] == lock["bundle_version"] == "1.17.0"
+          plan = json.loads(Path("migrations/projects.externalization.json").read_text())
+          expected_bundle = plan["gate_b"]["sdk_bundle_version"]
+          assert expected_bundle == "1.17.0"
+          assert bundle["bundle_version"] == expected_bundle
           sources = {item["source_path"]: item["source_git_blob"]
                      for item in bundle["contracts"]}
           names = (

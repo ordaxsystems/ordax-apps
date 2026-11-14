@@ -49,7 +49,7 @@ jobs:
           )
           assert lock == {
               '$schema': 'ordax-apps.notes-verifier-toolkit-lock/1',
-              'repository': 'washingtonmsdj/prototipo-ordax-os',
+              'repository': 'ordaxsystems/ordax-os',
               'commit': lock['commit'],
               'verifier_path': 'sdk/app-sdk-v1/verify_unsigned_candidate.py',
               'policy_path': 'sdk/app-sdk-v1/runtime-component-package-policy.json',

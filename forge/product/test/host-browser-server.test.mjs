@@ -38,7 +38,12 @@ test('host serves only the current UI allowlist with a restrictive browser polic
     assert.match(css,/body\.orchestrator-focus #contextRail>#contextPanel\[hidden\]\{display:none!important\}/);
     assert.match(css,/body\.orchestrator-focus #contextPanel>:not\(#orchestratorWorkRail\)\{display:none!important\}/);
     assert.doesNotMatch(css,/#contextRail>:not\(#orchestratorWorkRail\)/);
-    assert.match(css,/\.app-settings-dialog\{width:min\(900px/);
+    assert.match(css,/\.app-settings-dialog\{width:min\(1100px/);
+    assert.match(css,/\.app-settings-dialog \[hidden\]\{display:none!important\}/);
+    assert.match(css,/\.forge-settings-field-grid\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+    assert.match(ui,/id="forgeLocalMcpPanel"/);
+    assert.match(ui,/id="forgeRemoteGatewayState"/);
+    assert.match(ui,/id="forgeProductVerifyCode"/);
     const pending=['/ui.js','/host-browser-bridge.js'];
     const checked=new Set();
     for(const route of pending) {

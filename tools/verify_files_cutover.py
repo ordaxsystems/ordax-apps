@@ -86,7 +86,7 @@ def semver_tuple(value: str) -> tuple[int, int, int]:
 def validate_source_inventory(root: Path, plan: dict) -> dict:
     """Validate a single canonical inventory for preflight and Gate A."""
     snapshot = plan["source_snapshot"]
-    platform = plan["source_repository_current"]
+    platform = plan["source_cutover"]["platform_repository"]
     removed = plan["gate_a_platform_removal"]["remove_owned_source"]
     if snapshot.get("state") != "captured" or not snapshot.get("commit") or not snapshot.get("inventory_file"):
         raise FilesCutoverError("source snapshot inventory must be captured and pinned")
@@ -125,7 +125,7 @@ def validate_source_inventory(root: Path, plan: dict) -> dict:
 
 
 def load_plan(root: Path) -> tuple[dict, dict, dict]:
-    """Validate ownership and contract claims; do not imply Gate A is complete."""
+    """Validate the post-Gate-A absent-source state and historical removal proof."""
     workspace = read_json(root / "ordax-apps.workspace.json")
     plan = read_json(root / "migrations" / "files.externalization.json")
     sdk = read_json(root / "platform-sdk.lock.json")
@@ -143,18 +143,13 @@ def load_plan(root: Path) -> tuple[dict, dict, dict]:
         or plan.get("app_id") != "files"
         or plan.get("target_repository") != TARGET
         or plan.get("target_path") != "apps/files"
-        or plan.get("source_repository_current") != platform
-        or plan.get("source_path_current") != "system/apps/files"
-        or plan.get("source_of_truth_state") != "platform-until-cutover"
+        or plan.get("source_cutover_allowed") is not True
         or plan.get("authority") != "none"
         or plan.get("distribution_activation_allowed") is not False
     ):
         raise FilesCutoverError("Files migration identity, owner or distribution gate is invalid")
-    # Before Gate A, even an unmanifested runtime is a duplicate source.
-    # A later verified cutover may populate this directory without creating a second owner.
+
     target_source = root / "apps" / "files"
-    if not plan.get("source_cutover_allowed") and (target_source.exists() or target_source.is_symlink()):
-        raise FilesCutoverError("Files already has a second canonical source before Gate A")
     cutover = plan.get("source_cutover")
     if (
         not isinstance(cutover, dict)
@@ -163,10 +158,48 @@ def load_plan(root: Path) -> tuple[dict, dict, dict]:
         or cutover.get("platform_absence_proof_required_before_copy") is not True
         or cutover.get("sdk_public_boundary_required_before_snapshot") is not True
         or cutover.get("temporary_app_absence_allowed") is not True
+        or cutover.get("platform_repository") != platform
+        or cutover.get("platform_source_path") != "system/apps/files"
+        or cutover.get("platform_absence_proven_at") != plan.get("gate_a_platform_commit")
+        or cutover.get("gate_a_complete") is not True
     ):
         raise FilesCutoverError("remove-first source cutover policy is invalid")
-    if not isinstance(plan.get("source_cutover_allowed"), bool):
-        raise FilesCutoverError("source cutover authorization must be boolean")
+
+    source_state = plan.get("source_of_truth_state")
+    if source_state == "source-absent-after-platform-removal":
+        if (
+            plan.get("source_repository_current") is not None
+            or plan.get("source_path_current") is not None
+            or cutover.get("target_materialization_state") != "pending"
+            or cutover.get("target_source_present") is not False
+        ):
+            raise FilesCutoverError("Files pending Gate B source state is inconsistent")
+        if target_source.exists() or target_source.is_symlink():
+            raise FilesCutoverError(
+                "Files target source exists while materialization state is still pending"
+            )
+    elif source_state == "ordax-apps-canonical":
+        gate_b = plan.get("gate_b")
+        if (
+            plan.get("source_repository_current") != TARGET
+            or plan.get("source_path_current") != "apps/files"
+            or target_source.is_symlink()
+            or not target_source.is_dir()
+            or not (target_source / "app.json").is_file()
+            or cutover.get("target_materialization_state") != "materialized"
+            or cutover.get("target_source_present") is not True
+            or not isinstance(gate_b, dict)
+            or gate_b.get("state") != "source-materialized-unsigned"
+            or gate_b.get("sdk_bundle_version") != sdk.get("bundle_version")
+            or gate_b.get("platform_absence_proven") is not True
+            or gate_b.get("app_source_authority") != TARGET
+            or gate_b.get("signed_distribution_verified") is not False
+            or gate_b.get("native_install_verified") is not False
+            or gate_b.get("rollback_verified") is not False
+        ):
+            raise FilesCutoverError("Files materialized Gate B source state is inconsistent")
+    else:
+        raise FilesCutoverError("unsupported Files source-of-truth state")
 
     target_sdk = plan.get("target_sdk")
     if (
@@ -223,20 +256,19 @@ def load_plan(root: Path) -> tuple[dict, dict, dict]:
         raise FilesCutoverError("Gate A coupling paths are duplicated")
 
     snapshot = plan.get("source_snapshot")
-    if not isinstance(snapshot, dict) or snapshot.get("repository") != platform:
+    if not isinstance(snapshot, dict) or snapshot.get("repository") != cutover["platform_repository"]:
         raise FilesCutoverError("source snapshot owner is invalid")
     sha_or_none(snapshot.get("commit"), "source snapshot commit")
     sha_or_none(plan.get("gate_a_platform_commit"), "Gate A platform commit")
-    if plan["source_cutover_allowed"]:
-        if (
-            snapshot.get("state") != "captured"
-            or snapshot.get("commit") is None
-            or not snapshot.get("inventory_file")
-            or plan.get("gate_a_platform_commit") is None
-            or snapshot["commit"] == plan["gate_a_platform_commit"]
-        ):
-            raise FilesCutoverError("cutover cannot be authorized without distinct snapshot and Gate A pins")
-        validate_source_inventory(root, plan)
+    if (
+        snapshot.get("state") != "captured"
+        or snapshot.get("commit") is None
+        or not snapshot.get("inventory_file")
+        or plan.get("gate_a_platform_commit") is None
+        or snapshot["commit"] == plan["gate_a_platform_commit"]
+    ):
+        raise FilesCutoverError("post-Gate-A state requires distinct snapshot and removal commit pins")
+    validate_source_inventory(root, plan)
     delivery = plan.get("delivery")
     if (
         not isinstance(delivery, dict)
@@ -321,7 +353,7 @@ def _verify_git_checkout(platform_root: Path, plan: dict) -> str:
     top = _git_text(platform_root, "rev-parse", "--show-toplevel")
     if Path(top).resolve() != platform_root.resolve():
         raise FilesCutoverError("platform checkout must be the Git worktree root")
-    expected = plan["source_repository_current"]
+    expected = plan["source_cutover"]["platform_repository"]
     allowed = {
         f"https://github.com/{expected}",
         f"https://github.com/{expected}.git",
@@ -383,7 +415,7 @@ def capture_source_snapshot(platform_root: Path, plan: dict) -> dict:
     return {
         "$schema": "ordax.source-snapshot-inventory/1",
         "app_id": "files",
-        "repository": plan["source_repository_current"],
+        "repository": plan["source_cutover"]["platform_repository"],
         "commit": commit,
         "file_count": len(entries),
         "files": entries,
@@ -392,8 +424,6 @@ def capture_source_snapshot(platform_root: Path, plan: dict) -> dict:
 
 def verify_pinned_source_snapshot(root: Path, platform_root: Path, plan: dict) -> dict:
     """Verify a pinned pre-cutover source against a clean canonical Git checkout."""
-    if plan["source_cutover_allowed"]:
-        raise FilesCutoverError("pinned source proof is pre-cutover only")
     inventory = validate_source_inventory(root, plan)
     head = _verify_git_checkout(platform_root, plan)
     if head != inventory["commit"]:
@@ -408,7 +438,7 @@ def verify_pinned_source_snapshot(root: Path, platform_root: Path, plan: dict) -
         "repository": inventory["repository"],
         "source_commit": head,
         "file_count": len(actual),
-        "source_cutover_allowed": False,
+        "source_cutover_allowed": plan["source_cutover_allowed"],
         "distribution_activation": "blocked",
         "authority": "none",
     }
@@ -585,7 +615,7 @@ def audit_pinned_files_sdk(root: Path, source_root: Path, sdk_root: Path, plan: 
     """Verify both independent canonical Git pins before reading the SDK boundary."""
     source_proof = verify_pinned_source_snapshot(root, source_root, plan)
     sdk_lock = read_json(root / "platform-sdk.lock.json")
-    if sdk_lock.get("repository") != plan["source_repository_current"]:
+    if sdk_lock.get("repository") != plan["source_cutover"]["platform_repository"]:
         raise FilesCutoverError("Files SDK lock repository does not match canonical platform")
     sdk_sha = _verify_git_checkout(sdk_root, plan)
     if sdk_sha != sdk_lock.get("commit"):
@@ -604,6 +634,7 @@ def audit_pinned_files_sdk(root: Path, source_root: Path, sdk_root: Path, plan: 
         raise FilesCutoverError("Files SDK locked bundle version does not match")
     snapshot = validate_source_inventory(root, plan)
     result = audit_files_sdk_dependencies(source_root, snapshot, sdk_bundle, sdk_root=sdk_root)
+    result["source_cutover_authorized"] = plan["source_cutover_allowed"]
     if result["source_commit"] != source_proof["source_commit"]:
         raise FilesCutoverError("Files SDK audit source does not match Git proof")
     return result
@@ -655,7 +686,7 @@ def verify_source_history(platform_root: Path, plan: dict, inventory: dict) -> d
         "snapshot_commit": source_commit,
         "gate_a_commit": gate_commit,
         "snapshot_file_count": len(actual_snapshot),
-        "origin": plan["source_repository_current"],
+        "origin": plan["source_cutover"]["platform_repository"],
     }
 
 
@@ -701,6 +732,9 @@ def report(root: Path = ROOT, platform_root: Path | None = None,
         "authority": "none",
         "app_id": "files",
         "source_repository": plan["source_repository_current"],
+        "source_path": plan["source_path_current"],
+        "source_state": plan["source_of_truth_state"],
+        "historical_source_repository": plan["source_cutover"]["platform_repository"],
         "target_repository": plan["target_repository"],
         "target_path": plan["target_path"],
         "sdk_pin": {"version": sdk["bundle_version"], "commit": sdk["commit"]},
@@ -712,10 +746,15 @@ def report(root: Path = ROOT, platform_root: Path | None = None,
             "platform_inspection": inspection,
             "source_history_evidence": source_history,
         },
+        "source_materialization": {
+            "state": plan["source_cutover"]["target_materialization_state"],
+            "target_source_present": plan["source_cutover"]["target_source_present"],
+        },
         "distribution_activation": "blocked",
         "disclaimer": (
-            "A clean source-removal preflight does not authorize copying Files, "
-            "grant access, verify runtime behavior or activate production distribution."
+            "Gate A proves OS source removal and authorizes Gate B materialization only. "
+            "It does not prove apps/files exists, grant access, verify runtime behavior, "
+            "sign/install a package or activate production distribution."
         ),
     }
 
@@ -739,10 +778,13 @@ def render_markdown(value: dict) -> str:
     lines = [
         "# Files — preflight de extração",
         "",
-        f"- Source atual: {value['source_repository']}",
+        f"- Estado do source: {value['source_state']}",
+        f"- Source atual: {value['source_repository'] or 'ausente'}",
+        f"- Source histórico: {value['historical_source_repository']}",
         f"- Target: {value['target_repository']}/{value['target_path']}",
         f"- App SDK pinado: {value['sdk_pin']['version']} ({value['sdk_pin']['commit']})",
-        f"- Cutover autorizado: {'sim' if cutover['ready'] else 'não'}",
+        f"- Gate A comprovado: {'sim' if cutover['ready'] else 'não'}",
+        f"- Materialização Gate B: {value['source_materialization']['state']}",
         f"- Ativação em produção: {value['distribution_activation']}",
         "",
         "## Bloqueios",
@@ -768,7 +810,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--platform-root", type=Path)
     parser.add_argument("--format", choices=("json", "markdown"), default="json")
     parser.add_argument("--require-cutover-ready", action="store_true")
-    parser.add_argument("--verify-pinned-source", action="store_true", help="Prove pre-cutover snapshot against exact clean Git checkout")
+    parser.add_argument("--verify-pinned-source", action="store_true", help="Prove the historical pre-Gate-A snapshot against its exact clean Git checkout")
     parser.add_argument("--audit-files-sdk", action="store_true", help="Audit Files imports against independently pinned published App SDK")
     parser.add_argument("--sdk-platform-root", type=Path, help="Exact canonical checkout at platform-sdk.lock.json commit")
     parser.add_argument(
@@ -792,7 +834,7 @@ def main(argv: list[str] | None = None) -> int:
             raise FilesCutoverError("--sdk-platform-root requires --audit-files-sdk")
         if args.verify_pinned_source:
             if args.emit_source_snapshot or args.require_cutover_ready or args.platform_root is None or args.format != "json":
-                raise FilesCutoverError("pinned source proof requires --platform-root and JSON-only pre-cutover mode")
+                raise FilesCutoverError("pinned source proof requires --platform-root and JSON-only mode")
             _, plan, _ = load_plan(args.root.resolve())
             proof = verify_pinned_source_snapshot(args.root.resolve(), args.platform_root.resolve(), plan)
             print(json.dumps(proof, indent=2, ensure_ascii=False, sort_keys=True))

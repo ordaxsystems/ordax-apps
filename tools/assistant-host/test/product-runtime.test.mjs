@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { ProductRuntime, validOperations } from '../native/product-runtime.mjs';
 
+const canonicalJson = value => {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return '[' + value.map(item => canonicalJson(item === undefined ? null : item)).join(',') + ']';
+  if (typeof value === 'object') return '{' + Object.keys(value).filter(key => value[key] !== undefined).sort().map(key => JSON.stringify(key) + ':' + canonicalJson(value[key])).join(',') + '}';
+  return JSON.stringify(value);
+};
+const digestJson = value => createHash('sha256').update(canonicalJson(value)).digest('hex');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const wait = async predicate => { for (let i = 0; i < 100 && !predicate(); i++) await pause(5); assert.ok(predicate()); };
 function fixture() {
@@ -105,6 +113,22 @@ test('terminal results remain pending while saving, disk failure blocks new acti
   f.storage.write = write; await runtime.observe(runtime.operations[0]);
   assert.equal(runtime.operations[0].status, 'succeeded'); assert.equal(f.calls.filter(c => c.options.method === 'POST').length, 1);
 });
+test('operation journal commits to the exact Product request and final effect without storing payload in the copied receipt', async t => {
+  const f = fixture(), runtime = new ProductRuntime(f.options); await runtime.init(); t.after(() => runtime.close()); await runtime.connect();
+  await runtime.submit(command); await wait(() => runtime.operations[0].status === 'queued');
+  const post = JSON.parse(f.calls.find(c => c.options.method === 'POST').options.body);
+  assert.equal(runtime.operations[0].action, 'terminal.exec');
+  assert.equal(runtime.operations[0].requestSha256, digestJson(post));
+  assert.match(runtime.operations[0].requestSha256, /^[a-f0-9]{64}$/);
+  await runtime.observe(runtime.operations[0]); await runtime.observe(runtime.operations[0]);
+  assert.equal(runtime.operations[0].status, 'succeeded');
+  assert.equal(runtime.operations[0].effectSha256, digestJson({ ok: true, data: { stdout: 'Resultado' } }));
+  assert.match(runtime.operations[0].effectSha256, /^[a-f0-9]{64}$/);
+  const persisted = f.disk['runtime-operations'].operations[0];
+  assert.equal(persisted.requestSha256, runtime.operations[0].requestSha256);
+  assert.equal(persisted.effectSha256, runtime.operations[0].effectSha256);
+});
+
 test('wrong request, action, project or missing identity cannot complete a local receipt', async t => {
   const f = fixture(), runtime = new ProductRuntime(f.options); await runtime.init(); t.after(() => runtime.close()); await runtime.connect();
   await runtime.submit(command); await wait(() => runtime.operations[0].status === 'queued'); const fetcher = runtime.fetcher;
@@ -114,10 +138,15 @@ test('wrong request, action, project or missing identity cannot complete a local
   }
   runtime.fetcher = fetcher;
 });
-test('operation journal rejects duplicate receipts, invalid projects and escaped file paths', () => {
-  const operation = { id: 'one', kind: 'terminal', deviceId: 'device', project: 'project', label: 'command', createdAt: 'today', status: 'queued', requestId: 'receipt' };
+test('operation journal rejects duplicate receipts, invalid projects, escaped paths and forged audit commitments', () => {
+  const operation = { id: 'one', kind: 'terminal', action: 'terminal.exec', requestSha256: 'a'.repeat(64), effectSha256: 'b'.repeat(64), deviceId: 'device', project: 'project', label: 'command', createdAt: 'today', status: 'queued', requestId: 'receipt' };
   assert.equal(validOperations({ schemaVersion: 1, operations: [operation] }), true);
-  for (const operations of [[operation, operation], [null], [{ ...operation, project: '../other' }], [{ ...operation, path: '../private' }]]) assert.equal(validOperations({ schemaVersion: 1, operations }), false);
+  for (const operations of [
+    [operation, operation], [null], [{ ...operation, project: '../other' }], [{ ...operation, path: '../private' }],
+    [{ ...operation, action: 'git.status' }], [{ ...operation, requestSha256: 'x'.repeat(64) }], [{ ...operation, effectSha256: 'c'.repeat(63) }],
+  ]) assert.equal(validOperations({ schemaVersion: 1, operations }), false);
+  const historical = { ...operation }; delete historical.action; delete historical.requestSha256; delete historical.effectSha256;
+  assert.equal(validOperations({ schemaVersion: 1, operations: [historical] }), true);
 });
 test('background observation backs off after failures and never repeats the privileged POST', async t => {
   const f = fixture(), runtime = new ProductRuntime(f.options); await runtime.init(); t.after(() => runtime.close()); await runtime.connect();

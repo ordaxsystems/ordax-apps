@@ -439,7 +439,12 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
     if(providerPrompt.length>16000)throw new Error('task_handoff_prompt_budget_exceeded');
     contextManifest={...contextManifest,maxChars:16000,promptChars:providerPrompt.length,promptSha256:providerPromptDigest(providerPrompt)};
   }
-  const mcpWorkRequired=requiresMcpForProjectPrompt(prompt)||mentionWasRequested(providerPrompt,mcpApp);
+  // Existing project continuations stay tool-dependent even for short prompts.
+  const projectContinuation=task.has_messages&&Boolean(store.db.prepare(
+    'SELECT 1 FROM lab_task_bindings WHERE task_id=? LIMIT 1').get(taskId));
+  const mcpWorkRequired=allowCoordinatorTask||
+    requiresMcpForProjectPrompt(prompt,{projectContinuation})||
+    mentionWasRequested(providerPrompt,mcpApp);
   // The provider is a native WebContentsView. Every selected lane gets a
   // real off-canvas viewport before health/app-selection/submit. Scheduler +
   // providerViews already prevent worker or Task reuse; independent Works do
@@ -1727,39 +1732,6 @@ registerUiHandler('ordax:forge:local-mcp:resume-disable',event=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
   return {...forgeMcpResume.disableApp(),autoResumeApp:false};
-});
-let forgeCloudflareInstallPending=false;
-registerUiHandler('ordax:forge:cloudflare:install',async event=>{
-  requireTrustedSupervisorRenderer(event);
-  if(hostBrowserMode)throw Error('forge_cloudflare_native_ui_only');
-  if(forgeCloudflareInstallPending)throw Error('forge_cloudflare_install_in_progress');
-  forgeCloudflareInstallPending=true;
-  try{
-    orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
-    if(forgeCloudflareTunnel.status().state!=='stopped')
-      throw Error('forge_cloudflare_stop_before_install');
-    return await installForgeCloudflared({ownerApproved:true});
-  }finally{forgeCloudflareInstallPending=false;}
-});
-registerUiHandler('ordax:forge:cloudflare:start',async(event,request)=>{
-  requireTrustedSupervisorRenderer(event);
-  if(hostBrowserMode)throw Error('forge_cloudflare_native_ui_only');
-  orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
-  if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_cloudflare_app_untrusted');
-  if(forgeCloudflareTunnel.status().state!=='stopped')
-    throw Error('forge_cloudflare_tunnel_already_running');
-  const localGrant=forgeLocalMcp.localGrant(FORGE_APP_MCP_SCOPE);
-  if(!localGrant)throw Error('forge_cloudflare_local_mcp_not_active');
-  const token=typeof request?.token==='string'&&request.token?request.token:null;
-  const credentialsFile=token?null:forgeCloudflareCredentialsFile(process.env.USERPROFILE);
-  return forgeCloudflareTunnel.start({
-    token,credentialsFile,ownerApproved:true,platform:process.platform
-  });
-});
-registerUiHandler('ordax:forge:cloudflare:stop',event=>{
-  requireTrustedSupervisorRenderer(event);
-  if(hostBrowserMode)throw Error('forge_cloudflare_native_ui_only');
-  return forgeCloudflareTunnel.stop();
 });
 registerUiHandler('ordax:forge:local-mcp:stop',async event=>{
   requireTrustedSupervisorRenderer(event);

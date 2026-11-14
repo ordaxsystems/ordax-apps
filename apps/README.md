@@ -208,13 +208,13 @@ A distribuição só pode ser ativada depois que o app canônico:
 
 É permitido existir uma janela temporária em que um app removido da plataforma ainda não esteja distribuível. Não é permitido resolver essa janela mantendo duas implementações autoritativas.
 
-## Piloto Notes
+## Piloto Notes — source cutover concluído
 
-`notes` é o primeiro piloto remove-first.
+`notes` é o primeiro piloto remove-first **já concluído na camada de source ownership**.
 
-- Gate A: remover o Notes embutido da plataforma e provar ausência/boot saudável;
-- Gate B: transferir o snapshot pinado para `apps/notes` e tornar este repositório a única fonte de verdade;
-- Gate C: adaptar o source canônico ao App SDK/App Data/package lifecycle e, somente depois das provas completas, liberar distribuição.
+- Gate A: **concluído** — implementação embutida removida e ausência/boot saudável provados;
+- Gate B: **concluído** — snapshot materializado uma vez em `apps/notes`; `ordax-apps` é a única fonte de verdade;
+- Gate C: **parcialmente provado, produção ainda bloqueada** — App SDK/App Data/package lifecycle possuem evidências CI, mas `distribution_activation_allowed=false` permanece até trust/publication/slot activation canônicos.
 
 Os SSOTs do piloto são `migrations/notes.externalization.json`, `migrations/notes.source-snapshot.json` e `docs/NOTES-EXTERNALIZATION.md`.
 
