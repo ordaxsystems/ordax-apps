@@ -48,22 +48,17 @@ test('generic Groq project analysis never qualifies as Run-specific review',()=>
   }}},runId),false);
 });
 
-test('UI binds an explicit review to the selected task without a GPT send fallback',async()=>{
+test('retired external-model review button cannot trigger a new send',async()=>{
   const {readFile}=await import('node:fs/promises');
-  const {fileURLToPath}=await import('node:url');
   const root=new URL('../',import.meta.url);
   const html=await readFile(new URL('desktop/ui.html',root),'utf8');
   const ui=await readFile(new URL('desktop/ui.js',root),'utf8');
   const orchestration=await readFile(new URL('desktop/orchestrator-ui.mjs',root),'utf8');
-  assert.equal((html.match(/id="reviewLatestRun"/g)||[]).length,1);
-  assert.match(html,/id="reviewLatestRun"[^>]+disabled/);
-  assert.match(ui,/reviewCandidateRun\(\{/);
-  assert.match(ui,/reviewGptRun\(\{taskId,runId\}\)/);
-  assert.match(ui,/runReviewAttempted\.add\(runId\)/);
-  assert.match(ui,/confirmedRunReview\(receipt,runId\)/);
-  assert.match(orchestration,/command\('orchestrator_analyze',\{\s*projectId:p,orchestratorId:o,reviewRunId:runId/);
-  const segment=orchestration.slice(orchestration.indexOf('async function reviewGptRun'),
-    orchestration.indexOf('  return Object.freeze({',orchestration.indexOf('async function reviewGptRun')));
+  assert.doesNotMatch(html,/id="reviewLatestRun"/);
+  assert.doesNotMatch(ui,/runReviewAttempted\.add\(runId\)|reviewGptRun\(\{taskId,runId\}\)/);
+  assert.match(orchestration,/async function getRunReviewStatus/);
+  const segment=orchestration.slice(orchestration.indexOf('async function getRunReviewStatus'),
+    orchestration.indexOf('  return Object.freeze({',orchestration.indexOf('async function getRunReviewStatus')));
   assert.doesNotMatch(segment,/work_send|proposal_send|\.send\(/);
 });
 
@@ -84,14 +79,12 @@ test('Run review UI admission is closed until matching durable receipt is read',
   assert.equal(runReviewButtonState({runId:null,receipt:{runId,status:'not_requested'}}).enabled,false);
 });
 
-test('UI derives a fail-closed Run review button from the existing scoped work_get read model',async()=>{
+test('canonical Run review reads remain scoped but are not offered as an external model action',async()=>{
   const {readFile}=await import('node:fs/promises');
   const root=new URL('../',import.meta.url);
   const ui=await readFile(new URL('desktop/ui.js',root),'utf8');
   const orchestration=await readFile(new URL('desktop/orchestrator-ui.mjs',root),'utf8');
-  assert.match(ui,/button\.disabled=true;[\s\S]*?getRunReviewStatus\(\{taskId:request\.taskId,runId\}\)/);
-  assert.match(ui,/runReviewLookupCurrent\(request,active\)/);
-  assert.match(ui,/runReviewButtonState\(\{runId,receipt,/);
+  assert.doesNotMatch(ui,/getRunReviewStatus\(\{taskId:request\.taskId,runId\}\)/);
   assert.match(orchestration,/call\('work_get',\{projectId:p,taskId\}\)/);
   assert.match(orchestration,/work\?\.latestRunReview\?\.runId!==runId/);
   assert.doesNotMatch(orchestration.slice(orchestration.indexOf('async function getRunReviewStatus'),

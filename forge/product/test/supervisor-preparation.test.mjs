@@ -73,30 +73,21 @@ test('no encrypted storage means fail closed, never fallback to a plaintext key 
   assert.equal(fs.existsSync(path.join(dir,'config','groq-key.enc')),false);
 });
 
-test('preparation IPC checks trusted renderer and does not invoke planning or ChatGPT',()=>{
+test('legacy model-key preparation IPC is removed and local role metadata stays available',()=>{
   const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
   const preload=fs.readFileSync(new URL('../desktop/preload.cjs',import.meta.url),'utf8');
   const ui=fs.readFileSync(new URL('../desktop/ui.js',import.meta.url),'utf8');
-  const setup=main.slice(main.indexOf("registerUiHandler('ordax:supervisor:key:save'"),
-    main.indexOf("registerUiHandler('ordax:supervisor:plan'"));
-  assert.match(setup,/requireTrustedSupervisorRenderer\(event\)/);
-  assert.match(setup,/groqCredential\.save\(key\)/);
-  assert.match(setup,/groqCredential\.remove\(\)/);
-  assert.match(setup,/registerUiHandler\('ordax:supervisor:key:test'/);
-  assert.match(setup,/testGroqApiKey\(\{apiKey:currentGroqKey\(\)\}\)/);
-  assert.match(setup,/store\.setTaskSupervisorRole\(/);
-  assert.doesNotMatch(setup,/runTask\(|\.plan\(|\.dispatch\(|fetch\(|\.send\(/);
-  assert.match(preload,/supervisorSaveKey:/);
-  assert.match(preload,/supervisorTestKey:/);
+  const html=fs.readFileSync(new URL('../desktop/ui.html',import.meta.url),'utf8');
+  for(const name of ['ordax:supervisor:key:save','ordax:supervisor:key:test',
+    'ordax:supervisor:key:remove','ordax:supervisor:plan','ordax:supervisor:approve',
+    'ordax:supervisor:dispatch'])
+    assert.equal(main.includes("registerUiHandler('"+name+"'"),false);
+  assert.doesNotMatch(preload,/supervisorSaveKey|supervisorTestKey|supervisorRemoveKey/);
+  assert.doesNotMatch(html,/labSupervisorKeyInput|labSupervisorKeySettings/);
+  assert.match(main,/store\.setTaskSupervisorRole\(/);
   assert.match(preload,/setTaskSupervisorRole:/);
   assert.match(ui,/labRoleSelect\.addEventListener\('change'/);
-  assert.match(ui,/labKeyForm\.addEventListener\('submit'/);
-  assert.match(ui,/labKeyTest\.addEventListener\('click'/);
-  assert.match(ui,/Nenhum prompt ou dado do projeto será enviado/);
-  assert.match(ui,/const canConfigureLabKey=\(\)=>labStatus\.secureStorageAvailable===true/);
-  assert.match(ui,/salva no cofre seguro do Windows e recuperada ao reabrir o app/);
-  assert.doesNotMatch(ui,/hostEphemeralSecret|memory_until_host_exit/);
-  assert.doesNotMatch(ui.slice(ui.indexOf('labKeyForm.addEventListener'),ui.indexOf('labKeyRemove.addEventListener')),/supervisorPlan\(|supervisorDispatch\(/);
+  assert.doesNotMatch(ui,/labKeyForm\.addEventListener/);
 });
 
 test('optional packaged MVP App proof stays read-only, with no role mutation or key write',()=>{

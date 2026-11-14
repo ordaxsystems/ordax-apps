@@ -41,23 +41,16 @@ test('DEV inspection reflects exact Groq API model messages but never credential
   assert.equal(Object.hasOwn(trace,'headers'),false);
 });
 
-test('Groq inspector is visible only behind the explicit DEV disclosure',()=>{
+test('production UI exposes GPT Web and Forge MCP without the old inspector',()=>{
   const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
   const html=fs.readFileSync(path.join(root,'desktop/ui.html'),'utf8');
   const main=fs.readFileSync(path.join(root,'desktop/main.mjs'),'utf8');
   const preload=fs.readFileSync(path.join(root,'desktop/preload.cjs'),'utf8');
   const ui=fs.readFileSync(path.join(root,'desktop/orchestrator-ui.mjs'),'utf8');
-  assert.match(html,/<details id="forjadorGroqInspector"/);
-  assert.match(html,/id="groqPromptDisplay"/);
-  assert.match(main,/ordax:forjador:groq-prompt/);
-  assert.match(main,/requireTrustedSupervisorRenderer\(event\)/);
-  assert.match(preload,/forjadorGroqPrompt:/);
-  assert.match(ui,/forjadorGroqPrompt\?\.\(selected\)/);
-  assert.match(ui,/display\.textContent=/);
+  assert.match(html,/GPT Web \+ Forge MCP/);
+  assert.doesNotMatch(html,/forjadorGroqInspector|groqPromptDisplay/);
+  assert.doesNotMatch(main,/ordax:forjador:groq-prompt|createGroqCoordinatorConversation/);
+  assert.doesNotMatch(preload,/forjadorGroqPrompt/);
+  assert.doesNotMatch(ui,/forjadorGroqPrompt/);
   assert.match(main,/lastGptDispatchByTask\.set\(taskId,\{projectId,taskId,runId,authorSource/);
-  assert.match(main,/composedPrompt:providerPrompt/);
-  assert.match(main,/deliveryObserved:true/);
-  assert.match(ui,/originalRequest:trace\.gpt\.originalRequest/);
-  assert.match(ui,/composedPrompt:trace\.gpt\.composedPrompt/);
-  assert.match(ui,/deliveryObserved:trace\.gpt\.deliveryObserved/);
 });
