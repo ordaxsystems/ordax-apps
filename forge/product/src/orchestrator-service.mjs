@@ -660,14 +660,22 @@ export class OrchestratorService {
     if(operation==='work_list')return {works:this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,
       b.orchestrator_id,(SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments,
       (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_run_status,
+      (SELECT r.started_at FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_started_at,
+      (SELECT r.heartbeat_at FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_heartbeat_at,
       (SELECT COUNT(*) FROM runs r WHERE r.task_id=t.id AND r.status='running') running_runs
       FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
       WHERE b.project_id=? AND b.kind='work' AND (? IS NULL OR b.orchestrator_id=?)
       AND t.workspace_session_id=? ORDER BY t.updated_at DESC,t.id LIMIT 200`)
       .all(input.projectId,input.orchestratorId||null,input.orchestratorId||null,context.workspaceSessionId)
-      .map(work=>({...work,execution:workExecutionSummary([work])[0],
+      .map(work=>({
+        ...work,
+        execution:workExecutionSummary([{...work,monitor:this.monitor(work,[{
+          status:work.latest_run_status,started_at:work.latest_started_at,
+          heartbeat_at:work.latest_heartbeat_at
+        }],input.projectId)}])[0],
         dependsOn:this.db.prepare('SELECT prerequisite_id FROM lab_work_dependencies WHERE project_id=? AND task_id=? ORDER BY prerequisite_id')
-          .all(input.projectId,work.id).map(row=>row.prerequisite_id)}))};
+          .all(input.projectId,work.id).map(row=>row.prerequisite_id)
+      }))};
     if(operation==='work_get') {
       const task=this.task(input.projectId,input.taskId);
       const runs=this.db.prepare(`SELECT id,status,started_at,completed_at,heartbeat_at

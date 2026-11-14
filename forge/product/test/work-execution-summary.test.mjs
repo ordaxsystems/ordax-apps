@@ -25,6 +25,20 @@ test('failed Run triggers review independently of task label',()=>{
  const [result]=workExecutionSummary([work('one','ready','failed')]);
  assert.equal(result.observed,'review_required');
 });
+test('canonical uncertain receipt wins over a failed Run in the list projection',()=>{
+ const [result]=workExecutionSummary([{...work('one','error','failed'),
+   monitor:{state:'reconciliation_required',mayAutomaticallySend:false}}]);
+ assert.equal(result.observed,'reconciliation_required');
+ assert.equal(result.needsReview,true);
+ assert.equal(result.automaticDispatchAllowed,false);
+});
+test('unresponsive monitor remains explicit rather than appearing as a normal running task',()=>{
+ const [result]=workExecutionSummary([{...work('one','running','running',1),
+   monitor:{state:'execution_unresponsive',mayAutomaticallySend:false}}]);
+ assert.equal(result.observed,'execution_unresponsive');
+ assert.equal(result.needsReview,true);
+ assert.equal(result.active,true);
+});
 test('malformed Store projection fails closed',()=>{
  assert.throws(()=>workExecutionSummary([work('bad','ready',null,-1)]),/work_execution_summary_invalid/);
 });
