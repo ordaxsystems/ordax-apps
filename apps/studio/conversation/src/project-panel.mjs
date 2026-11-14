@@ -10,7 +10,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   const $ = id => document.getElementById(id);
   let state = { targets: [], operations: [] }, refreshPromise = null, submitting = 0, file = null, entries = [], proposal = null, reviewed = null, stamp = '', handled = new Set();
   let continuityProposal = null, contextResult = null, continuityBase = null;
-  let blenderProposal = null;
+  let blenderProposal = null, blenderBooleanPreview = null;
   let pendingReversibleWrite = null, lastReversibleWrite = null;
   let continuityBaseline = JSON.stringify(['','','','','']);
   let desiredBinding = null;
@@ -20,7 +20,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   const continuityFields = Object.freeze(['studioSummary','studioNextAction','studioCompleted','studioBlockers','studioChangedPaths']);
   const continuityStamp = () => JSON.stringify(continuityFields.map(id => $(id).value));
   const continuityDirty = () => continuityStamp() !== continuityBaseline;
-  const blenderDirty = () => Boolean(blenderProposal);
+  const blenderDirty = () => Boolean(blenderProposal) || Boolean(blenderBooleanPreview);
   const safeContinuityList = value => Array.isArray(value) ? value.filter(item => typeof item === 'string').slice(0, 100) : [];
   function writeContinuity(value = null) {
     $('studioSummary').value = typeof value?.summary === 'string' ? value.summary : '';
@@ -37,6 +37,24 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     return values;
   }
   const selected = () => ({ deviceId: $('runtimeDevice').value, project: $('runtimeProject').value });
+  const booleanPreviewId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
+  function syncBlenderBooleanPreview() {
+    const binding = selected();
+    let preview = null;
+    for (const op of state.operations) {
+      if (op.status !== 'succeeded' || op.deviceId !== binding.deviceId || op.project !== binding.project) continue;
+      const data = resultData(op);
+      if (op.kind === 'blenderBooleanPreview' && data.state === 'preview' && booleanPreviewId(data.preview_id)) {
+        preview = Object.freeze({ previewId: data.preview_id, workflowName: String(data.workflow_name || '').slice(0, 63) });
+      }
+      if (['blenderBooleanCommit','blenderBooleanCancel'].includes(op.kind)
+          && preview?.previewId === data.preview_id) preview = null;
+    }
+    blenderBooleanPreview = preview;
+    $('studioBlenderBooleanState').textContent = preview
+      ? `Preview booleano pendente: ${preview.workflowName || preview.previewId}. Confirme ou cancele antes de outra mutação Blender.`
+      : 'Nenhum preview booleano pendente neste projeto.';
+  }
   const currentBinding = () => selected().deviceId && selected().project ? selected() : null;
   function clearReversibleWrite() {
     pendingReversibleWrite = null;
@@ -62,6 +80,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
       $('runtimeProject').append(new Option(binding.project, binding.project)); $('runtimeProject').value = binding.project;
       message(state.connected ? 'Projeto vinculado. Consulte o contexto ou os arquivos deste projeto.' : 'Projeto vinculado. Conecte o Runtime para consultar o dispositivo autorizado.');
     } else { $('runtimeDevice').value = ''; message('Selecione um projeto autorizado para abrir o espaço de trabalho.'); }
+    syncBlenderBooleanPreview();
     renderEntries(); renderOperations(); controls();
   }
   const message = text => { $('projectNotice').textContent = text; };
@@ -94,7 +113,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   }
   function clearProjectTools() {
     continuityProposal = null; contextResult = null; continuityBase = null; $('studioContinuityReviewArea').hidden = true;
-    blenderProposal = null; $('studioBlenderReviewArea').hidden = true;
+    blenderProposal = null; blenderBooleanPreview = null; $('studioBlenderReviewArea').hidden = true; $('studioBlenderBooleanState').textContent = 'Nenhum preview booleano pendente neste projeto.';
     $('studioContextSource').textContent = 'Nenhum contexto recuperado. Consulte o Runtime autorizado para este projeto.';
     writeContinuity();
     for (const tool of Object.values(workspaceTools)) $(tool.target).textContent = 'Consulte o projeto selecionado para atualizar.';
@@ -103,8 +122,13 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     const active = submitting || state.operations.some(pending), blocked = active || state.recoveryRequired || state.operations.some(op => op.status === 'uncertain');
     const ready = deviceAvailable(state, selected().deviceId) && selected().project;
     $('workspaceProjectConversations').disabled = blocked || !ready || !onProjectConversations;
-    for (const id of ['studioGitStatus','studioGitDiff','studioSearchRun','studioBriefing','studioContinuityRead','studioPreviewStatus','studioContinuityReview','studioBlenderStatus','studioBlenderSchema','studioBlenderScene','studioBlenderInspect','studioBlenderStartReview','studioBlenderTransformReview','studioBlenderBevelReview','studioBlenderCreateReview','studioBlenderMaterialReview','studioBlenderSaveReview']) $(id).disabled = blocked || !ready;
-    for (const id of ['studioBlenderObject','studioBlenderObjectKind','studioBlenderTransformField','studioBlenderVector','studioBlenderBevelName','studioBlenderBevelWidth','studioBlenderBevelSegments','studioBlenderPrimitiveName','studioBlenderPrimitive','studioBlenderPrimitiveLocation','studioBlenderPrimitiveSize','studioBlenderPrimitiveDepth','studioBlenderPrimitiveSegments','studioBlenderMaterialName','studioBlenderBaseColor','studioBlenderRoughness','studioBlenderMetallic','studioBlenderSavePath']) $(id).disabled = blocked || !ready;
+    for (const id of ['studioGitStatus','studioGitDiff','studioSearchRun','studioBriefing','studioContinuityRead','studioPreviewStatus','studioContinuityReview','studioBlenderStatus','studioBlenderSchema','studioBlenderScene','studioBlenderInspect','studioBlenderStartReview','studioBlenderTransformReview','studioBlenderBevelReview','studioBlenderBooleanPreviewReview','studioBlenderBooleanCommitReview','studioBlenderBooleanCancelReview','studioBlenderCreateReview','studioBlenderMaterialReview','studioBlenderSaveReview']) $(id).disabled = blocked || !ready;
+    for (const id of ['studioBlenderObject','studioBlenderObjectKind','studioBlenderTransformField','studioBlenderVector','studioBlenderBevelName','studioBlenderBevelWidth','studioBlenderBevelSegments','studioBlenderBooleanName','studioBlenderBooleanDimensions','studioBlenderBooleanOffset','studioBlenderPrimitiveName','studioBlenderPrimitive','studioBlenderPrimitiveLocation','studioBlenderPrimitiveSize','studioBlenderPrimitiveDepth','studioBlenderPrimitiveSegments','studioBlenderMaterialName','studioBlenderBaseColor','studioBlenderRoughness','studioBlenderMetallic','studioBlenderSavePath']) $(id).disabled = blocked || !ready;
+    const booleanPending = Boolean(blenderBooleanPreview);
+    for (const id of ['studioBlenderStartReview','studioBlenderTransformReview','studioBlenderBevelReview','studioBlenderBooleanPreviewReview','studioBlenderCreateReview','studioBlenderMaterialReview','studioBlenderSaveReview']) $(id).disabled ||= booleanPending;
+    for (const id of ['studioBlenderBooleanName','studioBlenderBooleanDimensions','studioBlenderBooleanOffset']) $(id).disabled = blocked || !ready || booleanPending;
+    $('studioBlenderBooleanCommitReview').disabled = blocked || !ready || !booleanPending;
+    $('studioBlenderBooleanCancelReview').disabled = blocked || !ready || !booleanPending;
     $('studioBlenderApply').disabled = blocked || !ready || !blenderProposal;
     $('studioContinuityReview').disabled ||= !continuityBase;
     $('studioContinuityApply').disabled = blocked || !ready || !continuityProposal;
@@ -206,6 +230,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
 
       }
       if (op.project !== selected().project) continue;
+      if (['blenderBooleanPreview','blenderBooleanCommit','blenderBooleanCancel'].includes(op.kind)) syncBlenderBooleanPreview();
       if (workspaceTools[op.kind] && workspaceResultBelongs(op, selected())) {
         const tool = workspaceTools[op.kind], text = workspaceText(op.kind, op.result);
         $(tool.target).textContent = text;
@@ -362,7 +387,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     .then(available => { accountAvailable = available === true; controls(); })
     .catch(() => { accountAvailable = false; controls(); });
   $('runtimeDevice').addEventListener('change', () => task(async () => { desiredBinding = null; clearReversibleWrite(); file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries(); controls(); if (deviceAvailable(state, selected().deviceId)) await submit({ kind: 'projects' }); }));
-  $('runtimeProject').addEventListener('change', () => { desiredBinding = currentBinding(); clearReversibleWrite(); file = null; reviewed = null; entries = []; clearProjectTools(); $('projectReviewArea').hidden = true; $('projectPath').value = '.'; $('projectEditor').value = ''; $('activityScope').value = 'project'; renderEntries(); renderOperations(); controls(); });
+  $('runtimeProject').addEventListener('change', () => { desiredBinding = currentBinding(); clearReversibleWrite(); file = null; reviewed = null; entries = []; clearProjectTools(); syncBlenderBooleanPreview(); $('projectReviewArea').hidden = true; $('projectPath').value = '.'; $('projectEditor').value = ''; $('activityScope').value = 'project'; renderEntries(); renderOperations(); controls(); });
   $('projectList').addEventListener('click', () => task(() => submit({ kind: 'directory', path: $('projectPath').value })));
   $('projectFilter').addEventListener('input', renderEntries);
   $('projectEditor').addEventListener('input', () => { reviewed = null; $('projectReviewArea').hidden = true; controls(); });
@@ -471,6 +496,24 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     width: blenderNumberInput('studioBlenderBevelWidth', 'Largura do bevel'),
     segments: blenderNumberInput('studioBlenderBevelSegments', 'Segmentos do bevel', { integer: true }),
   })));
+  $('studioBlenderBooleanPreviewReview').addEventListener('click', () => task(() => {
+    if (blenderBooleanPreview) throw new Error('Conclua ou cancele o preview booleano atual antes de criar outro.');
+    reviewBlender({
+      kind: 'blenderBooleanPreview',
+      ...blenderSelectorInput(),
+      workflowName: $('studioBlenderBooleanName').value.trim(),
+      dimensions: blenderVector('studioBlenderBooleanDimensions', 'Dimensões do cutter'),
+      offset: blenderVector('studioBlenderBooleanOffset', 'Offset do cutter'),
+    });
+  }));
+  $('studioBlenderBooleanCommitReview').addEventListener('click', () => task(() => {
+    if (!blenderBooleanPreview) throw new Error('Não há preview booleano pendente para confirmar.');
+    reviewBlender({ kind: 'blenderBooleanCommit', previewId: blenderBooleanPreview.previewId });
+  }));
+  $('studioBlenderBooleanCancelReview').addEventListener('click', () => task(() => {
+    if (!blenderBooleanPreview) throw new Error('Não há preview booleano pendente para cancelar.');
+    reviewBlender({ kind: 'blenderBooleanCancel', previewId: blenderBooleanPreview.previewId });
+  }));
   $('studioBlenderCreateReview').addEventListener('click', () => task(() => reviewBlender({
     kind: 'blenderCreate',
     name: $('studioBlenderPrimitiveName').value.trim(),
