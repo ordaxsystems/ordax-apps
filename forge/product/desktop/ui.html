@@ -669,15 +669,9 @@
               <p>Use a mesma conta OrdaX uma única vez. O Forge guarda a sessão cifrada pelo Windows, registra esta instância no gateway canônico e recebe somente actions do catálogo Forge autorizado. Não usa túnel local.</p>
               <p id="forgeRemoteGatewayState" class="settings-connection-state" role="status" aria-live="polite">Conta OrdaX ainda não conectada.</p>
               <div id="forgeProductAuthControls" class="app-settings-card">
-                <label for="forgeProductEmail">E-mail da conta OrdaX</label>
-                <input id="forgeProductEmail" type="email" autocomplete="email" spellcheck="false" placeholder="seu@email.com" />
-                <button id="forgeProductSendCode" type="button" class="mini-secondary">Enviar código</button>
-                <div id="forgeProductOtpControls" hidden>
-                  <label for="forgeProductCode">Código recebido por e-mail</label>
-                  <input id="forgeProductCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="000000" />
-                  <button id="forgeProductVerifyCode" type="button" class="mini-secondary">Conectar conta</button>
-                </div>
+                <p>Entre pela Conta OrdaX no navegador padrão. O Forge não recebe sua senha nem código de e-mail; o retorno usa OAuth com PKCE e a sessão de continuidade fica cifrada pelo Windows.</p>
                 <div class="settings-connection-actions">
+                  <button id="forgeProductConnect" type="button" class="mini-secondary">Entrar com Conta OrdaX</button>
                   <button id="forgeProductReconnect" type="button" class="mini-secondary" hidden>Reconectar gateway</button>
                   <button id="forgeProductDisconnect" type="button" class="mini-secondary" hidden>Desconectar conta</button>
                 </div>

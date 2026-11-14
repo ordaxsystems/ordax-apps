@@ -84,7 +84,9 @@ fs.mkdirSync(userRoot,{recursive:true});
 hostStartupLog('profile_ready');
 app.setPath('userData', userRoot);
 const groqCredential=createLocalGroqCredential({userRoot,safeStorage});
-const forgeProductSession=createForgeProductSession({userRoot,safeStorage});
+const forgeProductSession=createForgeProductSession({
+  userRoot,safeStorage,openExternal:url=>shell.openExternal(url)
+});
 
 const singleInstanceLock = app.requestSingleInstanceLock();
 if (!singleInstanceLock) {
@@ -1632,19 +1634,12 @@ registerUiHandler('ordax:forge:product-auth:status',event=>{
   return {account:forgeProductSession.status(),gateway:forgeRemoteGateway.status(),
     appTrusted:forgeMcpTrusted.isAppTrusted()};
 });
-registerUiHandler('ordax:forge:product-auth:request-otp',async(event,email)=>{
+registerUiHandler('ordax:forge:product-auth:connect',async event=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_product_auth_native_ui_only');
   orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
   if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_mcp_app_untrusted');
-  return forgeProductSession.requestOtp(email);
-});
-registerUiHandler('ordax:forge:product-auth:verify-otp',async(event,payload={})=>{
-  requireTrustedSupervisorRenderer(event);
-  if(hostBrowserMode)throw Error('forge_product_auth_native_ui_only');
-  orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
-  if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_mcp_app_untrusted');
-  const account=await forgeProductSession.verifyOtp(payload);
+  const account=await forgeProductSession.connectBrowser();
   await forgeRemoteGateway.start();
   emitRendererEvent('ordax:forge:remote-gateway:changed');
   return {account,gateway:forgeRemoteGateway.status()};
