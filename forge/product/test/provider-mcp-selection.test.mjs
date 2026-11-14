@@ -71,6 +71,26 @@ test('natural project building requests require MCP even without a mention',()=>
     {requiresMcp:true}),true);
 });
 
+test('project continuation preserves MCP preflight without gating standalone text chats',()=>{
+  for(const prompt of [
+    'continue','Continue.', 'prossiga', 'pode continuar', 'retome o trabalho',
+    'avance a implementação', 'continue trabalhando', 'continue no projeto',
+    'finalize', 'execute o próximo passo', 'Keep going', 'continue working'
+  ]) {
+    assert.equal(requiresMcpForProjectPrompt(prompt,{projectContinuation:true}),true,prompt);
+    assert.equal(requiresMcpForProjectPrompt(prompt),false,prompt);
+    assert.throws(()=>requireSelectedMcpForPrompt(prompt,
+      classifyProviderMcpSelection({composerPresent:true}),{requiresMcp:true}),
+      /provider_mcp_selection_required/);
+  }
+  for(const prompt of ['continue explicando','continue a história','resuma o projeto']) {
+    assert.equal(requiresMcpForProjectPrompt(prompt,{projectContinuation:true}),false,prompt);
+  }
+  const main=fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../desktop/main.mjs'),'utf8');
+  assert.match(main,/projectContinuation=task\.has_messages&&Boolean\(store\.db\.prepare\(/);
+  assert.match(main,/requiresMcpForProjectPrompt\(prompt,\{projectContinuation\}\)/);
+});
+
 test('Forge displays explicit MCP state in Forjador and connections, without silent grant',()=>{
   const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
   const html=fs.readFileSync(path.join(root,'desktop/ui.html'),'utf8');
@@ -86,7 +106,7 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   assert.match(preload,/ordax:provider:mcp-selection/);
   assert.match(worker,/classifyProviderMcpSelection/);
   assert.match(worker,/requireSelectedMcpForPrompt\(prompt,selection,\{requiresMcp:this\.streamContext\?\.requiresMcp===true\}\)/);
-  assert.match(main,/requiresMcpForProjectPrompt\(prompt\)/);
+  assert.match(main,/requiresMcpForProjectPrompt\(prompt,\{projectContinuation\}\)/);
   assert.match(main,/runWorker\.inspectMcpSelectionReadOnly\(\)/);
   assert.ok(main.indexOf('await runWorker.inspectMcpSelectionReadOnly()')<main.indexOf('store.beginProviderRun(taskId'));
   assert.match(worker,/requiresMcp:requiresMcp===true/);

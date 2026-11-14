@@ -390,7 +390,13 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
     if(providerPrompt.length>16000)throw new Error('task_handoff_prompt_budget_exceeded');
     contextManifest={...contextManifest,maxChars:16000,promptChars:providerPrompt.length,promptSha256:providerPromptDigest(providerPrompt)};
   }
-  const mcpWorkRequired=requiresMcpForProjectPrompt(prompt)||mentionWasRequested(providerPrompt);
+  // A continuation of an existing Forge Project Task can request physical
+  // work without repeating words such as "site" or "arquivo". Preserve the
+  // original tool-selection preflight; never infer that a GPT tool was called.
+  const projectContinuation=task.has_messages&&Boolean(store.db.prepare(
+    'SELECT 1 FROM lab_task_bindings WHERE task_id=? LIMIT 1').get(taskId));
+  const mcpWorkRequired=requiresMcpForProjectPrompt(prompt,{projectContinuation})||
+    mentionWasRequested(providerPrompt);
   // Authoritative, fresh, read-only readiness gate BEFORE any Task/Run/message
   // mutation or draft clearing. A signed-out/unknown provider creates no Run.
   // Worker.sendPrompt independently checks again immediately before editing.

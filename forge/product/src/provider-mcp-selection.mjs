@@ -12,8 +12,13 @@ export function requireSelectedMcpForPrompt(prompt, selection, {requiresMcp=fals
 // A normal, nontechnical user request can still require physical project
 // effects. Classify the requested WORK, not the presence of a literal app
 // mention. Conversational explanations and text-only replies stay available.
-export function requiresMcpForProjectPrompt(prompt) {
+// A short continuation in an existing project Task inherits its execution
+// scope, rather than silently downgrading a prior filesystem mission to chat.
+// This is an admission gate only: it grants no tools and proves no MCP call.
+const PROJECT_WORK_CONTINUATION=/^(?:(?:pode\s+)?(?:continuar|continue|prossiga|prosseguir|retome|retomar|avance|avancar|siga|seguir|finalize|finalizar|conclua|concluir)(?:\s+(?:trabalhando|o\s+trabalho|a\s+tarefa|o\s+projeto|no\s+projeto|a\s+implementacao|o\s+desenvolvimento|a\s+execucao|de\s+onde\s+parou|com\s+o\s+projeto|com\s+o\s+trabalho|com\s+a\s+implementacao))?|(?:execute|faca)\s+o\s+proximo\s+passo|keep\s+going|go\s+ahead|continue\s+working|resume\s+work|finish\s+it|carry\s+on)[.!?]*$/u;
+export function requiresMcpForProjectPrompt(prompt,{projectContinuation=false}={}) {
   const text=String(prompt??'').normalize('NFD').replace(/[\u0300-\u036f]/gu,'').toLowerCase().trim();
+  if(projectContinuation===true&&PROJECT_WORK_CONTINUATION.test(text))return true;
   if(!text || /^(?:como|qual|quais|porque|por que|o que|explique|analise|resuma|descreva)\b/u.test(text))
     return false;
   // Natural project work includes routine edits, Git actions and verification,
