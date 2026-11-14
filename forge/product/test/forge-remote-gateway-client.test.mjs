@@ -210,6 +210,53 @@ test('independent remote claims execute concurrently with distinct leased agent 
   assert.deepEqual(reports.map(c=>c.body.succeeded),[true,true]);
 });
 
+test('failed initial registration retries automatically and recovers without another user action',async t=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'forge-remote-retry-'));
+  const store=new Store(path.join(dir,'x.sqlite'));
+  t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true});});
+  let registrations=0,claims=0;
+  const catalog=[{name:'forge_projects_list',description:'List projects',
+    inputSchema:{type:'object',properties:{},required:[],additionalProperties:false},
+    annotations:{readOnlyHint:true}}];
+  const client=new ForgeRemoteGatewayClient({store,retryBaseMs:5,retryMaxMs:20,
+    session:{status:()=>({connected:true,subjectId:subject,issuer:'https://jhfphsjptrpmtnzkpwud.supabase.co/auth/v1'}),
+      accessToken:async()=>jwt()},
+    catalogProvider:async()=>catalog,toolInvoker:async()=>({result:{}}),
+    bindOwnerIdentity:()=>{},
+    fetchImpl:async(url,options)=>{
+      const target=String(url);
+      if(target.endsWith('/register')){
+        registrations++;
+        if(registrations===1)return response(503,{ok:false,error:'forge_gateway_bootstrap_unavailable'});
+        return response(200,{ok:true,last_seen_at:'2026-11-14T00:00:00Z'});
+      }
+      if(target.endsWith('/claim')){
+        claims++;
+        await new Promise(r=>setTimeout(r,10));
+        return response(200,{ok:true,job:null});
+      }
+      if(target.endsWith('/presence'))
+        return response(200,{ok:true,last_seen_at:'2026-11-14T00:00:01Z'});
+      throw Error('unexpected_request');
+    }});
+  await assert.rejects(client.start(),/forge_gateway_bootstrap_unavailable/);
+  assert.equal(client.status().running,false);
+  assert.equal(client.status().reconnectScheduled,true);
+  assert.equal(client.status().lastError,'forge_gateway_bootstrap_unavailable');
+  for(let i=0;i<80&&!client.status().running;i++)await new Promise(r=>setTimeout(r,5));
+  assert.equal(client.status().running,true);
+  assert.equal(client.status().connected,true);
+  assert.equal(client.status().reconnectScheduled,false);
+  assert.equal(client.status().lastError,null);
+  assert.equal(registrations,2);
+  await client.stop();
+  const afterStop=registrations;
+  await new Promise(r=>setTimeout(r,30));
+  assert.equal(registrations,afterStop);
+  assert.equal(client.status().running,false);
+  assert.ok(claims>=1);
+});
+
 test('parallel start calls register once; stop during registration cannot revive polling',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'forge-remote-start-stop-'));
   const store=new Store(path.join(dir,'x.sqlite'));

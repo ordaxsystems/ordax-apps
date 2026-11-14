@@ -35,12 +35,13 @@ async function jsonResponse(res,errorCode){
 export class ForgeRemoteGatewayClient {
   constructor({store,session,catalogProvider,toolInvoker,bindOwnerIdentity,
     appVersion='0.2.0-alpha.42',displayName='OrdaX Forge',fetchImpl=globalThis.fetch,
-    now=()=>Date.now(),maxConcurrent=4}={}){
+    now=()=>Date.now(),maxConcurrent=4,retryBaseMs=1500,retryMaxMs=30_000}={}){
     if(!store?.db||typeof session?.accessToken!=='function'||
        typeof session?.status!=='function'||typeof catalogProvider!=='function'||
        typeof toolInvoker!=='function'||typeof bindOwnerIdentity!=='function'||
        typeof fetchImpl!=='function'||!Number.isInteger(maxConcurrent)||
-       maxConcurrent<1||maxConcurrent>8)
+       maxConcurrent<1||maxConcurrent>8||!Number.isInteger(retryBaseMs)||
+       !Number.isInteger(retryMaxMs)||retryBaseMs<1||retryMaxMs<retryBaseMs)
       throw Error('forge_remote_gateway_ports_required');
     this.db=store.db;this.session=session;this.catalogProvider=catalogProvider;
     this.toolInvoker=toolInvoker;this.bindOwnerIdentity=bindOwnerIdentity;
@@ -51,7 +52,9 @@ export class ForgeRemoteGatewayClient {
     this.bootId='forge-'+randomUUID().toLowerCase();
     this.running=false;this.abortController=null;this.loopPromises=[];
     this.startPromise=null;this.stopRequested=false;
-    this.presenceTimer=null;this.catalog=null;this.catalogDigest=null;
+    this.presenceTimer=null;this.retryTimer=null;this.retryAttempt=0;this.nextRetryAt=null;
+    this.retryBaseMs=retryBaseMs;this.retryMaxMs=retryMaxMs;
+    this.catalog=null;this.catalogDigest=null;
     this.lastSeenAt=null;this.lastError=null;this.activeRequestIds=new Set();
     this.db.exec(`CREATE TABLE IF NOT EXISTS forge_remote_gateway_identity(
       singleton INTEGER PRIMARY KEY CHECK(singleton=1),
@@ -72,20 +75,56 @@ export class ForgeRemoteGatewayClient {
     return {configured:true,running:this.running,connected:this.running&&this.lastError===null,
       instanceId:this.instanceId(),agentInstanceId:this.agentInstanceId,
       catalogDigest:this.catalogDigest,lastSeenAt:this.lastSeenAt,lastError:this.lastError,
-      workers:this.agentInstanceIds.length,
+      workers:this.agentInstanceIds.length,reconnectScheduled:this.retryTimer!==null,
+      nextRetryAt:this.nextRetryAt,
       activeRequestIds:[...this.activeRequestIds],accountConnected:account.connected===true};
+  }
+  clearRetry({resetAttempt=false}={}){
+    if(this.retryTimer){clearTimeout(this.retryTimer);this.retryTimer=null;}
+    this.nextRetryAt=null;
+    if(resetAttempt)this.retryAttempt=0;
+  }
+  scheduleRetry(){
+    if(this.stopRequested||this.running||this.retryTimer||
+       this.session.status().connected!==true)return;
+    const exponent=Math.min(this.retryAttempt,5);
+    const delay=Math.min(this.retryMaxMs,this.retryBaseMs*(2**exponent));
+    this.retryAttempt++;
+    this.nextRetryAt=this.now()+delay;
+    this.retryTimer=setTimeout(()=>{
+      this.retryTimer=null;this.nextRetryAt=null;
+      if(this.stopRequested||this.running||this.session.status().connected!==true)return;
+      void this.start().catch(()=>{});
+    },delay);
+    this.retryTimer.unref?.();
   }
   async request(path,body,{timeoutMs=20_000,signal=null}={}){
     const token=await this.session.accessToken();
-    const timeout=AbortSignal.timeout(timeoutMs);
-    const signals=signal?[signal,timeout]:[timeout];
-    const combined=signals.length===1?signals[0]:AbortSignal.any(signals);
-    const res=await this.fetchImpl(FORGE_REMOTE_GATEWAY_ORIGIN+path,{
-      method:'POST',redirect:'manual',signal:combined,
-      headers:{authorization:'Bearer '+token,accept:'application/json','content-type':'application/json'},
-      body:JSON.stringify(body)
-    });
-    return jsonResponse(res,TERMINAL_ERROR);
+    const controller=new AbortController();
+    const abortFromCaller=()=>{
+      if(!controller.signal.aborted)
+        controller.abort(signal?.reason||Error('forge_remote_gateway_stopped'));
+    };
+    if(signal){
+      if(signal.aborted)abortFromCaller();
+      else signal.addEventListener('abort',abortFromCaller,{once:true});
+    }
+    const timeout=setTimeout(()=>{
+      if(!controller.signal.aborted)
+        controller.abort(Error('forge_remote_gateway_timeout'));
+    },timeoutMs);
+    timeout.unref?.();
+    try{
+      const res=await this.fetchImpl(FORGE_REMOTE_GATEWAY_ORIGIN+path,{
+        method:'POST',redirect:'manual',signal:controller.signal,
+        headers:{authorization:'Bearer '+token,accept:'application/json','content-type':'application/json'},
+        body:JSON.stringify(body)
+      });
+      return jsonResponse(res,TERMINAL_ERROR);
+    }finally{
+      clearTimeout(timeout);
+      if(signal)signal.removeEventListener('abort',abortFromCaller);
+    }
   }
   async loadCatalog(){
     const catalog=await this.catalogProvider();
@@ -184,19 +223,26 @@ export class ForgeRemoteGatewayClient {
     if(this.startPromise)return this.startPromise;
     this.stopRequested=false;
     const pending=(async()=>{
-      await this.register();
-      if(this.stopRequested){
-        await this.presence(false).catch(()=>{});
+      try{
+        await this.register();
+        this.clearRetry({resetAttempt:true});
+        if(this.stopRequested){
+          await this.presence(false).catch(()=>{});
+          return this.status();
+        }
+        this.running=true;
+        this.abortController=new AbortController();
+        this.presenceTimer=setInterval(()=>{if(this.running)this.presence(true).catch(error=>{
+          this.lastError=String(error?.message||TERMINAL_ERROR).slice(0,120);
+        });},30_000);
+        this.loopPromises=this.agentInstanceIds.map(agentInstanceId=>
+          this.pump(this.abortController.signal,agentInstanceId).catch(()=>{}));
         return this.status();
-      }
-      this.running=true;
-      this.abortController=new AbortController();
-      this.presenceTimer=setInterval(()=>{if(this.running)this.presence(true).catch(error=>{
+      }catch(error){
         this.lastError=String(error?.message||TERMINAL_ERROR).slice(0,120);
-      });},30_000);
-      this.loopPromises=this.agentInstanceIds.map(agentInstanceId=>
-        this.pump(this.abortController.signal,agentInstanceId).catch(()=>{}));
-      return this.status();
+        this.scheduleRetry();
+        throw error;
+      }
     })();
     this.startPromise=pending;
     try{return await pending;}
@@ -204,6 +250,7 @@ export class ForgeRemoteGatewayClient {
   }
   async stop(){
     this.stopRequested=true;
+    this.clearRetry({resetAttempt:true});
     if(this.startPromise)await this.startPromise.catch(()=>{});
     if(!this.running)return this.status();
     this.running=false;clearInterval(this.presenceTimer);this.presenceTimer=null;
