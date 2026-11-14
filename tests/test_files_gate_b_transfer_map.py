@@ -1,68 +1,50 @@
-"""Fail-closed shape and ownership checks for the Files Gate B map."""
+"""Files Gate B transfer map: source is materialized once in ordax-apps."""
 from __future__ import annotations
-
 import json
-import unittest
 from pathlib import Path
+import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 
-
 class FilesGateBTransferMapTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.plan = json.loads((ROOT / "migrations/files.externalization.json").read_text(encoding="utf-8"))
-        cls.snapshot = json.loads((ROOT / "migrations/files.source-snapshot.json").read_text(encoding="utf-8"))
-        cls.mapping = json.loads((ROOT / "migrations/files.gate-b-transfer-map.json").read_text(encoding="utf-8"))
+    def setUp(self):
+        self.plan = json.loads((ROOT / "migrations/files.externalization.json").read_text(encoding="utf-8"))
+        self.mapping = json.loads((ROOT / "migrations/files.gate-b-transfer-map.json").read_text(encoding="utf-8"))
 
-    def test_map_covers_exactly_the_pinned_product_source_without_copying_it(self):
-        mapping = self.mapping
-        sources = [entry["source"] for entry in mapping["mappings"]]
-        self.assertEqual(mapping["source_file_count"], self.snapshot["file_count"])
-        self.assertEqual(mapping["source_snapshot"], "migrations/files.source-snapshot.json")
-        self.assertEqual(mapping["source_commit"], self.snapshot["commit"])
-        self.assertEqual(set(sources), {entry["path"] for entry in self.snapshot["files"]})
-        self.assertEqual(len(sources), len(set(sources)))
-        self.assertFalse((ROOT / "apps/files").exists())
-        self.assertFalse(mapping["rules"]["materialize_target_before_gate_a"])
-        self.assertFalse(mapping["rules"]["dual_source_allowed"])
-
-    def test_targets_are_inside_one_product_root_and_keep_platform_owners_out(self):
-        targets = [entry["target"] for entry in self.mapping["mappings"]]
+    def test_locked_transfer_map_covers_all_ten_historical_sources(self):
+        rows = self.mapping["mappings"]
+        self.assertEqual(self.mapping["source_file_count"], 10)
+        self.assertEqual(len(rows), 10)
+        self.assertEqual(len({row["source"] for row in rows}), 10)
+        targets = [row["target"] for row in rows]
         self.assertTrue(all(path.startswith("apps/files/") for path in targets))
         self.assertEqual(targets.count("apps/files/app.json"), 2)
-        self.assertEqual(len([path for path in targets if path != "apps/files/app.json"]),
-                         len(set(path for path in targets if path != "apps/files/app.json")))
-        self.assertTrue(self.mapping["rules"]["copy_native_filesystem_adapters"] is False)
-        self.assertTrue(self.mapping["rules"]["copy_host_grant_or_install_authority"] is False)
-
-    def test_gate_a_is_complete_but_gate_b_materialization_and_distribution_remain_closed(self):
-        self.assertEqual(self.mapping["state"], "prepared-no-source-copy")
-        self.assertTrue(self.plan["source_cutover_allowed"])
-        self.assertEqual(self.plan["source_of_truth_state"], "source-absent-after-platform-removal")
-        self.assertIsNone(self.plan["source_repository_current"])
-        self.assertIsNone(self.plan["source_path_current"])
-        self.assertTrue(self.plan["source_cutover"]["gate_a_complete"])
-        self.assertEqual(self.plan["source_cutover"]["target_materialization_state"], "pending")
-        self.assertFalse(self.plan["source_cutover"]["target_source_present"])
-        self.assertFalse((ROOT / "apps/files").exists())
-        self.assertFalse(self.plan["distribution_activation_allowed"])
-        self.assertFalse(self.plan["source_cutover"]["dual_source_allowed"])
+        self.assertEqual(len([p for p in targets if p != "apps/files/app.json"]),
+                         len(set(p for p in targets if p != "apps/files/app.json")))
+        self.assertEqual(self.mapping["state"], "materialized-unsigned")
         self.assertEqual(self.mapping["authority"], "none")
 
-    def test_test_ownership_is_explicit_and_disjoint(self):
-        groups = self.mapping["test_ownership"]
-        paths = [path for key in (
-            "moves_with_product",
-            "remains_with_platform",
-            "split_before_cutover",
-            "remains_with_apps_migration_infrastructure",
-        ) for path in groups[key]]
-        self.assertTrue(all(path.startswith("tests/test_") for path in paths))
-        self.assertEqual(len(paths), len(set(paths)))
-        self.assertIn("tests/test_files_bootstrap_continuity.py", groups["remains_with_platform"])
-        self.assertIn("tests/test_files_copy_destination.py", groups["split_before_cutover"])
+    def test_gate_b_has_one_canonical_source_and_no_distribution_authority(self):
+        self.assertEqual(self.plan["source_of_truth_state"], "ordax-apps-canonical")
+        self.assertEqual(self.plan["source_repository_current"], "ordaxsystems/ordax-apps")
+        self.assertEqual(self.plan["source_path_current"], "apps/files")
+        self.assertEqual(self.plan["source_cutover"]["target_materialization_state"], "materialized")
+        self.assertTrue(self.plan["source_cutover"]["target_source_present"])
+        self.assertTrue((ROOT / "apps/files/app.json").is_file())
+        self.assertEqual(self.plan["gate_b"]["state"], "source-materialized-unsigned")
+        self.assertFalse(self.plan["distribution_activation_allowed"])
+        self.assertFalse(self.plan["gate_b"]["signed_distribution_verified"])
+        self.assertFalse(self.plan["gate_b"]["native_install_verified"])
+        self.assertFalse(self.plan["gate_b"]["rollback_verified"])
 
+    def test_forbidden_platform_authorities_stay_out_of_files_source(self):
+        rules = self.mapping["rules"]
+        for key in (
+            "copy_platform_private_imports", "copy_native_filesystem_adapters",
+            "copy_platform_persistence_or_identity", "copy_host_grant_or_install_authority",
+            "dual_source_allowed",
+        ):
+            self.assertFalse(rules[key])
 
 if __name__ == "__main__":
     unittest.main()

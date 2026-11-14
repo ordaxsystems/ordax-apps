@@ -143,19 +143,13 @@ def load_plan(root: Path) -> tuple[dict, dict, dict]:
         or plan.get("app_id") != "files"
         or plan.get("target_repository") != TARGET
         or plan.get("target_path") != "apps/files"
-        or plan.get("source_repository_current") is not None
-        or plan.get("source_path_current") is not None
-        or plan.get("source_of_truth_state") != "source-absent-after-platform-removal"
         or plan.get("source_cutover_allowed") is not True
         or plan.get("authority") != "none"
         or plan.get("distribution_activation_allowed") is not False
     ):
         raise FilesCutoverError("Files migration identity, owner or distribution gate is invalid")
-    # Gate A is complete but Gate B has not materialized the target source yet.
-    # Current product source must therefore be absent from both repositories.
+
     target_source = root / "apps" / "files"
-    if target_source.exists() or target_source.is_symlink():
-        raise FilesCutoverError("Files target source exists while materialization state is still pending")
     cutover = plan.get("source_cutover")
     if (
         not isinstance(cutover, dict)
@@ -167,11 +161,43 @@ def load_plan(root: Path) -> tuple[dict, dict, dict]:
         or cutover.get("platform_repository") != platform
         or cutover.get("platform_source_path") != "system/apps/files"
         or cutover.get("platform_absence_proven_at") != plan.get("gate_a_platform_commit")
-        or cutover.get("target_materialization_state") != "pending"
-        or cutover.get("target_source_present") is not False
         or cutover.get("gate_a_complete") is not True
     ):
         raise FilesCutoverError("remove-first source cutover policy is invalid")
+
+    source_state = plan.get("source_of_truth_state")
+    if source_state == "source-absent-after-platform-removal":
+        if (
+            plan.get("source_repository_current") is not None
+            or plan.get("source_path_current") is not None
+            or target_source.exists()
+            or target_source.is_symlink()
+            or cutover.get("target_materialization_state") != "pending"
+            or cutover.get("target_source_present") is not False
+        ):
+            raise FilesCutoverError("Files pending Gate B source state is inconsistent")
+    elif source_state == "ordax-apps-canonical":
+        gate_b = plan.get("gate_b")
+        if (
+            plan.get("source_repository_current") != TARGET
+            or plan.get("source_path_current") != "apps/files"
+            or target_source.is_symlink()
+            or not target_source.is_dir()
+            or not (target_source / "app.json").is_file()
+            or cutover.get("target_materialization_state") != "materialized"
+            or cutover.get("target_source_present") is not True
+            or not isinstance(gate_b, dict)
+            or gate_b.get("state") != "source-materialized-unsigned"
+            or gate_b.get("sdk_bundle_version") != sdk.get("bundle_version")
+            or gate_b.get("platform_absence_proven") is not True
+            or gate_b.get("app_source_authority") != TARGET
+            or gate_b.get("signed_distribution_verified") is not False
+            or gate_b.get("native_install_verified") is not False
+            or gate_b.get("rollback_verified") is not False
+        ):
+            raise FilesCutoverError("Files materialized Gate B source state is inconsistent")
+    else:
+        raise FilesCutoverError("unsupported Files source-of-truth state")
 
     target_sdk = plan.get("target_sdk")
     if (

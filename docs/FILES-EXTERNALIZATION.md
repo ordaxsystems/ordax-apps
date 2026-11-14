@@ -1,13 +1,13 @@
 # Files — Gate A e preflight de extração
 
-> **Estado atual:** o Gate A de remoção do source bundled foi concluído em `ordax-os#2184`; `system/apps/files/` não existe mais na `main`. Ainda não há `apps/files` ativo e a distribuição permanece bloqueada. O plano machine-readable `migrations/files.externalization.json` continua sendo um gate de pré-materialização e contém campos históricos do source anterior; ele não deve ser usado para afirmar que a implementação Files ainda vive no OS.
+> **Estado atual:** Gate A removeu o source bundled em `ordax-os#2184` e Gate B materializou a fonte única em `ordax-apps/apps/files`. O app permanece unsigned e sem autoridade de distribuição/ativação; File Space, grants, Recentes, Projects e lifecycle continuam em seus owners de plataforma.
 
 ## Estado reconciliado com os repositórios atuais
 
 - **Gate A concluído:** a remoção do source bundled ocorreu no commit exato `4bee05e1b2e707354217fe2a4dfa6d8540aecf0e` (`ordax-os#2184`). Seu pai imediato é `85d68ea0f4aae01ce63646f09b486bc43b8af8d7`.
 - **Snapshot histórico válido:** `cf8b07ba6d152856b34cc190079beaa8312252f2` continua sendo a captura dos dez paths app-owned. A comparação Git entre esse snapshot e o pai imediato do Gate A atravessa 75 commits e mostra **zero alteração nos paths Files inventariados**; portanto não é necessário recapturar os blobs para provar a remoção.
-- **Nenhuma fonte executável atual:** `system/apps/files/` já não existe no OS e `apps/files/` ainda não foi materializado. O estado machine-readable é `source-absent-after-platform-removal`; `source_repository_current` e `source_path_current` são `null`.
-- **Gate B pendente:** `source_cutover_allowed=true` significa apenas que a remoção/snapshot foram provados e a futura materialização em `ordax-apps/apps/files` pode ser executada. O plano mantém `target_materialization_state=pending` e `target_source_present=false`; criar o source e mudar para `ordax-apps-canonical` devem ocorrer juntos, com validação.
+- **Fonte canônica materializada:** `system/apps/files/` permanece ausente no OS e `apps/files/` é agora a única fonte do produto. O estado machine-readable é `ordax-apps-canonical`, com owner `ordaxsystems/ordax-apps`.
+- **Gate B concluído no source:** materialização e autoridade mudam juntas. O plano registra `target_materialization_state=materialized`, `target_source_present=true` e `gate_b.state=source-materialized-unsigned`.
 - **Distribuição continua bloqueada:** `distribution_activation_allowed=false`. Não há package assinado autorizado, instalação, promoção, bootstrap offline nem prova de Files em hardware. Gate A não concede nenhuma dessas capacidades.
 - **Serviços estruturais permanecem no OS:** File Space, Recentes, Projects, grants/brokers e lifecycle sistêmico continuam em seus owners. A futura fonte do app deve consumir somente a fronteira pública/SDK; não copiar adapters ou serviços privados.
 - **SDK mínimo:** o App SDK 1.20.0 permanece a fronteira pública pinada usada pelas provas portáteis. A prova efêmera continua útil para demonstrar determinismo e ausência de source permanente, mas a antiga prova negativa “o OS ainda é owner e rejeita Apps no signer” foi aposentada porque esse fato deixou de ser verdadeiro após Gate A.

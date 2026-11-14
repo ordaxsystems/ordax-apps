@@ -299,11 +299,13 @@ class FilesCutoverTests(unittest.TestCase):
                       plan["gate_a_platform_removal"]["retain_platform_owned"])
         self.assertIn("ordax.first-party-app/1", plan["platform_contracts_required"])
         self.assertTrue(plan["source_cutover_allowed"])
-        self.assertEqual(plan["source_of_truth_state"], "source-absent-after-platform-removal")
-        self.assertIsNone(plan["source_repository_current"])
-        self.assertIsNone(plan["source_path_current"])
+        self.assertEqual(plan["source_of_truth_state"], "ordax-apps-canonical")
+        self.assertEqual(plan["source_repository_current"], "ordaxsystems/ordax-apps")
+        self.assertEqual(plan["source_path_current"], "apps/files")
         self.assertTrue(plan["source_cutover"]["gate_a_complete"])
-        self.assertEqual(plan["source_cutover"]["target_materialization_state"], "pending")
+        self.assertEqual(plan["source_cutover"]["target_materialization_state"], "materialized")
+        self.assertTrue(plan["source_cutover"]["target_source_present"])
+        self.assertEqual(plan["gate_b"]["state"], "source-materialized-unsigned")
         self.assertFalse(plan["distribution_activation_allowed"])
 
     def test_files_sdk_import_graph_uses_snapshot_and_published_contract_inventory(self):
@@ -680,8 +682,8 @@ class FilesCutoverTests(unittest.TestCase):
         self.assertIn("--platform-root .ordax-files-os-main --require-cutover-ready", workflow)
         self.assertIn("if: needs.ownership.outputs.package_allowed == 'true'", workflow)
         self.assertIn("target_materialized", workflow)
-        self.assertIn("FILES_PACKAGE=GATE_B_SOURCE_PENDING", workflow)
-        self.assertIn("source-absent-after-platform-removal", workflow)
+        self.assertIn('elif state == "ordax-apps-canonical":', workflow)
+        self.assertIn("package_allowed=true", workflow)
         self.assertIn("if-no-files-found: error", workflow)
 
     def test_missing_coupling_owner_fails_closed(self):
