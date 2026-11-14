@@ -13,22 +13,25 @@ const createWindow=main.slice(
 );
 
 test('App renderer never starts beneath a visible embedded provider view',()=>{
-  const attach=createWindow.indexOf('win.contentView.addChildView(worker.view)');
+  const attach=createWindow.indexOf('win.contentView.addChildView(registeredWorker.view)');
   const firstLayout=createWindow.indexOf('layoutViews();',attach);
   const loadApp=createWindow.indexOf("await win.loadFile(path.join(here, 'ui.html'))");
-  const loadProvider=createWindow.indexOf("void worker.load('https://chatgpt.com/').catch(()=>{})");
+  const loadProvider=createWindow.indexOf('providerWorkers.forEach((candidate,index)=>');
   assert.ok(attach>=0 && firstLayout>attach && loadApp>firstLayout &&
-    loadProvider>loadApp,'load the App shell before starting provider navigation asynchronously');
-  assert.doesNotMatch(createWindow,/await worker\.load\('https:\/\/chatgpt\.com\/'\)/,
+    loadProvider>loadApp,'attach all lanes and load the App before provider navigation');
+  assert.match(createWindow,/void candidate\.load\('https:\/\/chatgpt\.com\/'\)\.catch/);
+  assert.doesNotMatch(createWindow,/await candidate\.load\('https:\/\/chatgpt\.com\/'\)/,
     'a provider timeout must not reject the App startup promise');
-  assert.match(main,/worker\.view\.setVisible\(Boolean\(chatVisible&&bounds\)\)/);
+  assert.match(main,/candidate\.view\.setVisible\(false\)/);
+  assert.match(main,/candidate\.view\.setVisible\(true\)/);
 });
 
 test('initial GPT navigation failure is recorded without taking down the OrdaX shell',()=>{
   const worker=fs.readFileSync(new URL('../desktop/embedded-worker.mjs',import.meta.url),'utf8');
   assert.match(worker,/provider_initial_load_failed/);
   assert.match(worker,/code === 'provider_navigation_timeout'/);
-  assert.match(createWindow,/void worker\.load\('https:\/\/chatgpt\.com\/'\)\.catch\(\(\)=>\{\}\)/);
+  assert.match(createWindow,/void candidate\.load\('https:\/\/chatgpt\.com\/'\)\.catch/);
+  assert.match(createWindow,/if\(candidate===worker\)hostStartupLog\('provider_primary_worker_load_failed'\)/);
   assert.match(createWindow,/hostStartupLog\('window_create_complete'\)/);
 });
 

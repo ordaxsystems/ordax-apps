@@ -69,7 +69,8 @@ test('fresh provider chat recovery preserves the Task and is blocked for unsafe 
 });
 
 test('Electron uses existing persistent isolated Chromium partition; never stores provider password',()=>{
-  assert.match(worker,/this\.partition = 'persist:ordax-forge-chatgpt'/);
+  assert.match(worker,/constructor\(\{id='primary',partition='persist:ordax-forge-chatgpt'\}/);
+  assert.match(worker,/this\.partition = partition/);
   assert.match(worker,/this\.session = session\.fromPartition\(this\.partition\)/);
   assert.match(worker,/this\.view = createView\(this\.partition\)/);
   assert.match(html,/O OrdaX não salva sua senha/);
@@ -82,7 +83,7 @@ test('main-process preflight rejects signed-out sends before appendMessage, setD
   assert.ok(start>=0 && end>start);
   const section=main.slice(start,end);
   const workerIdentity=section.indexOf('providerViews.resolve(runWorker?.view?.webContents)!==runWorker');
-  const probe=section.indexOf('assertProviderSendReadiness(await runWorker.health());');
+  const probe=section.indexOf('assertProviderSendReadiness(health);');
   const atomic=section.indexOf('store.beginProviderRun(taskId, prompt, {');
   const transport=section.indexOf('await runWorker.sendPrompt(');
   assert.ok(workerIdentity>0 && probe>workerIdentity && atomic>probe && transport>atomic);

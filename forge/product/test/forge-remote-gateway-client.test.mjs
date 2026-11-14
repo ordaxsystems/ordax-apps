@@ -44,7 +44,11 @@ test('product session uses one normal Supabase account session, sealed at rest a
     });
     throw Error('unexpected_fetch');
   };
-  const session=createForgeProductSession({userRoot:root,safeStorage:safeStorage(),fetchImpl});
+  // This mock exercises the Windows DPAPI contract on every CI host.
+  // Production still rejects secure-session persistence on non-Windows.
+  const session=createForgeProductSession({
+    userRoot:root,safeStorage:safeStorage(),fetchImpl,platform:'win32'
+  });
   await session.requestOtp('owner@example.com');
   const verified=await session.verifyOtp({email:'owner@example.com',token:'123456'});
   assert.equal(verified.subjectId,subject);

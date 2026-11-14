@@ -236,7 +236,10 @@ test('one app MCP token discovers projects and writes only verified owner folder
   const tools=list.body.result.tools.map(tool=>tool.name);
   for(const tool of ['forge_projects_list','forge_project_file_write','forge_project_file_read'])
     assert.ok(tools.includes(tool),tool+' must be available on the app');
-  for(const tool of ['forge_project_delete','forge_forjador_send','forge_project_quick_create'])
+  // One Owner-approved app grant may create a new isolated local project;
+  // project-scoped grants never gain this operation.
+  assert.ok(tools.includes('forge_project_quick_create'));
+  for(const tool of ['forge_project_delete','forge_forjador_send'])
     assert.ok(!tools.includes(tool),tool+' must not be exposed');
   const catalog=await request(app.endpoint,app.token,init.session,invoke(3,'projects_list'));
   assert.equal(catalog.body.result.structuredContent.projects.length,3);
