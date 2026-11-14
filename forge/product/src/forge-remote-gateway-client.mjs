@@ -191,6 +191,11 @@ export class ForgeRemoteGatewayClient {
       const response=await this.toolInvoker(job.tool_name,job.arguments);
       if(response?.error)throw Error('forge_remote_local_mcp_error');
       result=response?.result??null;
+      // The public gateway rejects results above 384 KiB. Fail this leased
+      // action explicitly rather than repeatedly reporting an oversized body
+      // and leaving the remote receipt pending after the local tool finished.
+      if(result!==null&&Buffer.byteLength(JSON.stringify(result),'utf8')>384*1024)
+        throw Error('forge_remote_result_too_large');
       succeeded=Boolean(result&&result.isError!==true);
       if(!succeeded)errorCode='forge_action_rejected';
     }catch(error){
