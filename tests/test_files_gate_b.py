@@ -90,7 +90,7 @@ class FilesGateBTests(unittest.TestCase):
             self.assertEqual(first, checked)
             self.assertEqual(a.read_bytes(), b.read_bytes())
             self.assertEqual(first["component"]["id"], "files")
-            self.assertEqual(first["entrypoint"], "src/runtime.mjs")
+            self.assertEqual(first["entrypoint"], "system/apps/files/src/runtime.mjs")
             self.assertFalse(first["activation_allowed"])
             self.assertFalse(first["native_adapters_packaged"])
             self.assertTrue(first["signature_required_before_activation"])

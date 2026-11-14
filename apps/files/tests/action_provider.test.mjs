@@ -17,6 +17,8 @@ test("browse uses only the injected logical File Space", async () => {
   })));
   const result=await provider.invoke({
     schema:"ordax.application-action-provider-invocation/1",
+    workItemId:"files-test-work-1",
+    resourceRef:"application-action:files-documents",
     appId:"files",actionId:"files.browse",arguments:{location:"Documentos"},
   });
   assert.equal(result.status,"succeeded");
@@ -28,6 +30,8 @@ test("browse rejects mismatched response identity", async () => {
   const provider=createFilesApplicationActionProvider(fileSpace(async ()=>({path:"/Downloads",entries:[]})));
   const result=await provider.invoke({
     schema:"ordax.application-action-provider-invocation/1",
+    workItemId:"files-test-work-2",
+    resourceRef:"application-action:files-documents-mismatch",
     appId:"files",actionId:"files.browse",arguments:{location:"/Documentos"},
   });
   assert.equal(result.status,"failed");
