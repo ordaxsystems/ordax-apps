@@ -28,7 +28,7 @@ function fixture(t) {
   const ctx={
     registerUiHandler:(name,fn)=>registered.set(name,fn),
     requireTrustedSupervisorRenderer:()=>{},
-    liveRun:null,store,worker,canonicalProviderChatUrl,
+    primaryProviderRunActive:()=>false,store,worker,canonicalProviderChatUrl,
     findProviderSubmissionProvenance,inspectProviderLinkedThread,
     assessProviderConversationEvidence:()=>({
       kind:'unavailable',reason:'thread_dom_not_ready',

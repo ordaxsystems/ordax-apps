@@ -26,9 +26,14 @@ test('composer WebContents observation has a finite bound, even on a never-settl
 });
 
 test('unreadable draft never becomes a synthetic empty draft during thread switch or send',()=>{
-  const show=section('  async showConversation(', '  async inspectDiagnosticReadOnly()');
+  // Bound this assertion to navigation itself: the intervening MCP staged-draft
+  // cleanup intentionally uses .catch(()=>null) to REFUSE clearing an unknown draft.
+  const show=section('  async showConversation(', '  async inspectMcpSelectionReadOnly(');
   assert.match(show,/const state = await this\.#composerState\(\);/);
   assert.doesNotMatch(show,/this\.#composerState\(\)\.catch/);
+  const discard=section('  async discardPreparedMcpPrompt(', '  async inspectDiagnosticReadOnly()');
+  assert.match(discard,/this\.#composerState\(\)\.catch\(\(\)=>null\)/);
+  assert.match(discard,/if\(normalizeComposerText\(current\?\.text\)!==normalizeComposerText\(providerPrompt\)\)/);
   const load=section('  async #safeLoad(','  async #assistantSnapshot()');
   assert.match(load,/if \(protectDraft\) \{\s*const state = await this\.#composerState\(\);/);
   assert.match(load,/let alreadyAtTarget = false/);
@@ -110,7 +115,7 @@ test('OrdaX UI inspection uses existing Task/SQLite, trusted IPC and no replay',
   assert.match(chunk,/requireTrustedSupervisorRenderer\(event\)/);
   assert.match(chunk,/inspectProviderLinkedThread\(\{store,worker,taskId:requestedId\}\)/);
   assert.match(core,/workspace_session_id!==session\?\.id/);
-  assert.match(chunk,/liveRun/);
+  assert.match(chunk,/primaryProviderRunActive\(\)/);
   assert.match(core,/canonicalProviderChatUrl\(row\.chat_url\)/);
   assert.match(core,/assessProviderConversationEvidence/);
   assert.match(core,/worker\.inspectConversationReadOnly/);

@@ -87,7 +87,7 @@ test('real worker implementation stops before showConversation when W3 preflight
   assert.match(main,/inspectProviderLinkedThread\(\{store,worker,taskId:requestedId\}\)/);
   assert.match(recovery,/const provenance=findProviderSubmissionProvenance\(\{/);
   assert.match(recovery,/messageId:message\?\.id/);
-  assert.match(recovery,/const threadRendered=assessment\.kind==='response_candidate'/);
+  assert.match(recovery,/let threadRendered=assessment\.kind==='response_candidate'/);
   assert.match(recovery,/provider_submission_provenance_missing/);
   assert.ok(recovery.indexOf('if(!provenance)return')<recovery.indexOf('worker.inspectConversationReadOnly('));
   assert.match(ui,/provider_rate_limited_observed/);
