@@ -19,6 +19,7 @@ const blenderVector3 = (value, label, minimum, maximum) => {
   }
   return value.map(Number);
 };
+const blenderPreviewId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
 const blenderNumber = (value, label, minimum, maximum, { integer = false } = {}) => {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < minimum || value > maximum || (integer && !Number.isInteger(value))) {
     throw fail(`${label} deve ser ${integer ? 'inteiro' : 'numérico'} entre ${minimum} e ${maximum}.`, 400);
@@ -454,6 +455,26 @@ export class ProductRuntime {
         timeout_seconds: 30,
       });
       label = `Adicionar bevel ${data.modifierName.trim()} em ${selector.object_name || selector.ordax_object_id}`;
+    }
+    if (data.kind === 'blenderBooleanPreview') {
+      const selector = blenderObjectSelector(data);
+      if (!blenderName(data.workflowName)) throw fail('Nome do corte booleano inválido.', 400);
+      const dimensions = blenderVector3(data.dimensions, 'Dimensões do cutter', 0.001, 1000);
+      const offset = data.offset == null ? [0,0,0] : blenderVector3(data.offset, 'Offset do cutter', -10000, 10000);
+      Object.assign(arguments_, selector, {
+        name: data.workflowName.trim(),
+        profiles: [{ type: 'box', dimensions, offset, rotation_euler: [0,0,0] }],
+        timeout_seconds: 60,
+      });
+      label = `Pré-visualizar corte booleano ${data.workflowName.trim()} em ${selector.object_name || selector.ordax_object_id}`;
+    }
+    if (data.kind === 'blenderBooleanCommit' || data.kind === 'blenderBooleanCancel') {
+      if (!blenderPreviewId(data.previewId)) throw fail('Preview booleano inválido.', 400);
+      arguments_.preview_id = data.previewId;
+      arguments_.timeout_seconds = 30;
+      label = data.kind === 'blenderBooleanCommit'
+        ? `Confirmar corte booleano ${data.previewId}`
+        : `Cancelar corte booleano ${data.previewId}`;
     }
     if (data.kind === 'blenderCreate') {
       if (!blenderName(data.name)) throw fail('Nome da primitiva Blender inválido.', 400);

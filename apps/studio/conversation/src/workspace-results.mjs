@@ -48,7 +48,7 @@ export function workspaceText(kind, result) {
     const states = { stopped: 'parado', running: 'em execução', ready: 'pronto', starting: 'iniciando', failed: 'falhou' }, state = data.runtime?.state;
     return [`Preview: ${value(data.mode)}`, state && `Estado: ${states[state] || value(state)}`, data.url && `Endereço: ${value(data.url)}`, data.latest_image && 'Existe uma captura disponível no Runtime.'].filter(Boolean).join('\n');
   }
-  if (['blenderStatus','blenderSchema','blenderScene','blenderInspect','blenderStart','blenderTransform','blenderBevel','blenderCreate','blenderMaterial','blenderSave'].includes(kind)) {
+  if (['blenderStatus','blenderSchema','blenderScene','blenderInspect','blenderStart','blenderTransform','blenderBevel','blenderBooleanPreview','blenderBooleanCommit','blenderBooleanCancel','blenderCreate','blenderMaterial','blenderSave'].includes(kind)) {
     return JSON.stringify(data, null, 2).slice(0, 150000);
   }
   return JSON.stringify(data, null, 2).slice(0, 150000);
@@ -73,6 +73,9 @@ export const workspaceTools = Object.freeze({
   blenderStart: { target: 'studioBlenderResult', title: 'Blender live iniciado' },
   blenderTransform: { target: 'studioBlenderResult', title: 'Transformação Blender' },
   blenderBevel: { target: 'studioBlenderResult', title: 'Bevel Blender' },
+  blenderBooleanPreview: { target: 'studioBlenderResult', title: 'Preview booleano Blender' },
+  blenderBooleanCommit: { target: 'studioBlenderResult', title: 'Booleano Blender confirmado' },
+  blenderBooleanCancel: { target: 'studioBlenderResult', title: 'Booleano Blender cancelado' },
   blenderCreate: { target: 'studioBlenderResult', title: 'Primitiva Blender' },
   blenderMaterial: { target: 'studioBlenderResult', title: 'Material Blender' },
   blenderSave: { target: 'studioBlenderResult', title: 'Cena Blender salva' },
