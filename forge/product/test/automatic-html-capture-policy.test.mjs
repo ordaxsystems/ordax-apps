@@ -27,7 +27,7 @@ test('post-Run handler reuses canonical capture and never dispatches a second pr
   assert.match(main,/inspectProviderLinkedThread\(\{store,worker:captureWorker,taskId\}\)/);
   assert.match(main,/captureWorker\.downloadLinkedHtmlArtifact\(/);
   const begin=main.indexOf("send:async({taskId,content,draftRevision,taskKind,authorSource='human'})=>");
-  const end=main.indexOf("coordinator:createGroqCoordinatorConversation",begin);
+  const end=main.indexOf("coordinator:null",begin);
   const text=main.slice(begin,end);
   assert.ok(begin>0&&end>begin);
   assert.equal((text.match(/enqueueExecution\(/g)||[]).length,1,

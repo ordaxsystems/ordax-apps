@@ -852,7 +852,7 @@ test('coordinator shows an actionable empty state and keeps mobile controls insi
   assert.match(orchestration,/GPT Web · disponível no aplicativo desktop/);
   assert.match(html,/id="coordinatorApiSettings"[^>]*>Ajustes</);
   assert.match(css,/coordinator-head-actions #coordinatorApiSettings\{font-size:9px;width:auto/);
-  assert.match(orchestration,/groq_auth_rejected:/);
+  assert.match(orchestration,/const legacyFailure=String\(receipt\.result\?\.failureCode/);
   assert.match(orchestration,/O tempo de resposta de um mecanismo legado expirou sem confirmação/);
   assert.match(orchestration,/input\.dispatchEvent\(new Event\('input',\{bubbles:true\}\)\)/);
   assert.match(html,/id="forgeCoordinatorAdvanced"/);
