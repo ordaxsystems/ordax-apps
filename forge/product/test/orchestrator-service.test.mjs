@@ -719,6 +719,10 @@ test('unknown delivery remains uncertain across restart; neither same nor new re
   assert.equal(result.status,'uncertain');assert.equal(result.requiresReconciliation,true);
   assert.doesNotMatch(JSON.stringify(result),/private detail/);
   assert.equal((await f.call('work_get',{projectId:a.p,taskId:a.w})).monitor.state,'reconciliation_required');
+  const listed=(await f.call('work_list',{projectId:a.p})).works[0];
+  assert.equal(listed.execution.observed,'reconciliation_required');
+  assert.equal(listed.execution.needsReview,true);
+  assert.equal(listed.execution.automaticDispatchAllowed,false);
   assert.deepEqual(await f.call('work_send',input),result);
   await assert.rejects(f.call('work_send',{...input,requestId:'different'}),/reconciliation_required/);
   f.store.close();
