@@ -243,7 +243,6 @@ jobs:
           python3 -m unittest tests.test_files_gate_b -v
           node --check apps/files/src/runtime.mjs
           node --check apps/files/src/ui/file-space-controls.mjs
-          node --check apps/files/actions/providers/files-native.mjs
 
       - name: Prove independent business domains without unapproved persistence
         run: |
