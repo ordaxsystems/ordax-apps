@@ -1,3 +1,5 @@
+import {forgeProjectFileReceiptView} from './forge-project-file-receipts.mjs';
+
 // Deterministic handoff read model. Rehydrates one project from canonical SQLite;
 // it does not summarize with a model, rotate chats or verify external artifacts.
 const excerpt=(value,max=1400)=>({
@@ -51,6 +53,7 @@ export function forgeProjectHandoffView(store,projectId,{taskId=null}={}) {
     (SELECT COUNT(*) FROM lab_command_receipts
       WHERE project_id=? AND status IN ('running','uncertain')) AS unresolvedCommands`)
     .get(projectId,projectId,taskId,taskId,projectId,projectId,projectId);
+  const recentFileWrites=forgeProjectFileReceiptView(store,projectId,{limit:8});
   const selectedTask=task?{
     taskId:task.id,title:task.title,kind:task.kind,localStatus:task.status,
     orchestratorId:task.orchestratorId,
@@ -69,10 +72,12 @@ export function forgeProjectHandoffView(store,projectId,{taskId=null}={}) {
     acceptedMemory:memories.map(({content,...row})=>({...row,...excerpt(content,1800),
       editorialNoteOnly:true,externalEffectVerified:false})),
     unresolvedCommands:unresolved,
+    recentFileWriteReceipts:recentFileWrites.items,
     limits:{tasksTruncated:counts.tasks>tasks.length,
       messagesTruncated:counts.messages>messageRows.length,
       acceptedMemoryTruncated:counts.acceptedMemories>memories.length,
-      unresolvedCommandsTruncated:counts.unresolvedCommands>unresolved.length},
+      unresolvedCommandsTruncated:counts.unresolvedCommands>unresolved.length,
+      fileWriteReceiptsTruncated:recentFileWrites.truncated},
     nextSession:{automaticSendAllowed:false,automaticRotationPerformed:false,
       requiresExplicitAuthorizedChatSession:true,
       checkUncertainReceiptsBeforeRetry:unresolved.length>0,
