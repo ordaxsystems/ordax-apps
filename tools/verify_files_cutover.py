@@ -170,12 +170,14 @@ def load_plan(root: Path) -> tuple[dict, dict, dict]:
         if (
             plan.get("source_repository_current") is not None
             or plan.get("source_path_current") is not None
-            or target_source.exists()
-            or target_source.is_symlink()
             or cutover.get("target_materialization_state") != "pending"
             or cutover.get("target_source_present") is not False
         ):
             raise FilesCutoverError("Files pending Gate B source state is inconsistent")
+        if target_source.exists() or target_source.is_symlink():
+            raise FilesCutoverError(
+                "Files target source exists while materialization state is still pending"
+            )
     elif source_state == "ordax-apps-canonical":
         gate_b = plan.get("gate_b")
         if (
