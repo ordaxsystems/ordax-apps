@@ -41,7 +41,17 @@ test('natural project building requests require MCP even without a mention',()=>
     'Faça uma página HTML para celular.',
     'Desenvolva um aplicativo para meu negócio.',
     'Corrija o layout do projeto.',
-    'Teste o site localmente.'
+    'Teste o site localmente.',
+    'Adicione um arquivo README no projeto.',
+    'Remova o arquivo temporário.',
+    'Renomeie a branch do Git.',
+    'Rode os testes do projeto.',
+    'Execute o build do frontend.',
+    'Salve o arquivo HTML.',
+    'Verifique o status do Git.',
+    'Faça commit no repositório.',
+    'Delete the file in this project.',
+    'Run tests for the repository.'
   ]) {
     assert.equal(requiresMcpForProjectPrompt(request),true,request);
     assert.throws(()=>requireSelectedMcpForPrompt(request,
@@ -52,7 +62,9 @@ test('natural project building requests require MCP even without a mention',()=>
     'Como criar um site para minha cafeteria?',
     'Explique como corrigir layout.',
     'Quanto é 2 + 2?',
-    'Escreva uma mensagem de agradecimento.'
+    'Escreva uma mensagem de agradecimento.',
+    'Resuma o objetivo do projeto.',
+    'Faça uma poesia.'
   ]) assert.equal(requiresMcpForProjectPrompt(request),false,request);
   assert.equal(requireSelectedMcpForPrompt('Crie um site para minha cafeteria',
     classifyProviderMcpSelection({composerPresent:true,exactSelectedControl:true}),

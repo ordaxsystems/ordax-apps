@@ -16,8 +16,11 @@ export function requiresMcpForProjectPrompt(prompt) {
   const text=String(prompt??'').normalize('NFD').replace(/[\u0300-\u036f]/gu,'').toLowerCase().trim();
   if(!text || /^(?:como|qual|quais|porque|por que|o que|explique|analise|resuma|descreva)\b/u.test(text))
     return false;
-  const mutation=/\b(?:crie|criar|construa|construir|desenvolva|desenvolver|implemente|implementar|corrija|corrigir|edite|editar|altere|alterar|atualize|atualizar|monte|montar|gere|gerar|teste|testar|refatore|refatorar|faca|fazer)\b/u.test(text);
-  const projectArtifact=/\b(?:site|website|pagina|paginas|html|css|javascript|codigo|arquivos?|pastas?|app|aplicativo|sistema|projeto|layout|frontend|backend|componentes?|repositorio|webapp)\b/u.test(text);
+  // Natural project work includes routine edits, Git actions and verification,
+  // not only initial site creation. Missing a verb here silently skips the
+  // tool-selection preflight; false project completion must remain impossible.
+  const mutation=/\b(?:crie|criar|construa|construir|desenvolva|desenvolver|implemente|implementar|corrija|corrigir|edite|editar|altere|alterar|atualize|atualizar|monte|montar|gere|gerar|teste|testar|refatore|refatorar|faca|fazer|adicione|adicionar|acrescente|acrescentar|remova|remover|exclua|excluir|apague|apagar|renomeie|renomear|salve|salvar|execute|executar|rode|rodar|compile|compilar|verifique|verificar|inspecione|inspecionar|instale|instalar|inicie|iniciar|pare|parar|publique|publicar|create|add|remove|delete|rename|save|run|execute|build|test|fix|update|edit|install|start|stop|inspect|check)\b/u.test(text);
+  const projectArtifact=/\b(?:site|website|pagina|paginas|html|css|javascript|codigo|arquivos?|pastas?|app|aplicativo|sistema|projeto|layout|frontend|backend|componentes?|repositorio|webapp|readme|git|branch|branches|commits?|build|builds|testes?|tests?|scripts?|dependencias?|dependencies|npm|pnpm|yarn|node|python|terminal|powershell|bash|file|files|folder|folders|repository|project|code|source|config|configuration)\b/u.test(text);
   return mutation && projectArtifact;
 }
 // A visual app marker is not an MCP tool receipt, grant or permission.
