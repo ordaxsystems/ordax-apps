@@ -77,25 +77,23 @@ async function main(){
       assert.equal(typeof tunnel.autoResumeApp,'boolean');
       if(tunnel.running)assert.deepEqual(tunnel.scopes,['forge_app']);
       else assert.deepEqual(tunnel.scopes,[]);
-      // DEV uses a segregated LOCALAPPDATA. Do not borrow binaries or keys
-      // from the operational profile or claim its client is installed here.
-      assert.equal(typeof tunnel.officialTunnel?.installed,'boolean');
-      assert.equal(tunnel.officialTunnelSession?.state,'stopped');
-      assert.equal(tunnel.officialTunnelSession?.clientReady,false);
-      assert.equal(tunnel.officialTunnelSession?.clientReadiness,'not_observed');
-      assert.equal(tunnel.officialTunnelSession?.remoteChatGptConnected,false);
-      assert.equal(tunnel.officialTunnelSession?.chatGptCallVerified,false);
+      // Staging does not borrow Owner secrets or assert a ChatGPT tool receipt.
+      // Public Forge gateway exists independently of any local listener/tunnel.
+      assert.equal(tunnel.publicEndpoint,'https://forge-mcp.ordax.com.br/mcp');
+      assert.equal(typeof tunnel.productAccount?.connected,'boolean');
+      assert.equal(typeof tunnel.remoteGateway?.running,'boolean');
+      assert.equal(typeof tunnel.remoteGateway?.workers,'number');
+      assert.equal(tunnel.remoteChatGptConnected,false);
       console.log(JSON.stringify({phase,staged:true,provider:state,controls,
         appMcp:{running:tunnel.running,appTrusted:tunnel.appTrusted,
           autoResumeApp:tunnel.autoResumeApp,scope:tunnel.scope,...appMcpUi},
         coordinatorAvailable:engine.coordinatorAvailable===true,
         providerExecutionAvailable:engine.providerExecutionAvailable===true,
         uncertainCommands:engine.uncertainCommands,activeRuns:engine.activeRuns,
-        tunnel:{installed:tunnel.officialTunnel.installed,
-          clientVersion:tunnel.officialTunnel.clientVersion,
-          state:tunnel.officialTunnelSession.state,
-          clientReadiness:tunnel.officialTunnelSession.clientReadiness,
-          clientReady:tunnel.officialTunnelSession.clientReady,
+        productAccount:{connected:tunnel.productAccount.connected},
+        gateway:{endpoint:tunnel.publicEndpoint,running:tunnel.remoteGateway.running,
+          connected:tunnel.remoteGateway.connected,
+          workers:tunnel.remoteGateway.workers,
           remoteChatGptConnected:false,chatGptCallVerified:false}}));return;
     }
     if(phase==='create'){

@@ -359,7 +359,8 @@ test('a new-session intent never binds the old GPT conversation as if it were fr
   let reads=0,sends=0;
   const worker={status:()=>({url:threadA}),inspectConversationReadOnly:async()=>{reads++;return observation(task,'Old conversation answer');},sendPrompt:async()=>{sends++;}};
   const result=await recoverFailedProviderSubmission({store:f.store,worker,taskId:task.task.id,runId:task.runId});
-  assert.deepEqual(result,{reconciled:false,reason:'provider_new_conversation_url_unobserved'});
+  // A missing matching submission receipt blocks navigation before probing an old chat.
+  assert.deepEqual(result,{reconciled:false,reason:'provider_submission_provenance_missing'});
   assert.equal(reads,0);
   assert.equal(sends,0);
   assert.equal(f.store.db.prepare('SELECT chat_url FROM tasks WHERE id=?').get(task.task.id).chat_url,threadA);

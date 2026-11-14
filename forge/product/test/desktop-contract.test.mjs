@@ -32,7 +32,9 @@ test('confirmed HTML artifact download stays scoped to a succeeded Run and never
   assert.match(main,/conversation_completed_runs WHERE run_id=\? AND task_id=\?/);
   assert.match(main,/run\?\.status!=='succeeded'/);
   assert.match(main,/verifyLocalHtmlArtifact\(filePath\)/);
-  assert.match(main,/inspectProviderLinkedThread\(\{store,worker,taskId\}\)/);
+  assert.match(main,/inspectProviderLinkedThread\(\{store,worker:captureWorker,taskId\}\)/);
+  assert.match(main,/captureWorker\.downloadLinkedHtmlArtifact\(/);
+  assert.match(main,/captureWorker:executionWorker,allowConcurrentProviderRuns:true/);
   assert.match(main,/inspection\.threadRendered!==true/);
   assert.match(main,/if \(!asset \|\| asset.kind!=='image'/,
     'app asset protocol must not render untrusted HTML');
@@ -239,6 +241,8 @@ test('work rail supports bounded batch creation without dispatching to GPT',()=>
   assert.match(html,/sem mensagens ao GPT ou novos agentes físicos/);
   assert.match(uiSource,/command\('work_batch_create',\{projectId:p,orchestratorId:o,titles\}\)/);
   assert.match(uiSource,/receipt\.result\.created\+' frentes registradas no projeto, sem enviar ao GPT/);
+  assert.match(uiSource,/Agents GPT: '\+executor\.maxConcurrentSends\+' sessões/);
+  assert.match(uiSource,/cada agent mantém Task, Run e receipt próprios/);
 });
 test('autonomous mission recovery exposes scoped existing Tasks without replay',()=>{
   const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');

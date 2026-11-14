@@ -19,6 +19,7 @@ export function createOrchestratorKernel({
   fileBroker=null,
   repositoryPort=null,
   verifyLocalArtifact=null,
+  continuousExecutionByDefault=false,
   version='development'
 }={}) {
   if(!store?.getWorkspaceSession||typeof authorize!=='function')
@@ -26,7 +27,7 @@ export function createOrchestratorKernel({
   const context=Object.freeze({actorId,clientId,workspaceSessionId:store.getWorkspaceSession().id});
   const service=new OrchestratorService({
     store,authorize,provider,coordinator,confirmProposal,confirmProposalSend,workspacePort,fileBroker,repositoryPort,
-    verifyLocalArtifact
+    verifyLocalArtifact,continuousExecutionByDefault
   });
   const mcp=createOrchestratorMcp({service,getContext:()=>context,version});
   return Object.freeze({context,service,mcp});

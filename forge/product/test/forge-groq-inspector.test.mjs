@@ -54,7 +54,7 @@ test('Groq inspector is visible only behind the explicit DEV disclosure',()=>{
   assert.match(preload,/forjadorGroqPrompt:/);
   assert.match(ui,/forjadorGroqPrompt\?\.\(selected\)/);
   assert.match(ui,/display\.textContent=/);
-  assert.match(main,/lastGptDispatch=\{projectId,taskId,runId,authorSource/);
+  assert.match(main,/lastGptDispatchByTask\.set\(taskId,\{projectId,taskId,runId,authorSource/);
   assert.match(main,/composedPrompt:providerPrompt/);
   assert.match(main,/deliveryObserved:true/);
   assert.match(ui,/originalRequest:trace\.gpt\.originalRequest/);

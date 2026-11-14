@@ -1,10 +1,10 @@
 import { app, BrowserWindow, ipcMain, protocol, net, dialog, safeStorage, Tray, Menu, shell } from 'electron';
-import path from 'node:path';import { SupervisorCoordinator, authorizeLocalSupervisorTask, listLocalSupervisorRecoverable } from '../supervisor/coordinator.mjs';
+import path from 'node:path';import {existsSync} from 'node:fs';import { SupervisorCoordinator, authorizeLocalSupervisorTask, listLocalSupervisorRecoverable } from '../supervisor/coordinator.mjs';
 import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile.mjs';
 import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
 import { bindObservedSubmittedConversation } from '../src/provider-submitted-conversation.mjs';
 import { recordProviderSubmissionProvenance, recordProviderSubmissionIntent, findProviderSubmissionProvenance, providerPromptDigest } from '../src/provider-submission-provenance.mjs';
-import { inspectProviderLinkedThread, reconcileProviderLinkedReply, recoverFailedProviderSubmission, recoverVisibleLinkedProviderSubmission } from '../src/provider-linked-thread-recovery.mjs';
+import { inspectProviderLinkedThread, reconcileProviderLinkedReply, recoverVisibleLinkedProviderSubmission } from '../src/provider-linked-thread-recovery.mjs';
 import { assertTaskHasNoUncertainTransport } from '../src/provider-uncertain-run-policy.mjs';
 import { assertProviderSendReadiness, normalizeProviderFailure } from '../src/provider-observation-policy.mjs';
 import { assertContinuationContextReady } from '../src/continuation-context.mjs';
@@ -13,7 +13,7 @@ import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
 import { testGroqApiKey } from '../src/groq-key-health.mjs';
 import { createLocalGroqCredential } from '../src/local-supervisor-credential.mjs';
 import { createOrchestratorKernel } from '../src/orchestrator-kernel.mjs';
-import {withForjadorMcpMention,mentionWasRequested,FORJADOR_MCP_MENTION} from '../src/provider-mcp-mention.mjs';
+import {withForjadorMcpMention,mentionWasRequested,providerMcpMention} from '../src/provider-mcp-mention.mjs';
 import {requiresMcpForProjectPrompt,requireSelectedMcpForPrompt} from '../src/provider-mcp-selection.mjs';
 import { createProviderAwareTaskOpener, createTaskUiHandlers } from '../src/task-ui-handlers.mjs';
 import { ORCHESTRATOR_TOOLS } from '../src/forge-contract.mjs';
@@ -29,15 +29,11 @@ import {ForgeProjectFiles} from '../src/forge-project-files.mjs';
 import {ForgeLocalWorkspaces,resolveForgeWorkspaceDocumentsDirectory} from '../src/forge-local-workspaces.mjs';
 import {forgeFreshConversationContext} from '../src/forge-fresh-conversation-context.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
-import {createForgeLoopbackMcp,FORGE_APP_MCP_SCOPE} from '../src/forge-loopback-mcp.mjs';
+import {createForgeLoopbackMcp,FORGE_APP_MCP_SCOPE,FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
+import {createForgeProductSession} from '../src/forge-product-session.mjs';
+import {ForgeRemoteGatewayClient} from '../src/forge-remote-gateway-client.mjs';
 import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
 import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
-import {inspectForgeOfficialTunnelClient,officialTunnelComponentDirectory} from '../src/forge-mcp-tunnel-readiness.mjs';
-import {createForgeOfficialTunnelSession} from '../src/forge-mcp-official-tunnel-session.mjs';
-import {createForgeCloudflareTunnelSession,forgeCloudflaredExecutable}
-  from '../src/forge-cloudflare-tunnel.mjs';
-import {installForgeCloudflared} from '../src/forge-cloudflared-install.mjs';
-import {installForgeOfficialTunnelClient} from '../src/forge-mcp-tunnel-installer.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
 import {IsolatedInteractiveHtmlPreview} from './isolated-interactive-preview.mjs';
@@ -88,6 +84,7 @@ fs.mkdirSync(userRoot,{recursive:true});
 hostStartupLog('profile_ready');
 app.setPath('userData', userRoot);
 const groqCredential=createLocalGroqCredential({userRoot,safeStorage});
+const forgeProductSession=createForgeProductSession({userRoot,safeStorage});
 
 const singleInstanceLock = app.requestSingleInstanceLock();
 if (!singleInstanceLock) {
@@ -138,6 +135,27 @@ const forgeProjectFiles=new ForgeProjectFiles({root:path.join(dataRoot,'project-
   requireOwnerBinding:true});
 
 const stagedLab=process.argv.includes('--ordax-lab-staged-approved');
+const forgeDevAutonomyEnabled=!stagedLab&&process.env.ORDAX_FORGE_DEV_AUTONOMY==='1';
+const forgeSupervisorDir=path.join(userRoot,'supervisor');
+const forgeHeartbeatPath=path.join(forgeSupervisorDir,'forge-heartbeat.json');
+let forgeHeartbeatTimer=null;
+function writeForgeHeartbeat(phase='alive'){
+  if(!forgeDevAutonomyEnabled)return;
+  try{
+    fs.mkdirSync(forgeSupervisorDir,{recursive:true});
+    const target={
+      schema:'ordax.forge.dev-heartbeat/1',
+      pid:process.pid,phase,at:Date.now()
+    };
+    const temp=forgeHeartbeatPath+'.tmp-'+process.pid;
+    fs.writeFileSync(temp,JSON.stringify(target)+'\n',{encoding:'utf8'});
+    fs.renameSync(temp,forgeHeartbeatPath);
+  }catch{}
+}
+if(forgeDevAutonomyEnabled){
+  writeForgeHeartbeat('starting');
+  forgeHeartbeatTimer=setInterval(()=>writeForgeHeartbeat('alive'),5_000);
+}
 const backgroundSupported=process.platform==='win32'&&app.isPackaged&&!hostBrowserMode&&!stagedLab;
 let backgroundOptedIn=backgroundSupported&&
   store.getWorkspaceSession()?.metadata?.keep_running_in_background===true;
@@ -233,7 +251,12 @@ const MIME_EXT = new Map([
 ]);
 
 let win;
-let worker;
+let worker; // Primary provider view exposed in the human UI.
+let providerWorkers=[];
+const providerWorkerCount=(()=>{
+  const raw=Number(process.env.ORDAX_FORGE_PROVIDER_WORKERS||4);
+  return Number.isSafeInteger(raw)?Math.max(1,Math.min(8,raw)):4;
+})();
 let interactiveHtmlPreview=null;
 const providerViews=createProviderViewRegistry();
 let windowCreationPromise=null;
@@ -261,16 +284,35 @@ function emitRendererEvent(channel,payload) {
 }
 let chatVisible = false;
 let providerViewBounds = null;
-let liveRun = null;
+// Every provider lane owns its own WebContentsView. The primary lane may be
+// shown in the human UI; auxiliary lanes stay off-canvas but retain a real,
+// non-zero viewport while executing so ChatGPT/MCP controls hydrate normally.
+const providerRunPresentationWorkers=new Set();
+const anyProviderRunActive=()=>providerViews.activeRunCount>0;
+const anyProviderWorkerActive=()=>providerWorkers.some(candidate=>candidate?.active===true);
+const primaryProviderRunActive=()=>Boolean(worker&&providerViews.runForWorker(worker));
 const persistedObserverMode = store.getWorkspaceSession()?.metadata?.observer_mode;
 let observerMode = ['auto','fast','beta'].includes(persistedObserverMode) ? persistedObserverMode : 'auto';
 let workerPreload = { ready:false, url:null, at:null };
 let providerHealthInFlight = null;
 let providerHealthCache = null;
 let providerScheduler = null;
+const providerCapacity=()=>{
+  const snapshot=providerScheduler?.snapshot?.()||{
+    lanes:providerWorkers.length||providerWorkerCount,active:0,queued:0,pendingTasks:0,closed:false
+  };
+  return Object.freeze({
+    maxConcurrentSends:snapshot.lanes,
+    active:snapshot.active,
+    queued:snapshot.queued,
+    pendingTasks:snapshot.pendingTasks,
+    availableSlots:Math.max(0,snapshot.lanes-snapshot.active),
+    closed:snapshot.closed===true
+  });
+};
 
-// Replaces the former global promise chain. The existing provider worker
-// remains the only physical lane until isolated multi-view E2E is verified.
+// One scheduler remains the sole transport admission authority. Multiple lanes
+// are physical EmbeddedChatWorker instances, never a second queue or ledger.
 function enqueueExecution(taskId,operation) {
   if(!providerScheduler)return Promise.reject(Error('provider_worker_unavailable'));
   return providerScheduler.enqueue(String(taskId),operation);
@@ -340,9 +382,11 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   assertTaskHasNoUncertainTransport(store,taskId);
   const task = store.getTaskExecutionSnapshot(taskId);
   if (!task) throw new Error('task_not_found');
+  const mcpApp=allowCoordinatorTask?'forge-mcp':'ordax-mcp';
 
   const conversationPlan = planProviderConversation(task, {
-    forceNew:newSession,nextPromptBytes:Buffer.byteLength(withForjadorMcpMention(String(prompt||'').trim(),{authorSource}),'utf8')
+    forceNew:newSession,nextPromptBytes:Buffer.byteLength(
+      withForjadorMcpMention(String(prompt||'').trim(),{authorSource,app:mcpApp}),'utf8')
   });
   const needsContinuation = Boolean(conversationPlan.newSession && task.has_messages);
   const checkpointVersion = task.checkpoint_version;
@@ -363,7 +407,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       byteLength:handoffSnapshot.manifest.byteLength
     });
     const boundedPromptChars=16000-estimatedNotice.length-
-      (authorSource==='orchestrator'?FORJADOR_MCP_MENTION.length+2:0);
+      (authorSource==='orchestrator'?providerMcpMention(mcpApp).length+2:0);
     if(boundedPromptChars<1024)throw new Error('task_handoff_prompt_budget_exhausted');
     continuationPacket=store.buildContinuationPacket(taskId,prompt,{maxChars:boundedPromptChars});
     assertContinuationContextReady(continuationPacket);
@@ -377,53 +421,108 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       byteLength:handoffSnapshot.manifest.byteLength
     });
   }
-  // The Forjador's GPT work turns request the already-installed OrdaX MCP.
+  // The coordinator uses Forge MCP; delegated Works use OrdaX MCP.
   // Mentioning an app does not grant access or prove a tool was executed.
   // A fresh Task chat inherits approved editorial context of its project.
   // Established Task segments keep their existing checkpoint/handoff path.
   const projectContext=!task.has_messages
-    ?forgeFreshConversationContext(store,taskId):null;
-  const providerPrompt = withForjadorMcpMention(
-    (projectContext?.text||'')+(continuationPacket?.prompt || prompt)+contextAttachmentNotice,{authorSource}
+    ?forgeFreshConversationContext(store,taskId,{
+      // Only the canonical native workspace binding can supply the location.
+      // The user prompt, GPT response and device-online state are not grants.
+      resolveWorkspace:projectId=>forgeLocalWorkspaces.status(projectId)
+    }):null;
+  let providerPrompt = withForjadorMcpMention(
+    (projectContext?.text||'')+(continuationPacket?.prompt || prompt)+contextAttachmentNotice,
+    {authorSource,app:mcpApp}
   );
   if(contextManifest&&contextAttachmentNotice){
     if(providerPrompt.length>16000)throw new Error('task_handoff_prompt_budget_exceeded');
     contextManifest={...contextManifest,maxChars:16000,promptChars:providerPrompt.length,promptSha256:providerPromptDigest(providerPrompt)};
   }
-  // A continuation of an existing Forge Project Task can request physical
-  // work without repeating words such as "site" or "arquivo". Preserve the
-  // original tool-selection preflight; never infer that a GPT tool was called.
+  // Existing project continuations stay tool-dependent even for short prompts.
   const projectContinuation=task.has_messages&&Boolean(store.db.prepare(
     'SELECT 1 FROM lab_task_bindings WHERE task_id=? LIMIT 1').get(taskId));
-  const mcpWorkRequired=requiresMcpForProjectPrompt(prompt,{projectContinuation})||
-    mentionWasRequested(providerPrompt);
-  // Authoritative, fresh, read-only readiness gate BEFORE any Task/Run/message
-  // mutation or draft clearing. A signed-out/unknown provider creates no Run.
-  // Worker.sendPrompt independently checks again immediately before editing.
-  try { assertProviderSendReadiness(await runWorker.health()); }
-  catch(error) { throw normalizeProviderFailure(error,{stage:'health'}); }
-  if(liveRun)throw Error('orchestrator_executor_busy');
+  const mcpWorkRequired=allowCoordinatorTask||
+    requiresMcpForProjectPrompt(prompt,{projectContinuation})||
+    mentionWasRequested(providerPrompt,mcpApp);
+  // The provider is a native WebContentsView. Every selected lane gets a
+  // real off-canvas viewport before health/app-selection/submit. Scheduler +
+  // providerViews already prevent worker or Task reuse; independent Works do
+  // not need a global executor lock.
+  providerRunPresentationWorkers.add(runWorker);
+  layoutViews();
+  // Fail closed after bounded first-party readiness observation. Resizing is
+  // not proof of login; anonymous, verification and restricted states still
+  // fail before creating a user message, Task Run or submission intent.
+  try {
+    let health=null;
+    for(let attempt=0;attempt<10;attempt++){
+      health=await runWorker.health();
+      if(health?.auth_state==='session_present'&&health?.composer_ready===true)break;
+      if(health?.verification_required===true||
+        ['anonymous','authenticating'].includes(health?.auth_state))break;
+      if(attempt<9)await new Promise(resolve=>setTimeout(resolve,350));
+    }
+    assertProviderSendReadiness(health);
+  } catch(error) {
+    providerRunPresentationWorkers.delete(runWorker);
+    layoutViews();
+    throw normalizeProviderFailure(error,{stage:'health'});
+  }
   // A normal request to BUILD a site is MCP work even without @ordax-mcp.
   // Do not persist a user message or Run when no connected app was selected.
   // The worker observes again immediately before submit to close the race.
-  if(mcpWorkRequired) requireSelectedMcpForPrompt(providerPrompt,
-    await runWorker.inspectMcpSelectionReadOnly(),{requiresMcp:true});
-  const contextAttachment=handoffSnapshot?writeTaskHandoffFile(handoffRoot,handoffSnapshot):null;
-  // No provider interaction happens until this atomic transaction commits.
-  // The message, draft-clear and Run must never be persisted separately.
+  if(mcpWorkRequired){
+    // The previous read-only gate could not succeed for a natural Forge request:
+    // the GPT composer was still empty. Prepare the REAL app token first,
+    // without submitting or altering the Store, then check it fail-closed.
+    let staged=null;
+    try{
+      staged=await runWorker.prepareMcpPrompt({
+        prompt:providerPrompt,chatUrl:task.chat_url,newSession:conversationPlan.newSession,mcpApp
+      });
+      providerPrompt=staged.providerPrompt;
+      if(contextManifest&&contextAttachmentNotice){
+        if(providerPrompt.length>16000)throw Error('task_handoff_prompt_budget_exceeded');
+        contextManifest={...contextManifest,promptChars:providerPrompt.length,
+          promptSha256:providerPromptDigest(providerPrompt)};
+      }
+      requireSelectedMcpForPrompt(providerPrompt,
+        await runWorker.inspectMcpSelectionReadOnly({app:mcpApp}),{requiresMcp:true,app:mcpApp});
+    }catch(error){
+      if(staged)await runWorker.discardPreparedMcpPrompt(staged.providerPrompt).catch(()=>{});
+      providerRunPresentationWorkers.delete(runWorker);
+      layoutViews();
+      throw error;
+    }
+  }
+  let contextAttachment=null;
+  try { contextAttachment=handoffSnapshot?writeTaskHandoffFile(handoffRoot,handoffSnapshot):null; }
+  catch(error){
+    if(mcpWorkRequired)
+      await runWorker.discardPreparedMcpPrompt(providerPrompt).catch(()=>{});
+    providerRunPresentationWorkers.delete(runWorker);
+    layoutViews();
+    throw error;
+  }
+  // The provider composer may be staged, but NO MESSAGE IS SUBMITTED before
+  // this atomic transaction commits. Draft-clear, message and Run stay atomic.
   let begun;
   try {
     begun=store.beginProviderRun(taskId, prompt, {
-      draftRevision,workerId:'electron-embedded-chatgpt',observerMode,authorSource
+      draftRevision,workerId:'electron-embedded-chatgpt:'+runWorker.id,observerMode,authorSource
     });
   } catch(error) {
     if(contextAttachment)try{removeTaskHandoffFile(handoffRoot,contextAttachment.filePath);}catch{}
+    if(mcpWorkRequired)
+      await runWorker.discardPreparedMcpPrompt(providerPrompt).catch(()=>{});
+    providerRunPresentationWorkers.delete(runWorker);
+    layoutViews();
     throw error;
   }
   const { userMessage, runId } = begun;
   let contextAttachmentReceipt=null;
   const runContext = { taskId, runId, startedAt:Date.now(), firstDeltaAt:null };
-  liveRun = runContext;
   const provisional=createProviderProvisionalRecorder({
     save:(text,source)=>store.saveRunProvisionalOutput(taskId,runId,text,source)
   });
@@ -434,12 +533,12 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
     if (win && !win.isDestroyed()) emitRendererEvent('ordax:task:run-started', { taskId, runId, userMessage });
     const projectId=store.db.prepare('SELECT project_id FROM lab_task_bindings WHERE task_id=? LIMIT 1')
       .get(taskId)?.project_id||null;
-    lastGptDispatch={projectId,taskId,runId,authorSource,
+    lastGptDispatchByTask.set(taskId,{projectId,taskId,runId,authorSource,
       originalRequest:prompt,composedPrompt:providerPrompt,
-      preparedAt:new Date().toISOString(),deliveryObserved:false};
+      preparedAt:new Date().toISOString(),deliveryObserved:false});
     const result = await runWorker.sendPrompt({
       prompt:providerPrompt,chatUrl:task.chat_url,newSession:conversationPlan.newSession,
-      requiresMcp:mcpWorkRequired,
+      requiresMcp:mcpWorkRequired,mcpApp,
       contextAttachment,
       onContextAttachmentObserved:receipt=>{
         if(providerViews.runForWorker(runWorker)!==runContext)throw new Error('context_attachment_run_context_changed');
@@ -468,13 +567,13 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
         if(providerViews.runForWorker(runWorker)!==runContext)return;
         const selectedState=['selection_visible','name_visible_unverified','not_observed','unavailable']
           .includes(selection?.state)?selection.state:'unavailable';
-        const mentionRequested=mentionWasRequested(providerPrompt);
+        const mentionRequested=mentionWasRequested(providerPrompt,mcpApp);
         const state=selectedState==='not_observed'&&mentionRequested?'mention_requested':selectedState;
         try {store.event(taskId,'provider.mcp.selection_observed',{
-          run_id:runId,state,mention_requested:mentionRequested,
+          run_id:runId,state,app:mcpApp,mention_requested:mentionRequested,
           selection_observed:selectedState==='selection_visible',invocation_verified:false
         });}catch{/* diagnostic cannot affect delivery */}
-        emitRendererEvent('ordax:provider:mcp-observed',{state,taskId,runId});
+        emitRendererEvent('ordax:provider:mcp-observed',{state,app:mcpApp,taskId,runId});
       },
       onSubmissionIntent:({intentAt,chatUrl,baselineUserMessageId,baselineUserMessagePresent,baselinePromptMatches})=>{
         if(providerViews.runForWorker(runWorker)!==runContext)throw new Error('submission_run_context_changed');
@@ -532,8 +631,9 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
           try { store.event(taskId,'provider.submission.provenance_unavailable',{run_id:runId}); }
           catch { /* Preserve transport result; reconcile conservatively. */ }
         }
-        if(lastGptDispatch?.runId===runId)
-          lastGptDispatch={...lastGptDispatch,deliveryObserved:true};
+        const dispatch=lastGptDispatchByTask.get(taskId);
+        if(dispatch?.runId===runId)
+          lastGptDispatchByTask.set(taskId,{...dispatch,deliveryObserved:true});
         return binding;
       }
     });
@@ -613,9 +713,10 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
     throw error;
   } finally {
     providerViews.unbindRun(runWorker,runId);
-    if (liveRun===runContext) liveRun = null;
+    providerRunPresentationWorkers.delete(runWorker);
     clearInterval(heartbeat);
     if(contextAttachment)try{removeTaskHandoffFile(handoffRoot,contextAttachment.filePath);}catch{}
+    layoutViews();
   }
 }
 
@@ -625,8 +726,30 @@ function layoutViews() {
   const bounds=providerViewBounds?normalizeProviderViewBounds(providerViewBounds,{
     contentWidth:width,contentHeight:height,zoomFactor:win.webContents.getZoomFactor()
   }):null;
-  worker.view.setBounds(bounds||{x:0,y:0,width:1,height:1});
-  worker.view.setVisible(Boolean(chatVisible&&bounds));
+  const panelUsable=Boolean(chatVisible&&bounds&&bounds.width>=400&&bounds.height>=250);
+  const offscreenWidth=Math.max(900,width);
+  const offscreenHeight=Math.max(700,height);
+  providerWorkers.forEach((candidate,index)=>{
+    if(!candidate?.view||candidate.view.webContents.isDestroyed?.())return;
+    const isPrimary=candidate===worker;
+    const executing=providerRunPresentationWorkers.has(candidate)||
+      Boolean(providerViews.runForWorker(candidate));
+    if(isPrimary&&panelUsable){
+      candidate.view.setBounds(bounds);
+      candidate.view.setVisible(true);
+      return;
+    }
+    if(executing){
+      candidate.view.setBounds({
+        x:Math.max(1,width)+64+(index*8),y:0,
+        width:offscreenWidth,height:offscreenHeight
+      });
+      candidate.view.setVisible(true);
+      return;
+    }
+    candidate.view.setBounds({x:Math.max(1,width)+64+(index*8),y:0,width:1,height:1});
+    candidate.view.setVisible(false);
+  });
   interactiveHtmlPreview?.relayout();
 }
 
@@ -673,34 +796,58 @@ async function createWindowOnce() {
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
 
   interactiveHtmlPreview=new IsolatedInteractiveHtmlPreview(()=>win);
-  worker = new EmbeddedChatWorker();
-  providerViews.register(worker);
-  providerScheduler=createProviderExecutionScheduler({lanes:[{id:'primary',worker}]});
+  providerWorkers=Array.from({length:providerWorkerCount},(_unused,index)=>
+    new EmbeddedChatWorker({id:index===0?'primary':'agent-'+String(index+1)}));
+  worker=providerWorkers[0];
+  for(const candidate of providerWorkers)providerViews.register(candidate);
+  providerScheduler=createProviderExecutionScheduler({
+    lanes:providerWorkers.map(candidate=>({id:candidate.id,worker:candidate}))
+  });
   const registeredScheduler=providerScheduler;
-  const registeredWorker=worker;
-  registeredWorker.view.webContents.once('destroyed',()=>{
-    providerViews.unregister(registeredWorker);
-    registeredScheduler.close('provider_worker_destroyed');
-  });
-  hostStartupLog('worker_constructed');
-  worker.setObserverMode(observerMode);
-  worker.setStageSink(({ stage, at }) => {
-    const routed=providerViews.runForWorker(registeredWorker);
-    if (!routed || !win || win.isDestroyed()) return;
-    emitRendererEvent('ordax:task:stage', {
-      taskId:routed.taskId, runId:routed.runId, stage, at, runStartedAt:routed.startedAt
+  let providerPoolFailure=false;
+  let windowClosing=false;
+  for(const registeredWorker of providerWorkers){
+    registeredWorker.view.webContents.once('destroyed',()=>{
+      providerViews.unregister(registeredWorker);
+      // A missing physical lane invalidates the configured pool topology.
+      // Close the one canonical scheduler, then cross the normal App shutdown
+      // boundary so accepted Runs are interrupted durably before the neutral
+      // dev supervisor rebuilds the complete pool. Never limp along at 3/4.
+      registeredScheduler.close('provider_worker_destroyed');
+      if(!quittingIntentionally&&!windowClosing&&!providerPoolFailure){
+        providerPoolFailure=true;
+        hostStartupLog('provider_worker_pool_degraded_'+registeredWorker.id);
+        setImmediate(()=>{
+          if(!win||win.isDestroyed()){app.quit();return;}
+          quittingIntentionally=true;
+          win.close();
+        });
+      }
     });
-  });
-  worker.setFastStreamSink(delta => {
-    const routed=providerViews.runForWorker(registeredWorker);
-    if (!routed || !win || win.isDestroyed()) return;
-    emitRendererEvent('ordax:task:stream', { taskId:routed.taskId, runId:routed.runId, ...delta, mirrorAt:Date.now(), runStartedAt:routed.startedAt });
-  });
-
-  // Native WebContentsView defaults to visible. Hide the embedded provider
-  // BEFORE awaiting the App renderer, or it can cover a still-loading UI.
-  win.contentView.addChildView(worker.view);
-  hostStartupLog('provider_view_attached');
+    registeredWorker.setObserverMode(observerMode);
+    registeredWorker.setStageSink(({ stage, at }) => {
+      const routed=providerViews.runForWorker(registeredWorker);
+      if (!routed || !win || win.isDestroyed()) return;
+      emitRendererEvent('ordax:task:stage', {
+        taskId:routed.taskId, runId:routed.runId, stage, at, runStartedAt:routed.startedAt,
+        workerId:registeredWorker.id
+      });
+    });
+    registeredWorker.setFastStreamSink(delta => {
+      const routed=providerViews.runForWorker(registeredWorker);
+      if (!routed || !win || win.isDestroyed()) return;
+      emitRendererEvent('ordax:task:stream', {
+        taskId:routed.taskId, runId:routed.runId, ...delta, mirrorAt:Date.now(),
+        runStartedAt:routed.startedAt,workerId:registeredWorker.id
+      });
+    });
+    // Native WebContentsView defaults to visible. Attach every lane once; the
+    // layout function keeps idle auxiliary views hidden and active ones
+    // off-canvas with a real viewport.
+    win.contentView.addChildView(registeredWorker.view);
+  }
+  hostStartupLog('provider_worker_pool_constructed_'+String(providerWorkers.length));
+  hostStartupLog('provider_views_attached');
   layoutViews();
   win.on('resize', layoutViews);
   win.on('closed',()=>{interactiveHtmlPreview?.close();interactiveHtmlPreview=null;});
@@ -719,13 +866,17 @@ async function createWindowOnce() {
       win.hide();
       return;
     }
-    if (!liveRun) {registeredScheduler.close();return;}
+    windowClosing=true;
+    if (!anyProviderRunActive()) {registeredScheduler.close();return;}
     try {
       const interrupted = store.recoverInterruptedRuns('app_shutdown');
       registeredScheduler.close();
-      providerViews.unbindRun(worker,liveRun.runId);
-      liveRun = null;
-      if (interrupted) hostStartupLog('inflight_run_interrupted_on_close');
+      for(const candidate of providerWorkers){
+        const active=providerViews.runForWorker(candidate);
+        if(active)providerViews.unbindRun(candidate,active.runId);
+        providerRunPresentationWorkers.delete(candidate);
+      }
+      if (interrupted) hostStartupLog('inflight_runs_interrupted_on_close');
     } catch {
       // Never let a failed SQLite transition silently discard an in-flight Run.
       event.preventDefault();
@@ -780,30 +931,31 @@ async function createWindowOnce() {
   }
   hostStartupLog('app_shell_loaded');
   layoutViews();
-  if(hostBrowserMode) {
-    hostStartupLog('provider_worker_load_started');
-    void worker.load('https://chatgpt.com/').catch(()=>hostStartupLog('provider_worker_load_failed'));
-  }
-  else {
-    // The provider is an external dependency. Its navigation must not hold
-    // the OrdaX shell's startup promise or make app.whenReady quit the app.
-    // The worker keeps the failure in status(); the operator can retry from
-    // the provider pane after the App has loaded.
-    void worker.load('https://chatgpt.com/').catch(()=>{});
-  }
+  hostStartupLog('provider_worker_pool_load_started');
+  providerWorkers.forEach((candidate,index)=>{
+    // Stagger initial navigation slightly so one authenticated account does
+    // not burst four identical home loads at the provider in the same tick.
+    setTimeout(()=>{
+      void candidate.load('https://chatgpt.com/').catch(()=>{
+        if(candidate===worker)hostStartupLog('provider_primary_worker_load_failed');
+      });
+    },index*250);
+  });
   hostStartupLog('window_create_complete');
   return win;
 }
 
 ipcMain.on('ordax:worker:preload-ready', (event, payload) => {
-  if (providerViews.resolve(event.sender)!==worker) return;
-  workerPreload = { ready:true, url:String(payload?.url || ''), at:Number(payload?.at || Date.now()) };
+  const fromWorker=providerViews.resolve(event.sender);
+  if(!fromWorker)return;
+  if(fromWorker===worker)
+    workerPreload = { ready:true, url:String(payload?.url || ''), at:Number(payload?.at || Date.now()) };
 });
 
 ipcMain.on('ordax:worker:stream', (event, snapshot) => {
   const fromWorker=providerViews.resolve(event.sender);
   const routed=providerViews.runForSender(event.sender);
-  if (fromWorker!==worker || !routed || !win || win.isDestroyed()) return;
+  if (!fromWorker || !routed || !win || win.isDestroyed()) return;
   const delta = fromWorker.acceptStreamSnapshot(snapshot);
   if (!delta) return;
   const mirrorAt = Date.now();
@@ -812,7 +964,7 @@ ipcMain.on('ordax:worker:stream', (event, snapshot) => {
 });
 
 const sharedTaskHandlers=createTaskUiHandlers({
-  store,decorateTask,decorateMessages,getTaskView,isRunActive:()=>Boolean(liveRun),
+  store,decorateTask,decorateMessages,getTaskView,isRunActive:()=>primaryProviderRunActive(),
   onOpenTask:createProviderAwareTaskOpener({
     isChatVisible:()=>chatVisible,
     showConversation:url=>worker.showConversation(url),
@@ -826,12 +978,12 @@ for(const [channel,handler] of sharedTaskHandlers)registerUiHandler(channel,hand
 // the exact provider evidence and atomically reconciles the local ledger.
 registerUiHandler('ordax:tasks:inspect-linked-thread', async (event, requestedId) => {
   requireTrustedSupervisorRenderer(event);
-  if (liveRun) return {kind:'unavailable',reason:'run_active',threadRendered:false,requiresReconciliation:true};
+  if (primaryProviderRunActive()||worker.active) return {kind:'unavailable',reason:'run_active',threadRendered:false,requiresReconciliation:true};
   return inspectProviderLinkedThread({store,worker,taskId:requestedId});
 });
 registerUiHandler('ordax:tasks:reconcile-linked-reply', async (event, payload={}) => {
   requireTrustedSupervisorRenderer(event);
-  if(liveRun)throw new Error('provider_reply_recovery_run_active');
+  if(primaryProviderRunActive()||worker.active)throw new Error('provider_reply_recovery_run_active');
   const result=await reconcileProviderLinkedReply({
     store,worker,taskId:payload?.taskId,responseSha256:payload?.responseSha256
   });
@@ -840,13 +992,19 @@ registerUiHandler('ordax:tasks:reconcile-linked-reply', async (event, payload={}
       .catch(()=>{});
   return result;
 });
-let htmlArtifactCaptureBusy=false;
+const htmlArtifactCaptureWorkers=new Set();
 // Canonical capture operation: both automatic post-Run completion and the
 // existing manual fallback use this SAME path, Store and result attribution.
 // It only downloads first-party output, never sends a prompt or creates a Run.
-async function captureConfirmedHtmlArtifact(requestedId) {
-  if(hostBrowserMode||htmlArtifactCaptureBusy||liveRun||worker?.active||
-     providerScheduler?.snapshot()?.pendingTasks)
+async function captureConfirmedHtmlArtifact(requestedId,{
+  captureWorker=worker,allowConcurrentProviderRuns=false
+}={}) {
+  if(!captureWorker||!providerWorkers.includes(captureWorker))
+    throw Error('provider_html_capture_worker_invalid');
+  if(hostBrowserMode||htmlArtifactCaptureWorkers.has(captureWorker)||
+     captureWorker.active||providerViews.runForWorker(captureWorker)||
+     (!allowConcurrentProviderRuns&&
+       (anyProviderRunActive()||providerScheduler?.snapshot()?.pendingTasks)))
     throw Error('provider_html_capture_unavailable');
   const taskId=String(requestedId||'');
   const task=store.getTask(taskId);
@@ -873,7 +1031,7 @@ async function captureConfirmedHtmlArtifact(requestedId) {
     return {verified:true,alreadyStored:true,filename:'index.html',
       bytes:proof.bytes,sha256:proof.sha256,task:getTaskView(taskId)};
   }
-  htmlArtifactCaptureBusy=true;
+  htmlArtifactCaptureWorkers.add(captureWorker);
   const dir=path.join(assetsRoot,taskId);
   fs.mkdirSync(dir,{recursive:true});
   // Refuse a maliciously replaced/symlinked Task directory even when its
@@ -885,13 +1043,15 @@ async function captureConfirmedHtmlArtifact(requestedId) {
     // Navigate and attribute the existing linked GPT thread using the
     // canonical read-only inspector. A filename in a model answer is not
     // evidence: require one completed reply bound to this exact Task/Run.
-    const inspection=await inspectProviderLinkedThread({store,worker,taskId});
+    const inspection=await inspectProviderLinkedThread({store,worker:captureWorker,taskId});
     if(inspection?.kind!=='response_candidate'||inspection.threadRendered!==true||
        inspection.inspectionReason!=='thread_rendered')
       throw Error('provider_html_thread_unverified');
-    if(liveRun||worker.active||providerScheduler?.snapshot()?.pendingTasks)
+    if(captureWorker.active||providerViews.runForWorker(captureWorker)||
+       (!allowConcurrentProviderRuns&&
+         (anyProviderRunActive()||providerScheduler?.snapshot()?.pendingTasks)))
       throw Error('provider_html_capture_unavailable');
-    const downloaded=await worker.downloadLinkedHtmlArtifact({
+    const downloaded=await captureWorker.downloadLinkedHtmlArtifact({
       chatUrl:task.chat_url,expectedAnswer:response.content,
       destinationPath:filePath,filename:'index.html'
     });
@@ -917,7 +1077,7 @@ async function captureConfirmedHtmlArtifact(requestedId) {
   }catch(error){
     try{fs.unlinkSync(filePath)}catch{}
     throw error;
-  }finally{htmlArtifactCaptureBusy=false;}
+  }finally{htmlArtifactCaptureWorkers.delete(captureWorker);}
 }
 registerUiHandler('ordax:tasks:html-artifact:save',async(event,requestedId)=>{
   requireTrustedSupervisorRenderer(event);
@@ -1033,7 +1193,9 @@ registerUiHandler('ordax:provider:status', async () => {
   const base = worker.status();
   if (base.active) {
     const cached = providerHealthCache || { composer_ready:false, verification_required:false, auth_state:'loading' };
-    return { ...cached, ...base, observer_mode:observerMode, worker_preload:workerPreload, health_pending:Boolean(providerHealthInFlight) };
+    return { ...cached, ...base, observer_mode:observerMode, worker_preload:workerPreload,
+      health_pending:Boolean(providerHealthInFlight),executor:providerCapacity(),
+      worker_pool:providerWorkers.map(candidate=>({id:candidate.id,...candidate.status()})) };
   }
   if (!providerHealthInFlight) {
     providerHealthInFlight = worker.health()
@@ -1043,14 +1205,16 @@ registerUiHandler('ordax:provider:status', async () => {
   const timeout = new Promise(resolve => setTimeout(() => resolve(null), 900));
   const fresh = await Promise.race([providerHealthInFlight, timeout]);
   const status = fresh || providerHealthCache || { ...base, composer_ready:false, verification_required:false, auth_state:'loading' };
-  return { ...status, observer_mode:observerMode, worker_preload:workerPreload, health_pending:!fresh };
+  return { ...status, observer_mode:observerMode, worker_preload:workerPreload, health_pending:!fresh,
+    executor:providerCapacity(),
+    worker_pool:providerWorkers.map(candidate=>({id:candidate.id,...candidate.status()})) };
 });
 registerUiHandler('ordax:provider:observer-mode:get', () => observerMode);
 registerUiHandler('ordax:provider:observer-mode:set', (_event, mode) => {
   const next = String(mode || '').toLowerCase();
   if (!['auto','fast','beta'].includes(next)) throw new Error('invalid_observer_mode');
   observerMode = next;
-  worker.setObserverMode(next);
+  for(const candidate of providerWorkers)candidate.setObserverMode(next);
   store.updateWorkspaceMetadata({ observer_mode: next });
   return next;
 });
@@ -1064,14 +1228,17 @@ registerUiHandler('ordax:forjador:groq-prompt', (event,projectId) => {
   if(typeof projectId!=='string'||!projectId)return null;
   // Both are local, read-only, last request only; no keys, storage or replay.
   const groq=lastGroqModelRequest?.projectId===projectId?lastGroqModelRequest:null;
-  const gpt=lastGptDispatch?.projectId===projectId?lastGptDispatch:null;
+  const gpt=[...lastGptDispatchByTask.values()]
+    .filter(entry=>entry.projectId===projectId)
+    .sort((a,b)=>String(b.preparedAt).localeCompare(String(a.preparedAt)))[0]||null;
   return groq||gpt?{groq,gpt}:null;
 });
-registerUiHandler('ordax:provider:mcp-selection', async event => {
+registerUiHandler('ordax:provider:mcp-selection', async (event,app='forge-mcp') => {
   requireTrustedSupervisorRenderer(event);
+  if(!['forge-mcp','ordax-mcp'].includes(app))throw Error('provider_mcp_app_invalid');
   // UI markers are diagnostic, never proof of a selected tool invocation.
-  if(hostBrowserMode)return {state:'unavailable',selectionObserved:false,invocationVerified:false};
-  return worker.inspectMcpSelectionReadOnly();
+  if(hostBrowserMode)return {state:'unavailable',selectionObserved:false,invocationVerified:false,app};
+  return {...await worker.inspectMcpSelectionReadOnly({app}),app};
 });
 registerUiHandler('ordax:provider:view-bounds', (event,rect) => {
   requireTrustedSupervisorRenderer(event);
@@ -1083,7 +1250,7 @@ registerUiHandler('ordax:provider:view-bounds', (event,rect) => {
 registerUiHandler('ordax:provider:navigate', async (event,direction) => {
   requireTrustedSupervisorRenderer(event);
   if(!['back','forward'].includes(direction))throw new Error('provider_navigation_invalid');
-  if(liveRun||worker.active)throw new Error('provider_navigation_during_run_blocked');
+  if(primaryProviderRunActive()||worker.active)throw new Error('provider_navigation_during_run_blocked');
   return worker.navigateHistory(direction);
 });
 registerUiHandler('ordax:provider:login', event => {
@@ -1093,12 +1260,12 @@ registerUiHandler('ordax:provider:login', event => {
 });
 registerUiHandler('ordax:provider:home', event => {
   requireTrustedSupervisorRenderer(event);
-  if(liveRun||worker.active)throw new Error('provider_navigation_during_run_blocked');
+  if(primaryProviderRunActive()||worker.active)throw new Error('provider_navigation_during_run_blocked');
   return worker.newChat();
 });
 registerUiHandler('ordax:provider:reload', async event => {
   requireTrustedSupervisorRenderer(event);
-  if (liveRun || worker.active) throw new Error('provider_reload_during_run_blocked');
+  if (primaryProviderRunActive() || worker.active) throw new Error('provider_reload_during_run_blocked');
   return worker.reloadCurrentPage();
 });
 registerUiHandler('ordax:chat:visible', (event, visible) => {
@@ -1183,11 +1350,12 @@ let localOrchestratorContext=null;
 // Latest exact Groq model messages kept only in memory for the owner DEV
 // inspector. No API keys, authorization headers, disk logs or remote MCP.
 let lastGroqModelRequest=null;
-let lastGptDispatch=null;
+const lastGptDispatchByTask=new Map();
 let runtimeOrchestratorBridge=null;
 let closeRuntimeOrchestratorPipe=null;
 const orchestratorKernel=createOrchestratorKernel({
   store,version:app.getVersion(),fileBroker:forgeProjectFiles,
+  continuousExecutionByDefault:forgeDevAutonomyEnabled,
   // Reuse the exact preview's path, symlink, structure and SHA-256 verifier.
   // Never return HTML bytes to Groq or grant arbitrary file reads.
   verifyLocalArtifact:({taskId,assetId})=>{
@@ -1210,7 +1378,12 @@ const orchestratorKernel=createOrchestratorKernel({
     detail:proposal.reason+'\n\nPrimeira mensagem (rascunho):\n'+proposal.content+'\n\nEsta ação cria uma frente local e salva o rascunho. Não envia ao ChatGPT.',
     approveLabel:'Criar frente com rascunho'
   }),
-  provider:{busy:()=>Boolean(liveRun||worker?.active||providerScheduler?.snapshot().pendingTasks),
+  provider:{
+    capacity:()=>providerCapacity(),
+    busy:()=>{
+      const capacity=providerCapacity();
+      return capacity.closed||capacity.availableSlots===0;
+    },
     ready:async()=>{assertProviderSendReadiness(await worker.health());return true;},
     send:async({taskId,content,draftRevision,taskKind,authorSource='human'})=>{
       // No provider interaction may occur before beginProviderRun commits a
@@ -1220,11 +1393,14 @@ const orchestratorKernel=createOrchestratorKernel({
       const countRuns=()=>store.db.prepare('SELECT COUNT(*) AS n FROM runs WHERE task_id=?')
         .get(taskId)?.n??0;
       const runsBefore=countRuns();
-      let execution;
+      let execution,executionWorker=null;
       try{
-        execution=await enqueueExecution(taskId,runWorker=>runTask(taskId,content,{
-          newSession:false,draftRevision,allowCoordinatorTask:taskKind==='orchestrator',authorSource
-        },runWorker));
+        execution=await enqueueExecution(taskId,runWorker=>{
+          executionWorker=runWorker;
+          return runTask(taskId,content,{
+            newSession:false,draftRevision,allowCoordinatorTask:taskKind==='orchestrator',authorSource
+          },runWorker);
+        });
       }catch(error){
         if(!error?.providerDeliveryState&&countRuns()===runsBefore)
           throw normalizeProviderFailure(error,{stage:'preflight'});
@@ -1238,7 +1414,9 @@ const orchestratorKernel=createOrchestratorKernel({
       })){
         let verifiedSha=null;
         try{
-          const captured=await captureConfirmedHtmlArtifact(taskId);
+          const captured=await captureConfirmedHtmlArtifact(taskId,{
+            captureWorker:executionWorker,allowConcurrentProviderRuns:true
+          });
           if(captured?.verified){
             verifiedSha=captured.sha256;
             execution.task=getTaskView(taskId);
@@ -1279,12 +1457,44 @@ const forgeMcpTrusted=new ForgeMcpOwnerTrust({store,
     return 'owner-bound:'+binding.root+':'+binding.identity;
   }
 });
+const forgeRemoteMcp=createOrchestratorMcp({
+  service:orchestratorService,getContext:()=>localOrchestratorContext,
+  version:app.getVersion(),allowedOperations:FORGE_APP_MCP_OPERATIONS,
+  authorizeFileRead:requestedProjectId=>{
+    try{return forgeLocalWorkspaces.status(requestedProjectId).verified===true;}
+    catch{return false;}
+  }
+});
+let forgeRemoteMcpSeq=10_000;
+const forgeRemoteMcpReady=(async()=>{
+  const initialized=await forgeRemoteMcp.handle({
+    jsonrpc:'2.0',id:++forgeRemoteMcpSeq,method:'initialize',
+    params:{protocolVersion:'2025-11-25',capabilities:{},
+      clientInfo:{name:'ordax-forge-remote-gateway',version:app.getVersion()}}
+  });
+  if(!initialized?.result?.protocolVersion)
+    throw Error('forge_remote_mcp_initialize_failed');
+  await forgeRemoteMcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
+  return true;
+})();
+async function invokeForgeRemoteMcp(method,params={}){
+  await forgeRemoteMcpReady;
+  if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_mcp_app_untrusted');
+  const response=await forgeRemoteMcp.handle({
+    jsonrpc:'2.0',id:++forgeRemoteMcpSeq,method,params
+  });
+  if(!response||response.error)throw Error('forge_remote_local_mcp_error');
+  return response;
+}
+const forgeRemoteGateway=new ForgeRemoteGatewayClient({
+  store,session:forgeProductSession,appVersion:app.getVersion(),
+  catalogProvider:async()=>(await invokeForgeRemoteMcp('tools/list',{})).result.tools,
+  toolInvoker:(name,args)=>invokeForgeRemoteMcp('tools/call',{name,arguments:args}),
+  bindOwnerIdentity:value=>forgeMcpTrusted.bindRemoteOwnerIdentity(value)
+});
 const forgeMcpResume=new ForgeMcpSecureResume({store,ownerTrust:forgeMcpTrusted,
   secureStorage:safeStorage});
 let forgeMcpResumeError=null;
-const forgeOfficialTunnel=createForgeOfficialTunnelSession({
-  onChange:()=>emitRendererEvent('ordax:forge:tunnel:changed')
-});
 const forgeLocalMcp=createForgeLoopbackMcp({
   createMcp:({projectId,allowedOperations})=>createOrchestratorMcp({
     service:orchestratorService,getContext:()=>localOrchestratorContext,
@@ -1308,16 +1518,6 @@ const forgeLocalMcp=createForgeLoopbackMcp({
   projectScope:projectId=>projectId===FORGE_APP_MCP_SCOPE
     ?forgeMcpTrusted.appScopeHash():forgeMcpTrusted.scopeHash(projectId),
   onProjectFileChanged:projectId=>emitRendererEvent('ordax:forge:project-file:changed',{projectId})
-});
-// Dedicated Cloudflare Tunnel: ONE Forge MCP server and an Access-validated
-// loopback proxy. The public Cloudflare route stays at HTTP 503 until Access
-// is provisioned; process spawn is never proof that GPT used an MCP tool.
-const forgeCloudflareTunnel=createForgeCloudflareTunnelSession({
-  getLocalGrant:()=>forgeLocalMcp.localGrant(FORGE_APP_MCP_SCOPE),
-  ownerTrusted:()=>forgeMcpTrusted.isAppTrusted(),
-  executablePath:process.platform==='win32'
-    ?forgeCloudflaredExecutable(process.env.LOCALAPPDATA):null,
-  onChange:()=>emitRendererEvent('ordax:forge:cloudflare:changed')
 });
 orchestratorService.autonomous.setNotifier(()=>notifyOrchestratorChanged());
 orchestratorService.recoverInterruptedCommands();
@@ -1413,20 +1613,60 @@ registerUiHandler('ordax:forge:workspace:migrate',async(event,projectId)=>{
 registerUiHandler('ordax:forge:local-mcp:status',async event=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
-  // /readyz is a local readiness observation, never proof that GPT Web
-  // connected or invoked a tool. Nothing is probed before Owner approval.
-  await forgeOfficialTunnel.inspectReadiness();
+  const productAccount=forgeProductSession.status();
+  const remoteGateway=forgeRemoteGateway.status();
   return {...forgeLocalMcp.status(),appTrusted:forgeMcpTrusted.isAppTrusted(),
-    officialTunnel:inspectForgeOfficialTunnelClient(),
-    officialTunnelSession:forgeOfficialTunnel.status(),
-    cloudflareTunnelSession:forgeCloudflareTunnel.status(),
-    cloudflareClientPresent:process.platform==='win32'&&
-      (()=>{try{return fs.existsSync(forgeCloudflaredExecutable(process.env.LOCALAPPDATA));}
-      catch{return false;}})(),
-    cloudflareAccessProvisioned:false, // Cloudflare Access is not enabled in this account.
+    publicEndpoint:'https://forge-mcp.ordax.com.br/mcp',
+    productAccount,remoteGateway,
+    // A registered native instance is not proof that ChatGPT selected this
+    // app or that an external MCP tools/call completed.
+    gatewayTransportConnected:remoteGateway.running===true&&remoteGateway.connected===true,
+    remoteChatGptConnected:false,
     autoResumeApp:forgeMcpResume.enabledApp(),
     autoResumeAvailable:forgeMcpResume.supported(),
     autoResumeBlocked:forgeMcpResumeError};
+});
+registerUiHandler('ordax:forge:product-auth:status',event=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_product_auth_native_ui_only');
+  return {account:forgeProductSession.status(),gateway:forgeRemoteGateway.status(),
+    appTrusted:forgeMcpTrusted.isAppTrusted()};
+});
+registerUiHandler('ordax:forge:product-auth:request-otp',async(event,email)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_product_auth_native_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
+  if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_mcp_app_untrusted');
+  return forgeProductSession.requestOtp(email);
+});
+registerUiHandler('ordax:forge:product-auth:verify-otp',async(event,payload={})=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_product_auth_native_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
+  if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_mcp_app_untrusted');
+  const account=await forgeProductSession.verifyOtp(payload);
+  await forgeRemoteGateway.start();
+  emitRendererEvent('ordax:forge:remote-gateway:changed');
+  return {account,gateway:forgeRemoteGateway.status()};
+});
+registerUiHandler('ordax:forge:product-auth:reconnect',async event=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_product_auth_native_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
+  if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_mcp_app_untrusted');
+  if(!forgeProductSession.status().connected)throw Error('forge_product_session_unavailable');
+  const gateway=await forgeRemoteGateway.start();
+  emitRendererEvent('ordax:forge:remote-gateway:changed');
+  return gateway;
+});
+registerUiHandler('ordax:forge:product-auth:disconnect',async event=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_product_auth_native_ui_only');
+  await forgeRemoteGateway.stop();
+  forgeProductSession.disconnect();
+  forgeMcpTrusted.clearRemoteOwnerIdentity();
+  emitRendererEvent('ordax:forge:remote-gateway:changed');
+  return {account:forgeProductSession.status(),gateway:forgeRemoteGateway.status()};
 });
 // MCP is ONE Forge application connection. Projects are canonical resources
 // discovered by the scoped tools, never separate MCP tunnels or credentials.
@@ -1448,18 +1688,23 @@ registerUiHandler('ordax:forge:local-mcp:start',async event=>{
   if(!previouslyTrusted)forgeMcpTrusted.trustApp({expectedScopeHash:consentScopeHash});
   try{
     const saved=forgeMcpResume.recoverApp();
-    return {...await forgeLocalMcp.start(FORGE_APP_MCP_SCOPE,saved
+    const local={...await forgeLocalMcp.start(FORGE_APP_MCP_SCOPE,saved
       ?{listenPort:saved.port,resumeToken:saved.token}:{}),appTrusted:true};
+    if(forgeProductSession.status().connected)
+      await forgeRemoteGateway.start();
+    return {...local,remoteGateway:forgeRemoteGateway.status()};
   }catch(error){if(!previouslyTrusted)forgeMcpTrusted.revokeApp();throw error;}
 });
 registerUiHandler('ordax:forge:local-mcp:revoke',async event=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
-  forgeOfficialTunnel.stop();
-  forgeCloudflareTunnel.stop();
+  await forgeRemoteGateway.stop();
+  forgeProductSession.disconnect();
+  forgeMcpTrusted.clearRemoteOwnerIdentity();
   forgeMcpResume.disableAll(); // Old project consents never revive app access.
   await forgeLocalMcp.stop();
-  return {...forgeLocalMcp.status(),...forgeMcpTrusted.revokeApp(),appTrusted:false};
+  return {...forgeLocalMcp.status(),...forgeMcpTrusted.revokeApp(),appTrusted:false,
+    productAccount:forgeProductSession.status(),remoteGateway:forgeRemoteGateway.status()};
 });
 registerUiHandler('ordax:forge:local-mcp:resume-enable',async event=>{
   requireTrustedSupervisorRenderer(event);
@@ -1488,139 +1733,23 @@ registerUiHandler('ordax:forge:local-mcp:resume-disable',event=>{
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
   return {...forgeMcpResume.disableApp(),autoResumeApp:false};
 });
-let forgeTunnelInstallPending=false;
-registerUiHandler('ordax:forge:tunnel:install',async event=>{
-  requireTrustedSupervisorRenderer(event);
-  if(hostBrowserMode)throw Error('forge_tunnel_native_ui_only');
-  if(forgeTunnelInstallPending)throw Error('forge_tunnel_install_in_progress');
-  forgeTunnelInstallPending=true;
-  try{
-    orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
-    if(forgeOfficialTunnel.status().state!=='stopped')
-      throw Error('forge_tunnel_stop_before_install');
-    const confirmed=await confirmInActiveUi({
-      title:'Instalar cliente oficial da OpenAI',
-      message:'Instalar o componente de túnel do Forge neste Windows?',
-      detail:'O Forge baixará o pacote oficial openai/tunnel-client v0.0.20, verificará SHA-256 do arquivo e executável e instalará somente na pasta de componentes do Forge. Não inicia o túnel, não cria credenciais e não modifica outros aplicativos.',
-      approveLabel:'Instalar cliente oficial'
-    });
-    if(!confirmed)return {installed:false,declined:true};
-    return await installForgeOfficialTunnelClient({ownerApproved:true});
-  }finally{forgeTunnelInstallPending=false;}
-});
-const FORGE_TUNNEL_SETUP_URLS=Object.freeze({
-  tunnels:'https://platform.openai.com/settings/organization/tunnels',
-  keys:'https://platform.openai.com/settings/organization/api-keys',
-  chatgpt:'https://chatgpt.com/#settings/Connectors'
-});
-registerUiHandler('ordax:forge:tunnel:open-setup',async(event,target)=>{
-  requireTrustedSupervisorRenderer(event);
-  const url=typeof target==='string'?FORGE_TUNNEL_SETUP_URLS[target]:null;
-  if(!url)throw Error('forge_tunnel_setup_destination_invalid');
-  await shell.openExternal(url);
-  return {opened:true};
-});
-let forgeCloudflareInstallPending=false;
-registerUiHandler('ordax:forge:cloudflare:install',async event=>{
-  requireTrustedSupervisorRenderer(event);
-  if(hostBrowserMode)throw Error('forge_cloudflare_native_ui_only');
-  if(forgeCloudflareInstallPending)throw Error('forge_cloudflare_install_in_progress');
-  forgeCloudflareInstallPending=true;
-  try{
-    orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
-    if(forgeCloudflareTunnel.status().state!=='stopped')
-      throw Error('forge_cloudflare_stop_before_install');
-    const allowed=await confirmInActiveUi({
-      title:'Instalar conector Cloudflare do Forge',
-      message:'Instalar cloudflared oficial para a conexão exclusiva do Forge?',
-      detail:'Baixar a versão cloudflared 2026.11.0 de cloudflare/cloudflared, verificar o hash SHA-256 fixado e instalar somente nos componentes do Forge. Não cria portas públicas, não inicia o túnel nem altera o OrdaX MCP.',
-      approveLabel:'Instalar conector'
-    });
-    if(!allowed)return {installed:false,declined:true};
-    return await installForgeCloudflared({ownerApproved:true});
-  }finally{forgeCloudflareInstallPending=false;}
-});
-registerUiHandler('ordax:forge:cloudflare:start',async(event,request)=>{
-  requireTrustedSupervisorRenderer(event);
-  if(hostBrowserMode)throw Error('forge_cloudflare_native_ui_only');
-  orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
-  if(!forgeMcpTrusted.isAppTrusted())
-    throw Error('forge_cloudflare_app_untrusted');
-  if(forgeCloudflareTunnel.status().state!=='stopped'||
-      forgeOfficialTunnel.status().state!=='stopped')
-    throw Error('forge_cloudflare_tunnel_already_running');
-  const localGrant=forgeLocalMcp.localGrant(FORGE_APP_MCP_SCOPE);
-  if(!localGrant)throw Error('forge_cloudflare_local_mcp_not_active');
-  const allowed=await confirmInActiveUi({
-    title:'Conectar o Forge via Cloudflare',
-    message:'Iniciar o túnel privado para o MCP do Forge?',
-    detail:'Exige Cloudflare Access ativado, OAuth e assinatura JWT verificada. Cada chamada é validada no Forge antes de acessar o MCP local; o túnel pertence somente ao Forge e não dá acesso ao computador inteiro. Token de túnel usado apenas na memória do processo.',
-    approveLabel:'Iniciar túnel protegido'
-  });
-  if(!allowed)return {declined:true,...forgeCloudflareTunnel.status()};
-  orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
-  if(!forgeMcpTrusted.isAppTrusted()||
-      forgeLocalMcp.localGrant(FORGE_APP_MCP_SCOPE)?.token!==localGrant.token)
-    throw Error('forge_cloudflare_local_grant_changed');
-  return forgeCloudflareTunnel.start({
-    token:request?.token,team:request?.team,
-    audience:request?.audience,ownerApproved:true,platform:process.platform
-  });
-});
-registerUiHandler('ordax:forge:cloudflare:stop',event=>{
-  requireTrustedSupervisorRenderer(event);
-  if(hostBrowserMode)throw Error('forge_cloudflare_native_ui_only');
-  return forgeCloudflareTunnel.stop();
-});
-registerUiHandler('ordax:forge:tunnel:start',async(event,request)=>{
-  requireTrustedSupervisorRenderer(event);
-  if(hostBrowserMode)throw Error('forge_tunnel_native_ui_only');
-  orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
-  if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_tunnel_app_untrusted');
-  if(!inspectForgeOfficialTunnelClient().installed)
-    throw Error('forge_tunnel_official_client_unavailable');
-  if(forgeOfficialTunnel.status().state!=='stopped'||
-      forgeCloudflareTunnel.status().state!=='stopped')
-    throw Error('forge_tunnel_already_running');
-  const grant=forgeLocalMcp.localGrant(FORGE_APP_MCP_SCOPE);
-  if(!grant)throw Error('forge_tunnel_local_mcp_not_active');
-  const allowed=await confirmInActiveUi({
-    title:'Conectar o aplicativo Forge ao túnel oficial',
-    message:'Permitir que a OpenAI acesse as ferramentas MCP do Forge?',
-    detail:'A conexão de saída permite descobrir os projetos do Forge e operar arquivos nas pastas vinculadas e verificadas de cada projeto. Inclui projetos que forem criados posteriormente, sem acesso geral ao Windows. O túnel não publica uma porta nem comprova uma chamada do GPT por si só. A chave de execução fica somente na memória do processo e nunca no SQLite.',
-    approveLabel:'Iniciar túnel do Forge'
-  });
-  if(!allowed)return {declined:true,...forgeOfficialTunnel.status()};
-  orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
-  if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_tunnel_trust_revoked');
-  const current=forgeLocalMcp.localGrant(FORGE_APP_MCP_SCOPE);
-  if(!current||current.token!==grant.token||current.port!==grant.port)
-    throw Error('forge_tunnel_local_grant_changed');
-  return forgeOfficialTunnel.start({
-    projectId:FORGE_APP_MCP_SCOPE,tunnelId:request?.tunnelId,controlPlaneKey:request?.runtimeKey,
-    endpoint:'http://127.0.0.1:'+current.port+'/mcp',
-    bearerToken:current.token,
-    executablePath:path.join(officialTunnelComponentDirectory(process.env.LOCALAPPDATA),'tunnel-client.exe'),
-    ownerApproved:true,platform:process.platform
-  });
-});
-registerUiHandler('ordax:forge:tunnel:stop',event=>{
-  requireTrustedSupervisorRenderer(event);
-  if(hostBrowserMode)throw Error('forge_tunnel_native_ui_only');
-  return forgeOfficialTunnel.stop();
-});
 registerUiHandler('ordax:forge:local-mcp:stop',async event=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
-  forgeOfficialTunnel.stop(); // No remote client may outlive the local MCP.
-  forgeCloudflareTunnel.stop();
+  await forgeRemoteGateway.stop();
   forgeMcpResume.disableAll(); // Desativar todos must remain off after restart.
-  return forgeLocalMcp.stop();
+  return {...await forgeLocalMcp.stop(),remoteGateway:forgeRemoteGateway.status()};
 });
 registerUiHandler('ordax:orchestrator:invoke',async(event,payload)=>{
   requireTrustedSupervisorRenderer(event);
   const scope=payload?.operation==='project_delete'?projectAssetCleanupScope(payload?.input?.projectId):null;
-  const receipt=await orchestratorService.invoke(localOrchestratorContext,payload?.operation,payload?.input??{});
+  let receipt=null;
+  if(forgeDevAutonomyEnabled&&payload?.operation==='forjador_send')
+    receipt=orchestratorService.startDevAutonomousForjador(
+      localOrchestratorContext,payload?.input??{}
+    );
+  if(!receipt)
+    receipt=await orchestratorService.invoke(localOrchestratorContext,payload?.operation,payload?.input??{});
   let result=withDeletedProjectAssetCleanup(receipt,scope);
   // One verified-file notification refreshes the existing Files and Preview
   // panels after a successful write, without sending any bytes or bearer data.
@@ -1799,7 +1928,7 @@ registerUiHandler('ordax:supervisor:recoverable', (event,payload) => {
 });
 registerUiHandler('ordax:supervisor:inspect', async (event,payload) => {
   requireTrustedSupervisorRenderer(event);
-  if (liveRun) return {kind:'unavailable',reason:'another_run_active',requiresReconciliation:true};
+  if (primaryProviderRunActive()||worker.active) return {kind:'unavailable',reason:'another_run_active',requiresReconciliation:true};
   // Local, manual, read-only examination; no Groq key or auto-execution required.
   return inspectSupervisorChatReadOnly({
     store,worker,taskId:payload?.taskId,actionId:payload?.actionId
@@ -1857,8 +1986,9 @@ app.whenReady().then(async () => {
     }
   });
 
-  // Optional Windows-sealed restoration of ONE app MCP grant. Old project
-  // tokens are deliberately ignored; they cannot become app authority.
+  // Optional Windows-sealed restoration of the development loopback.
+  // Remote ChatGPT transport is the central Forge gateway and does not depend
+  // on this listener or on any local tunnel.
   if(!hostBrowserMode){
     const saved=forgeMcpResume.recoverApp();
     if(saved){
@@ -1871,6 +2001,10 @@ app.whenReady().then(async () => {
         await forgeLocalMcp.stop();
       }
     }
+    if(forgeMcpTrusted.isAppTrusted()&&forgeProductSession.status().connected){
+      try{await forgeRemoteGateway.start();}
+      catch{/* Account/gateway is fail-soft; local Forge remains usable offline. */}
+    }
   }
   await createWindow();
   if(backgroundOptedIn){
@@ -1879,10 +2013,29 @@ app.whenReady().then(async () => {
   }
   hostStartupLog('window_ready');
   // Observe completed Runs even when the coordinator chat is not selected.
-  // Bound to this App lifetime; does not promise a headless 24h supervisor.
+  // No synthetic user message is ever generated here: recovery is read-only
+  // and autonomous work may advance only from state already owned by Forge.
   continuationTimer=setInterval(()=>{
     void (async()=>{
+      const recoveryRunningRun=Boolean(store.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get());
+      const recoveryRunningReceipt=Boolean(store.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get());
+      const recoveryProviderBusy=orchestratorService.provider?.busy?.()===true;
+      if(!providerRecoveryInFlight&&!recoveryRunningRun&&
+          !recoveryRunningReceipt&&!recoveryProviderBusy) {
+        providerRecoveryInFlight=true;
+        try {
+          const recovery=await recoverVisibleLinkedProviderSubmission({store,worker});
+          if(recovery?.state==='recovered') {
+            emitRendererEvent('ordax:task:reconciled',{
+              taskId:recovery.taskId,runId:recovery.runId
+            });
+            notifyOrchestratorChanged();
+          }
+        } catch {} finally {providerRecoveryInFlight=false;}
+      }
       try {
+        const parallel=await orchestratorService.tickParallelDispatch(localOrchestratorContext);
+        if(parallel.state==='dispatched')notifyOrchestratorChanged();
         const autonomous=await orchestratorService.autonomous.tick(localOrchestratorContext);
         if(autonomous.state==='advanced'||autonomous.state==='blocked'||autonomous.state==='reconciliation_required')notifyOrchestratorChanged();
         // Never compete with an active autonomous mission for the same GPT executor.
@@ -1890,23 +2043,6 @@ app.whenReady().then(async () => {
         const result=await orchestratorService.continuation.tick(localOrchestratorContext);
         if(result.state==='analyzed'||result.state==='reconciliation_required')notifyOrchestratorChanged();
       } catch {}
-      // Use the existing app-lifetime supervisor tick. Recovery is restricted
-      // to an uncertain Run whose exact linked GPT thread is already visible;
-      // it performs bounded, read-only observations and never re-sends.
-      if(providerRecoveryInFlight||liveRun||
-          store.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
-          store.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get()||
-          orchestratorService.provider?.busy?.()===true)return;
-      providerRecoveryInFlight=true;
-      try {
-        const recovery=await recoverVisibleLinkedProviderSubmission({store,worker});
-        if(recovery.state==='recovered') {
-          emitRendererEvent('ordax:task:reconciled',{
-            taskId:recovery.taskId,runId:recovery.runId
-          });
-          notifyOrchestratorChanged();
-        }
-      } catch {} finally {providerRecoveryInFlight=false;}
     })().catch(()=>{});
   },10000);
 }).catch(()=>{
@@ -1921,10 +2057,11 @@ app.on('window-all-closed', () => {
 app.on('before-quit',()=>{quittingIntentionally=true;});
 app.on('will-quit', () => {
   if(backgroundTray){backgroundTray.destroy();backgroundTray=null;}
+  if(forgeHeartbeatTimer){clearInterval(forgeHeartbeatTimer);forgeHeartbeatTimer=null;}
+  writeForgeHeartbeat('stopping');
   if(continuationTimer)clearInterval(continuationTimer);
   void hostBrowserServer?.close();
-  forgeOfficialTunnel.stop();
-  forgeCloudflareTunnel.stop();
+  void forgeRemoteGateway.stop().catch(()=>{});
   void forgeLocalMcp.stop();
   closeRuntimeOrchestratorPipe?.();
   store.close();

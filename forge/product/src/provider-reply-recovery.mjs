@@ -12,10 +12,40 @@ const sha256=value=>createHash('sha256').update(value,'utf8').digest('hex');
 export function selectCompletedProviderReply({
   expectedUrl,observed,expectedPromptSha256,
   submissionEvidenceKind='delivery_receipt',baselineUserMessageId=null,
-  baselineUserMessagePresent=false,baselinePromptMatches=false
+  baselineUserMessagePresent=false,baselinePromptMatches=false,
+  freshSessionDeliveryReceipt=false
 }={}) {
-  const assessment=assessProviderConversationEvidence({expectedUrl,observed,expectedPromptSha256});
+  let assessment=assessProviderConversationEvidence({expectedUrl,observed,expectedPromptSha256});
   const unavailable=reason=>({recoverable:false,reason,assessment});
+  // A first-turn delivery receipt is stronger than historical Markdown
+  // serialization. ChatGPT may re-render the submitted app mention/paragraphs
+  // so their bytes no longer reproduce the pre-submit prompt digest. When the
+  // durable intent proves this was a brand-new thread with no baseline user
+  // turn, accept only the structurally unique first user -> one completed
+  // assistant reply in the exact receipt-bound permalink. No resend occurs.
+  if((assessment.kind!=='response_candidate'||assessment.candidates!==1||
+      assessment.responseCandidate!==true)&&freshSessionDeliveryReceipt===true) {
+    const canonical=canonicalProviderChatUrl(expectedUrl);
+    const messages=Array.isArray(observed?.messages)?observed.messages:[];
+    const users=messages.map((message,index)=>message?.role==='user'?index:-1).filter(index=>index>=0);
+    const structurallyBound=Boolean(canonical&&canonicalProviderChatUrl(observed?.url)===canonical&&
+      observed?.available===true&&observed?.domReliable===true&&observed?.truncated!==true&&
+      observed?.generationStopVisible===false&&observed?.responseCompletionObserved===true&&
+      messages.length>0&&messages.length<=50&&users.length===1&&
+      !messages.slice(0,users[0]).some(message=>message?.role==='assistant'));
+    if(structurallyBound) {
+      const after=messages.slice(users[0]+1);
+      const nextUser=after.findIndex(message=>message?.role==='user');
+      const sameTurn=nextUser<0?after:after.slice(0,nextUser);
+      const replies=sameTurn.filter(message=>message?.role==='assistant'&&
+        typeof message.text==='string'&&message.text.trim()&&
+        message.text.length<=W3_MAX_ASSISTANT_CHARS&&message.textTruncated!==true);
+      if(nextUser<0&&replies.length===1) {
+        assessment={kind:'response_candidate',reason:'fresh_session_delivery_receipt',
+          candidates:1,responseCandidate:true,requiresReconciliation:true};
+      }
+    }
+  }
   if(assessment.kind!=='response_candidate'||assessment.candidates!==1||assessment.responseCandidate!==true)
     return unavailable(assessment.reason||'provider_reply_not_found');
   if(observed?.truncated===true) return unavailable('provider_observation_truncated');
@@ -29,8 +59,14 @@ export function selectCompletedProviderReply({
     const message=observed.messages[index];
     if(message?.role==='user'&&providerPromptDigest(message.text)===expectedPromptSha256)matches.push(index);
   }
-  if(matches.length!==1)return unavailable(matches.length?'duplicate_message_candidates':'message_not_observed');
-  const candidateIndex=matches[0];
+  let candidateIndex=matches.length===1?matches[0]:-1;
+  if(candidateIndex<0&&freshSessionDeliveryReceipt===true&&
+      assessment.reason==='fresh_session_delivery_receipt') {
+    const users=observed.messages.map((message,index)=>message?.role==='user'?index:-1)
+      .filter(index=>index>=0);
+    if(users.length===1)candidateIndex=users[0];
+  }
+  if(candidateIndex<0)return unavailable(matches.length?'duplicate_message_candidates':'message_not_observed');
   if(submissionEvidenceKind==='dispatch_intent') {
     if(typeof baselineUserMessagePresent!=='boolean')return unavailable('provider_baseline_presence_unknown');
     if(baselineUserMessagePresent&&baselineUserMessageId===null)
@@ -50,7 +86,7 @@ export function selectCompletedProviderReply({
     // for the response to the new attempt.
     return unavailable('provider_prompt_preexisting');
   }
-  const after=observed.messages.slice(matches[0]+1);
+  const after=observed.messages.slice(candidateIndex+1);
   const nextUser=after.findIndex(message=>message.role==='user');
   const sameTurn=nextUser<0?after:after.slice(0,nextUser);
   const replies=sameTurn.filter(message=>message.role==='assistant'&&typeof message.text==='string'&&message.text.trim());

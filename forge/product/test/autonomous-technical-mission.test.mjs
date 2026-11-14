@@ -15,7 +15,8 @@ const instruction='Revise o resultado observado, defina se continua na conversa 
 
 function fixture(t,{first='continue_same_conversation',last='verify_external_effect',providerFailure=null,lateResponseAt=null,groqTruncateReviews=[],groqFilteredReviews=[],groqInvalidEvidenceReviews=[],groqInvalidNextStepReviews=[],holdAfterFirstReview=false,holdProviderBusyAfterFirstSend=false,
   holdProviderBusyAfterSecondSend=false,maxExpectedSends=2,withHtmlProof=false,missingArtifactPort=false,
-  acceptanceStatus='requires_external_verification'}={}){
+  acceptanceStatus='requires_external_verification',continuousExecutionByDefault=false,
+  coordinatorAvailable=true}={}){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-semantic-mission-'));
   const store=new Store(path.join(dir,'canonical.sqlite'));
   t.after(()=>{store.close();fs.rmSync(dir,{force:true,recursive:true})});
@@ -25,7 +26,7 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
   let assetFile=null;
   const reviewedScopes=[];
   const coordinator={
-    available:()=>true,
+    available:()=>coordinatorAvailable,
     send:async({prepareWork,analysisContext,mission,completionProfile,delegateWork})=>{
       if(delegateWork===true)return {provider:'groq',content:'Vou cuidar disso.',delegation:'technical'};
       if(prepareWork){
@@ -144,6 +145,7 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
     }
   };
   const service=new OrchestratorService({store,coordinator,provider,
+    continuousExecutionByDefault,
     verifyLocalArtifact:missingArtifactPort?null:({assetId,taskId})=>{
       const asset=store.getAsset(assetId);
       if(asset?.task_id!==taskId||asset?.kind!=='file'||asset?.mime_type!=='text/html')
@@ -315,6 +317,64 @@ test('natural site request sends its exact words once; a model-suggested publica
   assert.equal(f.store.messages(m.taskAId).find(x=>x.role==='user').content,content);
   assert.equal(f.store.db.prepare('SELECT followup_policy FROM lab_autonomous_dialogues WHERE id=?')
     .get(m.missionId).followup_policy,'review_only');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('dev autonomy starts from the real forjador_send UI path and continues without another owner command',async t=>{
+  const f=fixture(t,{
+    maxExpectedSends:4,
+    continuousExecutionByDefault:true,
+    coordinatorAvailable:false
+  });
+  const ids=await f.setup();
+  const content='crie um site de página única para a cafeteria fictícia Estação Café';
+  const chatTaskId=f.service.orchestrator(ids.projectId,ids.orchestratorId).chat_task_id;
+  f.store.setDraft(chatTaskId,content,1);
+
+  const receipt=f.service.startDevAutonomousForjador(f.context,{
+    requestId:'real_forjador_site_1',
+    projectId:ids.projectId,orchestratorId:ids.orchestratorId,
+    content,draftRevision:1
+  });
+  assert.equal(receipt.status,'succeeded');
+  assert.equal(receipt.operation,'forjador_send');
+  assert.equal(receipt.result.provider,'forge_autonomy');
+  assert.equal(receipt.result.delegation,'technical');
+  assert.equal(f.service.autonomous.status(f.context,ids).continuousExecutionEnabled,true);
+  assert.equal(f.store.getTaskDraft(chatTaskId).draft,'');
+  assert.equal(f.store.messages(chatTaskId).filter(m=>m.role==='user').length,1);
+  assert.equal(f.store.messages(chatTaskId).find(m=>m.role==='user').content,content);
+
+  // App lifetime tick only. No second owner command or chat injection.
+  await f.service.autonomous.tick(f.context);
+  const first=await f.wait(ids);
+  assert.equal(first.state,'budget_exhausted');
+  assert.equal(first.maxGPTSends,2);
+  assert.equal(f.store.messages(first.taskAId).find(x=>x.role==='user').content,content);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='forjador_send'")
+    .get().n,1);
+  assert.equal(f.metrics().reviews,0,'dev continuation must not require Groq');
+
+  const advanced=await f.service.autonomous.tick(f.context);
+  assert.equal(advanced.state,'advanced');
+  assert.equal(advanced.automatic,true);
+  assert.notEqual(advanced.missionId,first.missionId);
+
+  let second=null;
+  for(let i=0;i<180;i++){
+    const mission=f.service.autonomous.status(f.context,ids).mission;
+    if(mission?.missionId!==first.missionId&&mission?.state==='budget_exhausted'){
+      second=mission;break;
+    }
+    await f.service.autonomous.tick(f.context);
+    await new Promise(resolve=>setTimeout(resolve,30));
+  }
+  assert.ok(second);
+  assert.equal(second.chainProgress.cycles,2);
+  assert.equal(f.metrics().sends,4);
+  assert.equal(f.metrics().reviews,0);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='forjador_send'")
+    .get().n,1,'continuation never creates another owner forjador_send');
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 

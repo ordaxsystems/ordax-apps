@@ -136,7 +136,9 @@ test('host calls the SAME scheduler from UI task sends, Groq supervisor and orch
   assert.match(main,/await runWorker\.sendPrompt\(/);
   assert.match(main,/providerViews\.bindRun\(runWorker,runContext\)/);
   assert.match(main,/providerViews\.unbindRun\(runWorker,runId\)/);
-  assert.match(main,/lanes:\[\{id:'primary',worker\}\]/);
+  assert.match(main,/providerWorkers=Array\.from\(\{length:providerWorkerCount\}/);
+  assert.match(main,/lanes:providerWorkers\.map\(candidate=>\(\{id:candidate\.id,worker:candidate\}\)\)/);
+  assert.doesNotMatch(main,/\bliveRun\b/);
 });
 
 test('bounded physical lane refuses overflow without dropping or duplicating accepted work',async()=>{

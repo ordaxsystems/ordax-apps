@@ -28,7 +28,8 @@ test('native formless dispatch and legacy form path both require pre-recorded in
   assert.match(source,/trustedPointer:!!standaloneButton/);
   assert.match(source,/document\.elementFromPoint\(x,y\)\?\.closest\('button'\)/);
   assert.match(source,/form\.requestSubmit\(button\)/);
-  const start=source.indexOf("type:'mousePressed'");
+  // The earlier pointer belongs to the MCP app picker, not prompt submission.
+  const start=source.indexOf("type:'mousePressed'",source.indexOf('  async #setComposerAndSend('));
   const end=source.indexOf('let promptExpansionAttempted=false;',start);
   const pre=source.lastIndexOf('await onSubmissionIntent({',start);
   assert.ok(pre>=0&&pre<start);

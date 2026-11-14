@@ -11,22 +11,15 @@ contextBridge.exposeInMainWorld('ordax', {
   forgeLocalMcpResumeEnable: () => ipcRenderer.invoke('ordax:forge:local-mcp:resume-enable'),
   forgeLocalMcpResumeDisable: () => ipcRenderer.invoke('ordax:forge:local-mcp:resume-disable'),
   forgeLocalMcpStop: () => ipcRenderer.invoke('ordax:forge:local-mcp:stop'),
-  forgeCloudflareInstall: () => ipcRenderer.invoke('ordax:forge:cloudflare:install'),
-  forgeCloudflareStart: input => ipcRenderer.invoke('ordax:forge:cloudflare:start',input),
-  forgeCloudflareStop: () => ipcRenderer.invoke('ordax:forge:cloudflare:stop'),
-  onForgeCloudflareChanged: callback => {
+  forgeProductAuthStatus: () => ipcRenderer.invoke('ordax:forge:product-auth:status'),
+  forgeProductAuthRequestOtp: email => ipcRenderer.invoke('ordax:forge:product-auth:request-otp',email),
+  forgeProductAuthVerifyOtp: input => ipcRenderer.invoke('ordax:forge:product-auth:verify-otp',input),
+  forgeProductAuthReconnect: () => ipcRenderer.invoke('ordax:forge:product-auth:reconnect'),
+  forgeProductAuthDisconnect: () => ipcRenderer.invoke('ordax:forge:product-auth:disconnect'),
+  onForgeRemoteGatewayChanged: callback => {
     const listener=()=>callback();
-    ipcRenderer.on('ordax:forge:cloudflare:changed',listener);
-    return ()=>ipcRenderer.removeListener('ordax:forge:cloudflare:changed',listener);
-  },
-  forgeOfficialTunnelInstall: () => ipcRenderer.invoke('ordax:forge:tunnel:install'),
-  forgeOfficialTunnelOpenSetup: target => ipcRenderer.invoke('ordax:forge:tunnel:open-setup',target),
-  forgeOfficialTunnelStart: input => ipcRenderer.invoke('ordax:forge:tunnel:start',input),
-  forgeOfficialTunnelStop: () => ipcRenderer.invoke('ordax:forge:tunnel:stop'),
-  onForgeOfficialTunnelChanged: callback => {
-    const listener=()=>callback();
-    ipcRenderer.on('ordax:forge:tunnel:changed',listener);
-    return ()=>ipcRenderer.removeListener('ordax:forge:tunnel:changed',listener);
+    ipcRenderer.on('ordax:forge:remote-gateway:changed',listener);
+    return ()=>ipcRenderer.removeListener('ordax:forge:remote-gateway:changed',listener);
   },
   onForgeProjectFileChanged: callback => {
     const listener=(_event,payload)=>callback(payload);
@@ -85,7 +78,7 @@ contextBridge.exposeInMainWorld('ordax', {
   labBuildProof: () => ipcRenderer.invoke('ordax:lab:build-proof'),
   providerStatus: () => ipcRenderer.invoke('ordax:provider:status'),
   providerDiagnostic: () => ipcRenderer.invoke('ordax:provider:diagnostic'),
-  providerMcpSelection: () => ipcRenderer.invoke('ordax:provider:mcp-selection'),
+  providerMcpSelection: app => ipcRenderer.invoke('ordax:provider:mcp-selection',app),
   onProviderMcpObserved: callback => ipcRenderer.on('ordax:provider:mcp-observed',(_event,data)=>callback(data)),
   providerNavigate: direction => ipcRenderer.invoke('ordax:provider:navigate',direction),
   setProviderBounds: bounds => ipcRenderer.invoke('ordax:provider:view-bounds',bounds),

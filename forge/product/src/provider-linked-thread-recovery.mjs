@@ -56,30 +56,38 @@ export async function inspectProviderLinkedThread({store,worker,taskId,allowNavi
     expectedUrl,observed,expectedMessage:message?.content,
     expectedPromptSha256:provenance.promptSha256
   });
+  const intent=findProviderSubmissionIntent({
+    store,taskId:task,runId:provenance.runId,messageId:message?.id
+  });
+  const freshSessionDeliveryReceipt=provenance.evidenceKind==='delivery_receipt'&&
+    intent?.new_session===true&&intent.prompt_sha256===provenance.promptSha256&&
+    intent.baseline_user_message_present===false&&intent.baseline_user_message_id===null&&
+    intent.baseline_prompt_matches===false&&Number.isSafeInteger(intent.intent_at)&&
+    Number.isSafeInteger(provenance.submittedAt)&&provenance.submittedAt>=intent.intent_at;
   const generationNotActive=observed?.generationStopVisible===false&&
     observed?.responseCompletionObserved===true;
-  const threadRendered=assessment.kind==='response_candidate'&&assessment.candidates===1&&
+  let threadRendered=assessment.kind==='response_candidate'&&assessment.candidates===1&&
     assessment.responseCandidate===true&&observed?.truncated!==true&&generationNotActive;
   let recoveryPreview=null;
   let recoveryReason='provider_reply_not_recoverable';
-  if(threadRendered) {
-    const run=store.db.prepare('SELECT status FROM runs WHERE id=? AND task_id=?').get(provenance.runId,task);
-    if(run&&['failed','interrupted'].includes(run.status)) {
+  const run=store.db.prepare('SELECT status FROM runs WHERE id=? AND task_id=?').get(provenance.runId,task);
+  if(run&&['failed','interrupted'].includes(run.status)&&generationNotActive&&observed?.truncated!==true) {
       const selected=selectCompletedProviderReply({
         expectedUrl,observed,expectedPromptSha256:provenance.promptSha256,
         submissionEvidenceKind:provenance.evidenceKind,
         baselineUserMessageId:provenance.baselineUserMessageId,
         baselineUserMessagePresent:provenance.baselineUserMessagePresent,
-        baselinePromptMatches:provenance.baselinePromptMatches
+        baselinePromptMatches:provenance.baselinePromptMatches,
+        freshSessionDeliveryReceipt
       });
       if(selected.recoverable) {
         recoveryPreview={text:selected.text,responseSha256:selected.responseSha256};
         recoveryReason='reply_attributable_and_complete';
+        threadRendered=true;
       } else recoveryReason=selected.reason||recoveryReason;
-    }
   }
-  const possibleAnswer=assessment.kind==='response_candidate'&&
-    assessment.candidates===1&&assessment.responseCandidate===true;
+  const possibleAnswer=Boolean(recoveryPreview)||(assessment.kind==='response_candidate'&&
+    assessment.candidates===1&&assessment.responseCandidate===true);
   const inspectionReason=threadRendered?'thread_rendered':possibleAnswer&&observed?.generationStopVisible===true
     ?'provider_response_generation_active':possibleAnswer&&!generationNotActive
       ?'provider_generation_state_unobserved'
@@ -88,8 +96,9 @@ export async function inspectProviderLinkedThread({store,worker,taskId,allowNavi
       // missing/ambiguous exact prompt match into a transport failure.
       :safeHistoricalThreadFailure(observed?.reason || assessment.reason);
   return {
-    kind:assessment.kind,reason:assessment.reason,threadRendered,
-    inspectionReason,recoveryReason,responseCandidate:assessment.responseCandidate===true,
+    kind:recoveryPreview?'response_candidate':assessment.kind,
+    reason:recoveryPreview?'fresh_session_delivery_receipt':assessment.reason,threadRendered,
+    inspectionReason,recoveryReason,responseCandidate:possibleAnswer,
     requiresReconciliation:assessment.requiresReconciliation===true,
     ...(recoveryPreview?{recoveryPreview}: {})
   };
@@ -131,7 +140,9 @@ export async function reconcileProviderLinkedReply({store,worker,taskId,response
 // submission evidence while the same linked GPT chat is already open. This
 // never navigates or sends. Ambiguity, stale view or partial answer stays
 // unresolved; a verified reply is committed idempotently.
-export async function recoverFailedProviderSubmission({store,worker,taskId,runId}={}) {
+export async function recoverFailedProviderSubmission({
+  store,worker,taskId,runId,allowNavigation=false
+}={}) {
   const id=String(taskId||'');
   const run=store?.db?.prepare('SELECT id,status,error,metrics FROM runs WHERE id=? AND task_id=?').get(runId,id);
   const task=store?.db?.prepare('SELECT status,chat_url FROM tasks WHERE id=?').get(id);
@@ -145,22 +156,30 @@ export async function recoverFailedProviderSubmission({store,worker,taskId,runId
   const uncertainLostAck=failure==='send_confirmation_unknown'&&metrics?.failed_stage==='submit'&&
     metrics?.provider_delivery_state==='uncertain'&&
     Number.isSafeInteger(metrics?.submit_attempt_at)&&metrics.submit_attempt_at>0;
+  const submittedLateResponse=failure==='response_not_observed'&&
+    metrics?.failed_stage==='await-response'&&metrics?.provider_delivery_state==='submitted';
   const interruptedWithDurableSubmissionEvidence=run.status==='interrupted'&&task.status==='interrupted'&&
     ['app_shutdown','process_interrupted'].includes(run.error)&&
     Boolean(intent||findProviderSubmissionProvenance({
       store,taskId:id,chatUrl:task.chat_url,messageId:latestMessage?.id
     }));
-  if(!uncertainLostAck&&!interruptedWithDurableSubmissionEvidence)
+  if(!uncertainLostAck&&!submittedLateResponse&&!interruptedWithDurableSubmissionEvidence)
     return {reconciled:false,reason:'provider_recovery_not_applicable'};
-  if(intent?.new_session===true)
+  // A fresh-session intent may later gain a canonical permalink and a
+  // delivery receipt. In that case it is no longer an unlinked lost-ack:
+  // reconcile through the receipt-bound linked thread path below.
+  const linkedProvenance=findProviderSubmissionProvenance({
+    store,taskId:id,chatUrl:task.chat_url,messageId:latestMessage?.id
+  });
+  if(intent?.new_session===true&&!canonicalProviderChatUrl(task.chat_url)&&!linkedProvenance)
     return recoverFreshProviderSubmission({store,worker,taskId:id,runId:String(runId),intent});
-  const first=await inspectProviderLinkedThread({store,worker,taskId:id,allowNavigation:false});
+  const first=await inspectProviderLinkedThread({store,worker,taskId:id,allowNavigation});
   if(!first.recoveryPreview?.responseSha256)
     return {reconciled:false,reason:!first.threadRendered
       ?first.inspectionReason||first.recoveryReason||'provider_reply_not_recoverable'
       :first.recoveryReason||first.inspectionReason||'provider_reply_not_recoverable'};
   return reconcileProviderLinkedReply({
-    store,worker,taskId:id,responseSha256:first.recoveryPreview.responseSha256,allowNavigation:false
+    store,worker,taskId:id,responseSha256:first.recoveryPreview.responseSha256,allowNavigation
   });
 }
 
@@ -244,6 +263,8 @@ export async function recoverVisibleLinkedProviderSubmission({store,worker,now=D
   const uncertainLostAck=failure==='send_confirmation_unknown'&&metrics?.failed_stage==='submit'&&
     metrics?.provider_delivery_state==='uncertain'&&
     Number.isSafeInteger(metrics?.submit_attempt_at)&&metrics.submit_attempt_at>0;
+  const submittedLateResponse=failure==='response_not_observed'&&
+    metrics?.failed_stage==='await-response'&&metrics?.provider_delivery_state==='submitted';
   const latestMessage=store.db.prepare("SELECT id FROM messages WHERE task_id=? AND role='user' ORDER BY rowid DESC LIMIT 1").get(taskId);
   const intent=findProviderSubmissionIntent({store,taskId,runId:run.id,messageId:latestMessage?.id});
   const interruptedWithDurableSubmissionEvidence=run.status==='interrupted'&&task.status==='interrupted'&&
@@ -251,7 +272,7 @@ export async function recoverVisibleLinkedProviderSubmission({store,worker,now=D
     Boolean(intent||findProviderSubmissionProvenance({
       store,taskId,chatUrl:task.chat_url||currentUrl,messageId:latestMessage?.id
     }));
-  if(!uncertainLostAck&&!interruptedWithDurableSubmissionEvidence)
+  if(!uncertainLostAck&&!submittedLateResponse&&!interruptedWithDurableSubmissionEvidence)
     return {state:'idle',reason:'provider_recovery_not_applicable'};
 
   const previous=store.db.prepare(`SELECT payload FROM events WHERE task_id=?

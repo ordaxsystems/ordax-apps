@@ -8,7 +8,7 @@ import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {ForgeProjectFiles} from '../src/forge-project-files.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
-import {createForgeLoopbackMcp} from '../src/forge-loopback-mcp.mjs';
+import {createForgeLoopbackMcp,FORGE_APP_MCP_SCOPE} from '../src/forge-loopback-mcp.mjs';
 
 function fixture(t,{onProjectFileChanged=()=>{}}={}) {
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'forge-loopback-'));
@@ -26,6 +26,7 @@ function fixture(t,{onProjectFileChanged=()=>{}}={}) {
     createMcp:({projectId,allowedOperations})=>createOrchestratorMcp({
       service,getContext:()=>context,allowedProjectId:projectId,allowedOperations}),
     authorizeProject:projectId=>{
+      if(projectId===FORGE_APP_MCP_SCOPE)return true;
       try{service.requireAccess(context,'project_file_read',projectId);return true;}
       catch{return false;}
     },clock:()=>now,onProjectFileChanged
@@ -103,6 +104,40 @@ test('loopback MCP requires explicit token and keeps tools inside one project',a
   await assert.rejects(fetch(endpoint),/fetch failed|ECONNREFUSED/);
 });
 
+
+test('application MCP can create durable synthetic projects without exposing recursive GPT dispatch',async t=>{
+  const f=fixture(t);
+  const ready=await f.transport.start(FORGE_APP_MCP_SCOPE);
+  const init=await rpc(ready.endpoint,ready.token,null,initialize);
+  assert.equal(init.status,200);
+  await rpc(ready.endpoint,ready.token,init.session,notify);
+  const tools=(await rpc(ready.endpoint,ready.token,init.session,
+    {jsonrpc:'2.0',id:30,method:'tools/list'})).payload.result.tools.map(tool=>tool.name);
+  for(const name of ['forge_projects_list','forge_project_create','forge_project_quick_create',
+    'forge_mission_create','forge_orchestrator_create','forge_work_create','forge_work_batch_create',
+    'forge_work_draft_set','forge_work_parallel_launch'])
+    assert.ok(tools.includes(name),'application MCP tool missing: '+name);
+  for(const name of ['forge_work_send','forge_forjador_send','forge_autonomous_dialogue_start',
+    'forge_autonomous_dialogue_continue'])
+    assert.ok(!tools.includes(name),'recursive GPT dispatch must stay App-owned: '+name);
+  const created=await rpc(ready.endpoint,ready.token,init.session,call(31,'mission_create',{
+    name:'Synthetic autonomy lab',mission:'Exercise durable Task and Run continuity.',
+    requestId:'app_mission_create_1'
+  }));
+  assert.equal(created.payload.result.structuredContent.status,'succeeded');
+  const ids=created.payload.result.structuredContent.result;
+  assert.ok(ids.projectId&&ids.orchestratorId&&ids.taskId);
+  const listed=await rpc(ready.endpoint,ready.token,init.session,
+    call(32,'projects_list',{}));
+  assert.ok(listed.payload.result.structuredContent.projects.some(project=>project.id===ids.projectId));
+  const repeat=await rpc(ready.endpoint,ready.token,init.session,call(33,'mission_create',{
+    name:'Synthetic autonomy lab',mission:'Exercise durable Task and Run continuity.',
+    requestId:'app_mission_create_1'
+  }));
+  assert.equal(repeat.payload.result.structuredContent.commandId,
+    created.payload.result.structuredContent.commandId);
+});
+
 test('authorized MCP file writes notify owner UI after receipt, without exposing data',async t=>{
   const changed=[];
   const f=fixture(t,{onProjectFileChanged:id=>changed.push(id)});
@@ -147,16 +182,30 @@ test('real HTTP MCP exposes scoped work identity and messages without allowing c
   await rpc(ready.endpoint,ready.token,init.session,notify);
   const tools=(await rpc(ready.endpoint,ready.token,init.session,
     {jsonrpc:'2.0',id:60,method:'tools/list'})).payload.result.tools;
-  for(const name of ['forge_work_list','forge_work_get','forge_work_messages']){
+  for(const name of ['forge_work_list','forge_work_get','forge_work_messages','forge_work_plan']){
     const tool=tools.find(item=>item.name===name);
     assert.ok(tool,'typed project work read missing: '+name);
     assert.equal(tool.annotations.readOnlyHint,true);
     assert.ok(!Object.hasOwn(tool.inputSchema.properties,'projectId'));
   }
+  for(const name of ['forge_work_create','forge_work_batch_create','forge_work_draft_set',
+    'forge_work_dependency_set','forge_work_parallel_launch']){
+    const tool=tools.find(item=>item.name===name);
+    assert.ok(tool,'typed project work mutation missing: '+name);
+    assert.equal(tool.annotations.readOnlyHint,false);
+    assert.ok(!Object.hasOwn(tool.inputSchema.properties,'projectId'));
+  }
+  assert.ok(!tools.some(item=>item.name==='forge_work_send'),'GPT cannot recursively dispatch GPT');
+  const created=await rpc(ready.endpoint,ready.token,init.session,
+    call(66,'work_create',{orchestratorId:a.orchestratorId,title:'Inspect local autonomy',requestId:'mcp_work_create_1'}));
+  assert.equal(created.payload.result.structuredContent.status,'succeeded');
+  const createdTaskId=created.payload.result.structuredContent.result.taskId;
+  assert.ok(createdTaskId);
   const list=await rpc(ready.endpoint,ready.token,init.session,call(61,'work_list',{}));
   assert.equal(list.status,200);
-  assert.equal(list.payload.result.structuredContent.works.length,1);
-  assert.equal(list.payload.result.structuredContent.works[0].id,a.taskId);
+  assert.equal(list.payload.result.structuredContent.works.length,2);
+  assert.ok(list.payload.result.structuredContent.works.some(work=>work.id===a.taskId));
+  assert.ok(list.payload.result.structuredContent.works.some(work=>work.id===createdTaskId));
   const work=await rpc(ready.endpoint,ready.token,init.session,
     call(62,'work_get',{taskId:a.taskId}));
   assert.equal(work.payload.result.structuredContent.id,a.taskId);

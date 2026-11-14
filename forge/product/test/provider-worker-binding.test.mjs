@@ -34,15 +34,15 @@ test('uncertain delivery recovery, reply navigation and progress remain scoped t
   assert.match(run,/observePostCommitNavigation\(\{worker:runWorker,chatUrl:confirmedChatUrl\}\)/);
   assert.match(run,/providerViews.runForWorker\(runWorker\)!==runContext/);
   assert.match(run,/providerViews.runForWorker\(runWorker\)===runContext/);
-  assert.doesNotMatch(run,/liveRun\?\.runId/);
-  assert.match(run,/if \(liveRun===runContext\) liveRun = null/);
+  assert.doesNotMatch(run,/\bliveRun\b/);
+  assert.match(run,/providerRunPresentationWorkers\.delete\(runWorker\)/);
 });
 
 test('every existing sender passes the exact scheduler-selected worker into runTask',()=>{
   assert.match(source,/return providerScheduler\.enqueue\(String\(taskId\),operation\)/);
   assert.match(source,/enqueueExecution\(String\(taskId\),runWorker => runTask\(/);
   assert.match(source,/enqueueExecution\(taskId,runWorker => runTask\(/);
-  assert.match(source,/enqueueExecution\(taskId,runWorker=>runTask\(/);
+  assert.match(source,/enqueueExecution\(taskId,runWorker=>\{/);
   assert.doesNotMatch(source,/provider_lane_identity_mismatch/);
   assert.doesNotMatch(source,/executionTail/);
 });
@@ -51,6 +51,9 @@ test('window close and stale WebContents destruction only close their own schedu
   const setup=extract('async function createWindowOnce()', "\nipcMain.on('ordax:worker:preload-ready'");
   assert.match(setup,/const registeredScheduler=providerScheduler/);
   assert.match(setup,/registeredScheduler.close\('provider_worker_destroyed'\)/);
+  assert.match(setup,/provider_worker_pool_degraded_/);
+  assert.match(setup,/quittingIntentionally=true/);
+  assert.match(setup,/win\.close\(\)/);
   assert.match(setup,/registeredScheduler.close\(\)/);
   assert.doesNotMatch(setup,/providerScheduler\?\.close/);
   // Closing a prior scheduler cannot invalidate a newly created one.
@@ -61,7 +64,11 @@ test('window close and stale WebContents destruction only close their own schedu
   assert.equal(current.snapshot().lanes,1);
 });
 
-test('hardware concurrency remains fail-closed at one worker until real E2E',()=>{
-  assert.match(source,/providerScheduler=createProviderExecutionScheduler\(\{lanes:\[\{id:'primary',worker\}\]\}\)/);
-  assert.match(source,/if\(liveRun\)throw Error\('orchestrator_executor_busy'\)/);
+test('Electron host builds one canonical multi-lane worker pool without a global Run lock',()=>{
+  assert.match(source,/providerWorkers=Array\.from\(\{length:providerWorkerCount\}/);
+  assert.match(source,/new EmbeddedChatWorker\(\{id:index===0\?'primary':'agent-'\+String\(index\+1\)\}\)/);
+  assert.match(source,/lanes:providerWorkers\.map\(candidate=>\(\{id:candidate\.id,worker:candidate\}\)\)/);
+  assert.match(source,/const providerWorkerCount=.*ORDAX_FORGE_PROVIDER_WORKERS/s);
+  assert.doesNotMatch(source,/\bliveRun\b/);
+  assert.doesNotMatch(source,/if\([^\n]*orchestrator_executor_busy[^\n]*\)/);
 });

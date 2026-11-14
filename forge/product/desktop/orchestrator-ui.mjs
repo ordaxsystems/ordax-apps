@@ -663,16 +663,17 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(plan?.automaticDispatchAllowed===false){
       planStatus.dataset.state=plan.blocked.length?'blocked':'ready';
       const executor=plan.executor;
-      const physical=executor?.maxConcurrentSends===1&&executor?.isolatedWorkerSessions===false
-        ?'Executor real: 1 sessão de navegador'+
-          (executor.availableSlots===0?' (ocupada).':' (vaga disponível).')
-        :'Capacidade física do executor não atestada.';
+      const physical=executor?.parallelProviderSendsEnabled===true
+        ?'Agents GPT: '+executor.maxConcurrentSends+' sessões · '+
+          (executor.activeProviderSends||0)+' ativas · '+executor.availableSlots+' livres.'
+        :executor?.maxConcurrentSends===1
+          ?'Executor GPT: 1 sessão · '+(executor.availableSlots===0?'ocupada.':'livre.')
+          :'Capacidade física do executor não atestada.';
       planStatus.textContent='Planejamento do projeto · '+plan.candidates.length+' candidatas · '+
         plan.waiting.length+' aguardando · '+plan.blocked.length+' bloqueadas · '+
         plan.inFlight+' em execução no projeto · '+
         verificationRequiredWorkIds.size+' respostas aguardando comprovação de resultado. '+physical+
-        ' A seleção consultiva de até '+(plan.availableSlots+plan.inFlight)+
-        ' frentes não significa envios simultâneos. Nenhum envio automático autorizado.';
+        ' Candidatas só entram em paralelo após um launch durável do Forge; cada agent mantém Task, Run e receipt próprios.';
     }else{
       planStatus.dataset.state='unavailable';
       planStatus.textContent=projectId?
@@ -1779,7 +1780,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
       if(receipt.status==='succeeded'){
         await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
-        status('Resposta do GPT registrada. Efeitos externos ainda exigem verificação.');
+        status(receipt.result?.provider==='forge_autonomy'
+          ?'Pedido entregue ao Forge. GPT e MCP continuarão pela execução do projeto.'
+          :'Resposta do GPT registrada. Efeitos externos ainda exigem verificação.');
       } else if(receipt.status==='uncertain'){
         status('Envio GPT incerto. Consulte Execução antes de qualquer novo envio; não houve repetição.');
       } else {

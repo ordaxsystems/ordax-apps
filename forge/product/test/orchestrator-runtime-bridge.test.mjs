@@ -5,12 +5,12 @@ import {PassThrough} from 'node:stream';
 import {createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,
   canonicalHostJson,RUNTIME_BRIDGE_SCHEMA,resolveOrchestratorRuntimeTransport} from '../src/orchestrator-runtime-bridge.mjs';
 
-function fixture(onInvoke){
+function fixture(onInvoke,{capability='forge.app_read'}={}){
   let now=100000,bridge,reads=0;
   const build={verified:true,status:'verified',sourceCommit:'a'.repeat(40),contentDigest:'b'.repeat(64)};
   const bootstrap={schema:RUNTIME_BRIDGE_SCHEMA,type:'bootstrap',sessionId:randomUUID(),
     key:randomBytes(32).toString('base64'),ownerUserId:randomUUID(),clientId:'oauth-fixture-client',
-    deviceId:randomUUID(),grantId:randomUUID(),capability:'forge.app_read',expiresAt:now+60000,
+    deviceId:randomUUID(),grantId:randomUUID(),capability,expiresAt:now+60000,
     expectedCommit:build.sourceCommit,expectedDigest:build.contentDigest,expectedProfile:'c'.repeat(64)};
   bridge=createOrchestratorRuntimeBridge({workspaceSessionId:'session_test',buildProof:build,
     profileFingerprint:bootstrap.expectedProfile,clock:()=>now,
@@ -44,6 +44,32 @@ test('host v1 never inherits new local proposal reads or writes from the App cat
     assert.equal((await f.bridge.handle(f.request(operation))).error,'host_read_only');
   assert.equal(f.reads(),0);
 });
+test('separate control capability exposes bounded local orchestration but never GPT dispatch or deletion',async()=>{
+  const f=fixture(null,{capability:'forge.app_control'});
+  const ready=await f.bridge.handle(f.bootstrap);
+  assert.equal(ready.capability,'forge.app_control');
+  for(const operation of [
+    'project_create','project_quick_create','mission_create','orchestrator_create',
+    'project_memory_propose','work_create','work_batch_create','work_draft_set',
+    'work_dependency_set','work_parallel_launch','work_plan'
+  ]) assert.ok(ready.operations.includes(operation),'missing control operation '+operation);
+  for(const operation of ['work_send','forjador_send','proposal_send','project_delete','workspace_bind',
+    'autonomous_dialogue_start','autonomous_dialogue_continue'])
+    assert.ok(!ready.operations.includes(operation),'unsafe control operation exposed '+operation);
+  const created=await f.bridge.handle(f.request('work_create',{
+    projectId:'project_fixture',orchestratorId:'orchestrator_fixture',title:'Typed local work'
+  }));
+  assert.equal(created.ok,true);
+  assert.equal(created.result.operation,'work_create');
+  assert.equal((await f.bridge.handle(f.request('work_send',{
+    projectId:'project_fixture',taskId:'task_fixture',content:'recursive'
+  }))).error,'host_control_scope');
+  assert.equal((await f.bridge.handle(f.request('project_delete',{
+    projectId:'project_fixture'
+  }))).error,'host_control_scope');
+  assert.equal(f.reads(),1);
+});
+
 test('tampered inputs, cross-session messages and signature failures never call the App service',async()=>{
   const f=fixture();await f.bridge.handle(f.bootstrap);
   assert.equal((await f.bridge.handle({...f.request('projects_list'),input:{deviceId:'forged'}})).error,'host_signature_rejected');

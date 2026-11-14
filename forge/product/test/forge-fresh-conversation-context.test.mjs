@@ -43,7 +43,8 @@ test('new project work inherits accepted cross-task decisions only from its proj
   // The first-send wiring is intentionally bounded; a rotation uses the
   // pre-existing Task-level continuation instead.
   const main=readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
-  assert.match(main,/!task\.has_messages\s*\?forgeFreshConversationContext\(store,taskId\):null/);
+  assert.match(main,/!task\.has_messages\s*\?forgeFreshConversationContext\(store,taskId,\{/);
+  assert.match(main,/resolveWorkspace:projectId=>forgeLocalWorkspaces\.status\(projectId\)/);
   assert.match(main,/projectContext\?\.text/);
 });
 
@@ -63,4 +64,40 @@ test('bounded project introduction is read-only and does not replay commands',as
   assert.ok(result.memoryTruncated);
   assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM runs').get().n,count);
   assert.throws(()=>forgeFreshConversationContext(store,p.chatTaskId,{maxChars:100}),/forge_fresh_context_invalid/);
+});
+
+test('fresh GPT context exposes only owner-verified project folder as location metadata',async t=>{
+  const {store,invoke}=fixture(t);
+  const project=(await invoke('project_quick_create',{creationNonce:'physical_workspace'})).result;
+  const root='C:\\Users\\ordax\\Documents\\Forge\\Projeto-e2e';
+  let requested=null;
+  const context=forgeFreshConversationContext(store,project.chatTaskId,{
+    resolveWorkspace:id=>{
+      requested=id;
+      return {projectId:id,configured:true,verified:true,kind:'default',path:root};
+    }
+  });
+  assert.equal(requested,project.projectId);
+  const block=JSON.parse(context.text.split('\n').find(line=>line.startsWith('{')));
+  assert.equal(block.workspace.canonicalRoot,root);
+  assert.equal(block.workspace.source,'forge_owner_verified_workspace');
+  assert.equal(block.workspace.verified,true);
+  assert.ok(/not an MCP grant/i.test(block.workspace.note));
+  assert.equal(block.verifiedExternalEffects,false);
+  assert.ok(context.text.length<=1800);
+  const unsupported=[
+    null,{projectId:'project_unrelated',configured:true,verified:true,kind:'default',path:root},
+    {projectId:project.projectId,configured:true,verified:false,kind:'default',path:root},
+    {projectId:project.projectId,configured:true,verified:true,kind:'default',path:'../wrong'},
+    {projectId:project.projectId,configured:true,verified:true,kind:'legacy',path:root}
+  ];
+  for(const value of unsupported){
+    const observed=forgeFreshConversationContext(store,project.chatTaskId,{
+      resolveWorkspace:()=>value
+    });
+    assert.ok(observed.text.includes('"workspace":{"verified":false}'));
+    assert.ok(!observed.text.includes(root),'unverified paths must never reach GPT');
+  }
+  assert.match(forgeFreshConversationContext(store,project.chatTaskId).text,
+    /"workspace":\{"verified":false\}/);
 });

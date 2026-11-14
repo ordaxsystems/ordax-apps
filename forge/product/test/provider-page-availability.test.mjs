@@ -107,7 +107,7 @@ test('manual provider reload is rejected while a Run or worker is active',()=>{
  const end=main.indexOf("registerUiHandler('ordax:chat:visible'",start);
  assert.ok(start>=0&&end>start);
  const route=main.slice(start,end);
- assert.match(route,/if \(liveRun \|\| worker\.active\) throw new Error\('provider_reload_during_run_blocked'\)/);
+ assert.match(route,/if \(primaryProviderRunActive\(\) \|\| worker\.active\) throw new Error\('provider_reload_during_run_blocked'\)/);
  assert.match(route,/worker\.reloadCurrentPage\(\)/);
  assert.ok(route.indexOf('provider_reload_during_run_blocked')<route.indexOf('worker.reloadCurrentPage()'));
  const reloadStart=worker.indexOf('  async reloadCurrentPage()');
