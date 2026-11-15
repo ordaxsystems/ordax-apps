@@ -1367,3 +1367,78 @@ test('live text fill uses canonical receipts, redacts value and never replays un
   f.setAllowed(true);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
+
+test('real Electron app UI MCP action receipts are idempotent and unknown effects never replay',async t=>{
+  const f=fixture(t);
+  const revision='a'.repeat(64);
+  let calls=0;
+  f.service.viewPort={ui:async(operation,input)=>{
+    calls++;
+    if(operation==='app_ui_inspect')return {schema:'ordax.forge.app-ui-inspection/1',
+      revision,source:'active_forge_renderer'};
+    const action=operation.slice('app_ui_'.length);
+    return {schema:'ordax.forge.app-ui-action/1',
+      source:'active_forge_renderer',action,dispatched:true,
+      beforeRevision:revision,afterRevision:'b'.repeat(64),
+      observableDomChanged:true,inputValuesIncluded:false,
+      semanticEffectVerified:false,externalEffectsVerified:false,
+      focusChanged:false,
+      ...(action==='scroll'?{scrollIndex:input.scrollIndex,deltaY:input.deltaY}:
+        {controlIndex:input.controlIndex,expectedLabel:input.expectedLabel}),
+      ...(action==='fill'?{rendererValueVerified:true}:{})};
+  }};
+  const read=await f.call('app_ui_inspect');
+  assert.equal(read.revision,revision);
+  const click={requestId:'app_ui_click_once',expectedRevision:revision,
+    controlIndex:3,expectedLabel:'Novo projeto'};
+  const first=await f.service.invoke(f.context,'app_ui_click',click);
+  assert.equal(first.status,'succeeded');
+  assert.equal(first.result.dispatched,true);
+  assert.equal(first.result.semanticEffectVerified,false);
+  assert.equal(calls,2);
+  assert.deepEqual(await f.service.invoke(f.context,'app_ui_click',click),first);
+  assert.equal(calls,2);
+  await assert.rejects(f.service.invoke(f.context,'app_ui_click',
+    {...click,expectedLabel:'Excluir projeto'}),/request_conflict/);
+
+  const fill={requestId:'app_ui_fill_once',expectedRevision:revision,
+    controlIndex:4,expectedLabel:'Nome',value:'  texto privado  '};
+  const saved=await f.service.invoke(f.context,'app_ui_fill',fill);
+  assert.equal(saved.status,'succeeded');
+  assert.equal(saved.result.rendererValueVerified,true);
+  assert.doesNotMatch(JSON.stringify(saved),/texto privado/);
+  assert.equal(calls,3);
+  assert.deepEqual(await f.service.invoke(f.context,'app_ui_fill',fill),saved);
+  assert.equal(calls,3);
+  const scroll=await f.service.invoke(f.context,'app_ui_scroll',{
+    requestId:'app_ui_scroll_once',expectedRevision:revision,
+    scrollIndex:0,deltaY:300});
+  assert.equal(scroll.status,'succeeded');
+  assert.equal(scroll.result.scrollIndex,0);
+  assert.equal(calls,4);
+
+  f.service.viewPort.ui=async()=>{calls++;return {
+    schema:'ordax.forge.app-ui-action/1',source:'active_forge_renderer',
+    action:'click',dispatched:false,beforeRevision:revision,
+    afterRevision:'c'.repeat(64),observableDomChanged:false,
+    inputValuesIncluded:false,semanticEffectVerified:false,
+    externalEffectsVerified:false,focusChanged:false,
+    controlIndex:3,expectedLabel:'Novo projeto'};};
+  const uncertainInput={...click,requestId:'app_ui_uncertain_once'};
+  const uncertain=await f.service.invoke(f.context,'app_ui_click',uncertainInput);
+  assert.equal(uncertain.status,'uncertain');
+  assert.equal(uncertain.requiresReconciliation,true);
+  const beforeReplay=calls;
+  assert.deepEqual(await f.service.invoke(f.context,'app_ui_click',uncertainInput),uncertain);
+  assert.equal(calls,beforeReplay);
+
+  f.service.viewPort.ui=async()=>{calls++;const error=Error('forge_app_ui_stale');
+    error.forgeAppUiActionNotSubmitted=true;throw error;};
+  const stale=await f.service.invoke(f.context,'app_ui_click',
+    {...click,requestId:'app_ui_stale_once'});
+  assert.equal(stale.status,'failed');
+  assert.equal(stale.result.reason,'forge_app_ui_stale');
+  f.setAllowed(false);
+  await assert.rejects(f.service.invoke(f.context,'app_ui_click',
+    {...click,requestId:'app_ui_access_denied'}),/access_denied/);
+});
