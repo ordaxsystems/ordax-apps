@@ -19,9 +19,10 @@ export function inspectForgeLiveViewDom(command={mode:'inspect'}){
     return Boolean(hit&&(hit===element||element.contains(hit)));
   };
   const editableField=element=>{
-    if(element.tagName==='TEXTAREA')return true;
-    if(element.tagName!=='INPUT'||
-       !['text','search','email','url','tel','number'].includes(element.type))return false;
+    if(element.tagName!=='TEXTAREA'&&
+       (element.tagName!=='INPUT'||
+        !['text','search','email','url','tel','number'].includes(element.type)))
+      return false;
     // Reject password/OTP/payment fields even if the page mislabels the type.
     const hint=[element.autocomplete,element.name,element.id,
       element.getAttribute('aria-label'),element.getAttribute('placeholder')]
