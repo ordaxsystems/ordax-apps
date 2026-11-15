@@ -58,7 +58,8 @@ let cleanupFailurePhase=null;
       prepareDisabled:document.getElementById('prepareWork')?.disabled,
       proposalsPresent:!!document.getElementById('coordinatorProposals'),
       analysisHint:document.getElementById('analysisScopeHint')?.textContent||''}))()`);
-    if(before.projects!==0||before.taskCount!==0||before.status.coordinatorAvailable!==false||
+    if(before.projects!==0||before.taskCount!==0||before.status.analysisAvailable!==true||
+      before.status.analysisMode!=='app_owned'||Object.hasOwn(before.status,'coordinatorAvailable')||
       before.status.autonomousExecution!==false||!before.analysisButton||before.analysisDisabled!==true||
       !before.analysisHint.includes('Análise por IA externa foi removida')||before.prepareDisabled!==true||!before.proposalsPresent)throw Error('fresh_disabled_profile_required');
     phase='global_settings_without_project';
@@ -169,14 +170,17 @@ let cleanupFailurePhase=null;
         keyInputAbsent:!document.getElementById('labSupervisorKeyInput'),
         provider:chat?.provider,legacyConfigured:supervisor?.configured,
         groqFlagAbsent:!Object.hasOwn(chat||{},'groqConfigured'),
-        analysisDisabled:document.getElementById('analyzeWorks')?.disabled===true,
-        prepareDisabled:document.getElementById('prepareWork')?.disabled===true
+        analysisAvailable:(await window.ordax.orchestratorInvoke('status')).analysisAvailable===true,
+        analysisMode:(await window.ordax.orchestratorInvoke('status')).analysisMode,
+        analysisEnabled:document.getElementById('analyzeWorks')?.disabled===false,
+        prepareEnabled:document.getElementById('prepareWork')?.disabled===false
       };
     })()`);
     if(!gptOnly?.keyRoutesAbsent||!gptOnly?.modelRoutesAbsent||
       !gptOnly.gptWebLoginPresent||!gptOnly.keyInputAbsent||
       gptOnly.provider!=='chatgpt_web'||gptOnly.legacyConfigured!==false||
-      !gptOnly.groqFlagAbsent||!gptOnly.analysisDisabled||!gptOnly.prepareDisabled)
+      !gptOnly.groqFlagAbsent||!gptOnly.analysisAvailable||gptOnly.analysisMode!=='app_owned'||
+      !gptOnly.analysisEnabled||!gptOnly.prepareEnabled)
       throw Error('retired_model_api_exposed');
     phase='mcp_work_create';
     const summary=await evaluate(`(async()=>{
@@ -229,7 +233,7 @@ let cleanupFailurePhase=null;
       analysisDisabled:document.getElementById('analyzeWorks').disabled}))()`);
     phase='final_layout_verify';
     if(layoutResult.openedWork!=='Frente criada pela interface'||layoutResult.conversationCards!==2||
-      layoutResult.analysisDisabled!==true)
+      layoutResult.analysisDisabled!==false)
       throw Error('work_conversation_layout_failed');
     phase='project_switch_real';
     // On the same packaged Electron profile, create a second project with
