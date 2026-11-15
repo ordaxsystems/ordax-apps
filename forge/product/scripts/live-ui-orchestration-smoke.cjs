@@ -172,7 +172,8 @@ let cleanupFailurePhase=null;
         groqFlagAbsent:!Object.hasOwn(chat||{},'groqConfigured'),
         analysisAvailable:(await window.ordax.orchestratorInvoke('status')).analysisAvailable===true,
         analysisMode:(await window.ordax.orchestratorInvoke('status')).analysisMode,
-        analysisEnabled:document.getElementById('analyzeWorks')?.disabled===false,
+        scopedWorkCount:document.querySelectorAll('#orchestratorWorks .work-card').length,
+        analysisDisabled:document.getElementById('analyzeWorks')?.disabled===true,
         prepareEnabled:document.getElementById('prepareWork')?.disabled===false
       };
     })()`);
@@ -180,7 +181,7 @@ let cleanupFailurePhase=null;
       !gptOnly.gptWebLoginPresent||!gptOnly.keyInputAbsent||
       gptOnly.provider!=='chatgpt_web'||gptOnly.legacyConfigured!==false||
       !gptOnly.groqFlagAbsent||!gptOnly.analysisAvailable||gptOnly.analysisMode!=='app_owned'||
-      !gptOnly.analysisEnabled||!gptOnly.prepareEnabled)
+      gptOnly.scopedWorkCount!==0||!gptOnly.analysisDisabled||!gptOnly.prepareEnabled)
       throw Error('retired_model_api_exposed');
     phase='mcp_work_create';
     const summary=await evaluate(`(async()=>{
