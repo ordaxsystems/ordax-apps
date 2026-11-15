@@ -4,6 +4,7 @@ import {
   withForjadorMcpMention,withProviderMcpMention,mentionWasRequested,
   providerMcpMention,FORJADOR_MCP_MENTION
 } from '../src/provider-mcp-mention.mjs';
+import {buildProjectContinuationPacket} from '../src/continuation-context.mjs';
 
 test('Forjador and independent GPT Works request Forge MCP without fabricating a grant',()=>{
   assert.equal(FORJADOR_MCP_MENTION,'@forge-mcp');
@@ -18,6 +19,20 @@ test('Forjador and independent GPT Works request Forge MCP without fabricating a
   assert.equal(mentionWasRequested('somente forge-mcp'),false);
   assert.equal(mentionWasRequested('Use @ordax-mcp'),false);
   assert.throws(()=>mentionWasRequested('Use @ordax-mcp','ordax-mcp'),/provider_mcp_app_invalid/);
+});
+
+test('historical retired MCP text remains readable while a new retired MCP request fails closed',()=>{
+  const current=withForjadorMcpMention('continue',{app:'forge-mcp'});
+  const packet=buildProjectContinuationPacket({
+    title:'Projeto legado',request:current,totalMessageCount:2,
+    recentMessages:[
+      {id:'m1',role:'user',content:'Use @ordax-mcp para inspecionar o projeto.'},
+      {id:'m2',role:'assistant',content:'Estado histórico registrado.'}
+    ]
+  });
+  assert.match(packet.prompt,/@ordax-mcp/);
+  assert.match(packet.prompt,/Pedido atual:\ncontinue/);
+  assert.throws(()=>withForjadorMcpMention('continue usando @ordax-mcp'),/provider_mcp_app_conflict/);
 });
 
 test('explicit mentions never provide authorization and retired device MCP fails closed',()=>{
