@@ -1159,6 +1159,8 @@ test('single GPT model and Forge MCP replace the external coordinator',()=>{
   const orchestratorUI=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.match(main,/const coordinatorChatStatus=\(\)=>/);
   assert.match(main,/const mcpApp='forge-mcp'/);
+  assert.doesNotMatch(orchestratorUI,/Conecte e selecione OrdaX MCP/);
+  assert.match(orchestratorUI,/Conecte e selecione Forge MCP/);
   assert.match(main,/coordinator:null/);
   assert.match(host,/const coordinator=null/);
   assert.doesNotMatch(main,/GROQ_API_KEY|createGroqCoordinatorConversation|supervisor:key:save/);

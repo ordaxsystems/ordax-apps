@@ -1861,8 +1861,8 @@ window.ordax.onForgeProjectFileChanged?.(payload=>{
   if(activeRightPane==='files')void refreshForgeFilesPanel();
 });
 void refreshForgeFilesPanel();
-// External GPT writes through the device OrdaX MCP have no Forge broker
-// callback. Reread only the currently authorized index.html while Preview
+// External GPT writes through Forge MCP may complete outside this renderer's
+// callback path. Reread only the currently authorized index.html while Preview
 // is visible. Its sandboxed frame changes only when the verified hash changes.
 let externalPreviewInspectionBusy=false;
 setInterval(()=>{

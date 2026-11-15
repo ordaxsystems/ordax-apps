@@ -543,7 +543,7 @@ async function main(){
     assert.ok(grant?.running&&grant?.token&&grant?.endpoint,'forge_owner_mcp_authorization_missing');
     try{
       const endpoint=grant.endpoint,token=grant.token;
-      const initialized=await rpc(endpoint,token,null,packet(1,'initialize',{protocolVersion:'2025-11-25',clientInfo:{name:'ordax-mcp-physical-site',version:'1'},capabilities:{}}));
+      const initialized=await rpc(endpoint,token,null,packet(1,'initialize',{protocolVersion:'2025-11-25',clientInfo:{name:'forge-mcp-physical-site',version:'1'},capabilities:{}}));
       assert.equal(initialized.status,200);assert.equal(initialized.body.result.serverInfo.name,'ordax-forge');
       const sid=initialized.sid;assert.ok(sid);
       assert.equal((await rpc(endpoint,token,sid,{jsonrpc:'2.0',method:'notifications/initialized'})).status,202);

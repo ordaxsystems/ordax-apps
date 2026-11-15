@@ -583,7 +583,7 @@ export class EmbeddedChatWorker {
 
   // Read only the currently composed ChatGPT message; no app-menu click,
   // credential handling, navigation, permission grant or provider send.
-  async inspectMcpSelectionReadOnly({allowDuringRun=false,app='ordax-mcp'}={}) {
+  async inspectMcpSelectionReadOnly({allowDuringRun=false,app='forge-mcp'}={}) {
     const spec=providerMcpAppSpec(app);
     if((this.active&&!allowDuringRun) || !/^https:\/\/chatgpt\.com\//i.test(this.view.webContents.getURL()))
       return classifyProviderMcpSelection(null);
@@ -600,7 +600,7 @@ export class EmbeddedChatWorker {
 
   // Stage one real, selected ChatGPT app token before beginning the SQLite Run.
   // The provider app picker, not a textual @ mention, supplies the connection.
-  async prepareMcpPrompt({prompt,chatUrl=null,newSession=false,mcpApp='ordax-mcp'}={}) {
+  async prepareMcpPrompt({prompt,chatUrl=null,newSession=false,mcpApp='forge-mcp'}={}) {
     return this.enqueue(async()=>{
       if(this.preparedMcpPrompt)throw Error('provider_mcp_preparation_already_pending');
       const spec=providerMcpAppSpec(mcpApp);
@@ -1120,7 +1120,7 @@ export class EmbeddedChatWorker {
     if (!recognized) throw new Error('composer_input_not_recognized');
     // Observe the plugin marker AFTER the exact payload is in the editor.
     // A typed @ mention alone is never considered a tool execution receipt.
-    const mcpApp=this.streamContext?.mcpApp||this.preparedMcpPrompt?.mcpApp||'ordax-mcp';
+    const mcpApp=this.streamContext?.mcpApp||this.preparedMcpPrompt?.mcpApp||'forge-mcp';
     const selection=await this.inspectMcpSelectionReadOnly({allowDuringRun:true,app:mcpApp});
     if(this.streamContext)this.streamContext.mcpSelectionState=selection.state;
     if(typeof onMcpSelectionObserved==='function'){
@@ -1533,7 +1533,7 @@ export class EmbeddedChatWorker {
 
   async sendPrompt({ prompt, chatUrl = null, newSession = false, contextAttachment = null,
     onContextAttachmentObserved = null, onDeliveryObserved = null, onProvisionalProgress = null,
-    requiresMcp = false, mcpApp='ordax-mcp', onSubmissionIntent = null, onMcpSelectionObserved = null }) {
+    requiresMcp = false, mcpApp='forge-mcp', onSubmissionIntent = null, onMcpSelectionObserved = null }) {
     return this.enqueue(async () => {
       const wc = this.view.webContents;
       this.lastFailureMetrics = null;
