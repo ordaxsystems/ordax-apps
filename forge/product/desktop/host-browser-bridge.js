@@ -196,8 +196,8 @@
   const methods={
     coordinatorChatStatus:[],chatgptPlanStatus:[],chatgptPlanDisconnect:[],
     orchestratorInvoke:['operation','input'],orchestratorMcp:['message'],
-    supervisorStatus:[],supervisorSaveKey:['key'],supervisorRemoveKey:[],setTaskSupervisorRole:['taskId','role'],
-    supervisorPlan:['payload'],supervisorRecoverable:['payload'],supervisorInspect:['payload'],supervisorApprove:['payload'],supervisorDispatch:['payload'],
+    supervisorStatus:[],setTaskSupervisorRole:['taskId','role'],
+    supervisorRecoverable:['payload'],supervisorInspect:['payload'],
     workspace:[],setWorkspaceNavigation:['navigation'],listTasks:[],createTask:['title'],getTask:['id'],getTaskDraft:['id'],openTask:['id'],inspectLinkedThread:['taskId'],loadMessagePage:['taskId','before'],
     renameTask:['taskId','title'],setDraft:['taskId','content','revision'],resumeCapsule:['id'],rotateConversation:['id'],
     upsertProjectMemory:['taskId','item'],archiveProjectMemory:['taskId','memoryId'],scanMemoryCandidates:['taskId'],

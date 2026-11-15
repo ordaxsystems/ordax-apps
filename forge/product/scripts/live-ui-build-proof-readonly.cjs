@@ -41,21 +41,20 @@ acquireE2ELock('runtime-build-proof');
     throw Error('lab_build_runtime_identity_mismatch');
   let preparationUiVerified=false;
   if(process.env.ORDAX_LAB_E2E_VERIFY_MVP_PREPARATION==='1'){
-    // Read-only App DOM and trusted STATUS IPC; no role selection, key write,
-    // provider navigation, planning, or dispatch.
-    const ui=await evaluate(`(async()=>{const r=document.querySelector('#labSupervisorRole');const k=document.querySelector('#labSupervisorKeyInput');const s=await window.ordax.supervisorStatus();return {options:r?[...r.options].map(o=>o.value):[],keyType:k?.type,formPresent:!!document.querySelector('#labSupervisorKeyForm'),keySavePresent:!!document.querySelector('#labSupervisorKeySave'),keyRemovePresent:!!document.querySelector('#labSupervisorKeyRemove'),objectivePresent:!!document.querySelector('#labSupervisorObjective'),enabled:s?.enabled,hasSavedKey:s?.keySaved,secureStorageAvailable:s?.secureStorageAvailable,exposedApiKey:Object.prototype.hasOwnProperty.call(s||{},'apiKey')}})()`);
+    // Read-only App DOM and trusted STATUS IPC. GPT Web is the only model
+    // executor: external-model credential controls and status fields must not exist.
+    const ui=await evaluate(`(async()=>{const r=document.querySelector('#labSupervisorRole');const s=await window.ordax.supervisorStatus();return {options:r?[...r.options].map(o=>o.value):[],keyInputAbsent:!document.querySelector('#labSupervisorKeyInput'),keyFormAbsent:!document.querySelector('#labSupervisorKeyForm'),keySaveAbsent:!document.querySelector('#labSupervisorKeySave'),keyRemoveAbsent:!document.querySelector('#labSupervisorKeyRemove'),provider:s?.provider,configured:s?.configured,enabled:s?.enabled,legacyCredentialStatusAbsent:!['apiKey','keySaved','secureStorageAvailable','groqConfigured'].some(k=>Object.prototype.hasOwnProperty.call(s||{},k))}})()`);
     if(JSON.stringify(ui?.options)!==JSON.stringify(['none','math-teacher','ordax-architect']) ||
-       ui.keyType!=='password' || !ui.formPresent || !ui.keySavePresent ||
-       !ui.keyRemovePresent || !ui.objectivePresent ||
-       ui.enabled!==false || ui.hasSavedKey!==false ||
-       ui.secureStorageAvailable!==true || ui.exposedApiKey!==false)
+       !ui.keyInputAbsent || !ui.keyFormAbsent || !ui.keySaveAbsent || !ui.keyRemoveAbsent ||
+       ui.provider!=='chatgpt_web' || ui.configured!==false || ui.enabled!==false ||
+       !ui.legacyCredentialStatusAbsent)
       throw Error('lab_build_mvp_preparation_not_ready');
     preparationUiVerified=true;
   }
   console.log(JSON.stringify({schema:'ordax.lab.runtime-app-proof.v1',
     appMode:true,runtimeVerified:true,sourceCommit:proof.sourceCommit,
     contentDigest:proof.contentDigest,providerMessagesSent:0,
-    ...(preparationUiVerified?{preparationUiVerified:true,supervisorEnabled:false,keySaved:false}:{}),
+    ...(preparationUiVerified?{preparationUiVerified:true,supervisorEnabled:false,externalModelCredentialsAbsent:true}:{}),
     cutoverPerformed:false}));
  }finally{ws.close()}
 })().catch(e=>{

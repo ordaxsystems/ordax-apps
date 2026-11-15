@@ -155,9 +155,12 @@ test('desktop package ships only canonical desktop runtime', () => {
   // and cookies remain outside the packaged file set.
   assert.deepEqual(pkg.build.files, [
     'desktop/**/*','src/*.mjs','src/*.cjs','supervisor/**/*',
-    '!src/groq-*.mjs','!src/local-supervisor-credential.mjs',
     '!supervisor/groq-*.mjs','!supervisor/chatgpt-plan-conversation.mjs','package.json'
   ]);
+  for(const retired of ['groq-key-contract.mjs','groq-key-health.mjs','local-supervisor-credential.mjs'])
+    assert.equal(fs.existsSync(path.join(root,'src',retired)),false,'retired Groq credential module must be removed: '+retired);
+  assert.equal(fs.existsSync(path.join(root,'host','local-groq-credential.mjs')),false);
+  assert.doesNotMatch(fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8'),/groqPromptDisplay|locally prepared Groq/i);
   assert.match(main,/const hostBrowserMode=!app\.isPackaged&&/);
   assert.match(main,/await import\('\.\.\/host\/host-browser-server\.mjs'\)/);
   assert.match(main,/createTaskUiHandlers/);
