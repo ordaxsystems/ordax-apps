@@ -3,12 +3,24 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { assertBootstrapVersion } from '../lib/version-policy.mjs';
+import {
+  forgeDevSupervisorPaths,forgeDevSupervisorBlocksIndependentLaunch
+} from '../lib/dev-supervisor-lifecycle.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const product = path.join(root, 'product');
 const args = process.argv.slice(2);
 const staged = args.length === 1 && args[0] === '--staged';
 if (args.length && !staged) throw Error('usage: node scripts/start-lab.mjs [--staged]');
+const supervisorChild=process.env.ORDAX_FORGE_SUPERVISOR_CHILD==='1';
+const {lockPath:supervisorLockPath}=forgeDevSupervisorPaths();
+
+function liveSupervisorOwnsLifecycle() {
+  if(staged)return false;
+  return forgeDevSupervisorBlocksIndependentLaunch({
+    lockPath:supervisorLockPath,supervisorChild,parentPid:process.ppid
+  });
+}
 
 function stagedE2eApproved() {
   return process.env.ORDAX_LAB_E2E_APPROVED === '1'
@@ -16,6 +28,7 @@ function stagedE2eApproved() {
 }
 
 function start() {
+  if(liveSupervisorOwnsLifecycle())throw Error('forge_dev_supervisor_owns_lifecycle');
   // DEV SSOT: the normal desktop process always runs directly from this Git checkout.
   // A second staged Electron is test-only and must be explicitly approved twice so an
   // old persistent process cannot silently recreate a parallel local instance.

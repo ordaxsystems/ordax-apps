@@ -1,25 +1,19 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import {spawn,spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {
   nextSupervisorFailureCount,supervisorRestartDelayMs,forgeDevHeartbeatStale
 } from '../lib/dev-supervisor-policy.mjs';
+import {
+  forgeDevSupervisorPaths,readLiveForgeDevSupervisorLock
+} from '../lib/dev-supervisor-lifecycle.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const localAppData=process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local');
-const stateDir=path.join(localAppData,'OrdaX','Forge','supervisor');
-const lockPath=path.join(stateDir,'forge-dev-supervisor.lock.json');
-const statePath=path.join(stateDir,'forge-dev-supervisor-state.json');
-const heartbeatPath=path.join(stateDir,'forge-heartbeat.json');
+const {stateDir,lockPath,statePath,heartbeatPath}=forgeDevSupervisorPaths();
 const launcher=path.join(root,'scripts','start-lab.mjs');
 fs.mkdirSync(stateDir,{recursive:true});
 
-function pidAlive(pid){
-  if(!Number.isSafeInteger(pid)||pid<1)return false;
-  try{process.kill(pid,0);return true;}catch{return false;}
-}
 function readJson(file){
   try{return JSON.parse(fs.readFileSync(file,'utf8'));}catch{return null;}
 }
@@ -29,9 +23,8 @@ function atomicJson(file,value){
   fs.renameSync(temp,file);
 }
 function acquire(){
-  const existing=readJson(lockPath);
-  if(existing?.pid&&pidAlive(existing.pid))
-    throw Error('forge_dev_supervisor_already_running');
+  const existing=readLiveForgeDevSupervisorLock(lockPath);
+  if(existing)throw Error('forge_dev_supervisor_already_running');
   try{fs.unlinkSync(lockPath);}catch{}
   const fd=fs.openSync(lockPath,'wx');
   try{fs.writeFileSync(fd,JSON.stringify({pid:process.pid,startedAt:Date.now()})+'\n');}
@@ -67,7 +60,7 @@ function launch(){
   if(stopping)return;
   launchStartedAt=Date.now();
   hangTerminationPending=false;
-  const env={...process.env,ORDAX_FORGE_DEV_AUTONOMY:'1'};
+  const env={...process.env,ORDAX_FORGE_DEV_AUTONOMY:'1',ORDAX_FORGE_SUPERVISOR_CHILD:'1'};
   child=spawn(process.execPath,[launcher],{
     cwd:root,env,stdio:'inherit',windowsHide:false
   });
