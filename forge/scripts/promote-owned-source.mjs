@@ -41,7 +41,7 @@ export function prepareOwnedSource({ workspace, output, base = root }) {
       provenance.productVersion !== version.version || provenance.appId !== lock.targetIdentity.appId ||
       provenance.channel !== version.channel) throw Error('pinned_source_provenance_mismatch');
   const key = ['package.json','package-lock.json','desktop/main.mjs','desktop/embedded-worker.mjs',
-    'desktop/ui.html','desktop/ui.js','src/store.mjs','supervisor/coordinator.mjs','supervisor/groq-planner.mjs'];
+    'desktop/ui.html','desktop/ui.js','src/store.mjs'];
   for(const f of key) if(!fs.existsSync(path.join(workspace,f)))throw Error('required_derived_file_missing:'+f);
   assertDerivedIdentity(Object.fromEntries(
     ['package.json','desktop/main.mjs','desktop/embedded-worker.mjs','desktop/ui.html']

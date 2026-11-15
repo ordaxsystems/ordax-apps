@@ -9,7 +9,6 @@ on:
       - '.github/workflows/orchestrator-lab-p1-source.yml'
       - 'forge/scripts/import-flow.mjs'
       - 'forge/lib/derive.mjs'
-      - 'forge/lib/supervisor-overlay.mjs'
       - 'forge/source-lock.json'
       - '.github/workflows/forge-pinned-baseline.yml'
   workflow_dispatch:

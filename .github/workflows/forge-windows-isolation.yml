@@ -106,9 +106,7 @@ jobs:
         run: |
           node --check forge/lib/derive.mjs
           node --check forge/lib/version-policy.mjs
-          node --check forge/lib/supervisor-overlay.mjs
-          node --check forge/product/supervisor/coordinator.mjs
-          node --check forge/product/supervisor/groq-planner.mjs
+          node --check forge/product/supervisor/recovery.mjs
           node --check forge/scripts/audit-pinned-workspace.mjs
           node --check forge/scripts/verify-version.mjs
           node --check forge/scripts/import-flow.mjs
@@ -116,12 +114,11 @@ jobs:
           node --check forge/tests/audit-pinned-workspace.test.mjs
           node --check forge/tests/derive.test.mjs
           node --check forge/tests/version.test.mjs
-          node --check forge/tests/supervisor.test.mjs
 
       - name: Verify canonical version and pinned Flow baseline
         run: npm run version:check --prefix forge
 
-      - name: Test fail-closed import, supervisor and isolated version
+      - name: Test fail-closed import and isolated version
         run: npm run validate --prefix forge
 
       - name: Validate the directly owned Lab product
