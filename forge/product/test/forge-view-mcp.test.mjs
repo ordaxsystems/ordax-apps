@@ -131,7 +131,7 @@ test('live View does not click controls covered by a modal or pointer intercepti
   let topmost=button;
   const doc={
     title:'Teste visual',querySelectorAll:selector=>
-      selector==='button,[role="button"]'?[button]:[],
+      selector==='button,[role="button"],input,textarea'?[button]:[],
     elementFromPoint:()=>topmost
   };
   const globals={document:doc,location:{origin:'null'},
