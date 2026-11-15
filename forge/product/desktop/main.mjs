@@ -380,10 +380,13 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   const task = store.getTaskExecutionSnapshot(taskId);
   if (!task) throw new Error('task_not_found');
   const mcpApp='forge-mcp';
+  // Validate only the CURRENT request for retired/foreign MCP mentions.
+  // Historical Task context is evidence and may legitimately contain retired
+  // integration names that must remain readable for continuity/reconciliation.
+  const currentRequest=withForjadorMcpMention(String(prompt||''),{authorSource,app:mcpApp});
 
   const conversationPlan = planProviderConversation(task, {
-    forceNew:newSession,nextPromptBytes:Buffer.byteLength(
-      withForjadorMcpMention(String(prompt||'').trim(),{authorSource,app:mcpApp}),'utf8')
+    forceNew:newSession,nextPromptBytes:Buffer.byteLength(currentRequest.trim(),'utf8')
   });
   const needsContinuation = Boolean(conversationPlan.newSession && task.has_messages);
   const checkpointVersion = task.checkpoint_version;
@@ -428,10 +431,9 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       // The user prompt, GPT response and device-online state are not grants.
       resolveWorkspace:projectId=>forgeLocalWorkspaces.status(projectId)
     }):null;
-  let providerPrompt = withForjadorMcpMention(
-    (projectContext?.text||'')+(continuationPacket?.prompt || prompt)+contextAttachmentNotice,
-    {authorSource,app:mcpApp}
-  );
+  // Do not re-validate the assembled historical context as a new MCP request.
+  // Only currentRequest above can select/reject an integration.
+  let providerPrompt=(projectContext?.text||'')+(continuationPacket?.prompt || currentRequest)+contextAttachmentNotice;
   if(contextManifest&&contextAttachmentNotice){
     if(providerPrompt.length>16000)throw new Error('task_handoff_prompt_budget_exceeded');
     contextManifest={...contextManifest,maxChars:16000,promptChars:providerPrompt.length,promptSha256:providerPromptDigest(providerPrompt)};
