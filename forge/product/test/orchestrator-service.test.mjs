@@ -1312,3 +1312,58 @@ test('Live native View MCP uses SQLite receipts and never replays uncertain clic
   f.setAllowed(true);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
+
+test('live text fill uses canonical receipts, redacts value and never replays uncertain effects',async t=>{
+  const f=fixture(t),a=await project(f);
+  const input={requestId:'live_fill_once',projectId:a.p,taskId:a.w,
+    assetId:'asset_example',expectedRevision:'a'.repeat(64),
+    controlIndex:1,expectedLabel:'Busca',value:'  palavra exata  '};
+  let fills=0;
+  f.service.viewPort={live:async(operation,request)=>{
+    assert.equal(operation,'project_view_live_fill');
+    assert.equal(request.projectId,a.p);
+    assert.equal(request.value,input.value);
+    fills++;
+    return {schema:'ordax.forge.live-view-action/1',source:'active_native_view',
+      projectId:a.p,taskId:a.w,assetId:input.assetId,sha256:'c'.repeat(64),
+      controlIndex:input.controlIndex,expectedLabel:input.expectedLabel,
+      action:'fill',dispatched:true,beforeRevision:input.expectedRevision,
+      afterRevision:'d'.repeat(64),observableDomChanged:true,
+      valueVerifiedAfterInput:true,statePersistedInLiveView:true,
+      projectFilesModified:false,externalEffectsVerified:false,
+      websitePublished:false};
+  }};
+  const successful=await f.service.invoke(f.context,'project_view_live_fill',input);
+  assert.equal(successful.status,'succeeded');
+  assert.equal(successful.result.valueVerifiedAfterInput,true);
+  assert.doesNotMatch(JSON.stringify(successful),/palavra exata/);
+  assert.equal(fills,1);
+  assert.deepEqual(await f.service.invoke(f.context,'project_view_live_fill',input),successful);
+  assert.equal(fills,1);
+  await assert.rejects(f.service.invoke(f.context,'project_view_live_fill',
+    {...input,value:'alterado'}),/request_conflict/);
+
+  f.service.viewPort.live=async()=>{fills++;return {
+    schema:'ordax.forge.live-view-action/1',source:'active_native_view',
+    projectId:a.p,taskId:a.w,assetId:input.assetId,sha256:'c'.repeat(64),
+    controlIndex:input.controlIndex,expectedLabel:input.expectedLabel,
+    action:'fill',dispatched:true,beforeRevision:input.expectedRevision,
+    afterRevision:'d'.repeat(64),observableDomChanged:true,
+    valueVerifiedAfterInput:false,statePersistedInLiveView:true,
+    projectFilesModified:false,externalEffectsVerified:false,websitePublished:false
+  };};
+  const pending={...input,requestId:'live_fill_uncertain'};
+  const uncertain=await f.service.invoke(f.context,'project_view_live_fill',pending);
+  assert.equal(uncertain.status,'uncertain');
+  assert.equal(uncertain.requiresReconciliation,true);
+  assert.doesNotMatch(JSON.stringify(uncertain),/palavra exata/);
+  assert.equal(fills,2);
+  assert.deepEqual(await f.service.invoke(f.context,'project_view_live_fill',pending),uncertain);
+  assert.equal(fills,2);
+  f.setAllowed(false);
+  await assert.rejects(f.service.invoke(f.context,'project_view_live_fill',
+    {...input,requestId:'live_fill_denied'}),/orchestrator_access_denied/);
+  assert.equal(fills,2);
+  f.setAllowed(true);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
