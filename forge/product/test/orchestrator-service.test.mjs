@@ -968,12 +968,12 @@ test('uncertain first-send target referencing a task in another project cannot q
   assert.equal(confirmed.status,'succeeded');assert.equal(sends,1);
 });
 
-test('corrupted advisory receipt does not quarantine independent GPT work',async t=>{
+test('corrupted historical coordinator receipt does not quarantine independent GPT work',async t=>{
   let sends=0;
   const f=fixture(t,{provider:{send:async({taskId})=>{sends++;return executorReceipt(f.store,taskId);}}});
   const a=await project(f);
-  const reserved=f.service.transaction(()=>f.service.reserve(f.context,'orchestrator_chat',{
-    requestId:'broken_advisory',projectId:a.p,orchestratorId:a.o,content:'Analisar'}));
+  const reserved=f.service.transaction(()=>f.service.reserve(f.context,'orchestrator_analyze',{
+    requestId:'broken_advisory',projectId:a.p,orchestratorId:a.o}));
   f.store.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
     .run('{"taskId":',reserved.commandId);
   assert.equal(f.service.recoverInterruptedCommands(),1);
@@ -1008,207 +1008,78 @@ test('continuation analysis and advisory proposals quarantine unknown provider t
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
-test('coordinator chat never falls through to GPT Web when Groq is unavailable',async t=>{
-  let gptCalls=0;
-  const f=fixture(t,{provider:{send:async()=>{gptCalls++;throw Error('wrong_transport');}},
-    coordinator:{available:()=>false,send:async()=>{throw Error('must_not_call');}}});
+test('retired orchestrator_chat is rejected before receipt or model dispatch',async t=>{
+  let gptCalls=0,coordinatorCalls=0;
+  const f=fixture(t,{
+    provider:{send:async()=>{gptCalls++;throw Error('must_not_send');}},
+    coordinator:{available:()=>true,send:async()=>{coordinatorCalls++;throw Error('must_not_send');}}
+  });
   const a=await project(f);
-  f.store.setDraft(a.chat,'Converse com o Orquestrador.',1);
-  await assert.rejects(f.call('orchestrator_chat',{
-    requestId:'groq-missing',projectId:a.p,orchestratorId:a.o,
-    content:'Converse com o Orquestrador.',draftRevision:1
-  }),/orchestrator_provider_unavailable/);
+  await assert.rejects(f.service.invoke(f.context,'orchestrator_chat',{
+    projectId:a.p,orchestratorId:a.o,content:'Legacy chat',delegateWork:true
+  }),/orchestrator_unknown_operation/);
   assert.equal(gptCalls,0);
-  assert.equal(f.store.messages(a.chat).length,0);
-  assert.equal(f.store.getTaskDraft(a.chat).draft,'Converse com o Orquestrador.');
+  assert.equal(coordinatorCalls,0);
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='orchestrator_chat'").get().n,0);
 });
 
-test('coordinator chat uses only Groq, stores one message pair and is idempotent',async t=>{
-  let gptCalls=0,groqCalls=0,received;
-  const f=fixture(t,{provider:{send:async()=>{gptCalls++;throw Error('must_not_send_gpt');}},
-    coordinator:{available:()=>true,send:async args=>{
-      groqCalls++;received=args;
-      return {provider:'groq',content:'Planejarei a missão com você.'};
-    }}});
-  const a=await project(f);
-  f.store.setDraft(a.chat,'Quero organizar o projeto VESTE.',1);
-  const input={requestId:'groq-coordinator-one',projectId:a.p,orchestratorId:a.o,
-    content:'Quero organizar o projeto VESTE.',draftRevision:1};
-  const reply=await f.call('orchestrator_chat',input);
-  assert.equal(reply.status,'succeeded');
-  assert.equal(reply.result.provider,'groq');
-  assert.equal(reply.result.responseObserved,true);
-  assert.equal(groqCalls,1);
-  assert.equal(gptCalls,0,'coordinator conversation may never use GPT Web executor');
-  assert.equal(received.content,input.content);
-  assert.equal(received.taskId,a.chat);
-  assert.deepEqual(f.store.messages(a.chat).map(m=>[m.role,m.content]),[
-    ['user',input.content],['assistant','Planejarei a missão com você.']
-  ]);
-  assert.equal(f.store.getTaskDraft(a.chat).draft,'');
-  assert.equal(f.store.getTaskDraft(a.chat).draft_revision,2);
-  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=?').get(a.chat).n,0,
-    'coordination must not create a ChatGPT Web Run');
-  assert.deepEqual(await f.call('orchestrator_chat',input),reply);
-  assert.equal(groqCalls,1,'same durable request never resends');
-});
-
-test('Groq rejected and uncertain requests never reroute to GPT Web',async t=>{
-  for(const scenario of ['rejected','timeout']){
-    let gptCalls=0,groqCalls=0;
-    const f=fixture(t,{provider:{send:async()=>{gptCalls++;throw Error('must_not_send_gpt');}},
-      coordinator:{available:()=>true,send:async()=>{
-        groqCalls++;
-        const failure=Error(scenario==='rejected'?'groq_auth_rejected':'groq_request_timeout');
-        failure.orchestratorFailureCode=failure.message;
-        failure.orchestratorRequestOutcome=scenario==='rejected'?'rejected':'unknown';
-        throw failure;
-      }}});
-    const a=await project(f);
-    f.store.setDraft(a.chat,'Mensagem para Groq.',1);
-    const input={requestId:'groq-'+scenario,projectId:a.p,orchestratorId:a.o,
-      content:'Mensagem para Groq.',draftRevision:1};
-    const reply=await f.call('orchestrator_chat',input);
-    assert.equal(reply.status,scenario==='rejected'?'failed':'uncertain');
-    assert.equal(reply.result.failureCode,scenario==='rejected'?'groq_auth_rejected':'groq_request_timeout');
-    assert.equal(gptCalls,0);
-    assert.equal(groqCalls,1);
-    assert.deepEqual(await f.call('orchestrator_chat',input),reply);
-    assert.equal(groqCalls,1,'uncertain/rejected coordinator request is never replayed');
-  }
-});
-
-test('canonical Groq receipts store only allowlisted finish diagnostics and never retry',async t=>{
-  const scenarios=[
-    {code:'groq_incomplete_response',reason:'length',tokens:3599,budget:3600},
-    {code:'groq_response_filtered',reason:'content_filter',tokens:6,budget:3600},
-    {code:'groq_unexpected_tool_call',reason:'tool_calls',tokens:15,budget:3600},
-    {code:'groq_incomplete_response',reason:'secret_injection_123',
-      tokens:1000000001,budget:1000000001}
-  ];
-  for(const [i,scenario] of scenarios.entries()){
-    let groqSends=0,gptSends=0;
-    const f=fixture(t,{provider:{send:async()=>{gptSends++;throw Error('GPT_send_forbidden');}},
-      coordinator:{available:()=>true,send:async()=>{
-        groqSends++;
-        const error=Error('groq_provider_private_response_never_persist');
-        error.orchestratorFailureCode=scenario.code;
-        error.orchestratorRequestOutcome='response_invalid';
-        error.orchestratorFinishReason=scenario.reason;
-        error.orchestratorCompletionTokens=scenario.tokens;
-        error.orchestratorCompletionBudget=scenario.budget;
-        throw error;
-      }}});
-    const a=await project(f);
-    f.store.setDraft(a.chat,'Analise esta tarefa sem criar uma conversa GPT.',1);
-    const input={requestId:'groq_diagnostic_'+i,projectId:a.p,orchestratorId:a.o,
-      content:'Analise esta tarefa sem criar uma conversa GPT.',draftRevision:1};
-    const receipt=await f.call('orchestrator_chat',input);
-    assert.equal(receipt.status,'failed');
-    assert.equal(receipt.result.reason,'coordinator_request_failed');
-    assert.equal(receipt.result.failureCode,scenario.code);
-    const accepted=['length','content_filter','tool_calls','function_call','unknown']
-      .includes(scenario.reason);
-    assert.equal(receipt.result.finishReason,accepted?scenario.reason:undefined);
-    assert.equal(receipt.result.completionTokens,
-      scenario.tokens<=1000000?scenario.tokens:undefined);
-    assert.equal(receipt.result.completionBudget,
-      scenario.budget<=1000000?scenario.budget:undefined);
-    assert.doesNotMatch(JSON.stringify(receipt),/provider_private|secret_injection/);
-    assert.equal(groqSends,1);
-    assert.equal(gptSends,0);
-    assert.deepEqual(await f.call('orchestrator_chat',input),receipt,
-      'a rejected coordinator response must be idempotent');
-    assert.equal(groqSends,1);
-    const saved=f.store.db.prepare('SELECT status,result FROM lab_command_receipts WHERE request_id=?')
-      .get(input.requestId);
-    assert.equal(saved.status,'failed');
-    assert.deepEqual(JSON.parse(saved.result),receipt.result);
-    assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
-  }
-});
-
-test('backend serializes Groq chat, analysis and proposals on one Task without starving another project',async t=>{
-  let release,entered,groqCalls=0,heldProjectId=null;
+test('backend serializes analysis and proposals on one coordinator Task without starving another project',async t=>{
+  let release,entered,coordinatorCalls=0,heldProjectId=null;
   const started=new Promise(resolve=>{entered=resolve;});
   const gate=new Promise(resolve=>{release=resolve;});
   const f=fixture(t,{coordinator:{available:()=>true,send:async args=>{
-    groqCalls++;
+    coordinatorCalls++;
     if(args.projectId===heldProjectId){entered();await gate;}
-    return {provider:'groq',content:'Resposta de coordenação comprovada'};
+    return args.prepareWork
+      ?{provider:'groq',content:'Proposta confirmada',proposal:{title:'Próxima frente',content:'Revisar evidências',reason:'Teste de serialização'}}
+      :{provider:'groq',content:'Análise confirmada'};
   }}});
   const a=await project(f,'Projeto A');
   const b=await project(f,'Projeto B');
+  f.store.appendMessage(a.w,'user','Contexto A confirmado.');
+  f.store.appendMessage(b.w,'user','Contexto B confirmado.');
   heldProjectId=a.p;
-  f.store.setDraft(a.chat,'Primeira mensagem Groq',1);
-  const firstInput={requestId:'serialized-first',projectId:a.p,orchestratorId:a.o,
-    content:'Primeira mensagem Groq',draftRevision:1};
-  const first=f.call('orchestrator_chat',firstInput);
+  const firstInput={requestId:'serialized-first',projectId:a.p,orchestratorId:a.o};
+  const first=f.call('orchestrator_analyze',firstInput);
   await started;
   assert.equal(f.service.coordinatorTurnBusy(a.chat),true);
-  assert.equal((await f.call('orchestrator_chat',firstInput)).status,'running',
+  assert.equal((await f.call('orchestrator_analyze',firstInput)).status,'running',
     'same requestId returns the durable accepted receipt without another send');
-  for(const operation of ['orchestrator_chat','orchestrator_analyze','orchestrator_prepare']){
+  for(const operation of ['orchestrator_analyze','orchestrator_prepare']){
     const requestId='blocked-'+operation;
     const input={requestId,projectId:a.p,orchestratorId:a.o,
-      ...(operation==='orchestrator_analyze'?{}:{content:'Second concurrent operation'})};
+      ...(operation==='orchestrator_prepare'?{content:'Second concurrent operation'}:{})};
     await assert.rejects(f.call(operation,input),/orchestrator_coordinator_busy/);
     assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id=?')
       .get(requestId).n,0,'rejected admission creates no command receipt');
   }
-  assert.deepEqual(f.store.messages(a.chat).map(m=>[m.role,m.content]),
-    [['user','Primeira mensagem Groq']]);
-  f.store.setDraft(b.chat,'Projeto B independente',1);
-  const independent=await f.call('orchestrator_chat',{requestId:'other-project',
-    projectId:b.p,orchestratorId:b.o,content:'Projeto B independente',draftRevision:1});
+  const independent=await f.call('orchestrator_analyze',{requestId:'other-project',
+    projectId:b.p,orchestratorId:b.o});
   assert.equal(independent.status,'succeeded');
   assert.equal(f.service.coordinatorTurnBusy(b.chat),false);
   release();
   const completed=await first;
   assert.equal(completed.status,'succeeded');
   assert.equal(f.service.coordinatorTurnBusy(a.chat),false);
-  assert.equal(groqCalls,2);
-  assert.deepEqual(f.store.messages(a.chat).map(x=>x.role),['user','assistant']);
-  // A completed request must release admission for the next explicit turn.
-  f.store.setDraft(a.chat,'Outra solicitação após liberação',3);
-  const resumed=await f.call('orchestrator_chat',{requestId:'after-release',projectId:a.p,
-    orchestratorId:a.o,content:'Outra solicitação após liberação',draftRevision:3});
+  assert.equal(coordinatorCalls,2);
+  const resumed=await f.call('orchestrator_prepare',{requestId:'after-release',projectId:a.p,
+    orchestratorId:a.o,content:'Preparar próxima frente'});
   assert.equal(resumed.status,'succeeded');
-  assert.equal(groqCalls,3);
+  assert.equal(coordinatorCalls,3);
   assert.equal(f.service.coordinatorTurnBusy(a.chat),false);
-  assert.deepEqual(f.store.messages(a.chat).map(x=>x.role),
-    ['user','assistant','user','assistant']);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
-test('Groq coordinator remains available while the GPT Web executor is busy',async t=>{
-  let groqCalls=0,gptCalls=0;
-  const f=fixture(t,{
-    provider:{busy:()=>true,send:async()=>{gptCalls++;throw Error('unexpected_gpt_send');}},
-    coordinator:{available:()=>true,send:async()=>{groqCalls++;return {content:'A conversa de coordenação está disponível.'};}}
-  }),a=await project(f);
-  f.store.setDraft(a.chat,'Você está disponível?',1);
-  const result=await f.call('orchestrator_chat',{
-    requestId:'groq-while-gpt-busy',projectId:a.p,orchestratorId:a.o,
-    content:'Você está disponível?',draftRevision:1
-  });
-  assert.equal(result.status,'succeeded');
-  assert.equal(result.result.provider,'groq');
-  assert.equal(groqCalls,1);
-  assert.equal(gptCalls,0);
-  assert.equal(f.service.executorAdmission().availableSlots,0);
-});
-
-test('coordinator rejects stale revisions before a Groq request or any GPT work',async t=>{
-  let gptCalls=0,groqCalls=0;
+test('proposal preparation rejects stale revisions before any coordinator or GPT work',async t=>{
+  let gptCalls=0,coordinatorCalls=0;
   const f=fixture(t,{provider:{send:async()=>{gptCalls++;throw Error('must_not_send_gpt');}},
-    coordinator:{available:()=>true,send:async()=>{groqCalls++;return {content:'Unexpected'};}}}),a=await project(f);
+    coordinator:{available:()=>true,send:async()=>{coordinatorCalls++;return {
+      content:'Unexpected',proposal:{title:'Unexpected',content:'Unexpected',reason:'Unexpected'}};}}}),a=await project(f);
   f.store.setDraft(a.chat,'Mensagem mais recente',3);
-  await assert.rejects(f.call('orchestrator_chat',{requestId:'stale-draft',projectId:a.p,orchestratorId:a.o,
+  await assert.rejects(f.call('orchestrator_prepare',{requestId:'stale-draft',projectId:a.p,orchestratorId:a.o,
     content:'Texto antigo',draftRevision:2}),/task_draft_revision_conflict/);
   assert.equal(gptCalls,0);
-  assert.equal(groqCalls,0);
+  assert.equal(coordinatorCalls,0);
   assert.equal(f.store.getTaskDraft(a.chat).draft,'Mensagem mais recente');
   assert.equal(f.store.messages(a.chat).length,0);
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id=?").get('stale-draft').n,0);
@@ -1461,14 +1332,14 @@ test('Groq coordinator receives only bounded workspace facts and is instructed n
 });
 
 
-test('pause and immediate resume quarantine late Groq chat, analysis and proposal replies',async t=>{
-  for(const operation of ['orchestrator_chat','orchestrator_analyze','orchestrator_prepare']){
-    let entered,release,groqCalls=0,gptCalls=0;
+test('pause and immediate resume quarantine late analysis and proposal replies',async t=>{
+  for(const operation of ['orchestrator_analyze','orchestrator_prepare']){
+    let entered,release,coordinatorCalls=0,gptCalls=0;
     const started=new Promise(resolve=>{entered=resolve;});
     const gate=new Promise(resolve=>{release=resolve;});
     const f=fixture(t,{provider:{send:async()=>{gptCalls++;throw Error('gpt_must_not_send');}},
       coordinator:{available:()=>true,send:async()=>{
-        groqCalls++;entered();await gate;
+        coordinatorCalls++;entered();await gate;
         return {provider:'groq',content:'A resposta antiga não pode confirmar progresso',
           proposal:{title:'Não criar',content:'Sem envio',reason:'Resposta tardia'}};
       }}});
@@ -1490,47 +1361,17 @@ test('pause and immediate resume quarantine late Groq chat, analysis and proposa
     assert.equal(result.result.reason,'coordinator_paused_inflight');
     assert.equal(result.result.taskId,a.chat);
     assert.equal(result.requiresReconciliation,true);
-    assert.equal(groqCalls,1);
+    assert.equal(coordinatorCalls,1);
     assert.equal(gptCalls,0);
     assert.deepEqual(f.store.messages(a.chat).map(m=>m.role),['user'],
       'late model response must not create assistant evidence');
     assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM action_ledger WHERE action_type='orchestrator.work-proposal'").get().n,0,
       'late planning must not create a reviewable proposal');
     assert.deepEqual(await f.call(operation,input),result,'same requestId must never replay');
-    assert.equal(groqCalls,1);
+    assert.equal(coordinatorCalls,1);
     assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
   }
 });
-
-test('a late Groq error after pause preserves receipt while another project remains independent',async t=>{
-  let entered,release,groqCalls=0;
-  const started=new Promise(resolve=>{entered=resolve;});
-  const gate=new Promise(resolve=>{release=resolve;});
-  let heldProject=null;
-  const f=fixture(t,{coordinator:{available:()=>true,send:async input=>{
-    groqCalls++;
-    if(input.projectId===heldProject){entered();await gate;throw Error('network_lost_after_pause');}
-    return {content:'Projeto independente confirmado',provider:'groq'};
-  }}});
-  const a=await project(f,'Projeto A'),b=await project(f,'Projeto B');
-  heldProject=a.p;
-  const input={requestId:'pause_network_error',projectId:a.p,orchestratorId:a.o,content:'Aguardar Groq'};
-  const pending=f.call('orchestrator_chat',input);
-  await started;
-  await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
-  assert.equal((await f.call('orchestrator_chat',{requestId:'b_independent',projectId:b.p,
-    orchestratorId:b.o,content:'Continuar B'})).status,'succeeded');
-  await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:false});
-  release();
-  const sealed=await pending;
-  assert.equal(sealed.status,'uncertain');
-  assert.equal(sealed.result.reason,'coordinator_paused_inflight');
-  assert.deepEqual(f.store.messages(a.chat).map(m=>m.role),['user']);
-  assert.deepEqual(f.store.messages(b.chat).map(m=>m.role),['user','assistant']);
-  assert.equal(groqCalls,2);
-  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
-});
-
 
 test('corrupt proposal payload does not block legitimate pending review or reveal another project',async t=>{
   let providerSends=0;
@@ -1589,13 +1430,13 @@ test('prepared proposals require canonical approved ledger and ignore corrupted 
 });
 
 
-test('in-flight Groq coordinator does not occupy the single GPT Web executor',async t=>{
-  let enterGroq,releaseGroq,groqCalls=0,gptCalls=0;
-  const started=new Promise(resolve=>{enterGroq=resolve;});
-  const gate=new Promise(resolve=>{releaseGroq=resolve;});
+test('in-flight analysis does not occupy the single GPT Web executor',async t=>{
+  let enterAnalysis,releaseAnalysis,analysisCalls=0,gptCalls=0;
+  const started=new Promise(resolve=>{enterAnalysis=resolve;});
+  const gate=new Promise(resolve=>{releaseAnalysis=resolve;});
   const f=fixture(t,{
     coordinator:{available:()=>true,send:async()=>{
-      groqCalls++;enterGroq();await gate;return {content:'Consulta de coordenação confirmada'};
+      analysisCalls++;enterAnalysis();await gate;return {content:'Análise confirmada'};
     }},
     provider:{busy:()=>false,send:async({taskId})=>{
       gptCalls++;
@@ -1605,37 +1446,37 @@ test('in-flight Groq coordinator does not occupy the single GPT Web executor',as
       return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
     }}
   });
-  const a=await project(f,'Coordenação A'),b=await project(f,'Execução B');
-  const pending=f.call('orchestrator_chat',{requestId:'groq-held',projectId:a.p,
-    orchestratorId:a.o,content:'Coordene projeto A'});
+  const a=await project(f,'Análise A'),b=await project(f,'Execução B');
+  f.store.appendMessage(a.w,'user','Contexto A confirmado.');
+  const pending=f.call('orchestrator_analyze',{requestId:'analysis-held',projectId:a.p,orchestratorId:a.o});
   await started;
-  const duringGroq=f.service.executorAdmission();
-  assert.equal(duringGroq.activeRuns,0);
-  assert.equal(duringGroq.activeCommands,0,
-    'a running Groq command must not be counted as a GPT submission');
-  assert.equal(duringGroq.availableSlots,1);
-  const result=await f.call('work_send',{requestId:'gpt-during-groq',projectId:b.p,
+  const duringAnalysis=f.service.executorAdmission();
+  assert.equal(duringAnalysis.activeRuns,0);
+  assert.equal(duringAnalysis.activeCommands,0,
+    'a running analysis command must not be counted as a GPT submission');
+  assert.equal(duringAnalysis.availableSlots,1);
+  const result=await f.call('work_send',{requestId:'gpt-during-analysis',projectId:b.p,
     taskId:b.w,content:'Verifique trabalho B'});
   assert.equal(result.status,'succeeded');
   assert.equal(gptCalls,1);
-  assert.equal(groqCalls,1);
+  assert.equal(analysisCalls,1);
   assert.equal(f.service.coordinatorTurnBusy(a.chat),true,
-    'GPT completion must not interrupt coordinator A');
+    'GPT completion must not interrupt analysis A');
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
-  releaseGroq();
+  releaseAnalysis();
   assert.equal((await pending).status,'succeeded');
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
-test('GPT admission still serializes provider sends while Groq is in flight',async t=>{
-  let enterGroq,releaseGroq,enterGPT,releaseGPT,gptCalls=0;
-  const groqStarted=new Promise(resolve=>{enterGroq=resolve;});
-  const groqGate=new Promise(resolve=>{releaseGroq=resolve;});
+test('GPT admission still serializes provider sends while analysis is in flight',async t=>{
+  let enterAnalysis,releaseAnalysis,enterGPT,releaseGPT,gptCalls=0;
+  const analysisStarted=new Promise(resolve=>{enterAnalysis=resolve;});
+  const analysisGate=new Promise(resolve=>{releaseAnalysis=resolve;});
   const gptStarted=new Promise(resolve=>{enterGPT=resolve;});
   const gptGate=new Promise(resolve=>{releaseGPT=resolve;});
   const f=fixture(t,{
     coordinator:{available:()=>true,send:async()=>{
-      enterGroq();await groqGate;return {content:'Coordenação preservada'};
+      enterAnalysis();await analysisGate;return {content:'Análise preservada'};
     }},
     provider:{busy:()=>false,send:async({taskId})=>{
       gptCalls++;
@@ -1646,10 +1487,10 @@ test('GPT admission still serializes provider sends while Groq is in flight',asy
       return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
     }}
   });
-  const a=await project(f,'Groq A'),b=await project(f,'GPT B'),c=await project(f,'GPT C');
-  const groq=f.call('orchestrator_chat',{requestId:'held-groq',projectId:a.p,
-    orchestratorId:a.o,content:'Analisar A'});
-  await groqStarted;
+  const a=await project(f,'Análise A'),b=await project(f,'GPT B'),c=await project(f,'GPT C');
+  f.store.appendMessage(a.w,'user','Contexto A confirmado.');
+  const analysis=f.call('orchestrator_analyze',{requestId:'held-analysis',projectId:a.p,orchestratorId:a.o});
+  await analysisStarted;
   const provider=f.call('work_send',{requestId:'held-gpt',projectId:b.p,
     taskId:b.w,content:'Executar B'});
   await gptStarted;
@@ -1664,11 +1505,11 @@ test('GPT admission still serializes provider sends while Groq is in flight',asy
   releaseGPT();
   assert.equal((await provider).status,'succeeded');
   assert.equal(f.service.executorAdmission().availableSlots,1,
-    'Groq A must not keep GPT capacity reserved after GPT B completes');
+    'analysis A must not keep GPT capacity reserved after GPT B completes');
   assert.equal((await f.call('work_send',{requestId:'gpt-after-gpt',projectId:c.p,
     taskId:c.w,content:'Executar C'})).status,'succeeded');
   assert.equal(gptCalls,2);
-  releaseGroq();
-  assert.equal((await groq).status,'succeeded');
+  releaseAnalysis();
+  assert.equal((await analysis).status,'succeeded');
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });

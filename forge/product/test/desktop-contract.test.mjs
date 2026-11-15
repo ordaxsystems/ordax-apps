@@ -1173,7 +1173,7 @@ test('single GPT model and Forge MCP replace the external coordinator',()=>{
   assert.match(orchestratorUI,/gptWebTransportAvailable/);
 });
 
-test('Forjador GPT-first and optional Groq analyses have distinct fail-closed routes',()=>{
+test('Forjador uses GPT Web and exposes no legacy coordinator-chat route',()=>{
   const orchestratorUi=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const contract=fs.readFileSync(path.join(root,'src','forge-contract.mjs'),'utf8');
   const service=fs.readFileSync(path.join(root,'src','orchestrator-service.mjs'),'utf8');
@@ -1194,11 +1194,12 @@ test('Forjador GPT-first and optional Groq analyses have distinct fail-closed ro
   assert.doesNotMatch(orchestratorUi,/orchestratorChatAvailable=coordinatorAvailable/);
   assert.match(orchestratorUi,/\$\('coordinatorComposer'\)\.addEventListener\('submit'/);
   assert.match(orchestratorUi,/command\('forjador_send'/);
-  assert.match(contract,/\['forjador_send'.*directly to the GPT executor/);
-  assert.match(contract,/\['orchestrator_chat'.*Legacy optional Groq coordination/);
+  assert.match(contract,/\['forjador_send'.*directly to the GPT Web executor/);
+  assert.doesNotMatch(contract,/\['orchestrator_chat'/);
   assert.match(service,/const usesProvider=isWorkSend\|\|isForjadorSend;/);
   assert.match(service,/const port=usesProvider\?this\.provider:this\.coordinator/);
-  assert.doesNotMatch(service,/const gptWebChat=operation==='orchestrator_chat'/);
+  assert.doesNotMatch(service,/operation==='orchestrator_chat'|delegateWork:operation===|jarvis_delegation/);
+  assert.match(service,/orchestrator_chat remains queryable here only for receipts created by older/);
   assert.match(css,/#orchestratorWorkRail\{display:flex!important/);
   assert.match(css,/body\.orchestrator-focus \.left-rail \.tasks-wrap\{display:none!important\}/);
 
