@@ -295,30 +295,7 @@ test('an HTML row without an App verifier remains unverified even with a capture
   assert.equal(m.decision.externalEffectVerified,false);
 });
 
-test('natural site request sends its exact words once; a model-suggested publication requires new owner intent',async t=>{
-  const f=fixture(t,{first:'new_work',maxExpectedSends:1}),ids=await f.setup();
-  const content='quero um site de página única para a cafeteria fictícia Estação Café';
-  const receipt=await f.call('orchestrator_chat',{...ids,content,delegateWork:true});
-  assert.equal(receipt.status,'succeeded');
-  assert.equal(receipt.result.delegation.status,'accepted');
-  await f.service.autonomous.tick(f.context);
-  const m=await f.wait(ids);
-  assert.equal(m.state,'verification_required');
-  assert.equal(m.maxGPTSends,1);
-  assert.equal(m.taskBId,null,'unrequested work must not be dispatched');
-  assert.equal(m.decision.decision,'new_work','untrusted next action is recorded as advisory only');
-  assert.equal(f.metrics().sends,1);
-  assert.equal(f.metrics().plans,0,'do not rewrite the first user request in a Groq planner');
-  assert.equal(f.metrics().reviews,1);
-  const adminChat=f.service.orchestrator(ids.projectId,ids.orchestratorId).chat_task_id;
-  assert.equal(f.store.messages(adminChat).filter(x=>
-    x.role==='assistant'&&x.content.startsWith('Ciclo 1: recebi a ')).length,0,
-    'natural first prompt retains concise user-facing outcome, not a technical milestone');
-  assert.equal(f.store.messages(m.taskAId).find(x=>x.role==='user').content,content);
-  assert.equal(f.store.db.prepare('SELECT followup_policy FROM lab_autonomous_dialogues WHERE id=?')
-    .get(m.missionId).followup_policy,'review_only');
-  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
-});
+
 
 test('dev autonomy starts from the real forjador_send UI path and continues without another owner command',async t=>{
   const f=fixture(t,{

@@ -8,7 +8,7 @@ import {interpretGPTWorkReview} from './gpt-work-review.mjs';
 import {findProviderSubmissionProvenance} from './provider-submission-provenance.mjs';
 import {LabContinuation} from './lab-continuation.mjs';
 import {AutonomousDialogue} from './autonomous-dialogue.mjs';
-import {appOwnedSiteDecision,classifyExistingSiteChange} from './natural-site-intent.mjs';
+import {appOwnedSiteDecision} from './natural-site-intent.mjs';
 import {latestSiteWork} from './site-work-context.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
 import {forgeProjectContext,forgeMcpDiscovery} from './forge-executor-context.mjs';
@@ -442,7 +442,7 @@ export class OrchestratorService {
     if(tool.readOnly)return this.read(context,operation,input);
     if(operation==='proposal_send')return this.confirmAndSendProposal(context,input);
     if(operation==='proposal_review'&&input.approved)return this.confirmAndReviewProposal(context,input);
-    if(['work_send','forjador_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare'].includes(operation))return this.dispatch(context,operation,input);
+    if(['work_send','forjador_send','orchestrator_analyze','orchestrator_prepare'].includes(operation))return this.dispatch(context,operation,input);
     return this.transaction(()=>{
       const reserved=this.reserve(context,operation,input);
       if(reserved.existing)return reserved.existing;
@@ -1128,9 +1128,9 @@ export class OrchestratorService {
       this.db.prepare('UPDATE lab_orchestrators SET status=? WHERE id=?')
         .run(input.paused?'paused':'ready',input.orchestratorId);
       if(input.paused) {
-        // A Groq request may already have left the process. Do not cancel or
-        // replay it; atomically preserve an uncertain receipt at the pause
-        // boundary so a late reply cannot be promoted after rapid resume.
+        // A legacy coordinator request may already have left the process. Do not
+        // cancel or replay it; preserve old orchestrator_chat receipts alongside
+        // current analyze/prepare receipts so a late reply cannot be promoted.
         // Scope to this coordinator Task, not unrelated project work/GPT sends.
         this.db.prepare(`UPDATE lab_command_receipts
           SET status='uncertain',
@@ -1492,6 +1492,8 @@ export class OrchestratorService {
   }
 
   coordinatorTurnBusy(taskId) {
+    // orchestrator_chat remains queryable here only for receipts created by older
+    // versions. It is no longer a valid operation for new commands.
     return this.activeCoordinatorTurns.has(taskId)||Boolean(this.db.prepare(`
       SELECT 1 FROM lab_command_receipt_scope
       WHERE status='running' AND operation IN
@@ -1499,9 +1501,9 @@ export class OrchestratorService {
       AND task_id=? LIMIT 1`).get(taskId));
   }
 
-  // A running GPT Web action must only defer opt-in Groq coordination for
+  // A running GPT Web action only defers bounded analysis/proposal work for
   // its own project. Neither a global provider busy flag nor work in another
-  // project has authority to block this read-only coordinator channel.
+  // project has authority to block unrelated read-only coordination.
   projectWorkInProgress(projectId) {
     return Boolean(this.db.prepare(`SELECT 1 FROM lab_command_receipts
       WHERE project_id=? AND status='running'
@@ -1575,8 +1577,8 @@ export class OrchestratorService {
     if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
     const isWorkSend=operation==='work_send'||operation==='proposal_send';
     const isForjadorSend=operation==='forjador_send';
-    // Ordinary Forjador turns now use the same GPT transport as work. Groq
-    // remains an optional analysis/proposal port, not a chat dependency.
+    // Ordinary Forjador turns use the same GPT Web transport as work.
+    // Analysis/proposal coordination is a separate bounded path.
     const usesProvider=isWorkSend||isForjadorSend;
     const sendInput=preparedSend||input;
     const orch=isWorkSend?null:this.orchestrator(input.projectId,input.orchestratorId);
@@ -1675,7 +1677,7 @@ export class OrchestratorService {
       filesWritten:workspaceStatus.filesWritten
     }:null;
     // GPT transport admission and uncertain GPT receipts must never block
-    // the independent Groq conversation with the coordinator.
+    // the independent analysis/proposal coordinator path.
     if(usesProvider) {
       assertTaskHasNoUncertainTransport(this.store,task.id);
       if(this.executorAdmission().availableSlots===0)
@@ -1712,7 +1714,7 @@ export class OrchestratorService {
           ...(reservation.sendActionId?{
           sendActionId:reservation.sendActionId,approvalId:reservation.approvalId}: {})}),reservation.commandId);
       if(!usesProvider) {
-        const coordinatorDraft=['orchestrator_chat','orchestrator_prepare'].includes(operation)&&input.draftRevision!==undefined;
+        const coordinatorDraft=operation==='orchestrator_prepare'&&input.draftRevision!==undefined;
         if(coordinatorDraft) {
           const draft=this.store.getTaskDraft(task.id);
           if(draft.draft_revision!==input.draftRevision||draft.draft.trim()!==content.trim())
@@ -1744,8 +1746,7 @@ export class OrchestratorService {
         // deferred child dispatch may set the private orchestrator override.
         authorSource:authorSourceOverride||'human',
         mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork,
-        completionProfile:reviewSource?'technical_review':'standard',workspaceObservation,repositoryUrl,
-        delegateWork:operation==='orchestrator_chat'&&input.delegateWork===true});
+        completionProfile:reviewSource?'technical_review':'standard',workspaceObservation,repositoryUrl});
       this.requireAccess(context,operation,input.projectId);
       if(!usesProvider) {
         // Pause can happen during the external Groq await. A durable receipt
@@ -1757,9 +1758,6 @@ export class OrchestratorService {
           throw Error('orchestrator_reply_invalid');
         // Parse an evidence-anchored decision before it becomes a completed
         // receipt. The model response is never itself permission to execute.
-        if(operation==='orchestrator_chat'&&input.delegateWork===true&&
-          !['technical','none'].includes(reply.delegation))
-          throw Error('orchestrator_jarvis_decision_unconfirmed');
         let reviewDecision=null;
         if(reviewSource){
           try{
@@ -1789,53 +1787,8 @@ export class OrchestratorService {
               {projectId:input.projectId,orchestratorId:owner.id,actorId:context.actorId,clientId:context.clientId,proposal});
             this.store.requestApproval(task.id,proposalActionId,'Revisar nova frente e rascunho; nenhum envio ao GPT');
           }
-          let delegation=null;
-          if(operation==='orchestrator_chat'&&input.delegateWork===true){
-            if(reply.delegation==='none')delegation={status:'not_needed'};
-            else {
-              // One explicit UI command authorizes at most the existing two-send
-              // technical mission. Groq only classifies; it cannot create
-              // grants or dispatch through an unrecognized model reply.
-              this.db.exec('SAVEPOINT jarvis_delegation');
-              try {
-                const editing=classifyExistingSiteChange(input.content);
-                const site=editing?latestSiteWork(this.store,input.projectId,input.orchestratorId):null;
-                if(editing&&!site)throw Error('orchestrator_site_to_edit_not_available');
-                // Development autonomy is an App setting, not another user
-                // message. The user's first request remains byte-for-byte the
-                // only owner-authored prompt; after it, Forge owns continuation.
-                if(this.continuousExecutionByDefault){
-                  const enabled=this.db.prepare(`UPDATE lab_orchestrators
-                    SET continuous_execution_enabled=1 WHERE id=? AND project_id=?`)
-                    .run(owner.id,input.projectId).changes;
-                  if(enabled!==1)throw Error('autonomous_continuous_owner_changed');
-                }
-                const accepted=this.autonomous.start(context,{
-                  projectId:input.projectId,orchestratorId:input.orchestratorId,
-                  mission:input.content,mode:'technical',directUserPrompt:true,
-                  ...(site?{resumeSiteTaskId:site.taskId}:{}),
-                  requestId:'jarvis_'+reserved.commandId
-                });
-                this.db.exec('RELEASE SAVEPOINT jarvis_delegation');
-                delegation={status:'accepted',missionId:accepted.missionId};
-              } catch {
-                this.db.exec('ROLLBACK TO SAVEPOINT jarvis_delegation');
-                this.db.exec('RELEASE SAVEPOINT jarvis_delegation');
-                delegation={status:'blocked'};
-              }
-            }
-          }
-          // The coordinator's internal routing wording is not a user reply.
-          // Report only what the App actually accepted. A model cannot claim
-          // a send, an artifact or a completed run by composing prose.
-          const userReply=delegation?.status==='accepted'
-            ?'Vou cuidar disso.'
-            :delegation?.status==='blocked'
-              ?'Não consegui iniciar essa tarefa. Confira a conexão e o arquivo do projeto para continuar.'
-              :reply.content;
-          if(!reviewSource)this.store.appendMessage(task.id,'assistant',userReply);
+          if(!reviewSource)this.store.appendMessage(task.id,'assistant',reply.content);
           return this.finish(reserved.commandId,{taskId:task.id,responseObserved:true,
-            ...(delegation?{delegation}:{}),
             ...(reviewSource?{reviewRunId:reviewSource.runId}:{}),
             ...(proposalActionId?{proposalActionId}:{}),
             ...(reviewDecision?{reviewDecision}:{}),
