@@ -200,7 +200,19 @@ let phase='startup',failurePhase=null;
     })()`);
     if(integrity.totalNew!==3||integrity.activeRuns!==0||
        integrity.source.some((x,i)=>x.messages!==0||x.draft!==tasks[i].draft)||
-       tasks.some(x=>!integrity.works.some(w=>w.id===x.taskId)))
+       tasks.some(x=>!integrity.works.some(w=>w.id===x.taskId&&
+         w.orchestrator_id===x.adminId&&w.provider_segments===0&&
+         w.running_runs===0)))
+      throw Error('multiagent_session_scope_wrong');
+    const foreign=await evaluate(`(async()=>{
+      const other=(await window.ordax.orchestratorInvoke('projects_list')).projects
+        .find(project=>project.id!==${JSON.stringify(p)});
+      if(!other)return null;
+      const works=(await window.ordax.orchestratorInvoke('work_list',
+        {projectId:other.id})).works;
+      return {projectId:other.id,workIds:works.map(item=>item.id)};
+    })()`);
+    if(!foreign||foreign.workIds.some(id=>tasks.some(task=>task.taskId===id)))
       throw Error('multiagent_session_scope_wrong');
     report={schema:'ordax.forge.packaged-multiagent-user-e2e/1',ok:true,
       packagedElectron:true,nativeUiClicks:true,disposableProfile:true,
