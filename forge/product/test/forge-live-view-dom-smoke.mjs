@@ -38,6 +38,20 @@ app.whenReady().then(async()=>{
       controlIndex:button.index,expectedLabel:'Mudar'});}
     catch(error){staleError=String(error?.message||error)}
     result.staleError=staleError;
+    // A real overlay should make a visible button non-interactable.
+    await preview.view.webContents.executeJavaScriptInIsolatedWorld(1001,[{
+      code:"(()=>{const modal=document.createElement('div');modal.id='blocking-modal';"+
+        "Object.assign(modal.style,{position:'fixed',inset:'0',zIndex:'2147483647',"+
+        "pointerEvents:'auto',background:'rgba(0,0,0,.15)'});document.body.append(modal);return true})()"
+    }],false);
+    const obstructed=await preview.inspectLive(identity);
+    const buttonBlocked=obstructed.inspection.controls.find(c=>c.label==='Mudar');
+    let obstructionError=null;
+    try{await preview.clickLive(identity,{expectedRevision:obstructed.revision,
+      controlIndex:buttonBlocked?.index,expectedLabel:'Mudar'});}
+    catch(error){obstructionError=String(error?.message||error);}
+    result.obstruction={obscured:buttonBlocked?.obscured,
+      interactable:buttonBlocked?.interactable,error:obstructionError};
     result.focused=win.isFocused();
     result.ok=result.minimized&&!result.focused&&
       before.inspection.headings[0]?.text==='Antes'&&
@@ -45,6 +59,9 @@ app.whenReady().then(async()=>{
       clicked?.statePersistedInLiveView===true&&
       clicked?.observableDomChanged===true&&
       staleError==='forge_view_live_stale'&&
+      result.obstruction.obscured===true&&
+      result.obstruction.interactable===false&&
+      result.obstruction.error==='forge_view_live_stale'&&
       !JSON.stringify(result).includes('segredo_nao_expor_123');
   }catch(error){result.error=String(error?.stack||error)}
   finally{
