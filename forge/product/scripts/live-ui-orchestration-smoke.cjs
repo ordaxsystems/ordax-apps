@@ -76,9 +76,9 @@ let cleanupFailurePhase=null;
     await evaluate(`document.getElementById('settingsTabProviders').click()`);
     const providerSettings=await evaluate(`(()=>({selected:document.getElementById('settingsTabProviders').getAttribute('aria-selected'),
       key:!!document.getElementById('labSupervisorKeyInput'),
-      alternateLogin:!!document.getElementById('settingsOpenChatGptLogin'),
+      gptWebLogin:!!document.getElementById('settingsOpenChatGptLogin'),
       singleModel:document.getElementById('settingsPanelProviders')?.textContent?.includes('GPT Web + Forge MCP')}))()`);
-    if(providerSettings.selected!=='true'||providerSettings.key||providerSettings.alternateLogin||
+    if(providerSettings.selected!=='true'||providerSettings.key||!providerSettings.gptWebLogin||
       !providerSettings.singleModel)throw Error('global_settings_unavailable');
     await evaluate(`document.getElementById('settingsTabConnections').click()`);
     if(!(await evaluate(`document.getElementById('settingsPanelConnections').hidden===false`)))throw Error('global_settings_unavailable');
@@ -165,7 +165,7 @@ let cleanupFailurePhase=null;
         modelRoutesAbsent:typeof window.ordax.supervisorPlan==='undefined'&&
           typeof window.ordax.supervisorApprove==='undefined'&&
           typeof window.ordax.supervisorDispatch==='undefined',
-        loginAbsent:!document.getElementById('settingsOpenChatGptLogin'),
+        gptWebLoginPresent:!!document.getElementById('settingsOpenChatGptLogin'),
         keyInputAbsent:!document.getElementById('labSupervisorKeyInput'),
         provider:chat?.provider,legacyConfigured:supervisor?.configured,
         groqFlagAbsent:!Object.hasOwn(chat||{},'groqConfigured'),
@@ -174,7 +174,7 @@ let cleanupFailurePhase=null;
       };
     })()`);
     if(!gptOnly?.keyRoutesAbsent||!gptOnly?.modelRoutesAbsent||
-      !gptOnly.loginAbsent||!gptOnly.keyInputAbsent||
+      !gptOnly.gptWebLoginPresent||!gptOnly.keyInputAbsent||
       gptOnly.provider!=='chatgpt_web'||gptOnly.legacyConfigured!==false||
       !gptOnly.groqFlagAbsent||!gptOnly.analysisDisabled||!gptOnly.prepareDisabled)
       throw Error('retired_model_api_exposed');

@@ -139,6 +139,10 @@ test('packaged orchestration smoke waits for the newly created work to open befo
   }
   assert.doesNotMatch(source,/disposableApiKeyCleanupRequired|window\.ordax\.supervisorSaveKey\(|window\.ordax\.supervisorRemoveKey\(/,
     'the GPT-only E2E must not create or erase an external-model key');
+  assert.match(source,/gptWebLoginPresent:!!document\.getElementById\('settingsOpenChatGptLogin'\)/,
+    'the GPT-only E2E keeps the official ChatGPT Web session control');
+  assert.doesNotMatch(source,/loginAbsent:!document\.getElementById\('settingsOpenChatGptLogin'\)/,
+    'the ChatGPT Web login must not be mistaken for a retired alternate-model login');
   assert.match(source,/phase='gpt_only_model_contract'/);
   assert.match(normalizedSource,/const scenarioReasons=new Set\(/,
     'live diagnostics use an allowlist of stable synthetic failure codes');
