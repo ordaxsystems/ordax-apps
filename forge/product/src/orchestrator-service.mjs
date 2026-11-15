@@ -454,7 +454,26 @@ export class OrchestratorService {
       try{
         this.requireAccess(context,operation,input.projectId);
         const result=await this.viewPort.live(operation,input);
+        // A resolved port call is not proof that a DOM click completed.
+        // Mark it potentially applied before validating evidence, so a
+        // malformed result is quarantined as uncertain and never replayed.
         applied=true;
+        if(result?.schema!=='ordax.forge.live-view-action/1'||
+           result.source!=='active_native_view'||
+           result.projectId!==input.projectId||
+           result.taskId!==input.taskId||result.assetId!==input.assetId||
+           !/^[a-f0-9]{64}$/.test(result.sha256||'')||
+           result.action!=='click'||result.dispatched!==true||
+           result.controlIndex!==input.controlIndex||
+           result.expectedLabel!==input.expectedLabel||
+           result.beforeRevision!==input.expectedRevision||
+           !/^[a-f0-9]{64}$/.test(result.afterRevision||'')||
+           typeof result.observableDomChanged!=='boolean'||
+           result.statePersistedInLiveView!==true||
+           result.projectFilesModified!==false||
+           result.externalEffectsVerified!==false||
+           result.websitePublished!==false)
+          throw Error('forge_view_live_receipt_invalid');
         this.requireAccess(context,operation,input.projectId);
         return this.transaction(()=>this.finish(reserved.commandId,result));
       }catch(error){
