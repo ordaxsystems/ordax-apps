@@ -440,6 +440,36 @@ export class OrchestratorService {
       this.requireAccess(context,operation,input.projectId||null);
       return image;
     }
+    if(operation==='project_view_live_inspect'){
+      if(typeof this.viewPort?.live!=='function')throw Error('forge_native_view_unavailable');
+      const result=await this.viewPort.live(operation,input);
+      this.requireAccess(context,operation,input.projectId);
+      return result;
+    }
+    if(operation==='project_view_live_click'){
+      if(typeof this.viewPort?.live!=='function')throw Error('forge_native_view_unavailable');
+      const reserved=this.transaction(()=>this.reserve(context,operation,input));
+      if(reserved.existing)return reserved.existing;
+      let applied=false;
+      try{
+        this.requireAccess(context,operation,input.projectId);
+        const result=await this.viewPort.live(operation,input);
+        applied=true;
+        this.requireAccess(context,operation,input.projectId);
+        return this.transaction(()=>this.finish(reserved.commandId,result));
+      }catch(error){
+        const safeBeforeAction=!applied&&!error?.forgeLiveActionSubmitted&&
+          (error?.forgeLiveActionNotSubmitted===true||
+            ['forge_view_live_unavailable','forge_view_live_stale',
+              'forge_view_live_busy','forge_view_live_dom_unavailable'].includes(error?.message));
+        const code=safeBeforeAction?error.message:'forge_view_live_action_unconfirmed';
+        this.transaction(()=>this.finish(reserved.commandId,
+          {reason:code,actionVerified:false},
+          safeBeforeAction?'failed':'uncertain'));
+        this.requireAccess(context,operation,input.projectId);
+        return this.getReceipt(context,reserved.commandId);
+      }
+    }
     if(operation==='autonomous_dialogue_status')return this.autonomous.status(context,input);
     if(operation==='autonomous_continuous_set')return {status:'succeeded',operation,
       result:this.autonomous.setContinuousExecution(context,input)};
