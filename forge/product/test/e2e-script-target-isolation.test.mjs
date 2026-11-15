@@ -131,13 +131,15 @@ test('packaged orchestration smoke waits for the newly created work to open befo
   const scenarioTry=normalizedSource.indexOf("  try {\n    await new Promise((resolve,reject)=>{ws.onopen=resolve;");
   assert.ok(scenarioTry>0,'the guarded native scenario is present');
   for(const declaration of [
-    'let disposableApiKeyCleanupRequired=false;',
     'let successReport=null;',
     'const evaluate=expression=>new Promise('
   ]) {
     assert.ok(normalizedSource.indexOf(declaration)>=0&&normalizedSource.indexOf(declaration)<scenarioTry,
       `${declaration} is available to the scenario finally block`);
   }
+  assert.doesNotMatch(source,/disposableApiKeyCleanupRequired|window\.ordax\.supervisorSaveKey\(|window\.ordax\.supervisorRemoveKey\(/,
+    'the GPT-only E2E must not create or erase an external-model key');
+  assert.match(source,/phase='gpt_only_model_contract'/);
   assert.match(normalizedSource,/const scenarioReasons=new Set\(/,
     'live diagnostics use an allowlist of stable synthetic failure codes');
   assert.match(normalizedSource,/scenarioReasons\.has\(error\?\.message\)\?error\.message:'app_orchestration_scenario_failed'/,

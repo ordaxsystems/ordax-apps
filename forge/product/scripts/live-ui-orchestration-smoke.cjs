@@ -10,7 +10,7 @@ const scenarioReasons=new Set([
   'app_evaluation_failed','app_evaluation_timeout','socket_unavailable',
   'runtime_identity_mismatch','fresh_disabled_profile_required','global_settings_unavailable','project_navigation_not_selected',
   'mission_draft_not_persisted','workspace_grant_absence_not_visible','coordinator_workspace_layout_missing',
-  'api_key_not_persisted_securely','prepare_action_unavailable','mcp_initialization_failed',
+  'retired_model_api_exposed','prepare_action_unavailable','mcp_initialization_failed',
   'native_mcp_state_mismatch','work_conversation_layout_failed',
   'lab_e2e_multiple_visible_app_windows','lab_e2e_multiple_app_windows',
   'lab_e2e_provider_fallback_not_app_test','lab_e2e_profile_proof_unavailable','lab_e2e_profile_mismatch',
@@ -28,7 +28,6 @@ let cleanupFailurePhase=null;
   const ws=new WebSocket(tab.webSocketDebuggerUrl);
   let sequence=0;
   const pending=new Map();
-  let disposableApiKeyCleanupRequired=false;
   let successReport=null;
   const evaluate=expression=>new Promise((resolve,reject)=>{
     const id=++sequence;
@@ -61,7 +60,7 @@ let cleanupFailurePhase=null;
       analysisHint:document.getElementById('analysisScopeHint')?.textContent||''}))()`);
     if(before.projects!==0||before.taskCount!==0||before.status.coordinatorAvailable!==false||
       before.status.autonomousExecution!==false||!before.analysisButton||before.analysisDisabled!==true||
-      !before.analysisHint.includes('não executa propostas')||before.prepareDisabled!==true||!before.proposalsPresent)throw Error('fresh_disabled_profile_required');
+      !before.analysisHint.includes('Análise por IA externa foi removida')||before.prepareDisabled!==true||!before.proposalsPresent)throw Error('fresh_disabled_profile_required');
     phase='global_settings_without_project';
     await evaluate(`document.getElementById('openAppSettings').click()`);
     const globalSettings=await evaluate(`(()=>{
@@ -76,8 +75,11 @@ let cleanupFailurePhase=null;
       throw Error('global_settings_unavailable');
     await evaluate(`document.getElementById('settingsTabProviders').click()`);
     const providerSettings=await evaluate(`(()=>({selected:document.getElementById('settingsTabProviders').getAttribute('aria-selected'),
-      key:!!document.getElementById('labSupervisorKeyInput'),gpt:!!document.getElementById('settingsOpenChatGptLogin')}))()`);
-    if(providerSettings.selected!=='true'||!providerSettings.key||!providerSettings.gpt)throw Error('global_settings_unavailable');
+      key:!!document.getElementById('labSupervisorKeyInput'),
+      alternateLogin:!!document.getElementById('settingsOpenChatGptLogin'),
+      singleModel:document.getElementById('settingsPanelProviders')?.textContent?.includes('GPT Web + Forge MCP')}))()`);
+    if(providerSettings.selected!=='true'||providerSettings.key||providerSettings.alternateLogin||
+      !providerSettings.singleModel)throw Error('global_settings_unavailable');
     await evaluate(`document.getElementById('settingsTabConnections').click()`);
     if(!(await evaluate(`document.getElementById('settingsPanelConnections').hidden===false`)))throw Error('global_settings_unavailable');
     await evaluate(`document.getElementById('settingsDone').click()`);
@@ -150,22 +152,32 @@ let cleanupFailurePhase=null;
     await wait("document.getElementById('orchestratorSelect').value && !document.getElementById('orchestrationPanel').hidden");
     const coordinatorLayout=await evaluate(`(()=>({focus:document.body.classList.contains('orchestrator-focus'),rail:!document.getElementById('orchestratorWorkRail').hidden,selected:[...document.querySelectorAll('#orchestratorNavList button')].some(b=>b.getAttribute('aria-pressed')==='true')}))()`);
     if(!coordinatorLayout.focus||!coordinatorLayout.rail||!coordinatorLayout.selected)throw Error('coordinator_workspace_layout_missing');
-    phase='api_key_save';
-    // Disposable credential fixture only: activation must not call the API.
-    disposableApiKeyCleanupRequired=true;
-    await evaluate(`window.ordax.supervisorSaveKey('gsk_'+ 'A'.repeat(40))`);
-    phase='api_key_save_status';
-    const credential=await evaluate(`window.ordax.supervisorStatus()`);
-    if(credential.configured!==true||credential.keySaved!==true||credential.secureStorageAvailable!==true)
-      throw Error('api_key_not_persisted_securely');
-    phase='groq_advisory_available_after_configure';
-    // GPT-first availability remains independent of the optional Groq key.
-    await wait("(async()=>{const s=await window.ordax.coordinatorChatStatus();return s.provider==='chatgpt_web'&&s.enabled===true&&s.configured===true&&s.groqConfigured===true&&!document.getElementById('coordinatorApiEnable')&&!document.getElementById('prepareWork').disabled})()");
-    phase='api_key_remove';
-    await evaluate(`window.ordax.supervisorRemoveKey()`);
-    phase='groq_advisory_unavailable_after_key_removal';
-    await wait("(async()=>{const s=await window.ordax.coordinatorChatStatus();return s.provider==='chatgpt_web'&&s.enabled===true&&s.configured===true&&s.groqConfigured===false&&!document.getElementById('coordinatorApiEnable')&&document.getElementById('analyzeWorks').disabled&&document.getElementById('prepareWork').disabled})()");
-    disposableApiKeyCleanupRequired=false;
+    phase='gpt_only_model_contract';
+    // Production E2E must PROVE that old paid-model routes are absent,
+    // without storing a disposable credential or making inference calls.
+    const gptOnly=await evaluate(`(async()=>{
+      const supervisor=await window.ordax.supervisorStatus();
+      const chat=await window.ordax.coordinatorChatStatus();
+      return {
+        keyRoutesAbsent:typeof window.ordax.supervisorSaveKey==='undefined'&&
+          typeof window.ordax.supervisorTestKey==='undefined'&&
+          typeof window.ordax.supervisorRemoveKey==='undefined',
+        modelRoutesAbsent:typeof window.ordax.supervisorPlan==='undefined'&&
+          typeof window.ordax.supervisorApprove==='undefined'&&
+          typeof window.ordax.supervisorDispatch==='undefined',
+        loginAbsent:!document.getElementById('settingsOpenChatGptLogin'),
+        keyInputAbsent:!document.getElementById('labSupervisorKeyInput'),
+        provider:chat?.provider,legacyConfigured:supervisor?.configured,
+        groqFlagAbsent:!Object.hasOwn(chat||{},'groqConfigured'),
+        analysisDisabled:document.getElementById('analyzeWorks')?.disabled===true,
+        prepareDisabled:document.getElementById('prepareWork')?.disabled===true
+      };
+    })()`);
+    if(!gptOnly?.keyRoutesAbsent||!gptOnly?.modelRoutesAbsent||
+      !gptOnly.loginAbsent||!gptOnly.keyInputAbsent||
+      gptOnly.provider!=='chatgpt_web'||gptOnly.legacyConfigured!==false||
+      !gptOnly.groqFlagAbsent||!gptOnly.analysisDisabled||!gptOnly.prepareDisabled)
+      throw Error('retired_model_api_exposed');
     phase='mcp_work_create';
     const summary=await evaluate(`(async()=>{
       const p=document.getElementById('projectSelect').value;
@@ -297,7 +309,7 @@ let cleanupFailurePhase=null;
       globalSettingsWithoutProjectVerified:true,coordinatorFormVerified:true,workVisibleInApp:true,
       projectNavigationVerified:true,coordinatorWorkspaceVerified:true,workConversationUiVerified:true,
       projectWorkspaceFailClosedVerified:true,
-      localApiOptInVerified:true,localApiDisableVerified:true,analysisNeedsExplicitApiOptIn:true,
+      gptOnlySettingsVerified:true,retiredModelApisAbsent:true,modelCredentialWrites:0,
       idempotencyVerified:true,providerMessagesSent:0,coordinatorApiCalls:0,
       externalMcpConnected:false,autonomousExecution:false};
   }catch(error){
@@ -305,27 +317,15 @@ let cleanupFailurePhase=null;
     throw error;
   }finally{
     try {
-      if(disposableApiKeyCleanupRequired) {
-        phase='test_credential_cleanup';
-        await evaluate(`window.ordax.supervisorRemoveKey()`);
-        const status=await evaluate(`window.ordax.supervisorStatus()`);
-        if(status?.keySaved!==false)throw Error('test_api_key_cleanup_failed');
-      }
+      phase='pending_request_cleanup';
+      for(const item of pending.values()){clearTimeout(item.timer);item.reject(Error('socket_closed'));}
     } catch(error) {
       cleanupFailurePhase=phase;
       throw error;
     } finally {
-      try {
-        phase='pending_request_cleanup';
-        for(const item of pending.values()){clearTimeout(item.timer);item.reject(Error('socket_closed'));}
-      } catch(error) {
-        cleanupFailurePhase=phase;
-        throw error;
-      } finally {
-        phase='cdp_websocket_cleanup';
-        try{await closeCdpWebSocket(ws);}
-        catch(error){cleanupFailurePhase=phase;throw error;}
-      }
+      phase='cdp_websocket_cleanup';
+      try{await closeCdpWebSocket(ws);}
+      catch(error){cleanupFailurePhase=phase;throw error;}
     }
   }
   console.log(JSON.stringify(successReport));
