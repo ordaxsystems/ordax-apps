@@ -3,12 +3,11 @@ import { PRODUCT_NAME, PRODUCT_SHORT_NAME } from '../src/product-brand.mjs';
 import { providerComposeAvailability, canStartFreshProviderChat, COMPOSE_STATUS_MESSAGES } from '../src/provider-compose-availability.mjs';
 import { resolveProviderLoginAction } from '../src/provider-login-action.mjs';
 import { taskListStatusLabel, taskNavigationStatus } from '../src/task-navigation-status.mjs';
-import { reviewCandidateRun, confirmedRunReview, runReviewButtonState, runReviewLookupCurrent } from '../src/run-review-eligibility.mjs';
 import { SUPERVISOR_ROLES, supervisorRole } from '../src/supervisor-role-presets.mjs';
 import { mountOrchestratorUi } from './orchestrator-ui.mjs';
 import {buildStaticPreviewSource} from '../src/static-html-preview.mjs';
 const $ = selector => document.querySelector(selector);
-// The same commercial identity is used by Electron, Groq and the renderer.
+// A single Forge identity is shared by GPT Web, the desktop and Forge MCP.
 document.title = PRODUCT_NAME;
 for(const id of ['productNameHeader','productNameSettings']) {
   const target=document.getElementById(id);
@@ -20,14 +19,10 @@ const exitLabel=document.getElementById('backgroundExitApp');
 if(exitLabel)exitLabel.textContent='Sair completamente do '+PRODUCT_SHORT_NAME;
 let currentTaskId = null;
 let currentTask = null;
-let runReviewBusy = false;
-let runReviewLookupVersion = 0;
-const runReviewAttempted = new Set();
 let pendingReplyRecovery=null;
 let workspace = null;
 let workspaceNavigationWrite=Promise.resolve();
 let activeRightPane='execution';
-let hostChatGPTPlan={connected:false,authorized:false,secureStorageAvailable:false,email:null};
 let providerBoundsRaf=0;
 const settingsDialog=document.getElementById('appSettingsDialog');
 const settingsTabs=[...document.querySelectorAll('[data-settings-tab]')];
@@ -46,10 +41,7 @@ function selectAppSettingsTab(section,{focus=false}={}) {
 function openAppSettings(section='general') {
   selectAppSettingsTab(section);
   if(!settingsDialog?.open)settingsDialog?.showModal();
-  if(section==='providers') {
-    if(window.ordaxHost?.hostMode===true)document.getElementById('chatgptPlanConnect')?.focus();
-    else document.getElementById('labSupervisorKeyInput')?.focus();
-  } else settingsTabs.find(tab=>tab.dataset.settingsTab===section)?.focus();
+  settingsTabs.find(tab=>tab.dataset.settingsTab===section)?.focus();
 }
 document.getElementById('openAppSettings')?.addEventListener('click',()=>openAppSettings('general'));
 document.getElementById('closeAppSettings')?.addEventListener('click',()=>settingsDialog?.close());
@@ -391,7 +383,6 @@ function setWorkspaceRoute(route) {
 // showSupervisorRole().
 const labRoleSelect=document.getElementById('labSupervisorRole');
 const labRoleDescription=document.getElementById('labRoleDescription');
-const labObjective=document.getElementById('labSupervisorObjective');
 labRoleSelect.replaceChildren(...SUPERVISOR_ROLES.map(role=>{
   const option=document.createElement('option');
   option.value=role.id; option.textContent=role.name;
@@ -404,7 +395,6 @@ function showSupervisorRole(task) {
   labRoleDescription.textContent=task
     ? role.description+' Papel salvo somente nesta tarefa; nenhuma IA iniciada.'
     : 'Selecione uma tarefa antes de escolher seu papel.';
-  labObjective.value=task?role.draft:'';
 }
 labRoleSelect.addEventListener('change',async()=>{
   const taskId=currentTaskId;
@@ -634,26 +624,15 @@ window.addEventListener('resize',queueWorkSurfaceBounds,{passive:true});
 new MutationObserver(queueWorkSurfaceBounds).observe(document.body,{attributes:true,attributeFilter:['class']});
 window.addEventListener('resize',queueProviderBounds,{passive:true});
 function applyHostProviderLimit() {
-  if (window.ordaxHost?.hostMode !== true) return false;
-  $('#providerText').textContent = hostChatGPTPlan.authorized?'ChatGPT Plan conectado':
-    hostChatGPTPlan.connected?'ChatGPT conectado; consentimento pendente':'ChatGPT não conectado ao OrdaX';
-  $('#providerDetail').textContent = hostChatGPTPlan.authorized
-    ?'O chat coordenador pode usar seu plano ChatGPT. As conversas de trabalho ainda não enviam mensagens por este Host.'
-    :hostChatGPTPlan.connected?'A conta está vinculada, mas o uso do plano não foi autorizado. Conecte novamente e aceite esse escopo.'
-    :'Abra Conectar IA e escolha Continuar com ChatGPT para autorizar o plano no navegador.';
-  const sessionNote=$('.session-persistence-note');
-  if(sessionNote)sessionNote.textContent='A conta ChatGPT Plan é conectada pelo fluxo oficial do navegador; isso não vincula conversas existentes do ChatGPT Web.';
-  const settingsStatus=document.getElementById('settingsChatGptStatus');
-  if(settingsStatus)settingsStatus.textContent=hostChatGPTPlan.authorized
-    ?'ChatGPT Plan conectado e autorizado para o coordenador Host.'
-    :hostChatGPTPlan.connected?'Conta conectada; autorização de uso do plano pendente.'
-    :'ChatGPT Plan não conectado ao OrdaX.';
-  const settingsWebLogin=document.getElementById('settingsOpenChatGptLogin');
-  if(settingsWebLogin)settingsWebLogin.hidden=true;
-  const observerRow=$('.observer-row');
-  if(observerRow)observerRow.classList.add('hidden');
-  $('#login').hidden = true;
-  $('#providerDot').className = hostChatGPTPlan.authorized?'dot ok':hostChatGPTPlan.connected?'dot':'dot error';
+  if(window.ordaxHost?.hostMode!==true)return false;
+  $('#providerText').textContent='GPT Web disponível no aplicativo desktop';
+  $('#providerDetail').textContent='O Host local apenas apresenta o projeto. Para conversar com o GPT, abra o Forge desktop com o mesmo perfil.';
+  const state=document.getElementById('settingsChatGptStatus');
+  if(state)state.textContent='GPT Web usa a sessão do Forge desktop; não existe login separado por API.';
+  const login=document.getElementById('settingsOpenChatGptLogin');
+  if(login)login.hidden=true;
+  const observer=$('.observer-row');if(observer)observer.classList.add('hidden');
+  $('#login').hidden=true;$('#providerDot').className='dot';
   return true;
 }
 function syncProviderLoginAction(status) {
@@ -1142,88 +1121,9 @@ function renderTaskNavigationStatus(task) {
   status.textContent=navigationStatus.message;
 }
 
-function syncRunReviewAction(task=currentTask) {
-  const binding=allTasks.find(item=>item.id===task?.id)?.lab_binding;
-  const projectId=orchestrationUi?.getProjectId();
-  const orchestratorId=orchestrationUi?.getOrchestratorId();
-  const runId=reviewCandidateRun({task,binding,projectId,orchestratorId});
-  const button=$('#reviewLatestRun'),panel=$('#runReviewActions'),notice=$('#runReviewState');
-  const request={lookup:++runReviewLookupVersion,epoch:navigationEpoch,
-    taskId:task?.id,runId,projectId,orchestratorId};
-  panel.classList.toggle('hidden',!runId);
-  button.dataset.runId=runId||'';
-  // Default closed until the current Run's scoped SQLite receipt is read.
-  button.disabled=true;
-  if(!runId){notice.textContent='';return;}
-  if(runReviewBusy||runReviewAttempted.has(runId)){
-    notice.textContent=runReviewButtonState({runId,busy:runReviewBusy,
-      attempted:runReviewAttempted.has(runId)}).message;
-    return;
-  }
-  notice.textContent='Conferindo recibos desta execução...';
-  void Promise.resolve().then(()=>orchestrationUi.getRunReviewStatus({taskId:request.taskId,runId}))
-    .then(receipt=>{
-      const active={lookup:runReviewLookupVersion,epoch:navigationEpoch,
-        taskId:currentTaskId,runId:button.dataset.runId,
-        projectId:orchestrationUi.getProjectId(),orchestratorId:orchestrationUi.getOrchestratorId()};
-      if(!runReviewLookupCurrent(request,active))return;
-      const state=runReviewButtonState({runId,receipt,
-        attempted:runReviewAttempted.has(runId),busy:runReviewBusy});
-      button.disabled=!state.enabled;
-      notice.textContent=state.message;
-    }).catch(()=>{
-      const active={lookup:runReviewLookupVersion,epoch:navigationEpoch,
-        taskId:currentTaskId,runId:button.dataset.runId,
-        projectId:orchestrationUi?.getProjectId(),orchestratorId:orchestrationUi?.getOrchestratorId()};
-      if(runReviewLookupCurrent(request,active)){
-        button.disabled=true;
-        notice.textContent='Não foi possível confirmar os recibos deste Run. Nenhum envio autorizado.';
-      }
-    });
+function syncRunReviewAction() {
+  // External-model review retired. Use verified Run and MCP receipts.
 }
-
-$('#reviewLatestRun').addEventListener('click',async()=>{
-  const taskId=currentTaskId,task=currentTask,epoch=navigationEpoch;
-  const runId=reviewCandidateRun({
-    task,binding:allTasks.find(item=>item.id===taskId)?.lab_binding,
-    projectId:orchestrationUi?.getProjectId(),orchestratorId:orchestrationUi?.getOrchestratorId()
-  });
-  const button=$('#reviewLatestRun'),notice=$('#runReviewState');
-  if(!runId||runId!==button.dataset.runId||runReviewBusy||
-     runReviewAttempted.has(runId)||button.disabled)return;
-  // A second click, a late response or an unknown receipt cannot replay Groq.
-  runReviewAttempted.add(runId);
-  runReviewBusy=true;button.disabled=true;
-  notice.textContent='Solicitando revisão deste Run ao Groq. Nenhuma mensagem será enviada ao GPT.';
-  try {
-    const receipt=await orchestrationUi.reviewGptRun({taskId,runId});
-    if(epoch!==navigationEpoch||currentTaskId!==taskId)return;
-    if(!confirmedRunReview(receipt,runId)) {
-      notice.textContent='Revisão não confirmada para este Run. Consulte os recibos antes de tentar novamente.';
-      return;
-    }
-    const decision=receipt.result.reviewDecision;
-    const labels={
-      verify_external_effect:'verificar efeitos externos',
-      blocked:'aguardar dependência',
-      candidate_complete:'possível conclusão, ainda sem prova externa',
-      request_correction:'solicitar correção',
-      continue_same_conversation:'continuar conversa',
-      new_conversation:'nova conversa',
-      new_work:'nova frente'
-    };
-    notice.textContent='Revisão do Run '+runId.slice(0,12)+' confirmada: '+
-      (labels[decision.decision]||'decisão consultiva')+
-      '. Efeitos externos não verificados. Nenhum envio GPT autorizado.';
-  } catch {
-    if(epoch===navigationEpoch&&currentTaskId===taskId)
-      notice.textContent='Não foi possível confirmar a revisão. Confira o histórico antes de outra solicitação; nada será reenviado.';
-  } finally {
-    runReviewBusy=false;
-    if(epoch===navigationEpoch&&currentTaskId===taskId)button.disabled=true;
-    else if(currentTaskId)syncRunReviewAction(currentTask);
-  }
-});
 
 function clearLinkedReplyRecovery() {
   pendingReplyRecovery=null;
@@ -1241,8 +1141,6 @@ $('#taskBackToForjador').addEventListener('click',()=>{
 });
 async function openTask(id) {
   clearLinkedReplyRecovery();
-  $('#runReviewActions').classList.add('hidden');
-  $('#runReviewState').textContent='';
   orchestrationUi?.hide();
   // A GPT activity is a view inside the SAME V2 Forge workbench, not an old
   // independent application shell. Preserve the three columns and right tabs.
@@ -1257,7 +1155,7 @@ async function openTask(id) {
   currentTaskId = id;
   currentTask = task;
   setWorkspaceRoute('gpt');
-  // Make the GPT work destination visible again after leaving the Groq
+  // Make the GPT work destination visible again after inspecting a Run
   // coordinator. Merely changing the central panel would keep a hidden pane.
   await selectRightPane('provider');
   showSupervisorRole(task);
@@ -1456,11 +1354,6 @@ async function refreshProvider() {
     const status = await window.ordax.providerStatus();
     lastProviderStatus=status;
     syncProviderLoginAction(status);
-    hostChatGPTPlan={connected:status.chatgpt_plan_connected===true,
-      authorized:status.chatgpt_plan_authorized===true,
-      secureStorageAvailable:status.chatgpt_plan_secure_storage===true,
-      email:status.chatgpt_plan_email||hostChatGPTPlan.email};
-    syncChatGPTPlanPanel();
     composeAvailability = providerComposeAvailability(status,{hostMode:window.ordaxHost?.hostMode===true});
     // Share the single observed GPT health with the Forjador chat. A ready
     // textarea is not an authenticated session or permission to submit.
@@ -1988,79 +1881,11 @@ await loadTasks();
 refreshProvider();
 setInterval(refreshProvider, 1500);
 
-function syncChatGPTPlanPanel() {
-  const panel=document.getElementById('chatgptPlanSettings');
-  if(window.ordaxHost?.hostMode!==true) {
-    if(panel)panel.hidden=true;
-    return;
-  }
-  if(panel)panel.hidden=false;
-  const state=document.getElementById('chatgptPlanState');
-  const connect=document.getElementById('chatgptPlanConnect');
-  const disconnect=document.getElementById('chatgptPlanDisconnect');
-  if(!state||!connect||!disconnect)return;
-  state.textContent=hostChatGPTPlan.authorized
-    ?`ChatGPT Plan autorizado${hostChatGPTPlan.email?` para ${hostChatGPTPlan.email}`:''}. A autorização fica no cofre seguro do Windows e é retomada ao reabrir enquanto continuar válida.`
-    :hostChatGPTPlan.connected
-      ?'Conta conectada, mas o uso do plano ChatGPT não foi autorizado. Reconecte e conceda a permissão de inferência.'
-      :hostChatGPTPlan.secureStorageAvailable===false
-        ?'O cofre seguro de credenciais deste dispositivo não está disponível. O app não salvará tokens em texto puro.'
-        :'Nenhuma conta ChatGPT conectada.';
-  connect.textContent=hostChatGPTPlan.connected?'Reconectar / autorizar ChatGPT':'Continuar com ChatGPT';
-  connect.disabled=hostChatGPTPlan.secureStorageAvailable===false;
-  disconnect.hidden=!hostChatGPTPlan.connected;
-}
-document.getElementById('chatgptPlanConnect').addEventListener('click',async event=>{
-  const button=event.currentTarget;
-  button.disabled=true;
-  document.getElementById('chatgptPlanState').textContent='Abrindo o login oficial do ChatGPT nesta aba…';
-  try {await window.ordax.chatgptPlanLogin();}
-  catch(error) {
-    document.getElementById('chatgptPlanState').textContent=error?.code==='chatgpt_secure_storage_unavailable'
-      ?'O cofre seguro do Windows não está disponível; o login foi bloqueado para proteger os tokens.'
-      :'Não foi possível iniciar o login oficial. Confira se o Host local ainda está ativo e tente novamente.';
-    button.disabled=false;
-  }
-});
-document.getElementById('chatgptPlanDisconnect').addEventListener('click',async event=>{
-  if(!window.confirm('Desconectar a conta ChatGPT deste perfil do OrdaX?'))return;
-  const button=event.currentTarget;button.disabled=true;
-  try {
-    await window.ordax.chatgptPlanDisconnect();
-    hostChatGPTPlan={connected:false,authorized:false,secureStorageAvailable:true,email:null};
-    syncChatGPTPlanPanel();applyHostProviderLimit();
-    await orchestrationUi?.refreshStatus?.();
-  } catch {document.getElementById('chatgptPlanState').textContent='Não foi possível remover os tokens do cofre seguro.';}
-  finally {button.disabled=false;}
-});
-const chatgptCallback=new URLSearchParams(location.search).get('chatgpt');
-if(chatgptCallback) {
-  const callbackMessages={connected:'ChatGPT Plan autorizado. Ative o chat do coordenador para começar a conversar.',
-    consent:'Conta conectada; a permissão de uso do plano ChatGPT ainda precisa ser concedida.',
-    denied:'O login foi cancelado; nenhuma credencial foi substituída.',
-    error:'O login não foi concluído. Verifique a conexão e tente novamente.'};
-  document.getElementById('orchestrationNotice').textContent=callbackMessages[chatgptCallback]||'';
-  history.replaceState(null,'',location.pathname+location.hash);
-}
-
-// LAB-ONLY supervisor UX. Browser content never supplies execution authority.
+// Historical supervisor recovery is read-only in GPT-only mode. Browser content never supplies execution authority.
 let labProposal = null;
-const labPanel = document.getElementById("labSupervisorPanel");
-const labState = document.getElementById("labSupervisorState");
-const labMessage = document.getElementById("labSupervisorProposal");
-const labPlanButton = document.getElementById("labSupervisorPlan");
-const labRecoverButton = document.getElementById("labSupervisorRecover");
-const labInspectButton = document.getElementById("labSupervisorInspect");
-const labApproveButton = document.getElementById("labSupervisorApprove");
-const labSendButton = document.getElementById("labSupervisorSend");
-
-const labKeyForm=document.getElementById('labSupervisorKeyForm');
-const labKeyInput=document.getElementById('labSupervisorKeyInput');
-const labKeySave=document.getElementById('labSupervisorKeySave');
-const labKeyTest=document.getElementById('labSupervisorKeyTest');
-const labKeyRemove=document.getElementById('labSupervisorKeyRemove');
-const labKeyState=document.getElementById('labSupervisorKeyState');
-let labStatus=await window.ordax.supervisorStatus().catch(()=>({enabled:false,configured:false,secureStorageAvailable:false}));
+const labMessage=document.getElementById('labSupervisorProposal');
+const labRecoverButton=document.getElementById('labSupervisorRecover');
+const labInspectButton=document.getElementById('labSupervisorInspect');
 
 const backgroundPanel=document.getElementById('backgroundModePanel');
 const backgroundToggle=document.getElementById('backgroundModeToggle');
@@ -2102,105 +1927,14 @@ document.getElementById('backgroundExitApp')?.addEventListener('click',async()=>
   catch {button.disabled=false;backgroundMessage.textContent='Saída não confirmada: o processo permanece ativo.';}
 });
 
-const canConfigureLabKey=()=>labStatus.secureStorageAvailable===true;
-function showSupervisorStatus() {
-  document.getElementById('brandMode').textContent=labStatus.environment==='node_host'
-    ? PRODUCT_SHORT_NAME+' • Host Node de desenvolvimento'
-    : PRODUCT_SHORT_NAME+' • aplicativo desktop';
-  document.getElementById('labVersion').textContent=labStatus.environment==='node_host'
-    ? PRODUCT_NAME+' • Host Node (desenvolvimento)'
-    : labStatus.version?PRODUCT_NAME+' v'+labStatus.version:'Versão do aplicativo indisponível';
-  labState.textContent=labStatus.enabled
-    ? 'Supervisor habilitado no ambiente Dev: cada mensagem proposta exige aprovação.'
-    : 'Supervisor desativado. A configuração da chave não inicia comandos nem faz chamadas à API.';
-  labPlanButton.disabled=!labStatus.enabled;
-  const available=canConfigureLabKey();
-  labKeySave.disabled=!available;
-  labKeySave.textContent='Salvar chave no cofre do Windows';
-  labKeyRemove.disabled=!labStatus.keySaved;
-  labKeyRemove.textContent='Remover chave';
-  labKeyTest.disabled=!labStatus.keySaved;
-  labKeyTest.textContent='Testar conexão';
-  labKeyState.textContent=!available
-    ? 'Cofre seguro do Windows indisponível: a chave não será armazenada.'
-    : labStatus.keySaved
-      ? 'Chave Groq salva no cofre seguro do Windows e recuperada ao reabrir o app; conexão ainda não testada.'
-      : labStatus.credentialSource==='environment'
-        ? 'Chave definida pelo ambiente; não é exibida nem persistida pelo app. Nenhuma conexão foi testada.'
-        : 'Nenhuma chave cadastrada. Salvar não ativa o supervisor.';
-}
-showSupervisorStatus();
-async function refreshOrchestrationProviderStatus(){
-  try{await orchestrationUi?.refreshStatus?.();}
-  catch{
-    const connection=document.getElementById('orchestrationConnection');
-    if(connection)connection.textContent='A chave foi alterada, mas o estado do chat por API não atualizou. Recarregue a página para sincronizar.';
-  }
-}
-labKeyForm.addEventListener('submit',async event=>{
-  event.preventDefault();
-  labKeySave.disabled=true;
-  try{
-    await window.ordax.supervisorSaveKey(labKeyInput.value.trim());
-    labKeyInput.value='';
-    try{
-      labStatus=await window.ordax.supervisorStatus();
-      showSupervisorStatus();
-    }catch{
-      labKeyState.textContent='Chave salva, mas o estado local não atualizou. Recarregue a página para sincronizar.';
-    }
-    await refreshOrchestrationProviderStatus();
-  }catch(error){
-    labKeyInput.value='';
-    labKeyState.textContent=error?.message?.includes('supervisor_key_invalid_format')
-      ? 'Formato inválido. Use uma chave Groq iniciada por gsk_.'
-      : 'O cofre seguro do Windows não aceitou a chave; ela não foi salva.';
-  }finally{labKeySave.disabled=!canConfigureLabKey();}
-});
-labKeyTest.addEventListener('click',async()=>{
-  if(labKeyTest.disabled)return;
-  labKeyTest.disabled=true;
-  labKeyTest.textContent='Testando…';
-  labKeyState.textContent='Validando a chave com a API Groq. Nenhum prompt ou dado do projeto será enviado.';
-  try{
-    const result=await window.ordax.supervisorTestKey();
-    const messages={
-      connected:'Conexão Groq confirmada. Nenhuma geração ou dado do projeto foi enviado.',
-      api_key_missing:'Nenhuma chave Groq está disponível para testar.',
-      invalid_api_key:'A Groq recusou a chave salva. Confira a chave e salve novamente.',
-      rate_limited:'A Groq limitou temporariamente a validação. Tente mais tarde.',
-      request_timeout:'A validação da Groq expirou. Verifique a conexão e tente novamente.',
-      network_unavailable:'Não foi possível alcançar a API Groq. Verifique a conexão.',
-      provider_unavailable:'A API Groq não confirmou a chave agora. Tente novamente mais tarde.'
-    };
-    labKeyState.textContent=messages[result?.code]||'A Groq não confirmou a chave. Nenhum prompt foi enviado.';
-  }catch{labKeyState.textContent='A validação falhou antes de confirmar a chave. Nenhum prompt foi enviado.';}
-  finally{labKeyTest.textContent='Testar conexão';labKeyTest.disabled=!labStatus.keySaved;}
-});
-labKeyRemove.addEventListener('click',async()=>{
-  labKeyRemove.disabled=true;
-  labKeyInput.value='';
-  try{
-    await window.ordax.supervisorRemoveKey();
-    try{
-      labStatus=await window.ordax.supervisorStatus();
-      showSupervisorStatus();
-    }catch{
-      labKeyState.textContent='Remoção concluída, mas o estado local não atualizou. Recarregue a página para sincronizar.';
-    }
-    await refreshOrchestrationProviderStatus();
-  }catch{labKeyState.textContent='Não foi possível remover a chave armazenada.';}
-  finally{labKeyRemove.disabled=!labStatus.keySaved;}
-});
-
-labRecoverButton.disabled = false; // Durable read-only recovery never requires Groq.
+document.getElementById('brandMode').textContent=PRODUCT_SHORT_NAME+' • GPT Web + Forge MCP';
+document.getElementById('labVersion').textContent=PRODUCT_NAME+' • GPT único';
+labRecoverButton.disabled=false;
 labRecoverButton.addEventListener("click", async () => {
   if (!currentTaskId) {labMessage.textContent="Selecione uma tarefa primeiro.";return;}
   const taskId=currentTaskId;
   labRecoverButton.disabled=true;
   labProposal=null;
-  labApproveButton.hidden=true;
-  labSendButton.hidden=true;
   labInspectButton.hidden=true;
   try {
     const plans=await window.ordax.supervisorRecoverable({taskId});
@@ -2209,8 +1943,6 @@ labRecoverButton.addEventListener("click", async () => {
     const plan=plans[0];
     labProposal=plan;
     labMessage.textContent=["Plano recuperado: "+plan.status,plan.decision?.reason||"",plan.decision?.content||"",plan.requiresReconciliation?"Entrega incerta: verificar manualmente. Nunca reenviar automaticamente.":""].filter(Boolean).join("\n\n");
-    labApproveButton.hidden=!(plan.status==="pending_approval" && plan.approvalStatus==="pending" && plan.approvalId);
-    labSendButton.hidden=!(plan.status==="approved" && plan.approvalStatus==="approved");
     labInspectButton.hidden=!plan.requiresReconciliation || !["dispatching","indeterminate"].includes(plan.status);
   } catch(error){labMessage.textContent=error?.message||"Falha ao recuperar plano";}
   finally{labRecoverButton.disabled=false;}
@@ -2246,57 +1978,17 @@ labInspectButton.addEventListener("click", async () => {
     labMessage.textContent=error?.message||"Inspeção não concluída.";
   } finally { labInspectButton.disabled=false; }
 });
-labPlanButton.addEventListener("click", async () => {
-  const taskId = currentTaskId;
-  const objective = document.getElementById("labSupervisorObjective").value.trim();
-  if (!taskId || !objective) {labMessage.textContent="Selecione uma tarefa e informe um objetivo.";return;}
-  labPlanButton.disabled = true;
-  labInspectButton.hidden = true;
-  labApproveButton.hidden = true;
-  labSendButton.hidden = true;
-  labProposal = null;
-  labMessage.textContent = "Consultando supervisor...";
-  try {
-    const plan = await window.ordax.supervisorPlan({ taskId,requestId:crypto.randomUUID(),objective });
-    labProposal = {...plan,taskId};
-    const decision = plan.decision;
-    labMessage.textContent = decision
-      ? [decision.reason,decision.content || "", "Estado: "+plan.status].filter(Boolean).join("\n\n")
-      : "Plano pendente de reconciliação; não reenviar automaticamente."; 
-    labApproveButton.hidden = !(plan.status==="pending_approval" && plan.approvalId);
-  } catch (error) {labMessage.textContent = error?.message || "Falha de planejamento";}
-  finally {labPlanButton.disabled = !labStatus.enabled;}
-});
-labApproveButton.addEventListener("click", async () => {
-  if (!labProposal || currentTaskId !== labProposal.taskId) {labMessage.textContent="Tarefa mudou; reprograme o passo.";return;}
-  labApproveButton.disabled = true;
-  try {
-    const result=await window.ordax.supervisorApprove({taskId:labProposal.taskId,actionId:labProposal.actionId,approvalId:labProposal.approvalId});
-    if(result.approved){labApproveButton.hidden=true;labSendButton.hidden=false;}
-  } catch(error){labMessage.textContent = error?.message || "Falha de aprovação";}
-  finally{labApproveButton.disabled=false;}
-});
-labSendButton.addEventListener("click",async()=>{
-  if (!labProposal || currentTaskId !== labProposal.taskId) {labMessage.textContent="Tarefa mudou; envio bloqueado.";return;}
-  labSendButton.disabled = true;
-  labSendButton.hidden = true;
-  try {
-    const result=await window.ordax.supervisorDispatch({taskId:labProposal.taskId,actionId:labProposal.actionId});
-    labMessage.textContent = "Estado do envio: "+result.status+(result.status==="indeterminate" ? " — não reenviar automaticamente.":"");
-    if(result.status==="succeeded") {await openTask(labProposal.taskId);await loadTasks();}
-  } catch(error){labMessage.textContent = error?.message || "Falha de envio";}
-  finally {labProposal=null;labSendButton.disabled=false;}
-});
-
-// The Forjador owns Groq coordination. This checks only the current GPT
+// GPT-only: new work is prepared in the Forjador, not a second supervisor.
+// The existing recovery view above remains read-only.
+// The Forjador owns GPT coordination. This checks only the current GPT
 // composer, never installs, attaches or silently invokes a ChatGPT plugin.
 const mcpCheckButtons=['forjadorMcpCheck','settingsMcpCheck']
   .map(id=>document.getElementById(id)).filter(Boolean);
 const mcpStatusLabels=['forjadorMcpStatus','settingsMcpState']
   .map(id=>document.getElementById(id)).filter(Boolean);
 function mcpStatusText(state,app='forge-mcp'){
-  const name=app==='ordax-mcp'?'OrdaX MCP':'Forge MCP';
-  const mention=app==='ordax-mcp'?'@ordax-mcp':'@forge-mcp';
+  const name='Forge MCP';
+  const mention='@forge-mcp';
   const messages={
     selection_visible:name+' marcado no compositor do GPT. Ainda não há recibo de execução; a seleção precisa ser verificada a cada mensagem.',
     mention_requested:'A mensagem incluiu '+mention+', mas texto não confirma seleção, autorização nem execução de ferramentas.',
@@ -2307,7 +1999,7 @@ function mcpStatusText(state,app='forge-mcp'){
   return messages[state]||messages.unavailable;
 }
 function displayMcpSelectionState(rawState,app='forge-mcp'){
-  const state=['selection_visible','mention_requested','name_visible_unverified','not_observed','unavailable']
+  const state=app==='forge-mcp'&&['selection_visible','mention_requested','name_visible_unverified','not_observed','unavailable']
     .includes(rawState)?rawState:'unavailable';
   for(const label of mcpStatusLabels){
     label.textContent=mcpStatusText(state,app);

@@ -2,7 +2,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('ordax', {
   coordinatorChatStatus: () => ipcRenderer.invoke('ordax:orchestrator:chat-status'),
-  forjadorGroqPrompt: projectId => ipcRenderer.invoke('ordax:forjador:groq-prompt',projectId),
   orchestratorInvoke: (operation,input={}) => ipcRenderer.invoke('ordax:orchestrator:invoke',{operation,input}),
   orchestratorMcp: message => ipcRenderer.invoke('ordax:orchestrator:mcp',message),
   forgeLocalMcpStatus: () => ipcRenderer.invoke('ordax:forge:local-mcp:status'),
@@ -38,9 +37,6 @@ contextBridge.exposeInMainWorld('ordax', {
   backgroundStatus: () => ipcRenderer.invoke('ordax:background:status'),
   setBackgroundMode: enabled => ipcRenderer.invoke('ordax:background:set',enabled),
   quitApp: () => ipcRenderer.invoke('ordax:app:quit'),
-  supervisorSaveKey: key => ipcRenderer.invoke('ordax:supervisor:key:save',key),
-  supervisorTestKey: () => ipcRenderer.invoke('ordax:supervisor:key:test'),
-  supervisorRemoveKey: () => ipcRenderer.invoke('ordax:supervisor:key:remove'),
   setTaskSupervisorRole: (taskId,role) => ipcRenderer.invoke('ordax:tasks:supervisor-role:set',{taskId,role}),
   supervisorPlan: payload => ipcRenderer.invoke("ordax:supervisor:plan", payload),
   supervisorRecoverable: payload => ipcRenderer.invoke("ordax:supervisor:recoverable", payload),

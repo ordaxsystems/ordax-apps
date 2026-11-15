@@ -105,7 +105,7 @@ test('App has visible login warning, optional local draft, and disabled send ini
   assert.match(ui,/dataset\.sendReady = allowed \? 'true' : 'false'/);
   assert.match(ui,/\$\('#composerLogin'\)\.addEventListener\('click', \(\) => \$\('#login'\)\.click\(\)\)/);
   assert.match(ui,/syncComposerAvailability\(\); \/\/ no send until session observed/);
-  assert.match(ui,/\$\('#login'\)\.hidden = true/);
+  assert.match(ui,/\$\('#login'\)\.hidden=true/);
   assert.match(ui,/hostMode \|\| composeAvailability\.reason==='ready'/);
   assert.match(ui,/providerComposeAvailability\(status,\{hostMode:window\.ordaxHost\?\.hostMode===true\}\)/);
 });

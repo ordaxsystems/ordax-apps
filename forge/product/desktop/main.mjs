@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, protocol, net, dialog, safeStorage, Tray, Menu, shell } from 'electron';
-import path from 'node:path';import {existsSync} from 'node:fs';import { SupervisorCoordinator, authorizeLocalSupervisorTask, listLocalSupervisorRecoverable } from '../supervisor/coordinator.mjs';
+import path from 'node:path';import {existsSync} from 'node:fs';import {listLocalSupervisorRecoverable} from '../supervisor/coordinator.mjs';
 import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile.mjs';
 import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
 import { bindObservedSubmittedConversation } from '../src/provider-submitted-conversation.mjs';
@@ -9,16 +9,12 @@ import { assertTaskHasNoUncertainTransport } from '../src/provider-uncertain-run
 import { assertProviderSendReadiness, normalizeProviderFailure } from '../src/provider-observation-policy.mjs';
 import { assertContinuationContextReady } from '../src/continuation-context.mjs';
 import { safeTaskNavigationReason } from '../src/task-navigation-status.mjs';
-import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
-import { testGroqApiKey } from '../src/groq-key-health.mjs';
-import { createLocalGroqCredential } from '../src/local-supervisor-credential.mjs';
 import { createOrchestratorKernel } from '../src/orchestrator-kernel.mjs';
 import {withForjadorMcpMention,mentionWasRequested,providerMcpMention} from '../src/provider-mcp-mention.mjs';
 import {requiresMcpForProjectPrompt,requireSelectedMcpForPrompt} from '../src/provider-mcp-selection.mjs';
 import { createProviderAwareTaskOpener, createTaskUiHandlers } from '../src/task-ui-handlers.mjs';
 import { ORCHESTRATOR_TOOLS } from '../src/forge-contract.mjs';
 import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,resolveOrchestratorRuntimeTransport,openOrchestratorRuntimeStreams } from '../src/orchestrator-runtime-bridge.mjs';
-import { createGroqCoordinatorConversation } from '../supervisor/groq-conversation.mjs';
 import { observePostCommitNavigation } from '../src/provider-post-commit-navigation.mjs';
 
 import fs from 'node:fs';
@@ -83,7 +79,6 @@ const {userRoot,staged:stagedProfile} = resolveLabUserRoot({
 fs.mkdirSync(userRoot,{recursive:true});
 hostStartupLog('profile_ready');
 app.setPath('userData', userRoot);
-const groqCredential=createLocalGroqCredential({userRoot,safeStorage});
 const forgeProductSession=createForgeProductSession({
   userRoot,safeStorage,openExternal:url=>shell.openExternal(url)
 });
@@ -384,7 +379,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   assertTaskHasNoUncertainTransport(store,taskId);
   const task = store.getTaskExecutionSnapshot(taskId);
   if (!task) throw new Error('task_not_found');
-  const mcpApp=allowCoordinatorTask?'forge-mcp':'ordax-mcp';
+  const mcpApp='forge-mcp';
 
   const conversationPlan = planProviderConversation(task, {
     forceNew:newSession,nextPromptBytes:Buffer.byteLength(
@@ -423,7 +418,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       byteLength:handoffSnapshot.manifest.byteLength
     });
   }
-  // The coordinator uses Forge MCP; delegated Works use OrdaX MCP.
+  // All project conversations use Forge MCP; no second MCP provider is selected.
   // Mentioning an app does not grant access or prove a tool was executed.
   // A fresh Task chat inherits approved editorial context of its project.
   // Established Task segments keep their existing checkpoint/handoff path.
@@ -471,7 +466,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
     layoutViews();
     throw normalizeProviderFailure(error,{stage:'health'});
   }
-  // A normal request to BUILD a site is MCP work even without @ordax-mcp.
+  // A normal request to BUILD a site needs Forge MCP even without a mention.
   // Do not persist a user message or Run when no connected app was selected.
   // The worker observes again immediately before submit to close the race.
   if(mcpWorkRequired){
@@ -1225,19 +1220,9 @@ registerUiHandler('ordax:provider:diagnostic', async event => {
   // Read-only provider UI inspection; no API key, chat submission or disk write.
   return worker.inspectDiagnosticReadOnly();
 });
-registerUiHandler('ordax:forjador:groq-prompt', (event,projectId) => {
-  requireTrustedSupervisorRenderer(event);
-  if(typeof projectId!=='string'||!projectId)return null;
-  // Both are local, read-only, last request only; no keys, storage or replay.
-  const groq=lastGroqModelRequest?.projectId===projectId?lastGroqModelRequest:null;
-  const gpt=[...lastGptDispatchByTask.values()]
-    .filter(entry=>entry.projectId===projectId)
-    .sort((a,b)=>String(b.preparedAt).localeCompare(String(a.preparedAt)))[0]||null;
-  return groq||gpt?{groq,gpt}:null;
-});
 registerUiHandler('ordax:provider:mcp-selection', async (event,app='forge-mcp') => {
   requireTrustedSupervisorRenderer(event);
-  if(!['forge-mcp','ordax-mcp'].includes(app))throw Error('provider_mcp_app_invalid');
+  if(app!=='forge-mcp')throw Error('provider_mcp_app_invalid');
   // UI markers are diagnostic, never proof of a selected tool invocation.
   if(hostBrowserMode)return {state:'unavailable',selectionObserved:false,invocationVerified:false,app};
   return {...await worker.inspectMcpSelectionReadOnly({app}),app};
@@ -1295,35 +1280,10 @@ registerUiHandler('ordax:tasks:send', async (event, { taskId, content, newSessio
 });
 
 
-// LAB ONLY. No automatic model or chat execution while disabled.
-let labSupervisor = null;
-// The UI may prepare a key, but only an explicit dev enable flag permits a
-// model call. Stored secrets never travel back through IPC.
-const currentGroqKey=()=>groqCredential.read()||process.env.GROQ_API_KEY||null;
-// Readable protected Groq key is the sole advisory availability source.
-// Background project continuation and GPT sends retain separate authorizations.
-const coordinatorChatEnabled=()=>Boolean(currentGroqKey());
-// Normal Forjador chat is GPT-first. Groq remains an optional analytical port;
-// an available Web worker is not proof of user login or a selected MCP app.
+// GPT Web is the sole execution model. The supervisor's legacy action
+// ledger remains readable for reconciliation, but no external AI can plan.
 const coordinatorChatStatus=()=>({enabled:Boolean(worker),configured:Boolean(worker),
-  groqConfigured:Boolean(currentGroqKey()),provider:'chatgpt_web',executionSurface:'electron'});
-function requireLabSupervisor() {
-  if (process.env.ORDAX_LAB_SUPERVISOR_ENABLE !== '1') throw new Error('supervisor_disabled');
-  const apiKey=currentGroqKey();
-  if (!apiKey) throw new Error('supervisor_api_key_missing');
-  if (!labSupervisor) {
-    labSupervisor = new SupervisorCoordinator({
-      store, enabled:true, environment:"internal", actorId:"lab-owner",
-      planner:createGroqSupervisorPlanner({ apiKey }),
-      authorizeTask: scope => authorizeLocalSupervisorTask({ store, ...scope }),
-      chat:{ send:async ({ taskId,content }) => {
-        const reply = await enqueueExecution(taskId,runWorker => runTask(taskId,content,{newSession:false},runWorker));
-        return chatReceiptFromRunTask(reply);
-      } }
-    });
-  }
-  return labSupervisor;
-}
+  provider:'chatgpt_web',executionSurface:'electron'});
 
 // Only the Lab's trusted local UI or authenticated host session can invoke supervisor IPC.
 function requireTrustedSupervisorRenderer(event) {
@@ -1349,9 +1309,7 @@ async function confirmInActiveUi({title,message,detail,approveLabel='Confirmar',
 // One App service for native UI and the MCP adapter. The fixed identity is
 // local-only; it is NOT exported as authentication for a remote MCP endpoint.
 let localOrchestratorContext=null;
-// Latest exact Groq model messages kept only in memory for the owner DEV
-// inspector. No API keys, authorization headers, disk logs or remote MCP.
-let lastGroqModelRequest=null;
+// Store last GPT dispatch metadata for local recovery without external AI.
 const lastGptDispatchByTask=new Map();
 let runtimeOrchestratorBridge=null;
 let closeRuntimeOrchestratorPipe=null;
@@ -1359,7 +1317,7 @@ const orchestratorKernel=createOrchestratorKernel({
   store,version:app.getVersion(),fileBroker:forgeProjectFiles,
   continuousExecutionByDefault:forgeDevAutonomyEnabled,
   // Reuse the exact preview's path, symlink, structure and SHA-256 verifier.
-  // Never return HTML bytes to Groq or grant arbitrary file reads.
+  // Never expose HTML bytes to remote planning or arbitrary file reads.
   verifyLocalArtifact:({taskId,assetId})=>{
     const proof=readVerifiedHtmlPreview({taskId,assetId});
     return {verified:true,sha256:proof.sha256,bytes:proof.bytes,
@@ -1443,9 +1401,7 @@ const orchestratorKernel=createOrchestratorKernel({
       }
       return chatReceiptFromRunTask(execution);
     }},
-  coordinator:createGroqCoordinatorConversation({store,getApiKey:currentGroqKey,
-    isEnabled:coordinatorChatEnabled,
-    onModelRequest:payload=>{lastGroqModelRequest=payload;}})
+  coordinator:null
 });
 localOrchestratorContext=orchestratorKernel.context;
 const {service:orchestratorService,mcp:localOrchestratorMcp}=orchestratorKernel;
@@ -1876,45 +1832,13 @@ registerUiHandler('ordax:background:set',async(event,value)=>{
   if(!enabled&&backgroundTray){backgroundTray.destroy();backgroundTray=null;}
   return backgroundState();
 });
-registerUiHandler('ordax:supervisor:status', (event) => {
+registerUiHandler('ordax:supervisor:status',event=>{
   requireTrustedSupervisorRenderer(event);
-  return ({
-  enabled:process.env.ORDAX_LAB_SUPERVISOR_ENABLE === '1' && Boolean(currentGroqKey()),
-  configured:Boolean(currentGroqKey()),
-  keySaved:groqCredential.hasSaved(),
-  secureStorageAvailable:groqCredential.isAvailable(),
-  environment:"internal", requires_owner_approval:true, version:app.getVersion()
-  });
-});
-// Credential operations are local-only: no validation network request and no
-// automatic activation. A key never appears in any status response or event.
-registerUiHandler('ordax:supervisor:key:save',(event,key)=>{
-  requireTrustedSupervisorRenderer(event);
-  const result=groqCredential.save(key);
-  labSupervisor=null;
-  notifyOrchestratorChanged();
-  return result;
-});
-registerUiHandler('ordax:supervisor:key:test',async(event)=>{
-  requireTrustedSupervisorRenderer(event);
-  return testGroqApiKey({apiKey:currentGroqKey()});
-});
-registerUiHandler('ordax:supervisor:key:remove',(event)=>{
-  requireTrustedSupervisorRenderer(event);
-  const result=groqCredential.remove();
-  labSupervisor=null;
-  notifyOrchestratorChanged();
-  return result;
+  return {enabled:false,configured:false,provider:'chatgpt_web',environment:'internal',version:app.getVersion()};
 });
 registerUiHandler('ordax:tasks:supervisor-role:set',(event,payload)=>{
   requireTrustedSupervisorRenderer(event);
   return store.setTaskSupervisorRole(String(payload?.taskId||''),payload?.role);
-});
-registerUiHandler('ordax:supervisor:plan', (event,payload) => {
-  requireTrustedSupervisorRenderer(event);
-  return requireLabSupervisor().plan({
-  taskId:payload?.taskId,requestId:payload?.requestId,objective:payload?.objective
-  });
 });
 registerUiHandler('ordax:supervisor:recoverable', (event,payload) => {
   requireTrustedSupervisorRenderer(event);
@@ -1928,32 +1852,6 @@ registerUiHandler('ordax:supervisor:inspect', async (event,payload) => {
   return inspectSupervisorChatReadOnly({
     store,worker,taskId:payload?.taskId,actionId:payload?.actionId
   });
-});
-registerUiHandler('ordax:supervisor:approve', async (event,payload) => {
-  requireTrustedSupervisorRenderer(event);
-  const controller = requireLabSupervisor();
-  // The proposed text belongs to a potentially different workspace.
-  // Authorize before reading it or showing it in an owner-approval dialog.
-  controller.authorize(payload?.taskId, 'approve');
-  const row = store.db.prepare(
-    'SELECT result,status FROM action_ledger WHERE id=? AND task_id=? AND action_type=?'
-  ).get(payload?.actionId,payload?.taskId,'supervisor.plan');
-  if (row?.status !== 'pending_approval') throw new Error('approval_not_pending');
-  const decision = JSON.parse(row.result).decision;
-  if (decision?.type !== 'send_message') throw new Error('not_a_message_plan');
-  const approved=await confirmInActiveUi({
-    title:'OrdaX Lab — aprovação humana',message:'Autoriza enviar esta mensagem ao ChatGPT?',
-    detail:decision.content,approveLabel:'Aprovar mensagem'
-  });
-  if (!approved) return {approved:false};
-  return { approved:true, ...(controller.approve({
-    taskId:payload?.taskId,actionId:payload?.actionId,
-    approvalId:payload?.approvalId,explicitOwnerApproval:true
-  })) };
-});
-registerUiHandler('ordax:supervisor:dispatch', (event,payload) => {
-  requireTrustedSupervisorRenderer(event);
-  return requireLabSupervisor().dispatch({taskId:payload?.taskId,actionId:payload?.actionId});
 });
 let continuationTimer=null;
 let providerRecoveryInFlight=false;

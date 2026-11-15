@@ -75,24 +75,21 @@ test('coordinator uses local scope on every operation and leaves the model disab
   assert.equal(store.db.prepare("SELECT COUNT(*) AS n FROM action_ledger WHERE task_id=?").get(task.id).n,0);
 });
 
-test('supervisor IPC entry points must enforce trusted local renderer identity',()=>{
+test('only legacy supervisor status and read-only recovery IPC remain',()=>{
   const main=fs.readFileSync(path.resolve(current,'../desktop/main.mjs'),'utf8');
-  const methods=['status','plan','recoverable','approve','dispatch'];
   assert.match(main,/event\.senderFrame !== win\.webContents\.mainFrame/);
   assert.match(main,/pathToFileURL\(path\.join\(here, 'ui\.html'\)\)\.href/);
-  for(const method of methods) {
+  for(const method of ['status','recoverable','inspect']) {
     const snippet=main.split("registerUiHandler('ordax:supervisor:"+method+"'")[1];
     assert.ok(snippet,method+' missing');
     assert.match(snippet.slice(0,190),/requireTrustedSupervisorRenderer\(event\)/,method);
   }
+  for(const method of ['plan','approve','dispatch','key:save','key:test','key:remove'])
+    assert.equal(main.includes("registerUiHandler('ordax:supervisor:"+method+"'"),false);
 });
 
-test('approval IPC denies foreign task before reading or displaying proposed content',()=>{
+test('old supervisor approval is not an exposed action',()=>{
   const main=fs.readFileSync(path.resolve(current,'../desktop/main.mjs'),'utf8');
-  const approval=main.split("registerUiHandler('ordax:supervisor:approve'")[1]
-    .split("registerUiHandler('ordax:supervisor:dispatch'")[0];
-  const permission=approval.indexOf("controller.authorize(payload?.taskId, 'approve')");
-  const read=approval.indexOf("SELECT result,status FROM action_ledger");
-  const show=approval.indexOf("confirmInActiveUi({");
-  assert.ok(permission>=0 && read>permission && show>read);
+  assert.doesNotMatch(main,/registerUiHandler\('ordax:supervisor:approve'/);
+  assert.doesNotMatch(main,/registerUiHandler\('ordax:supervisor:dispatch'/);
 });

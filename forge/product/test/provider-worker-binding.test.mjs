@@ -41,7 +41,6 @@ test('uncertain delivery recovery, reply navigation and progress remain scoped t
 test('every existing sender passes the exact scheduler-selected worker into runTask',()=>{
   assert.match(source,/return providerScheduler\.enqueue\(String\(taskId\),operation\)/);
   assert.match(source,/enqueueExecution\(String\(taskId\),runWorker => runTask\(/);
-  assert.match(source,/enqueueExecution\(taskId,runWorker => runTask\(/);
   assert.match(source,/enqueueExecution\(taskId,runWorker=>\{/);
   assert.doesNotMatch(source,/provider_lane_identity_mismatch/);
   assert.doesNotMatch(source,/executionTail/);

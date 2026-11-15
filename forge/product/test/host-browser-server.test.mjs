@@ -132,25 +132,20 @@ test('a live browser event stream keeps its session during capacity recovery',as
   }finally{await reader?.cancel().catch(()=>{});await server.close();}
 });
 
-test('ChatGPT callback is bound to the host cookie and redirects without exposing its authorization code',async()=>{
-  let received=null;
-  const server=createHostBrowserServer({productRoot,assetsRoot:path.join(productRoot,'data','assets'),invoke:async()=>null,
-    onChatGPTCallback:async(value)=>{received=value;return {connected:true,planUsageAuthorized:true};}});
+test('retired model-provider callback returns 410 without consuming authorization codes',async()=>{
+  const server=createHostBrowserServer({productRoot,assetsRoot:path.join(productRoot,'data','assets'),invoke:async()=>null});
   const {origin}=await server.listen();
   try {
-    const started=await fetch(`${origin}/api/session`,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'});
+    const started=await fetch(origin+'/api/session',{method:'POST',
+      headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'});
     const cookie=started.headers.get('set-cookie').split(';',1)[0];
-    const redirectUri=server.getAuthorizationRedirectUri();
-    assert.equal(redirectUri,`${origin}/auth/callback`);
-    const callback=new URL(redirectUri);
-    callback.searchParams.set('state','bound-state');
-    callback.searchParams.set('code','single-use-secret-code');
+    const callback=origin+'/auth/callback?code=single-use-secret-code&state=old';
     const response=await fetch(callback,{headers:{Cookie:cookie},redirect:'manual'});
-    assert.equal(response.status,303);
-    assert.equal(response.headers.get('location'),'/?chatgpt=connected');
-    assert.equal(received.session.length,43);
-    assert.equal(received.redirectUri,redirectUri);
-    assert.equal(new URL(received.callbackUrl).searchParams.get('code'),'single-use-secret-code');
+    assert.equal(response.status,410);
+    assert.deepEqual(await response.json(),{error:'model_provider_oauth_removed'});
+    assert.equal(response.headers.get('location'),null);
+    const anonymous=await fetch(callback,{redirect:'manual'});
+    assert.equal(anonymous.status,401);
   } finally {await server.close();}
 });
 

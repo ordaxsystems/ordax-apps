@@ -35,7 +35,7 @@ test('historical activity has a real back-to-Forjador control without a second c
 
 test('project navigation remains GPT-first, not a legacy Groq-fronted layout',()=>{
   const html=read('ui.html');
-  assert.match(html,/id="coordinatorNavProvider">Conversa principal · GPT/);
+  assert.match(html,/id="coordinatorNavProvider">GPT Web · Forge MCP/);
   assert.match(html,/id="taskBackToForjador"/);
   assert.match(html,/id="rightPaneTabs"/);
 });

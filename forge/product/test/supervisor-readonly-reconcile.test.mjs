@@ -126,6 +126,6 @@ test('recovery IPC and UI allow inspection without planner API access',()=>{
     .split("registerUiHandler('ordax:supervisor:inspect'")[0];
   assert.match(chunk,/listLocalSupervisorRecoverable/);
   assert.doesNotMatch(chunk,/requireLabSupervisor/);
-  assert.match(ui,/labRecoverButton.disabled = false;/);
+  assert.match(ui,/labRecoverButton.disabled=false;/);
 });
 

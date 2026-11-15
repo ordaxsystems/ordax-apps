@@ -1,17 +1,13 @@
 import {mentionWasRequested} from './provider-mcp-mention.mjs';
 
 export const PROVIDER_MCP_APPS=Object.freeze({
-  'ordax-mcp':Object.freeze({
-    key:'ordax-mcp',mentionName:'ordax-mcp',displayName:'ordax mcp',
-    promptLinkLabel:'$ordax-mcp'
-  }),
   'forge-mcp':Object.freeze({
     key:'forge-mcp',mentionName:'forge-mcp',displayName:'forge mcp',
     promptLinkLabel:'$forge-mcp'
   })
 });
 
-export function providerMcpAppSpec(app='ordax-mcp') {
+export function providerMcpAppSpec(app='forge-mcp') {
   const spec=PROVIDER_MCP_APPS[app];
   if(!spec)throw new Error('provider_mcp_app_invalid');
   return spec;
@@ -19,7 +15,7 @@ export function providerMcpAppSpec(app='ordax-mcp') {
 
 // A literal @ mention is not the connected ChatGPT app. Never dispatch a
 // tool-dependent task without the exact selected, visible app in this composer.
-export function requireSelectedMcpForPrompt(prompt,selection,{requiresMcp=false,app='ordax-mcp'}={}) {
+export function requireSelectedMcpForPrompt(prompt,selection,{requiresMcp=false,app='forge-mcp'}={}) {
   if(!requiresMcp&&!mentionWasRequested(prompt,app))return false;
   if(selection?.state!=='selection_visible'||selection?.selectionObserved!==true)
     throw new Error('provider_mcp_selection_required');
@@ -48,7 +44,7 @@ export function requiresMcpForProjectPrompt(prompt,{projectContinuation=false}={
 // Self-contained because this function is stringified into the provider DOM.
 export function inspectProviderMcpComposerSelection(composer,spec=null) {
   const expected=spec&&typeof spec==='object'?spec:{
-    mentionName:'ordax-mcp',displayName:'ordax mcp',promptLinkLabel:'$ordax-mcp'
+    mentionName:'forge-mcp',displayName:'forge mcp',promptLinkLabel:'$forge-mcp'
   };
   if(!composer)return {composerPresent:false};
   if(typeof composer.querySelectorAll!=='function')return {composerPresent:true};
@@ -76,7 +72,7 @@ export function inspectProviderMcpComposerSelection(composer,spec=null) {
 export function isStandaloneMcpSelection(draft,selection,spec=null) {
   if(selection?.state!=='selection_visible'||selection?.selectionObserved!==true)return false;
   const expected=spec&&typeof spec==='object'?spec:{
-    mentionName:'ordax-mcp',displayName:'ordax mcp'
+    mentionName:'forge-mcp',displayName:'forge mcp'
   };
   const text=String(draft||'').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim().toLowerCase();
   const withoutAt=text.startsWith('@')?text.slice(1):text;
@@ -100,7 +96,7 @@ export function inspectProviderMcpAddContextTrigger(doc,composer) {
 // Match exactly one requested installed app in the OPEN provider menu. The
 // provider-owned app ID is observed from the DOM and never fabricated.
 export function inspectProviderMcpPickerOption(doc,spec=null) {
-  const expected=spec&&typeof spec==='object'?spec:{displayName:'ordax mcp'};
+  const expected=spec&&typeof spec==='object'?spec:{displayName:'forge mcp'};
   if(!doc||typeof doc.querySelectorAll!=='function')return {optionCount:0,selectable:false};
   const menu=doc.querySelector?.('button[data-composer-navigation-target="add-context"][aria-expanded="true"]');
   if(!menu||menu.getClientRects?.().length===0)return {optionCount:0,selectable:false};
@@ -134,11 +130,11 @@ export function classifyProviderMcpSelection(raw) {
   });
   if(raw.exactSelectedControl===true) return Object.freeze({
     state:'selection_visible',selectionObserved:true,invocationVerified:false,
-    integration:['forge','ordax'].includes(raw.selectedIntegration)?raw.selectedIntegration:null
+    integration:raw.selectedIntegration==='forge'?'forge':null
   });
   if(raw.exactNamedControl===true) return Object.freeze({
     state:'name_visible_unverified',selectionObserved:false,invocationVerified:false,
-    integration:['forge','ordax'].includes(raw.namedIntegration)?raw.namedIntegration:null
+    integration:raw.namedIntegration==='forge'?'forge':null
   });
   return Object.freeze({
     state:'not_observed',selectionObserved:false,invocationVerified:false

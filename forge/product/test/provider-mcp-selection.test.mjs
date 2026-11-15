@@ -21,14 +21,14 @@ test('a visible plugin name never constitutes an MCP invocation receipt',()=>{
   const fallback=classifyProviderMcpSelection({
     composerPresent:true,exactSelectedControl:true,selectedIntegration:'ordax'
   });
-  assert.equal(fallback.integration,'ordax');
+  assert.equal(fallback.integration,null,'other MCP providers never become Forge authority');
   assert.equal(classifyProviderMcpSelection({composerPresent:true,exactNamedControl:true}).selectionObserved,false);
   assert.equal(classifyProviderMcpSelection({composerPresent:true}).state,'not_observed');
   assert.equal(classifyProviderMcpSelection(null).state,'unavailable');
 });
 
 test('MCP work must not be sent when the composer only contains a literal mention',()=>{
-  const prompt='Crie um site para minha cafeteria\n\n@ordax-mcp';
+  const prompt='Crie um site para minha cafeteria\n\n@forge-mcp';
   assert.throws(()=>requireSelectedMcpForPrompt(prompt,classifyProviderMcpSelection({composerPresent:true})),/provider_mcp_selection_required/);
   assert.throws(()=>requireSelectedMcpForPrompt(prompt,classifyProviderMcpSelection({composerPresent:true,exactNamedControl:true})),/provider_mcp_selection_required/);
   assert.equal(requireSelectedMcpForPrompt(prompt,classifyProviderMcpSelection({composerPresent:true,exactNamedControl:true,exactSelectedControl:true})),true);
@@ -71,12 +71,12 @@ test('natural project building requests require MCP even without a mention',()=>
     {requiresMcp:true}),true);
 });
 
-test('only an actual selected OrdaX app mention inside the editor attests selection',()=>{
+test('only an actual selected Forge MCP app mention inside the editor attests selection',()=>{
   const path='app://asdk_app_6ad82c252584819192ac71cf3389e4a6';
   const attrs={
-    'app-mention-name':'ordax-mcp','app-mention-display-name':'Ordax mcp',
+    'app-mention-name':'forge-mcp','app-mention-display-name':'Forge mcp',
     'app-mention-path':path,'data-prompt-link-href':path,
-    'data-prompt-link-label':'$ordax-mcp','data-appearance':'inline-mention',
+    'data-prompt-link-label':'$forge-mcp','data-appearance':'inline-mention',
     'contenteditable':'false'
   };
   const mention=(overrides={})=>({
@@ -99,13 +99,13 @@ test('real app token alone is reusable on a clean composer, not a user draft',()
     composerPresent:true,exactNamedControl:true,exactSelectedControl:true
   });
   const absent=classifyProviderMcpSelection({composerPresent:true});
-  assert.equal(isStandaloneMcpSelection('OrdaX MCP',selected),true);
-  assert.equal(isStandaloneMcpSelection(' @ordax-mcp ',selected),true);
-  assert.equal(isStandaloneMcpSelection('OrdaX MCP',absent),false);
-  assert.equal(isStandaloneMcpSelection('@ordax-mcp',absent),false);
-  assert.equal(isStandaloneMcpSelection('OrdaX MCP crie um site',selected),false);
+  assert.equal(isStandaloneMcpSelection('Forge MCP',selected),true);
+  assert.equal(isStandaloneMcpSelection(' @forge-mcp ',selected),true);
+  assert.equal(isStandaloneMcpSelection('Forge MCP',absent),false);
+  assert.equal(isStandaloneMcpSelection('@forge-mcp',absent),false);
+  assert.equal(isStandaloneMcpSelection('Forge MCP crie um site',selected),false);
   assert.equal(isStandaloneMcpSelection('Crie um site',selected),false);
-  assert.equal(isStandaloneMcpSelection('OrdaX MCP OrdaX MCP',selected),false);
+  assert.equal(isStandaloneMcpSelection('Forge MCP Forge MCP',selected),false);
 });
 
 test('real ChatGPT add-context control exposes one safe pointer target',()=>{
@@ -128,14 +128,14 @@ test('real ChatGPT add-context control exposes one safe pointer target',()=>{
   assert.equal(inspectProviderMcpAddContextTrigger(doc,null).selectable,false);
 });
 
-test('real ChatGPT app picker requires a unique official app button and an open menu',()=>{
+test('real ChatGPT Forge MCP picker requires a unique official app button and an open menu',()=>{
   let y=750,scrolled=0,open=true;
   const rect=(width=260)=>({left:40,top:y,width,height:36});
   const option=(text,width=260)=>({
     textContent:text,getBoundingClientRect:()=>rect(width),
     scrollIntoView:()=>{scrolled++;y=240;},contains:()=>false
   });
-  const first=option('Ordax mcpOrdax mcp');
+  const first=option('Forge mcpForge mcp');
   const another=option('VercelVercel');
   let values=[first,another],hit=first;
   const openTrigger={getClientRects:()=>[{}]};
@@ -150,9 +150,9 @@ test('real ChatGPT app picker requires a unique official app button and an open 
   assert.equal(selected.selectable,true);
   assert.equal(scrolled,1);
   assert.equal(selected.y,258);
-  values=[first,option('Ordax mcp')];
+  values=[first,option('Forge mcp')];
   assert.equal(inspectProviderMcpPickerOption(doc).selectable,false);
-  values=[option('Ordax mcp',0),another];
+  values=[option('Forge mcp',0),another];
   assert.equal(inspectProviderMcpPickerOption(doc).optionCount,0);
   values=[first];hit=another;
   assert.equal(inspectProviderMcpPickerOption(doc).selectable,false);
@@ -239,7 +239,7 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   assert.match(main,/provider\.mcp\.selection_observed/);
   assert.match(main,/invocation_verified:false/);
   assert.match(preload,/onProviderMcpObserved/);
-  assert.match(html,/menções textuais nunca substituem seleção, autorização ou recibos/);
+  assert.match(html,/A seleção visual de um app não concede permissões/);
   assert.match(ui,/mention_requested/);
   assert.match(coordinatorUi,/provider_mcp_selection_required/);
   assert.match(coordinatorUi,/rascunho foi preservado/);

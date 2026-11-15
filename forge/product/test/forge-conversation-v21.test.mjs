@@ -11,7 +11,7 @@ test('central Forge UI has a single optional tools menu, not permanent diagnosti
   assert.match(html,/id="forgeCoordinatorAdvanced"[^>]*class="forge-coordinator-advanced"/);
   assert.match(html,/id="forgeCoordinatorAdvancedContent"/);
   assert.match(html,/id="coordinatorTransport"/);
-  for(const id of ['projectPulseDisclosure','orchestrationCapabilitySummary','forjadorGroqInspector','orchestrationIntegrations']){
+  for(const id of ['projectPulseDisclosure','orchestrationCapabilitySummary','orchestrationIntegrations']){
     assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,id);
     assert.ok(js.includes("'"+id+"'"));
   }
