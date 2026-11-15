@@ -1,7 +1,7 @@
 // Provider app mentions request a ChatGPT App; they never grant access or
 // prove tool execution. Forge coordinates itself through Forge MCP, while
 // every execution Work uses the same Forge MCP.
-export const ORDAX_MCP_MENTION='@ordax-mcp';
+const RETIRED_DEVICE_MCP_PATTERN=/(^|[^\w])@ordax-mcp(?=$|[^\w-])/i;
 export const FORGE_MCP_MENTION='@forge-mcp';
 // Backwards-compatible name used by existing delegated Work code/tests.
 export const FORJADOR_MCP_MENTION=FORGE_MCP_MENTION;
@@ -15,8 +15,7 @@ export function withProviderMcpMention(prompt,{app='forge-mcp'}={}) {
   const text=String(prompt??'');
   if(!text.trim())return text;
   const mention=providerMcpMention(app);
-  if(mentionWasRequested(text,app==='forge-mcp'?'ordax-mcp':'forge-mcp'))
-    throw Error('provider_mcp_app_conflict');
+  if(RETIRED_DEVICE_MCP_PATTERN.test(text))throw Error('provider_mcp_app_conflict');
   if(mentionWasRequested(text,app))return text;
   return text.trimEnd()+'\n\n'+mention;
 }
@@ -24,16 +23,13 @@ export function withProviderMcpMention(prompt,{app='forge-mcp'}={}) {
 export function withForjadorMcpMention(prompt,{authorSource='human',app='forge-mcp'}={}) {
   const text=String(prompt??'');
   providerMcpMention(app); // Validate requested app even for human messages.
-  if(mentionWasRequested(text,app==='forge-mcp'?'ordax-mcp':'forge-mcp'))
-    throw Error('provider_mcp_app_conflict');
+  if(RETIRED_DEVICE_MCP_PATTERN.test(text))throw Error('provider_mcp_app_conflict');
   // The provider-owned picker selects the app. Never fake a grant by adding @text.
   return text;
 }
 
 export function mentionWasRequested(prompt,app=null) {
   const text=String(prompt??'');
-  if(app==='ordax-mcp')return /(^|[^\w])@ordax-mcp(?=$|[^\w-])/i.test(text);
-  if(app==='forge-mcp')return /(^|[^\w])@forge-mcp(?=$|[^\w-])/i.test(text);
-  if(app!==null)throw new Error('provider_mcp_app_invalid');
-  return /(^|[^\w])@(?:ordax|forge)-mcp(?=$|[^\w-])/i.test(text);
+  if(app!==null&&app!=='forge-mcp')throw new Error('provider_mcp_app_invalid');
+  return /(^|[^\w])@forge-mcp(?=$|[^\w-])/i.test(text);
 }

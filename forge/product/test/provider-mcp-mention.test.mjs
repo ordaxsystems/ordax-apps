@@ -16,6 +16,8 @@ test('Forjador and independent GPT Works request Forge MCP without fabricating a
   assert.equal(withProviderMcpMention('Use @forge-mcp'),'Use @forge-mcp');
   assert.equal(mentionWasRequested('Ação @forge-mcp'),true);
   assert.equal(mentionWasRequested('somente forge-mcp'),false);
+  assert.equal(mentionWasRequested('Use @ordax-mcp'),false);
+  assert.throws(()=>mentionWasRequested('Use @ordax-mcp','ordax-mcp'),/provider_mcp_app_invalid/);
 });
 
 test('explicit mentions never provide authorization and retired device MCP fails closed',()=>{

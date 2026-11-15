@@ -214,7 +214,12 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   const committedAt=main.indexOf('store.beginProviderRun(taskId');
   assert.ok(preparedAt>=0&&preparedAt<committedAt,
     'real app token must be prepared before committing the Run');
-  assert.match(worker,/async prepareMcpPrompt\(/);
+  assert.match(worker,/async prepareMcpPrompt\(\{prompt,chatUrl=null,newSession=false,mcpApp='forge-mcp'\}/);
+  assert.match(worker,/inspectMcpSelectionReadOnly\(\{allowDuringRun=false,app='forge-mcp'\}/);
+  assert.match(worker,/requiresMcp = false, mcpApp='forge-mcp'/);
+  assert.doesNotMatch(worker,/mcpApp='ordax-mcp'|app='ordax-mcp'|\|\|'ordax-mcp'/);
+  assert.doesNotMatch(coordinatorUi,/Conecte e selecione OrdaX MCP/);
+  assert.match(coordinatorUi,/Conecte e selecione Forge MCP/);
   assert.match(worker,/isStandaloneMcpSelection\(initial\.text,initialSelection,spec\)/);
   assert.match(worker,/isStandaloneMcpSelection\(readyComposer\.text,readySelection,spec\)/);
   assert.match(worker,/if\(startsFresh&&!reuseHomeToken\)await this\.#startNewChat\(\)/);
