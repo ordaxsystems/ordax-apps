@@ -4,7 +4,6 @@ import {ORCHESTRATOR_TOOLS,validateOrchestratorInput} from '../src/forge-contrac
 import {inspectForgeLiveViewDom} from '../src/forge-live-view-dom.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
-import {inspectForgeLiveViewDom} from '../src/forge-live-view-dom.mjs';
 
 const imageData=Buffer.from('test-jpeg-bytes').toString('base64');
 const project='project_VisualTest';
