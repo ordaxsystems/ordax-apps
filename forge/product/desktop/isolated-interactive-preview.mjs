@@ -129,32 +129,52 @@ export class IsolatedInteractiveHtmlPreview {
       revision,inspection:observation.state,windowFocusNotRequired:true,
       pixelCaptureClaimed:false};
   }
-  async clickLive(identity,{expectedRevision,controlIndex,expectedLabel}={}){
+  async actLive(identity,{action='click',expectedRevision,controlIndex,
+    expectedLabel,value}={}){
     if(this.liveActionBusy)throw Error('forge_view_live_busy');
     this.liveActionBusy=true;
     let submitted=false;
     try{
       const before=await this.inspectLive(identity);
+      const control=before.inspection.controls[controlIndex];
       if(before.revision!==expectedRevision||!Number.isInteger(controlIndex)||
-         controlIndex<0||controlIndex>39||
-         before.inspection.controls[controlIndex]?.label!==expectedLabel)
+         controlIndex<0||controlIndex>39||control?.label!==expectedLabel||
+         control.interactable!==true||
+         (action==='fill'?!control.editable:
+           (action!=='click'||control.editable)))
+        throw Error('forge_view_live_stale');
+      if(action==='fill'&&(typeof value!=='string'||value.length>500))
         throw Error('forge_view_live_stale');
       const {view}=this.assertLiveOwner(identity);
-      const command={mode:'click',index:controlIndex,expectedLabel,
-        expectedState:before.inspection};
+      const command={mode:action,index:controlIndex,expectedLabel,
+        expectedState:before.inspection,
+        ...(action==='fill'?{value}:{})};
       const applied=await this.evaluateLiveView(
         '('+inspectForgeLiveViewDom.toString()+')('+JSON.stringify(command)+')',view);
       if(applied?.applied!==true)
         throw Error(applied?.reason==='forge_view_live_stale'?
           'forge_view_live_stale':'forge_view_live_action_unconfirmed');
       submitted=true;
+      if(action==='fill'&&applied.valueAccepted!==true)
+        throw Error('forge_view_live_fill_unconfirmed');
       await new Promise(resolve=>setTimeout(resolve,125));
       const after=await this.inspectLive(identity);
+      if(action==='fill'){
+        // The value is compared INSIDE the native renderer after events
+        // settle. It is never returned or stored in the MCP receipt.
+        const verified=await this.evaluateLiveView(
+          '('+inspectForgeLiveViewDom.toString()+')('+JSON.stringify({
+            mode:'verify_fill',index:controlIndex,expectedLabel,value
+          })+')',view);
+        if(verified?.valueVerified!==true)
+          throw Error('forge_view_live_fill_unconfirmed');
+      }
       return {schema:'ordax.forge.live-view-action/1',source:'active_native_view',
         taskId:identity.taskId,assetId:identity.assetId,sha256:identity.sha256,
-        controlIndex,expectedLabel,action:'click',dispatched:true,
+        controlIndex,expectedLabel,action,dispatched:true,
         beforeRevision:before.revision,afterRevision:after.revision,
         observableDomChanged:before.revision!==after.revision,
+        ...(action==='fill'?{valueVerifiedAfterInput:true}:{}),
         statePersistedInLiveView:true,projectFilesModified:false,
         externalEffectsVerified:false,websitePublished:false};
     }catch(error){
@@ -162,6 +182,8 @@ export class IsolatedInteractiveHtmlPreview {
       throw error;
     }finally{this.liveActionBusy=false;}
   }
+  clickLive(identity,options){return this.actLive(identity,{...options,action:'click'});}
+  fillLive(identity,options){return this.actLive(identity,{...options,action:'fill'});}
   bounds(rect){
     this.requestedBounds=rect&&rect.visible!==false?rect:null;
     this.relayout();

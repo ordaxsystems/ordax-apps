@@ -1453,15 +1453,18 @@ orchestratorService.viewPort=Object.freeze({
       if(!active?.active||active.taskId!==taskId||
          active.assetId!==assetId||active.sha256!==proof.sha256)
         throw Error('forge_view_live_unavailable');
-      if(operation!=='project_view_live_inspect'&&operation!=='project_view_live_click')
+      if(!['project_view_live_inspect','project_view_live_click',
+        'project_view_live_fill'].includes(operation))
         throw Error('forge_view_operation_invalid');
-      attemptedAction=operation==='project_view_live_click';
-      const result=attemptedAction
-        ?await interactiveHtmlPreview.clickLive(identity,{
-          expectedRevision:input.expectedRevision,
-          controlIndex:input.controlIndex,expectedLabel:input.expectedLabel
-        })
-        :await interactiveHtmlPreview.inspectLive(identity);
+      attemptedAction=operation!=='project_view_live_inspect';
+      const selection={expectedRevision:input.expectedRevision,
+        controlIndex:input.controlIndex,expectedLabel:input.expectedLabel};
+      const result=operation==='project_view_live_inspect'
+        ?await interactiveHtmlPreview.inspectLive(identity)
+        :operation==='project_view_live_fill'
+          ?await interactiveHtmlPreview.fillLive(identity,{
+            ...selection,value:input.value})
+          :await interactiveHtmlPreview.clickLive(identity,selection);
       // A Task or artifact can be deleted, replaced or rebound during a DOM
       // action. Never return an old View as proof of a new project.
       orchestratorService.task(projectId,taskId);

@@ -446,7 +446,7 @@ export class OrchestratorService {
       this.requireAccess(context,operation,input.projectId);
       return result;
     }
-    if(operation==='project_view_live_click'){
+    if(['project_view_live_click','project_view_live_fill'].includes(operation)){
       if(typeof this.viewPort?.live!=='function')throw Error('forge_native_view_unavailable');
       const reserved=this.transaction(()=>this.reserve(context,operation,input));
       if(reserved.existing)return reserved.existing;
@@ -463,7 +463,9 @@ export class OrchestratorService {
            result.projectId!==input.projectId||
            result.taskId!==input.taskId||result.assetId!==input.assetId||
            !/^[a-f0-9]{64}$/.test(result.sha256||'')||
-           result.action!=='click'||result.dispatched!==true||
+           result.action!==(operation==='project_view_live_fill'?'fill':'click')||
+           (operation==='project_view_live_fill'&&result.valueVerifiedAfterInput!==true)||
+           result.dispatched!==true||
            result.controlIndex!==input.controlIndex||
            result.expectedLabel!==input.expectedLabel||
            result.beforeRevision!==input.expectedRevision||
