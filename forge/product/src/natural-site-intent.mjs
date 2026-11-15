@@ -1,5 +1,5 @@
 // The App owns tool authorization, not the model's wording. Readable
-// capability catalog for Groq; execution still uses the existing Task/Run
+// capability catalog for the app-owned router; execution still uses the existing Task/Run
 // and one verified GPT transport, never a second hidden executor.
 export const ORDAX_CAPABILITY_MANIFEST=Object.freeze({
   version:'ordax.orchestrator.user-capabilities/1',

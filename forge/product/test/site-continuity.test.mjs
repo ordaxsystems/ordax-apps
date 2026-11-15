@@ -6,17 +6,15 @@ import path from 'node:path';
 import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {latestSiteWork} from '../src/site-work-context.mjs';
-import {createGroqCoordinatorConversation} from '../supervisor/groq-conversation.mjs';
-import {classifyExistingSiteChange,classifyProjectStatusQuestion} from '../src/natural-site-intent.mjs';
+import {appOwnedSiteDecision,classifyExistingSiteChange,classifyProjectStatusQuestion} from '../src/natural-site-intent.mjs';
 
 test('natural edits resume the verified project HTML and its existing GPT Task',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-site-continuity-'));
   const store=new Store(path.join(dir,'store.sqlite'));
   t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true});});
   const context={actorId:'owner',clientId:'test',workspaceSessionId:store.getWorkspaceSession().id};
-  const service=new OrchestratorService({store,
+  const service=new OrchestratorService({store,continuousExecutionByDefault:true,
     authorize:({context:c})=>c===context,
-    coordinator:{available:()=>true,send:async()=>({content:'fixture',delegation:'none'})},
     provider:{available:()=>true,send:async()=>{throw Error('must_not_send_from_test');}}});
   const ids=(await service.invoke(context,'mission_create',{
     name:'Café da Praça',mission:'Site da cafeteria',requestId:'new_project'
@@ -54,24 +52,13 @@ test('natural edits resume the verified project HTML and its existing GPT Task',
   assert.equal(classifyExistingSiteChange('Como mudo a fonte?'),null);
   assert.equal(classifyExistingSiteChange('Mude o site e publique na Internet'),null);
   assert.equal(classifyProjectStatusQuestion('e entao ?'),true);
-  let groqCalls=0;
-  const coordinator=createGroqCoordinatorConversation({store,getApiKey:()=> 'fixture',
-    isEnabled:()=>true,fetchImpl:async()=>{groqCalls++;
-      return new Response('provider rejected the schema',{status:400});}});
-  const editRoute=await coordinator.send({
-    taskId:ids.chatTaskId,projectId:ids.projectId,orchestratorId:ids.orchestratorId,
-    mission:'Site da cafeteria',content:'melhore o html',delegateWork:true
-  });
+  const editRoute=appOwnedSiteDecision({
+    delegateWork:true,currentRequest:'melhore o html',existingSite:true});
   assert.equal(editRoute.delegation,'technical');
   assert.equal(editRoute.workIntent,'edit');
-  assert.equal(groqCalls,1,'a confirmed HTTP 400 does not cause provider retries');
-  const statusRoute=await coordinator.send({
-    taskId:ids.chatTaskId,projectId:ids.projectId,orchestratorId:ids.orchestratorId,
-    mission:'Site da cafeteria',content:'e entao ?',delegateWork:true
-  });
-  assert.equal(statusRoute.delegation,'none');
-  assert.match(statusRoute.content,/prévia/);
-  assert.equal(groqCalls,1,'a read-only status asks no model or executor');
+  assert.equal(appOwnedSiteDecision({
+    delegateWork:true,currentRequest:'e entao ?',existingSite:true}),null,
+    'read-only status is handled locally and does not become delegated work');
   service.autonomous.tick=async()=>null; // only inspect admission, never send.
   const mission=service.autonomous.start(context,{
     projectId:ids.projectId,orchestratorId:ids.orchestratorId,
@@ -96,9 +83,8 @@ test('a reconciled HTML revision resumes one same-thread mission without GPT rep
   t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true});});
   const context={actorId:'owner',clientId:'test',
     workspaceSessionId:store.getWorkspaceSession().id};
-  const service=new OrchestratorService({store,
+  const service=new OrchestratorService({store,continuousExecutionByDefault:true,
     authorize:({context:c})=>c===context,
-    coordinator:{available:()=>true,send:async()=>({content:'fixture',delegation:'none'})},
     provider:{available:()=>true,send:async()=>{throw Error('unexpected_provider_send');}}});
   let seq=0;const call=(operation,input)=>
     service.invoke(context,operation,{...input,requestId:'reconciled_'+(++seq)});

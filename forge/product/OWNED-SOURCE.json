@@ -9,7 +9,7 @@
     "version": "0.2.0-alpha.2",
     "appId": "br.com.ordax.orchestrator.lab"
   },
-  "count": 47,
+  "count": 45,
   "tests": 12,
   "exclusions": [
     "src/relay",
@@ -152,14 +152,6 @@
     {
       "path": "src/store.mjs",
       "sha256": "5dad5afa1e3a0b6c95b2799040ae58b5902b359928a5379deb8f9c4f3ac4fd4d"
-    },
-    {
-      "path": "supervisor/coordinator.mjs",
-      "sha256": "dcdc0062e7e84e068dec26c926e6dbe9a642f50c32f5473b707efa34fec03924"
-    },
-    {
-      "path": "supervisor/groq-planner.mjs",
-      "sha256": "061b0259ff78b88079157dfd5e41db3623642bf9ea47530b0439ac2bf9730d67"
     },
     {
       "path": "test/benchmark-metrics.test.mjs",

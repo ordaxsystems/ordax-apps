@@ -5,7 +5,6 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { allowSourcePath, deriveSourceFile } from '../lib/derive.mjs';
-import { applySupervisorOverlay } from '../lib/supervisor-overlay.mjs';
 import { readProductVersion } from '../lib/version-policy.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -98,7 +97,7 @@ function safeTarget(workspaceDir, relative) {
 // Read-only inspection. Importer generation remains independent; this does not
 // read mutable Git working-tree content or touch the original Gratis AppData.
 export function auditPinnedWorkspace({ sourceDir, workspaceDir, commit, allow = allowSourcePath,
-  transform = (_relative, bytes) => bytes, labModules = [] }) {
+  transform = (_relative, bytes) => bytes }) {
   if (!/^[0-9a-f]{40}$/.test(String(commit || ''))) throw new Error('invalid_pinned_commit');
   if (!fs.existsSync(workspaceDir)) throw new Error('derived_workspace_missing');
   const actualCommit = git(sourceDir, 'rev-parse', commit + '^{commit}').toString('utf8').trim();
@@ -132,20 +131,6 @@ export function auditPinnedWorkspace({ sourceDir, workspaceDir, commit, allow = 
     files.push(record);
     if (!record.matches_derivation) problems.push({ path: relative, error: missing ? 'missing_workspace_file' : 'derived_bytes_mismatch' });
   }
-  for (const module of labModules) {
-    const sourcePath = safeTarget(path.join(root, 'product'), module);
-    const derivedPath = safeTarget(workspaceDir, module);
-    if (sourcePath.missing || derivedPath.missing) {
-      problems.push({ path: module, error: 'lab_owned_module_missing' });
-      continue;
-    }
-    const src = fs.readFileSync(sourcePath.target);
-    const dst = fs.readFileSync(derivedPath.target);
-    files.push({ path: module, owner: 'orchestrator-lab', source_sha256: sha256(src),
-      expected_sha256: sha256(src), actual_sha256: sha256(dst),
-      changed_by_derivation: false, matches_derivation: src.equals(dst) });
-    if (!src.equals(dst)) problems.push({ path: module, error: 'lab_owned_module_mismatch' });
-  }
   return {
     schema: 'ordax.orchestrator-lab-pinned-audit/1', source_commit: commit,
     source_file_count: entries.length, inspected_file_count: files.length,
@@ -166,8 +151,7 @@ async function main() {
   const config = { ...lock, productVersion };
   const report = auditPinnedWorkspace({
     sourceDir: path.resolve(args[1]), workspaceDir: path.resolve(args[3]), commit: lock.commit,
-    transform: (relative, bytes) => applySupervisorOverlay(relative, deriveSourceFile(relative, bytes, config)),
-    labModules: ['supervisor/coordinator.mjs', 'supervisor/groq-planner.mjs']
+    transform: (relative, bytes) => deriveSourceFile(relative, bytes, config)
   });
   // No user prompts, DOM, cookies or model output are read or written.
   process.stdout.write(JSON.stringify(report, null, 2) + '\n');

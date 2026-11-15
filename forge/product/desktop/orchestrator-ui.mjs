@@ -79,7 +79,8 @@ export function describeProjectPreflight(snapshot) {
     !Number.isSafeInteger(snapshot.analysis.completed)||snapshot.analysis.completed<0||
     !(snapshot.analysis.lastStatus===null||['running','succeeded','failed','uncertain'].includes(snapshot.analysis.lastStatus))||
     !(snapshot.analysis.lastAttemptAt===null||typeof snapshot.analysis.lastAttemptAt==='string')||
-    !snapshot.coordinator||typeof snapshot.coordinator.modelConfigured!=='boolean'||
+    !snapshot.analysisEngine||snapshot.analysisEngine.available!==true||
+    snapshot.analysisEngine.mode!=='app_owned'||snapshot.analysisEngine.externalModelUsed!==false||
     !snapshot.gates||typeof snapshot.gates.recordedWorkAnalysisEligible!=='boolean'||
     snapshot.gates.githubObservationVerified!==false||
     snapshot.gates.automaticGptDispatchAllowed!==false||
@@ -88,10 +89,8 @@ export function describeProjectPreflight(snapshot) {
   const actions=[];
   if(snapshot.work.unresolvedSends>0)
     actions.push('Reconcilie envios pendentes ou incertos antes de iniciar outra análise.');
-  if(snapshot.coordinator.state!=='ready')
-    actions.push('Retome o Administrador Geral deste projeto.');
-  if(!snapshot.coordinator.modelConfigured)
-    actions.push('Configure um modelo no Administrador Geral para análises locais.');
+  if(snapshot.analysisEngine.state!=='ready')
+    actions.push('Retome o Forjador deste projeto.');
   if(snapshot.work.registered===0)
     actions.push('Registre uma frente de trabalho para a análise local.');
   if(!snapshot.repository.urlRegistered)
@@ -170,7 +169,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   let coordinatorRecoveryRevision=0;
   let workspaceInspectionGeneration=0,workspacePortAvailable=false;
   let lastPresentedMissionStatusKey=null;
-  let coordinatorOpen=false,coordinatorAvailable=false,orchestratorChatAvailable=false,coordinatorDraftCommitAvailable=false;
+  let coordinatorOpen=false,analysisAvailable=false,orchestratorChatAvailable=false,coordinatorDraftCommitAvailable=false;
   let gptWebTransportAvailable=false;
   let observedGptHealth=null;
   let analysisBusy=false,preflightBusy=false,preflightGeneration=0,repositoryBusy=false,observationBusy=false,repositoryPortAvailable=false,coordinatorSubmitting=false,quickProjectCreating=false,nodeHost=false;
@@ -217,9 +216,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const selected=orchestrators.find(item=>item.id===orchestratorId);
     const selectedReady=Boolean(selected)&&selected.status!=='paused';
     $('coordinatorSend').disabled=!orchestratorChatAvailable||!selectedReady||analysisBusy||coordinatorSubmitting||!coordinatorDraftCommitAvailable;
-    $('analyzeWorks').disabled=!coordinatorAvailable||!selectedReady||workCount===0||analysisBusy||preflightBusy||coordinatorSubmitting;
+    $('analyzeWorks').disabled=!analysisAvailable||!selectedReady||workCount===0||analysisBusy||preflightBusy||coordinatorSubmitting;
     $('inspectProjectAccess').disabled=!projectId||!selected||analysisBusy||preflightBusy||coordinatorSubmitting;
-    $('prepareWork').disabled=!coordinatorAvailable||!selectedReady||analysisBusy||coordinatorSubmitting||!coordinatorDraftCommitAvailable;
+    $('prepareWork').disabled=!analysisAvailable||!selectedReady||analysisBusy||coordinatorSubmitting||!coordinatorDraftCommitAvailable;
     $('coordinatorPrompt').disabled=coordinatorSubmitting||!chatTaskId;
   }
   function setCoordinatorDraftState(text='') {
@@ -772,7 +771,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(receipt.status==='succeeded')requestKeys.delete(key);
     else if(receipt.status==='failed') {
       requestKeys.delete(key);
-      // Historical provider failures remain readable, but neither Groq nor
+      // Historical provider failures remain readable, but neither local analysis nor
       // the old ChatGPT API endpoint can be invoked by this application.
       const legacyFailure=String(receipt.result?.failureCode||'');
       status(legacyFailure
@@ -856,7 +855,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       ?'As frentes ficam salvas no projeto. O ChatGPT conectado responde no chat coordenador; envio às conversas de trabalho ainda não está ligado neste Host.'
       :'Cada conversa mantém o próprio histórico dentro do projeto.';
     const engineStatus=await call('status');
-    coordinatorAvailable=engineStatus.coordinatorAvailable===true;
+    analysisAvailable=engineStatus.analysisAvailable===true;
     repositoryPortAvailable=engineStatus.repositoryPortAvailable===true;
     workspacePortAvailable=engineStatus.workspacePortAvailable===true;
     gptWebTransportAvailable=engineStatus.providerExecutionAvailable===true&&!nodeHost;
@@ -1090,17 +1089,17 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     ]);
     if(p!==projectId||o!==orchestratorId)return;
     const canDisable=result.enabled===true;
-    const canEnable=engineStatus?.coordinatorAvailable===true;
+    const canEnable=engineStatus?.analysisAvailable===true;
     $('continuityToggle').disabled=!canDisable&&!canEnable;
     $('continuityToggle').title=!canDisable&&!canEnable
-      ?'Conecte e ative um modelo de coordenação para habilitar a análise automática.'
+      ?'A análise local do Forge não está disponível.'
       :'';
     $('continuityProposalsToggle').disabled=!result.enabled;
     $('continuityProposalsToggle').dataset.enabled=String(result.nextProposals.enabled);
     $('continuityProposalsToggle').textContent=result.nextProposals.enabled?'Desativar propostas automáticas':'Propor próximas frentes automaticamente';
     $('continuityToggle').dataset.enabled=String(result.enabled);
     $('continuityToggle').textContent=result.enabled?'Desativar análise automática':'Ativar análise automática';
-    const messages={disabled:'Desativada',blocked_coordinator:'Bloqueada: conecte e ative um modelo de coordenação',pending:'Analisando trabalhos concluídos',observing:'Observando novas respostas',reconciliation_required:'Revisão manual necessária'};
+    const messages={disabled:'Desativada',analysis_busy:'Análise local em andamento',pending:'Analisando trabalhos concluídos',observing:'Observando novas respostas',reconciliation_required:'Revisão manual necessária'};
     const proposals=result.nextProposals.enabled?(' Próximas propostas: '+result.nextProposals.proposed+'/'+result.nextProposals.maximum+' geradas neste ciclo; exigem revisão.'):' Próximas propostas desativadas.';
     const executionNotice=engineStatus?.autonomousExecution===true
       ?' O supervisor de execução em segundo plano está ativo.'
@@ -1290,7 +1289,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const continueButton=$('continueAutonomousTechnical');
     continueButton.hidden=currentJob?.canContinue!==true;
     continueButton.disabled=continueButton.hidden||
-      (!coordinatorAvailable&&!appOwnedTechnicalReviewAvailable)||
+      (!analysisAvailable&&!appOwnedTechnicalReviewAvailable)||
       !gptWebTransportAvailable||analysisBusy||coordinatorSubmitting||preflightBusy;
   }
   async function renderCoordinator() {
@@ -1964,7 +1963,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   async function reviewGptRun({taskId,runId}={}) {
     const p=projectId,o=orchestratorId;
     const owner=orchestrators.find(item=>item.id===o);
-    if(!p||!o||owner?.status!=='ready'||!coordinatorAvailable||
+    if(!p||!o||owner?.status!=='ready'||!analysisAvailable||
        analysisBusy||preflightBusy||coordinatorSubmitting)
       throw Error('orchestrator_run_review_unavailable');
     if(typeof taskId!=='string'||!/^task_[a-f0-9-]{36}$/i.test(taskId)||

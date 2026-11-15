@@ -4,7 +4,6 @@ import {assertTaskHasNoUncertainTransport,listTaskUncertainTransportRuns} from '
 import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
 import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
 import {validateWorkProposal} from './orchestrator-proposal.mjs';
-import {interpretGPTWorkReview} from './gpt-work-review.mjs';
 import {findProviderSubmissionProvenance} from './provider-submission-provenance.mjs';
 import {LabContinuation} from './lab-continuation.mjs';
 import {AutonomousDialogue} from './autonomous-dialogue.mjs';
@@ -28,13 +27,46 @@ function missionProjectName(mission) {
   return Array.from(firstSentence).slice(0,140).join('')||'Novo projeto';
 }
 
+function appOwnedProposal(content) {
+  const normalized=String(content||'').trim();
+  if(!normalized)throw Error('orchestrator_proposal_invalid');
+  const firstLine=normalized.split(/\r?\n/u,1)[0].replace(/\s+/gu,' ').trim();
+  const title=Array.from(firstLine).slice(0,140).join('')||'Nova frente';
+  return validateWorkProposal({title,content:normalized,
+    reason:'Proposta local derivada diretamente da solicitação registrada; nenhum modelo externo foi consultado.'});
+}
+
+function appOwnedAnalysisSummary(context) {
+  const planning=context?.planning||{};
+  return ['Análise local do Forge registrada.',
+    Number(context?.scope?.totalWorkCount||0)+' frente(s) no projeto; '+
+      Number(context?.scope?.includedWorkCount||0)+' inspecionada(s) em detalhe.',
+    (Array.isArray(planning.candidateTaskIds)?planning.candidateTaskIds.length:0)+' pronta(s), '+
+      Number(planning.waitingCount||0)+' aguardando dependência, '+
+      Number(planning.blockedCount||0)+' bloqueada(s), '+
+      Number(planning.verificationRequiredCount||0)+' aguardando verificação.',
+    'Nenhum modelo externo foi consultado e nenhuma mensagem GPT foi enviada.'].join(' ');
+}
+
+function appOwnedRunReview(source) {
+  const observedExcerpt=redactOrchestratorAnalysisText(source.observedAnswer,180)
+    .replace(/\s+/gu,' ').trim();
+  return {sourceRunId:source.runId,decision:'verify_external_effect',
+    summary:'O Forge confirmou a resposta GPT deste Run, mas não há prova externa suficiente para certificar efeitos.',
+    reason:'A política local diferencia resposta observada de alteração real em arquivos, testes, GitHub ou publicação.',
+    observedExcerpt,nextPrompt:null,reviewOnly:true,externalEffectVerified:false,
+    automaticGPTSendAuthorized:false,reviewProvider:'ordax_app_policy',
+    acceptance:{criterion:'Comprovar os efeitos externos alegados pela resposta GPT usando evidência verificável do projeto.',
+      status:'requires_external_verification',observedExcerpt}};
+}
+
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
 export class OrchestratorService {
-  constructor({store,authorize,provider=null,coordinator=null,confirmProposal=null,confirmProposalSend=null,workspacePort=null,fileBroker=null,repositoryPort=null,verifyLocalArtifact=null,continuousExecutionByDefault=false}={}) {
+  constructor({store,authorize,provider=null,confirmProposal=null,confirmProposalSend=null,workspacePort=null,fileBroker=null,repositoryPort=null,verifyLocalArtifact=null,continuousExecutionByDefault=false}={}) {
     if(!store?.db || typeof authorize!=='function')throw Error('orchestrator_ports_required');
     this.store=store; this.db=store.db; this.authorize=authorize;
-    this.provider=provider; this.coordinator=coordinator;
+    this.provider=provider;
     this.continuousExecutionByDefault=continuousExecutionByDefault===true;
     // Optional App-owned, read-only local proof port. No filesystem authority
     // is inferred from a persisted model answer, asset path or remote URL.
@@ -214,7 +246,7 @@ export class OrchestratorService {
   }
 
   // Read-only projection from the same canonical receipts used to reserve a
-  // Run-specific Groq review. Priority is fail-closed: an uncertain or active
+  // Run-specific app-owned review. Priority is fail-closed: an uncertain or active
   // earlier request must not disappear behind a later failed model reply.
   runReviewReceipt(context,projectId,runId) {
     const receipt=this.db.prepare(`SELECT status,updated_at
@@ -399,7 +431,6 @@ export class OrchestratorService {
     if(operation==='autonomous_dialogue_status')return this.autonomous.status(context,input);
     if(operation==='autonomous_continuous_set')return {status:'succeeded',operation,
       result:this.autonomous.setContinuousExecution(context,input)};
-    if(operation==='autonomous_dialogue_start')return {status:'succeeded',operation,result:this.autonomous.start(context,input)};
     if(operation==='autonomous_dialogue_continue')return {status:'succeeded',operation,
       result:this.autonomous.continueTechnical(context,input)};
     if(operation==='repository_observe') {
@@ -586,7 +617,7 @@ export class OrchestratorService {
       workspacePortAvailable:this.workspace.available(),
       repositoryPortAvailable:this.repository.available(),
       continuationEnabled:Number(this.db.prepare('SELECT COUNT(*) n FROM lab_continuation_policies WHERE enabled=1').get().n),
-      coordinatorAvailable:this.coordinator?.available?.()===true,
+      analysisAvailable:true,analysisMode:'app_owned',
       providerExecutionAvailable:typeof this.provider?.send==='function',
       executor:this.executorAdmission(),
       activeRuns:Number(this.db.prepare("SELECT COUNT(*) n FROM runs WHERE status='running'").get().n),
@@ -611,7 +642,7 @@ export class OrchestratorService {
           AND t.workspace_session_id=?`)
         .get(input.projectId,input.orchestratorId,context.workspaceSessionId);
       // Project-scoped command receipts are the source of truth for whether
-      // the local Groq analysis was attempted. The result body is deliberately
+      // the local app-owned analysis was attempted. The result body is deliberately
       // excluded from this read model.
       const analysis=this.db.prepare(`SELECT COUNT(*) AS attempts,
         COALESCE(SUM(CASE WHEN status='succeeded' THEN 1 ELSE 0 END),0) AS completed,
@@ -627,10 +658,8 @@ export class OrchestratorService {
         FROM lab_command_receipts
         WHERE project_id=? AND operation IN ('work_send','proposal_send')
           AND status IN ('running','uncertain')`).get(input.projectId);
-      const modelConfigured=this.coordinator?.available?.()===true;
       const blockers=[];
-      if(owner.status!=='ready')blockers.push('coordinator_paused');
-      if(!modelConfigured)blockers.push('coordinator_unavailable');
+      if(owner.status!=='ready')blockers.push('orchestrator_paused');
       if(work.total===0)blockers.push('no_registered_work');
       if(unresolved.total>0)blockers.push('work_receipts_unresolved');
       return {
@@ -645,7 +674,7 @@ export class OrchestratorService {
           state:project.observation_requested===1?'awaiting_external_authority':'paused',
           automaticGptDispatchAllowed:false,backgroundSchedulerActive:false},
         runtime:{grantVerified:false},
-        coordinator:{state:owner.status,modelConfigured,providerResponseVerified:false},
+        analysisEngine:{state:owner.status,available:true,mode:'app_owned',externalModelUsed:false},
         work:{registered:Number(work.total),started:Number(work.started),unresolvedSends:Number(unresolved.total)},
         analysis:{attempts:Number(analysis.attempts),completed:Number(analysis.completed),
           lastStatus:analysis.last_status,lastAttemptAt:analysis.last_attempt_at},
@@ -886,8 +915,8 @@ export class OrchestratorService {
     const ownerIds=new Set(overviewRows.map(row=>row.id));
 
     // The project DAG is advisory, never an authorization to submit messages.
-    // Preserve project-wide dependencies internally but disclose only THIS
-    // coordinator's scoped work in the Groq analysis.
+    // Preserve project-wide dependencies internally but expose only THIS
+    // project's scoped work to the app-owned analysis.
     let planning={state:'unavailable',automaticDispatchAllowed:false,qualityCertified:false};
     let plan=null;
     try {
@@ -1514,19 +1543,13 @@ export class OrchestratorService {
       LIMIT 1`).get(projectId,projectId));
   }
 
-  // Shared bounded-memory selector for opt-in reviews and proposals. An
-  // unavailable, occupied or project-busy coordinator must not hold the
-  // whole queue. Receipt, consent and provider gates remain in the caller.
-  // The SQLite iterator does not materialize the full backlog.
+  // Shared bounded-memory selector for app-owned reviews and proposals.
+  // No external coordinator/model participates in this queue.
   selectContinuationCandidate(candidates) {
     let blocked='idle';
     for(const row of candidates) {
-      if(this.coordinator?.available?.(row.project_id,row.orchestrator_id)!==true) {
-        if(blocked==='idle')blocked='blocked_coordinator';
-        continue;
-      }
       if(this.coordinatorTurnBusy(this.orchestrator(row.project_id,row.orchestrator_id).chat_task_id)) {
-        if(blocked==='idle')blocked='coordinator_busy';
+        if(blocked==='idle')blocked='analysis_busy';
         continue;
       }
       if(this.projectWorkInProgress(row.project_id)) {
@@ -1553,17 +1576,83 @@ export class OrchestratorService {
   }
 
   async dispatch(context,operation,input,preparedSend=null,internal={}) {
-    if(operation==='work_send'||operation==='proposal_send')
+    if(operation==='work_send'||operation==='proposal_send'||operation==='forjador_send')
       return this.dispatchCore(context,operation,input,preparedSend,internal);
-    // Repeated requestIds return their existing receipt even while busy.
+    if(operation!=='orchestrator_analyze'&&operation!=='orchestrator_prepare')
+      throw Error('orchestrator_unknown_operation');
     const existing=this.db.prepare(`SELECT id FROM lab_command_receipts
       WHERE workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
       .get(context.workspaceSessionId,context.actorId,context.clientId,input.requestId);
     if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
     const chatTaskId=this.orchestrator(input.projectId,input.orchestratorId).chat_task_id;
-    return this.withCoordinatorTurn(chatTaskId,()=>this.dispatchCore(
-      context,operation,input,preparedSend,internal
+    return this.withCoordinatorTurn(chatTaskId,()=>this.dispatchLocalCoordination(
+      context,operation,input
     ));
+  }
+
+  dispatchLocalCoordination(context,operation,input) {
+    const owner=this.orchestrator(input.projectId,input.orchestratorId);
+    if(owner.status==='paused')throw Error('orchestrator_paused');
+    const task=this.task(input.projectId,owner.chat_task_id,'orchestrator');
+    const prepareWork=operation==='orchestrator_prepare';
+    const reviewSource=operation==='orchestrator_analyze'&&input.reviewRunId
+      ?this.reviewableGPTResult(input.projectId,input.orchestratorId,input.reviewRunId):null;
+    if(input.reviewRunId&&!reviewSource)throw Error('orchestrator_review_source_unconfirmed');
+    const analysisContext=operation==='orchestrator_analyze'
+      ?this.analysisContext(input.projectId,input.orchestratorId):null;
+    if(operation==='orchestrator_analyze'&&analysisContext.works.length===0)
+      throw Error('orchestrator_works_unavailable');
+    const proposal=prepareWork?appOwnedProposal(input.content):null;
+    const reviewDecision=reviewSource?appOwnedRunReview(reviewSource):null;
+    const analysisSummary=operation==='orchestrator_analyze'&&!reviewSource
+      ?appOwnedAnalysisSummary(analysisContext):null;
+
+    return this.transaction(()=>{
+      this.requireAccess(context,operation,input.projectId);
+      if(reviewSource&&['running','uncertain','succeeded'].includes(
+        this.runReviewReceipt(context,input.projectId,reviewSource.runId).status))
+        throw Error('orchestrator_run_review_already_attempted');
+      const reservation=this.reserve(context,operation,input);
+      if(reservation.existing)return reservation.existing;
+
+      if(prepareWork&&input.draftRevision!==undefined) {
+        const draft=this.store.getTaskDraft(task.id);
+        if(draft.draft_revision!==input.draftRevision||
+           draft.draft.trim()!==String(input.content||'').trim())
+          throw Error('task_draft_revision_conflict');
+        if(!Number.isSafeInteger(input.draftRevision+1))
+          throw Error('invalid_task_draft_revision');
+      }
+
+      this.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
+        .run(JSON.stringify({taskId:task.id,...(reviewSource?{reviewRunId:reviewSource.runId}:{})}),
+          reservation.commandId);
+
+      let proposalActionId=null;
+      if(proposal) {
+        proposalActionId=this.store.beginAction(task.id,null,'orchestrator.work-proposal',
+          reservation.commandId,{projectId:input.projectId,orchestratorId:owner.id,
+            actorId:context.actorId,clientId:context.clientId,proposal});
+        this.store.requestApproval(task.id,proposalActionId,
+          'Revisar nova frente e rascunho; nenhum envio ao GPT');
+        if(input.draftRevision!==undefined) {
+          const cleared=this.store.setDraft(task.id,'',input.draftRevision+1);
+          if(cleared.draft!==''||cleared.draft_revision!==input.draftRevision+1)
+            throw Error('task_draft_revision_conflict');
+        }
+      }
+
+      if(analysisSummary)this.store.appendMessage(task.id,'assistant',analysisSummary);
+      return this.finish(reservation.commandId,{
+        taskId:task.id,analysisObserved:operation==='orchestrator_analyze',
+        appOwned:true,provider:'ordax_app_policy',
+        ...(analysisSummary?{analysisSummary}:{}),
+        ...(reviewSource?{reviewRunId:reviewSource.runId,reviewDecision}:{}),
+        ...(proposalActionId?{proposalActionId}:{}),proposalsExecuted:0,
+        ...(analysisContext?{analysis:{workCount:analysisContext.works.length,
+          messageCount:analysisContext.works.reduce((n,work)=>n+work.messages.length,0)}}:{})
+      });
+    });
   }
 
   async dispatchCore(context,operation,input,preparedSend=null,internal={}) {
@@ -1577,9 +1666,6 @@ export class OrchestratorService {
     if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
     const isWorkSend=operation==='work_send'||operation==='proposal_send';
     const isForjadorSend=operation==='forjador_send';
-    // Ordinary Forjador turns use the same GPT Web transport as work.
-    // Analysis/proposal coordination is a separate bounded path.
-    const usesProvider=isWorkSend||isForjadorSend;
     const sendInput=preparedSend||input;
     const orch=isWorkSend?null:this.orchestrator(input.projectId,input.orchestratorId);
     const task=isWorkSend?this.task(input.projectId,sendInput.taskId,'work'):
@@ -1588,8 +1674,6 @@ export class OrchestratorService {
     if(isWorkSend)this.assertDependenciesSatisfied(input.projectId,task.id);
     if(isForjadorSend){
       this.assertProviderTaskAvailable(task.id,{allowCoordinator:true});
-      // The UI has already persisted revision N. Validate it before reserving
-      // a command; the physical executor must consume revision N+1.
       if(sendInput.draftRevision!=null){
         const draft=this.store.getTaskDraft(task.id);
         if(draft.draft_revision!==sendInput.draftRevision||
@@ -1601,201 +1685,52 @@ export class OrchestratorService {
     }
     const repositoryUrl=this.projectRepositoryUrl(input.projectId);
     if(owner.status==='paused')throw Error('orchestrator_paused');
-    const port=usesProvider?this.provider:this.coordinator;
-    if(typeof port?.send!=='function'||(port.available&&port.available(input.projectId,owner.id)!==true))
+    if(typeof this.provider?.send!=='function'||
+       (this.provider.available&&this.provider.available(input.projectId,owner.id)!==true))
       throw Error('orchestrator_provider_unavailable');
-    const prepareWork=operation==='orchestrator_prepare';
-    const reviewSource=operation==='orchestrator_analyze'&&input.reviewRunId
-      ?this.reviewableGPTResult(input.projectId,input.orchestratorId,input.reviewRunId):null;
-    if(input.reviewRunId&&!reviewSource)throw Error('orchestrator_review_source_unconfirmed');
-    const baseAnalysis=operation==='orchestrator_analyze'||prepareWork
-      ?this.analysisContext(input.projectId,input.orchestratorId):null;
-    const technicalScope=reviewSource?this.autonomous.reviewScope(context,{
-      projectId:input.projectId,orchestratorId:input.orchestratorId,
-      runId:reviewSource.runId,taskId:reviewSource.taskId
-    }):null;
-    const analysisContext=reviewSource?{
-      phase:'gpt_response_review',project:baseAnalysis.project,
-      orchestrator:baseAnalysis.orchestrator,
-      scope:{includedWorkCount:1,totalWorkCount:baseAnalysis.scope.totalWorkCount},
-      ...(technicalScope?{technicalMission:technicalScope}:{}),
-      reviewEvidence:{runId:reviewSource.runId,runStatus:'succeeded',
-        providerResponseObserved:true,externalEffectsVerified:false,
-        responseTruncated:reviewSource.responseTruncated,
-        answerStart:reviewSource.head,answerEnd:reviewSource.tail},
-      works:[{title:reviewSource.title,status:'provider_response_observed',
-        runs:[{status:'succeeded'}],messages:[
-          {role:'user',content:reviewSource.userText},
-          {role:'assistant',content:reviewSource.head},
-          ...(reviewSource.tail?[{role:'assistant',content:'[Trecho final da mesma resposta] '+reviewSource.tail}]:[])
-        ]}]
-    }:baseAnalysis;
-    if(operation==='orchestrator_analyze'&&analysisContext.works.length===0)throw Error('orchestrator_works_unavailable');
-    const content=operation==='orchestrator_analyze'
-      ?reviewSource
-        ?'INTERPRETAÇÃO DE UMA RESPOSTA GPT REAL, Run '+reviewSource.runId+
-          '. Leia exclusivamente a resposta GPT observada em reviewEvidence e works, inclusive o trecho final. '+
-          'Não afirme que código foi alterado, testado ou implantado sem evidência externa; um Run succeeded comprova só a resposta. '+
-          'Como especialista em validação independente, confira o critério de aceite contra a resposta observada. '+
-          'Não transforme uma alegação GPT em prova de arquivo, execução, teste ou publicação. '+
-          'Decida o próximo passo específico para a missão e as pendências. '+
-          (technicalScope
-            ?'REVISÃO DE ETAPA TÉCNICA: use technicalMission no contexto como limite. '+
-              'Observe o objetivo original e o especialista da etapa; previousAcceptance '+
-              'é somente o critério proposto na revisão anterior, NÃO prova de implementação. '+
-              'verifiedArtifact, quando presente, comprova APENAS o arquivo HTML local cujo SHA-256 foi relido '+
-              'pelo App. browserRenderObserved indica somente captura de imagem em navegador isolado, '+
-               'browserControls registra apenas checagens locais de details, alternância ARIA e formulário required '+
-               'num navegador descartável; um passed não certifica o site completo. '+
-               'Não prova backend, serviços externos, GitHub, publicação ou aceite geral. '+
-              'Não invente uma missão nova, autorização, alteração ou dependência fora desse objetivo. '
-            :'')+
-          'Responda SOMENTE JSON conforme o formato do provedor, incluindo o Run, a decisao, resumo, '+
-          'justificativa, trecho literal observado, aceite e proxima instrucao conforme a decisao. '+
-          'acceptance deve conter {criterion,status,observedExcerpt}: um criterio de aceite '+
-          'especifico do objetivo, status answer_indicates_progress, requires_external_verification '+
-          'ou not_met, e um trecho literal de 16 a 180 caracteres da resposta observada. '+
-          'Nao declare criterio externo como comprovado so pelo texto GPT. '+
-          'decision deve ser continue_same_conversation, new_conversation, new_work, request_correction, '+
-          'verify_external_effect, candidate_complete ou blocked. observedExcerpt deve copiar literalmente '+
-          'um trecho de 16 a 180 caracteres da resposta GPT fornecida. nextPrompt é uma instrução concreta '+
-          'de 20 a 2200 caracteres apenas nas decisões de continuar, nova conversa, nova frente ou corrigir; '+
-          'nas outras, use null. Não invente grants, acesso a arquivos, commit, execução ou verificação.'
-        :'Analise explicitamente as conversas recentes de trabalho deste projeto e recomende próximos passos, sem executar nenhum deles.'
-      :sendInput.content;
-    const providerContent=usesProvider
-      ?preparedSend?.providerContent||appendRemoteRepositoryInstructions(content,repositoryUrl)
-      :content;
-    const workspaceStatus=usesProvider?null:this.workspace.status(context,input.projectId);
-    const workspaceObservation=workspaceStatus?{
-      state:workspaceStatus.state,
-      capabilityAvailable:workspaceStatus.available===true,
-      snapshotObserved:false,
-      gitMetadataAvailable:false,
-      fileContentAvailable:false,
-      filesRead:workspaceStatus.filesRead,
-      filesWritten:workspaceStatus.filesWritten
-    }:null;
-    // GPT transport admission and uncertain GPT receipts must never block
-    // the independent analysis/proposal coordinator path.
-    if(usesProvider) {
-      assertTaskHasNoUncertainTransport(this.store,task.id);
-      if(this.executorAdmission().availableSlots===0)
-        throw Error('orchestrator_executor_busy');
-    }
-    // Advisory API replies cannot submit GPT work. Preserve their uncertain
-    // receipts without replay, but allow a fresh explicit API request. Only
-    // uncertain provider submissions quarantine the work transport.
+    const providerContent=preparedSend?.providerContent||
+      appendRemoteRepositoryInstructions(sendInput.content,repositoryUrl);
+    // GPT transport admission applies only to real GPT Web sends.
+    assertTaskHasNoUncertainTransport(this.store,task.id);
+    if(this.executorAdmission().availableSlots===0)throw Error('orchestrator_executor_busy');
     if(isWorkSend&&this.hasUnresolvedWorkReceipt(input.projectId,task.id))
       throw Error('orchestrator_reconciliation_required');
     const reserved=this.transaction(()=>{
       this.requireAccess(context,operation,input.projectId);
       if(isWorkSend)this.assertDependenciesSatisfied(input.projectId,task.id);
-      // Admission is atomic with reservation: a fresh requestId, another
-      // renderer or a restarted process cannot dispatch this Run twice.
-      // Reuse the canonical receipt (including older reviewDecision records).
-      if(reviewSource && ['running','uncertain','succeeded'].includes(
-        this.runReviewReceipt(context,input.projectId,reviewSource.runId).status))
-        throw Error('orchestrator_run_review_already_attempted');
       const reservation=this.reserve(context,operation,input);
       if(reservation.existing)return {existing:reservation.existing};
       if(preparedSend) {
-        reservation.sendActionId=this.store.beginAction(task.id,null,'orchestrator.proposal-send',reservation.commandId,
-          {actorId:context.actorId,clientId:context.clientId,sourceActionId:input.actionId,
-            contentSha256:createHash('sha256').update(providerContent).digest('hex'),reviewedDraftRevision:sendInput.reviewedDraftRevision,
+        reservation.sendActionId=this.store.beginAction(task.id,null,'orchestrator.proposal-send',
+          reservation.commandId,{actorId:context.actorId,clientId:context.clientId,
+            sourceActionId:input.actionId,
+            contentSha256:createHash('sha256').update(providerContent).digest('hex'),
+            reviewedDraftRevision:sendInput.reviewedDraftRevision,
             draftRevision:sendInput.draftRevision});
-        reservation.approvalId=this.store.requestApproval(task.id,reservation.sendActionId,'Envio único confirmado em diálogo nativo');
+        reservation.approvalId=this.store.requestApproval(task.id,reservation.sendActionId,
+          'Envio único confirmado em diálogo nativo');
         this.store.resolveApproval(task.id,reservation.approvalId,true);
-        this.db.prepare("UPDATE action_ledger SET status='dispatching' WHERE id=?").run(reservation.sendActionId);
+        this.db.prepare("UPDATE action_ledger SET status='dispatching' WHERE id=?")
+          .run(reservation.sendActionId);
       }
       this.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
-        .run(JSON.stringify({taskId:task.id,
-          ...(reviewSource?{reviewRunId:reviewSource.runId}:{}),
-          ...(reservation.sendActionId?{
-          sendActionId:reservation.sendActionId,approvalId:reservation.approvalId}: {})}),reservation.commandId);
-      if(!usesProvider) {
-        const coordinatorDraft=operation==='orchestrator_prepare'&&input.draftRevision!==undefined;
-        if(coordinatorDraft) {
-          const draft=this.store.getTaskDraft(task.id);
-          if(draft.draft_revision!==input.draftRevision||draft.draft.trim()!==content.trim())
-            throw Error('task_draft_revision_conflict');
-          if(!Number.isSafeInteger(input.draftRevision+1))throw Error('invalid_task_draft_revision');
-        }
-        // Run-specific review is an internal decision stored in the
-        // canonical receipt and mission ledger, not a human chat turn.
-        if(!reviewSource)this.store.appendMessage(task.id,'user',content);
-        if(coordinatorDraft) {
-          const cleared=this.store.setDraft(task.id,'',input.draftRevision+1);
-          if(cleared.draft!==''||cleared.draft_revision!==input.draftRevision+1)
-            throw Error('task_draft_revision_conflict');
-        }
-      }
+        .run(JSON.stringify({taskId:task.id,...(reservation.sendActionId?{
+          sendActionId:reservation.sendActionId,approvalId:reservation.approvalId}: {})}),
+          reservation.commandId);
       return reservation;
     });
     if(reserved.existing)return reserved.existing;
     try {
       // Fresh authorization immediately before a potentially external effect.
       this.requireAccess(context,operation,input.projectId);
-      const reply=await port.send({taskId:task.id,content:usesProvider?providerContent:content,
-        // Work sends already supply the next revision. Forjador sends carry
-        // the saved current revision and must clear it at N+1 atomically.
+      const reply=await this.provider.send({taskId:task.id,content:providerContent,
         draftRevision:isForjadorSend&&sendInput.draftRevision!=null
           ?sendInput.draftRevision+1:sendInput.draftRevision??null,
-        taskKind:isForjadorSend?'orchestrator':isWorkSend?'work':null,
-        // Public UI/API sends remain human-authored. Only App-internal
-        // deferred child dispatch may set the private orchestrator override.
+        taskKind:isForjadorSend?'orchestrator':'work',
         authorSource:authorSourceOverride||'human',
-        mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork,
-        completionProfile:reviewSource?'technical_review':'standard',workspaceObservation,repositoryUrl});
+        mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,
+        repositoryUrl});
       this.requireAccess(context,operation,input.projectId);
-      if(!usesProvider) {
-        // Pause can happen during the external Groq await. A durable receipt
-        // already moved to uncertain must remain terminal even after resume.
-        if(this.db.prepare('SELECT status FROM lab_command_receipts WHERE id=?')
-          .get(reserved.commandId)?.status!=='running')
-          return this.getReceipt(context,reserved.commandId);
-        if(!reply||typeof reply.content!=='string'||!reply.content.trim()||reply.content.length>12000)
-          throw Error('orchestrator_reply_invalid');
-        // Parse an evidence-anchored decision before it becomes a completed
-        // receipt. The model response is never itself permission to execute.
-        let reviewDecision=null;
-        if(reviewSource){
-          try{
-            reviewDecision=interpretGPTWorkReview(reply.content,{
-              runId:reviewSource.runId,observedAnswer:reviewSource.observedAnswer});
-          }catch(error){
-            // A completed Groq reply rejected by our local review contract is
-            // a terminal invalid response, NOT an unknown transport outcome.
-            // Unexpected Store/session/authorization errors remain uncertain.
-            const codes={gpt_review_invalid_json:'groq_review_invalid_json',
-              gpt_review_invalid_evidence:'groq_review_invalid_evidence',
-              gpt_review_invalid_acceptance:'groq_review_invalid_evidence',
-              gpt_review_invalid_next_step:'groq_review_invalid_next_step'};
-            const code=codes[String(error?.message||'')];
-            if(!code)throw error;
-            const invalid=Error(code);
-            invalid.orchestratorFailureCode=code;
-            invalid.orchestratorRequestOutcome='response_invalid';
-            throw invalid;
-          }
-        }
-        return this.transaction(()=>{
-          let proposalActionId=null;
-          if(prepareWork) {
-            const proposal=validateWorkProposal(reply.proposal);
-            proposalActionId=this.store.beginAction(task.id,null,'orchestrator.work-proposal',reserved.commandId,
-              {projectId:input.projectId,orchestratorId:owner.id,actorId:context.actorId,clientId:context.clientId,proposal});
-            this.store.requestApproval(task.id,proposalActionId,'Revisar nova frente e rascunho; nenhum envio ao GPT');
-          }
-          if(!reviewSource)this.store.appendMessage(task.id,'assistant',reply.content);
-          return this.finish(reserved.commandId,{taskId:task.id,responseObserved:true,
-            ...(reviewSource?{reviewRunId:reviewSource.runId}:{}),
-            ...(proposalActionId?{proposalActionId}:{}),
-            ...(reviewDecision?{reviewDecision}:{}),
-            proposalsExecuted:0,provider:reply.provider||'groq',...(analysisContext?{analysis:{workCount:analysisContext.works.length,
-              messageCount:analysisContext.works.reduce((n,work)=>n+work.messages.length,0)}}:{})});
-        });
-      }
       // Existing runTask can return an error result instead of throwing.
       requireConfirmedChatReceipt(reply);
       const canonicalRun=this.db.prepare('SELECT status FROM runs WHERE id=? AND task_id=?').get(reply.runId,task.id);
@@ -1811,51 +1746,18 @@ export class OrchestratorService {
         return this.finish(reserved.commandId,result);
       });
     } catch(error) {
-      // The pause transaction may have sealed the accepted Groq receipt while
-      // the model was in flight. Preserve it instead of trying to finish twice.
-      if(!usesProvider&&this.db.prepare('SELECT status FROM lab_command_receipts WHERE id=?')
-        .get(reserved.commandId)?.status!=='running')
-        return this.getReceipt(context,reserved.commandId);
-      // Coordinator and work-chat transports are distinct and never silently
-      // substitute for each other after any rejection or uncertain outcome.
-      const failure=error;
-      // Only an explicit pre-submit disposition from the provider executor is
-      // retryable. Missing/invalid evidence remains uncertain and quarantined.
-      const notSubmitted=usesProvider&&failure?.providerDeliveryState==='not_submitted';
-      const failureCode=/^[a-z][a-z0-9_]{1,80}$/i.test(String(failure?.providerFailureCode||''))
-        ?String(failure.providerFailureCode):'provider_send_unconfirmed';
-      const coordinatorCode=!usesProvider&&/^(?:groq|chatgpt)_[a-z0-9_]{1,64}$/.test(String(failure?.orchestratorFailureCode||''))
-        ?String(failure.orchestratorFailureCode):null;
-      const coordinatorOutcome=!usesProvider&&['rejected','response_invalid'].includes(failure?.orchestratorRequestOutcome)
-        ?failure.orchestratorRequestOutcome:null;
-      const coordinatorRejected=Boolean(coordinatorCode&&coordinatorOutcome);
-      const coordinatorHttpStatus=coordinatorCode&&Number.isSafeInteger(failure?.orchestratorHttpStatus)
-        ?failure.orchestratorHttpStatus:null;
-      // Model termination diagnostics are not model output: persist only
-      // allowlisted enum values and bounded token counts in this receipt.
-      const hasFinishDetails=coordinatorRejected&&[
-        'groq_incomplete_response','groq_response_filtered','groq_unexpected_tool_call'
-      ].includes(coordinatorCode);
-      const finishReason=hasFinishDetails&&['length','content_filter','tool_calls',
-        'function_call','unknown'].includes(failure?.orchestratorFinishReason)
-        ?failure.orchestratorFinishReason:null;
-      const completionTokens=hasFinishDetails&&Number.isSafeInteger(failure?.orchestratorCompletionTokens)&&
-        failure.orchestratorCompletionTokens>=0&&failure.orchestratorCompletionTokens<=1000000
-        ?failure.orchestratorCompletionTokens:null;
-      const completionBudget=hasFinishDetails&&Number.isSafeInteger(failure?.orchestratorCompletionBudget)&&
-        failure.orchestratorCompletionBudget>=1&&failure.orchestratorCompletionBudget<=1000000
-        ?failure.orchestratorCompletionBudget:null;
+      const notSubmitted=error?.providerDeliveryState==='not_submitted';
+      const failureCode=/^[a-z][a-z0-9_]{1,80}$/i.test(String(error?.providerFailureCode||''))
+        ?String(error.providerFailureCode):'provider_send_unconfirmed';
       const result={taskId:task.id,
-        ...(reviewSource?{reviewRunId:reviewSource.runId}:{}),
-        reason:notSubmitted?'provider_not_submitted':coordinatorRejected?'coordinator_request_failed':'execution_unconfirmed',
-        ...(notSubmitted?{providerStage:String(failure?.providerFailureStage||'unknown'),failureCode}:{}),
-        ...(coordinatorCode?{failureCode:coordinatorCode}:{}),...(coordinatorHttpStatus!==null?{httpStatus:coordinatorHttpStatus}:{}),
-        ...(finishReason?{finishReason}:{}),...(completionTokens!==null?{completionTokens}:{}),
-        ...(completionBudget!==null?{completionBudget}:{}),...(reserved.sendActionId?{
-        sendActionId:reserved.sendActionId,approvalId:reserved.approvalId}:{})};
+        reason:notSubmitted?'provider_not_submitted':'execution_unconfirmed',
+        ...(notSubmitted?{providerStage:String(error?.providerFailureStage||'unknown'),failureCode}:{}),
+        ...(reserved.sendActionId?{sendActionId:reserved.sendActionId,
+          approvalId:reserved.approvalId}:{})};
       this.transaction(()=>{
-        if(reserved.sendActionId)this.store.finishAction(task.id,reserved.sendActionId,notSubmitted?'failed':'indeterminate',result);
-        this.finish(reserved.commandId,result,notSubmitted||coordinatorRejected?'failed':'uncertain');
+        if(reserved.sendActionId)this.store.finishAction(task.id,reserved.sendActionId,
+          notSubmitted?'failed':'indeterminate',result);
+        this.finish(reserved.commandId,result,notSubmitted?'failed':'uncertain');
       });
       this.requireAccess(context,operation,input.projectId);
       return this.getReceipt(context,reserved.commandId);

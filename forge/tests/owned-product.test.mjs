@@ -38,7 +38,9 @@ test('tracked product has its own canonical identity and version', () => {
 
 test('product is under version control and not a generated workspace or copied Flow Hub', () => {
   assert.ok(fs.existsSync(path.join(ownedRoot,'src','store.mjs')));
-  assert.ok(fs.existsSync(path.join(ownedRoot,'supervisor','coordinator.mjs')));
+  assert.equal(fs.existsSync(path.join(ownedRoot,'supervisor','coordinator.mjs')),false);
+  assert.equal(fs.existsSync(path.join(ownedRoot,'supervisor','groq-planner.mjs')),false);
+  assert.ok(fs.existsSync(path.join(ownedRoot,'supervisor','recovery.mjs')));
   assert.ok(fs.existsSync(path.join(ownedRoot,'desktop','embedded-worker.mjs')));
   for(const banned of ['src/relay','apps','sql','node_modules/.git']) {
     assert.equal(fs.existsSync(path.join(ownedRoot,banned)),false,banned);
@@ -76,9 +78,9 @@ test('owned product keeps GPT Web as the only model runtime and Forge MCP as the
   const main=read('product/desktop/main.mjs');
   const worker=read('product/desktop/embedded-worker.mjs');
   assert.match(worker,/class EmbeddedChatWorker/);
-  assert.match(main,/coordinator:null/);
+  assert.doesNotMatch(main,/coordinator:null|createGroqCoordinatorConversation|createGroqSupervisorPlanner/);
   assert.match(main,/const mcpApp='forge-mcp'/);
-  assert.doesNotMatch(main,/createGroqCoordinatorConversation|createGroqSupervisorPlanner/);
+  assert.doesNotMatch(main,/GROQ_API_KEY|api\.groq\.com/);
   assert.match(main,/runTask/);
   const store=read('product/src/store.mjs');
   assert.match(main,/store\.beginProviderRun\(taskId, prompt/);

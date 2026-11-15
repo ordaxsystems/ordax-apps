@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { allowSourcePath, deriveSourceFile, assertDerivedIdentity } from '../lib/derive.mjs';
-import { applySupervisorOverlay } from '../lib/supervisor-overlay.mjs';
 import { readProductVersion } from '../lib/version-policy.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -104,43 +103,4 @@ test('derived source validation rejects original app credentials/session authori
 test('copied binary module is unchanged byte-for-byte', () => {
   const source = Buffer.from([0, 255, 7, 8, 10]);
   assert.deepEqual(deriveSourceFile('build/icon.png', source, lock), source);
-});
-
-
-test('lab-only supervisor overlay is fail-closed and does not import old Flow privileges', () => {
-  const miniMain = [
-    "import { app, BrowserWindow, ipcMain, protocol, net } from 'electron';",
-    "import path from 'node:path';",
-    "app.setName('OrdaX Forge');",
-    "const singleInstanceLock = app.requestSingleInstanceLock();",
-    "const here = path.dirname(fileURLToPath(import.meta.url));",
-    "const root = path.resolve(here, '..');",
-    "const localAppData = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || root, 'AppData', 'Local');",
-    "const userRoot = path.join(localAppData, 'OrdaX', 'Forge');",
-    "app.setPath('userData', userRoot);",
-    "app.whenReady().then(async () => {"
-  ].join('\n');
-  const output = applySupervisorOverlay('desktop/main.mjs',miniMain).toString('utf8');
-  assert.match(output,/SupervisorCoordinator/);
-  assert.match(output,/supervisor_disabled/);
-  assert.match(output,/dialog\.showMessageBox/);
-  assert.match(output,/runTask\(taskId,content/);
-  assert.match(output,/GROQ_API_KEY/);
-  assert.match(output,/supervisor:recoverable/);
-  assert.ok(output.indexOf("app.setPath('userData', userRoot)") <
-    output.indexOf('requestSingleInstanceLock'));
-  assert.doesNotMatch(output,/app\.setName\('OrdaX Gratis'\)/);
-  assert.throws(()=>applySupervisorOverlay('desktop/main.mjs','app.whenReady()'),/Pinned (?:Flow surface|Lab userData block) drifted/);
-  const preload = applySupervisorOverlay('desktop/preload.cjs',
-    "  workspace: () => ipcRenderer.invoke('ordax:workspace:get'),");
-  assert.match(preload.toString('utf8'),/supervisorApprove/);
-  assert.match(preload.toString('utf8'),/supervisorRecoverable/);
-  const html = applySupervisorOverlay('desktop/ui.html','    </aside>\n  </main>');
-  assert.match(html.toString('utf8'),/Supervisor OrdaX Lab/);
-  assert.match(html.toString('utf8'),/labSupervisorObjective/);
-  assert.match(html.toString('utf8'),/labSupervisorRecover/);
-  const js = applySupervisorOverlay('desktop/ui.js','// original UI');
-  assert.match(js.toString('utf8'),/labSupervisorPlan/);
-  assert.match(js.toString('utf8'),/supervisorStatus/);
-  assert.match(js.toString('utf8'),/labRecoverButton/);
 });

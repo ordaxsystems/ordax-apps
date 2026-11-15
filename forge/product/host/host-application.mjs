@@ -36,13 +36,11 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
   let observerMode=['auto','fast','beta'].includes(store.getWorkspaceSession()?.metadata?.observer_mode)
     ?store.getWorkspaceSession().metadata.observer_mode:'auto';
   // The browser Host has no verified GPT Web executor. Never fall back
-  // to an external model API or to a second model coordinator.
-  const coordinator=null;
+  // to an external model API or to a second model.
   let kernel;
   kernel=createOrchestratorKernel({
     store,
     authorize:({context})=>context===kernel?.context,
-    coordinator,
     confirmProposal:async({proposal})=>hostServer?.confirm({
       title:'Revisar nova frente',message:proposal.title,
       detail:proposal.reason+'\n\nPrimeira mensagem (rascunho):\n'+proposal.content+

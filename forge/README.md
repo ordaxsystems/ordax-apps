@@ -260,30 +260,24 @@ O login no ChatGPT do Lab é intencionalmente separado: não importar/exportar c
 **Escopo P1:** transferência da autoria do código do Lab para `product/`, mantendo o Grátis sem alterações. Os testes CI não equivalem a um novo teste físico Windows. O foco do repositório é GitHub/CI; operações no Windows ficam restritas aos gates que exigem Electron, sessão autorizada ou integração local.
 
 
-## Incremento de supervisão — 19/10/2026
+## Coordenação atual — GPT Web + Forge MCP
 
-**Código implementado, integração experimental, DESATIVADA por padrão.**
+O Forge não possui segundo modelo, planner externo ou coordenador por API. **GPT Web é o único executor de modelo** e **Forge MCP é a integração canônica de projeto/ferramentas**.
 
-- `supervisor/coordinator.mjs` planeja **um** próximo passo por chamada, valida rigorosamente as decisões da IA (`send_message`, `hold`, `complete`), vincula tudo à Task existente e registra a proposta no **mesmo** `action_ledger` SQLite do Flow. Não há banco paralelo nem importação do GPT standalone.
-- `supervisor/groq-planner.mjs` implementa o adapter opt-in da API oficial de chat Groq, com requisição JSON limitada, formato de resposta estrito, timeout, sem credenciais persistidas e sem repetição automática de chamadas incertas.
-- `lib/supervisor-overlay.mjs` registra a transformação histórica da origem no P0; a integração passa a residir nos **arquivos versionados de `product/`**: IPC do processo Electron, painel de planejamento, revisão por diálogo nativo do Windows e envio autorizado pelo **mesmo** `runTask()` do Flow/Grátis. Nenhum código desses é aplicado ao repositório de origem.
-- **Nunca enviar sem aprovação explícita:** depois de planejar, o usuário revê a mensagem exata e precisa aprová-la num diálogo nativo e acionar o envio. Sem confirmação observável do provedor, o ledger registra `indeterminate` e bloqueia replay automático.
-- **Isolamento de ambientes:** esta primeira integração é somente do ambiente **interno local**. A variante multiusuário usa a mesma interface de Supervisor, porém a autenticação/tenant, sessões e grants externos ainda NÃO estão conectados ou liberados.
-- O modelo não executa shell, Git, MCP ou Runtime por suas próprias palavras. A camada de planejamento não outorga autoridade; permissões de execução continuam nos owners canônicos.
+- `forjador_send`, `work_send` e `proposal_send` usam exclusivamente o executor GPT Web já embutido no Forge.
+- `orchestrator_analyze` faz leitura bounded do SQLite/receipts e aplica política local do próprio Forge; não chama modelo nem transporte externo.
+- `orchestrator_prepare` cria uma proposta local, review-only, diretamente do texto registrado; não chama modelo nem envia GPT.
+- Continuidade e recuperação usam os mesmos Tasks, Runs, `action_ledger`, `approval_ledger` e command receipts canônicos. Efeito incerto nunca é repetido automaticamente.
+- `supervisor/recovery.mjs` existe apenas para recuperação local/read-only compatível com receipts históricos; não planeja, não chama modelo e não cria outra autoridade.
+- O modelo não outorga shell, Git, MCP ou Runtime por texto. Autoridade continua nos owners, grants e confirmações canônicos.
 
-### Recuperação de tarefas sem reenvio
+### Uso de desenvolvimento
 
-Na versão **0.2.0-alpha.2**, o painel do supervisor inclui **Recuperar plano**. O botão consulta o histórico `action_ledger` e `approval_ledger` da Task selecionada sem chamar a API de planejamento. Propostas `pending_approval` voltam a permitir aprovação, e propostas `approved` voltam a permitir o envio explícito. Estados `planning`, `dispatching` ou `indeterminate` exigem reconciliação humana, sem novo envio ou cobrança automática.
-
-O resultado é limitado por identidade, tenant e permissão de leitura do supervisor. Não cria uma segunda fila, banco ou histórico.
-
-### Uso de desenvolvimento, somente em sessão explicitamente autorizada
-
-Sem configuração, a UI exibirá **Supervisor desativado** e preservará todas as funções manuais. Para habilitar o primeiro passo supervisionado em um **ambiente Dev** com credencial própria, configurar `GROQ_API_KEY` e `ORDAX_LAB_SUPERVISOR_ENABLE=1` no **processo isolado do Lab**, não no OrdaX Grátis e nunca em arquivos versionados. Não utilizar uma conta ChatGPT de terceiros. A chave é fornecida pelo usuário e não é inferida, solicitada ou copiada de outro aplicativo.
+A árvore executável é somente `forge/product` neste checkout. Não há chave de modelo externo nem variável para habilitar um segundo coordenador.
 
 O fluxo antigo `workspace-next` / `npm run start:staged` foi retirado da operação DEV. A única árvore executável é `forge/product` neste checkout. Quando um E2E realmente precisar de perfil descartável, ele chama `node scripts/start-lab.mjs --staged` diretamente e somente com `ORDAX_LAB_E2E_APPROVED=1` **e** `ORDAX_FORGE_STAGED_E2E=1`; esse perfil não é uma segunda versão do produto, não pode virar instalação operacional e deve ser removido ao final da prova.
 
-**Evidência de referência (19/10/2026):** 20 testes iniciais de bootstrap/supervisor e 113 testes herdados do Flow foram aprovados no Windows, inclusive na versão com supervisor. O novo gate de SemVer é executado na CI do GitHub e deve permanecer verde antes de merge. A CI não acessa o Flow privado nem a API real de um provedor. Nenhuma chamada Groq paga ou envio ChatGPT automático foi realizado.
+**Histórico:** evidências de arquiteturas anteriores permanecem somente em `docs/audits` e `docs/rfc-002` para rastreabilidade. Elas não definem o runtime atual. O gate de SemVer e a derivação pinada continuam na CI, sem injetar supervisor/modelo externo no produto.
 
 ## P0 — Auditoria da origem pinada (RFC-002)
 

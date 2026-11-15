@@ -42,7 +42,7 @@ export class LabContinuation {
         THEN excluded.start_run_rowid ELSE lab_continuation_policies.start_run_rowid END`)
       .run(projectId,orchestratorId,enabled?1:0,now,baseline);
     if(!enabled) {
-      // Persist the stop decision before an in-flight Groq reply returns.
+      // Persist the stop decision before any in-flight analysis completes.
       // Its external outcome is not retried or promoted to a confirmed review.
       this.quarantineInFlight(projectId,orchestratorId,'policy_disabled');
       this.nextProposal.configure(projectId,orchestratorId,false);
@@ -93,9 +93,8 @@ export class LabContinuation {
     const enabled=policy?.enabled===1;
     return {enabled,mode:'automatic_analysis_and_optional_proposals',automaticGPTSends:false,
       nextProposals:this.nextProposal.status(projectId,orchestratorId),
-      state:!enabled?'disabled':this.service.coordinator?.available?.(projectId,orchestratorId)!==true
-        ?'blocked_coordinator':counts.reconciliation_required?'reconciliation_required':
-          counts.queued||counts.analyzing?'pending':'observing',
+      state:!enabled?'disabled':counts.reconciliation_required?'reconciliation_required':
+        counts.queued||counts.analyzing?'pending':'observing',
       counts,latest:latest?{...latest,reviewDecision,followupPrepared}:null};
   }
   scan() {
@@ -120,7 +119,7 @@ export class LabContinuation {
       -- pick the oldest 100 reviewed Runs and permanently starve newer work.
       AND NOT EXISTS (SELECT 1 FROM lab_continuation_reviews reviewed
         WHERE reviewed.run_id=r.id)
-      -- A technical autonomous mission owns its own two receipt-backed Groq
+      -- A technical autonomous mission owns its own receipt-backed local
       -- reviews. Replaying the same Run into the generic continuation queue
       -- would duplicate model analysis and could propose a conflicting task.
       AND NOT EXISTS (SELECT 1 FROM lab_autonomous_dialogues mission
@@ -178,7 +177,7 @@ export class LabContinuation {
         // is in flight must not certify an old session's queued review.
         const current=this.store.getWorkspaceSession();
         const sameWorkspace=current?.status==='active'&&current.id===session.id;
-        const confirmed=sameWorkspace&&receipt?.status==='succeeded'&&receipt?.result?.responseObserved===true&&
+        const confirmed=sameWorkspace&&receipt?.status==='succeeded'&&receipt?.result?.analysisObserved===true&&
           (!source||(receipt.result.reviewDecision?.sourceRunId===row.run_id&&
             receipt.result.reviewDecision?.automaticGPTSendAuthorized===false));
         const finalized=this.db.prepare(`UPDATE lab_continuation_reviews

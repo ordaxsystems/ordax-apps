@@ -1,5 +1,5 @@
 // Generic, domain-neutral evidence assessment. This module does not create
-// another executor, store, provider or authority for Groq.
+// another executor, store, provider or external model authority.
 const terminal=new Set(['succeeded','failed','blocked','uncertain','running']);
 const outcomes=new Set(['passed','failed','not_evaluated']);
 const validId=v=>typeof v==='string'&&/^[a-z][a-z0-9_]{1,63}$/.test(v);

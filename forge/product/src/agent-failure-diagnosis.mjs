@@ -43,8 +43,3 @@ export function diagnoseAgentFailure({code,stage='unknown',deliveryState='unknow
   return Object.freeze({category:'confirmed_pre_submit_failure',severity:'stop',
     replayAllowed:false,autoRetry:false,operatorAction:'inspect_failure_and_fix_root_cause',evidence});
 }
-export function describeAgentDiagnosticForGroq(diagnosis) {
-  if(!diagnosis||typeof diagnosis!=='object'||!diagnosis.evidence)throw Error('diagnosis_invalid');
-  return Object.freeze({kind:diagnosis.category,policyAction:diagnosis.operatorAction,
-    mayResend:false,mayClaimRecovery:false,observations:diagnosis.evidence});
-}

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Store } from '../src/store.mjs';
-import { listLocalSupervisorRecoverable } from '../supervisor/coordinator.mjs';
+import { listLocalSupervisorRecoverable } from '../supervisor/recovery.mjs';
 import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile.mjs';
 
 const linkedUrl='https://chatgpt.com/c/11111111-2222-4333-8444-555555555555';

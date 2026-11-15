@@ -16,18 +16,8 @@ async function reviewed(t,decision='continue_same_conversation') {
   const response='O GPT examinou a divergencia de serializacao do DOM e sugeriu testes de regressao, mas nenhum arquivo foi modificado.';
   const nextPrompt='Continue a revisao da causa raiz, preserve o hash exato e apresente testes reproduziveis.';
   let sends=0,seq=0;
-  const coordinator={available:()=>true,send:async ({analysisContext})=>{
-    assert.equal(analysisContext.phase,'gpt_response_review');
-    return {provider:'groq',content:JSON.stringify({
-      runId:analysisContext.reviewEvidence.runId,decision,
-      summary:'Revisao tecnica recebida, com implementacao e provas ainda pendentes.',
-      reason:'A resposta registrada diz que nenhum arquivo foi modificado ou testado.',
-      observedExcerpt:'nenhum arquivo foi modificado',
-      nextPrompt:['continue_same_conversation','request_correction','new_conversation','new_work'].includes(decision)?nextPrompt:null
-    })};
-  }};
   const service=new OrchestratorService({store,authorize:({context:c})=>c===context,
-    coordinator,provider:{available:()=>true,busy:()=>false,send:async()=>{sends++;throw Error('unexpected_gpt_send')}}});
+    provider:{available:()=>true,busy:()=>false,send:async()=>{sends++;throw Error('unexpected_gpt_send')}}});
   const call=(operation,input={},id='req_'+(++seq))=>
     service.invoke(context,operation,{...input,requestId:id});
   const projectId=(await call('project_create',{name:'Projeto de engenharia',objective:'Concluir o app'})).result.projectId;
@@ -44,6 +34,24 @@ async function reviewed(t,decision='continue_same_conversation') {
   store.appendMessage(taskId,'assistant',response);
   store.finishRun(taskId,started.runId);
   assert.deepEqual(await service.continuation.tick(context),{state:'analyzed',runId:started.runId});
+  if(decision!=='verify_external_effect'){
+    const row=store.db.prepare(
+      'SELECT command_id FROM lab_continuation_reviews WHERE run_id=?'
+    ).get(started.runId);
+    const receipt=store.db.prepare('SELECT result FROM lab_command_receipts WHERE id=?').get(row.command_id);
+    const result=JSON.parse(receipt.result);
+    result.reviewDecision={
+      sourceRunId:started.runId,decision,
+      summary:'Decisão histórica preservada para compatibilidade de receipt.',
+      reason:'Fixture histórica; o runtime atual não usa segundo modelo.',
+      observedExcerpt:'nenhum arquivo foi modificado',
+      nextPrompt,
+      reviewOnly:true,externalEffectVerified:false,automaticGPTSendAuthorized:false,
+      reviewProvider:'historical_receipt'
+    };
+    store.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
+      .run(JSON.stringify(result),row.command_id);
+  }
   const args={projectId,orchestratorId,reviewRunId:started.runId};
   return {store,service,context,call,args,taskId,runId:started.runId,chatUrl,nextPrompt,
     countSends:()=>sends};
