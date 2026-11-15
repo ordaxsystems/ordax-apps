@@ -9,13 +9,18 @@ const project='project_VisualTest';
 
 test('one canonical tool catalog publishes bounded app and scoped preview views',()=>{
   const tools=new Map(ORCHESTRATOR_TOOLS.map(tool=>[tool.name,tool]));
-  for(const name of ['forge_app_view_status','forge_app_view_capture','forge_project_view_capture','forge_project_view_probe']){
+  for(const name of ['forge_app_view_status','forge_app_view_capture','forge_project_view_capture','forge_project_view_probe','forge_project_view_live_inspect']){
     assert.equal(tools.get(name)?.readOnly,true);
     assert.equal(FORGE_APP_MCP_OPERATIONS.includes(name.slice(6)),true);
   }
   assert.deepEqual(tools.get('forge_project_view_capture').inputSchema.required,['projectId','target']);
   assert.deepEqual(tools.get('forge_project_view_probe').inputSchema.required,
     ['projectId','target','expectedSha256','controlIndex','expectedLabel']);
+  const live=tools.get('forge_project_view_live_click');
+  assert.equal(live.readOnly,false);
+  assert.ok(FORGE_APP_MCP_OPERATIONS.includes('project_view_live_click'));
+  assert.deepEqual(live.inputSchema.required,['requestId','projectId','taskId','assetId',
+    'expectedRevision','controlIndex','expectedLabel']);
 });
 
 test('Forge MCP returns real image content once, without duplicating base64 in structured metadata',async()=>{

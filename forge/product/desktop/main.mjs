@@ -1436,15 +1436,65 @@ orchestratorService.viewPort=Object.freeze({
     providerRuns:providerViews.activeRunCount,
     interactivePreview:interactiveHtmlPreview?.snapshot()??{active:false},
     supportsProjectCapture:true,requiresForeground:false,
-    captureScope:'forge_window_or_authorized_project_only'
+    captureScope:'forge_window_or_authorized_project_only',
+    appRendererCaptureEligible:Boolean(win&&!win.isDestroyed()&&
+      win.isVisible()&&!win.isMinimized()),
+    liveNativeDomInspectionAvailable:Boolean(interactiveHtmlPreview?.snapshot().active)
   }),
+  async live(operation,input){
+    if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_mcp_app_untrusted');
+    const {projectId,taskId,assetId}=input;
+    let attemptedAction=false;
+    try{
+      orchestratorService.task(projectId,taskId);
+      const proof=readVerifiedHtmlPreview({taskId,assetId});
+      const identity={taskId,assetId,sha256:proof.sha256};
+      const active=interactiveHtmlPreview?.snapshot();
+      if(!active?.active||active.taskId!==taskId||
+         active.assetId!==assetId||active.sha256!==proof.sha256)
+        throw Error('forge_view_live_unavailable');
+      if(operation!=='project_view_live_inspect'&&operation!=='project_view_live_click')
+        throw Error('forge_view_operation_invalid');
+      attemptedAction=operation==='project_view_live_click';
+      const result=attemptedAction
+        ?await interactiveHtmlPreview.clickLive(identity,{
+          expectedRevision:input.expectedRevision,
+          controlIndex:input.controlIndex,expectedLabel:input.expectedLabel
+        })
+        :await interactiveHtmlPreview.inspectLive(identity);
+      // A Task or artifact can be deleted, replaced or rebound during a DOM
+      // action. Never return an old View as proof of a new project.
+      orchestratorService.task(projectId,taskId);
+      if(readVerifiedHtmlPreview({taskId,assetId}).sha256!==identity.sha256||
+         interactiveHtmlPreview?.snapshot().sha256!==identity.sha256||
+         interactiveHtmlPreview?.snapshot().taskId!==taskId||
+         interactiveHtmlPreview?.snapshot().assetId!==assetId)
+        throw Error('forge_view_source_changed');
+      return {projectId,...result};
+    }catch(error){
+      if(!attemptedAction)error.forgeLiveActionNotSubmitted=true;
+      else if(!['forge_view_live_stale','forge_view_live_unavailable',
+        'forge_view_live_busy'].includes(error?.message))
+        error.forgeLiveActionSubmitted=true;
+      throw error;
+    }
+  },
   async capture(operation,input){
     if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_mcp_app_untrusted');
     if(operation==='app_view_capture'){
       if(!win||win.isDestroyed())throw Error('forge_view_window_unavailable');
+      // The real app renderer stops painting when minimized. Reject rather
+      // than returning a stale screenshot or hanging an MCP claim worker.
+      if(win.isMinimized()||!win.isVisible())
+        throw Error('forge_app_view_renderer_occluded');
       // Renderer pixels only. Native overlay WebContentsViews are separate
       // and must not be misrepresented as included in this screenshot.
-      const image=boundedForgeViewImage(await win.webContents.capturePage());
+      let timer;
+      const image=await Promise.race([
+        win.webContents.capturePage().then(boundedForgeViewImage),
+        new Promise((_resolve,reject)=>{timer=setTimeout(
+          ()=>reject(Error('forge_app_view_capture_timeout')),7000);})
+      ]).finally(()=>clearTimeout(timer));
       return {schema:'ordax.forge.view-capture/1',source:'app_renderer',
         includesNativeOverlayViews:false,focusChanged:false,
         deploymentVerified:false,image};

@@ -3,6 +3,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {buildInteractiveHtmlDocument,isPreviewNetworkRequestAllowed} from '../src/interactive-html-preview-policy.mjs';
 import {normalizeProviderViewBounds} from '../src/provider-view-bounds.mjs';
 import {probeIsolatedHtmlControls,normalizedHtmlControlChecks} from '../src/isolated-html-controls.mjs';
+import {inspectForgeLiveViewDom} from '../src/forge-live-view-dom.mjs';
 
 // Both live preview and disposable control probe share the same hardened
 // WebContentsView policy and ephemeral, network-denied Electron session.
@@ -38,6 +39,8 @@ export class IsolatedInteractiveHtmlPreview {
     this.controlsInFlight=null;
     this.controlObservation=null;
     this.controlsReceiptRecorded=false;
+    this.liveViewNonce=null;
+    this.liveActionBusy=false;
   }
   snapshot(){
     return {active:Boolean(this.view&&!this.view.webContents.isDestroyed()&&this.loaded),
@@ -69,6 +72,7 @@ export class IsolatedInteractiveHtmlPreview {
     const view=sandboxedPreviewView({partition});
     this.view=view;this.session=ses;
     this.owner={taskId,assetId,sha256,key};
+    this.liveViewNonce=randomUUID();
     this.loaded=false;
     view.setBounds({x:0,y:0,width:1,height:1});
     view.setVisible(false);
@@ -86,6 +90,77 @@ export class IsolatedInteractiveHtmlPreview {
       }).finally(()=>{if(this.opening===opening)this.opening=null;});
     this.opening=opening;
     return opening;
+  }
+  // Operates on the live native View, not a disposable preview clone.
+  // JS runs in a separate isolated world and cannot access Electron/Node.
+  assertLiveOwner({taskId,assetId,sha256}={}){
+    const owner=this.owner;
+    if(!this.loaded||!this.view||this.view.webContents.isDestroyed()||
+       !owner||owner.taskId!==taskId||owner.assetId!==assetId||
+       owner.sha256!==sha256||!this.liveViewNonce)
+      throw Error('forge_view_live_unavailable');
+    return {owner,view:this.view,nonce:this.liveViewNonce};
+  }
+  async evaluateLiveView(script,view){
+    let timer;
+    try{
+      return await Promise.race([
+        view.webContents.executeJavaScriptInIsolatedWorld(1001,[{code:script}],false),
+        new Promise((_resolve,reject)=>{
+          timer=setTimeout(()=>reject(Error('forge_view_live_dom_timeout')),6500);
+        })
+      ]);
+    }finally{clearTimeout(timer);}
+  }
+  async inspectLive(identity){
+    const {view,nonce,owner}=this.assertLiveOwner(identity);
+    const observation=await this.evaluateLiveView(
+      '('+inspectForgeLiveViewDom.toString()+')()',view);
+    if(observation?.available!==true||!observation.state||
+       observation.state.inputValuesIncluded!==false)
+      throw Error('forge_view_live_dom_unavailable');
+    if(this.view!==view||this.owner!==owner||this.liveViewNonce!==nonce||
+       !this.loaded||view.webContents.isDestroyed())
+      throw Error('forge_view_live_stale');
+    const revision=createHash('sha256').update(nonce+':'+owner.key+':'+
+      JSON.stringify(observation.state)).digest('hex');
+    return {schema:'ordax.forge.live-view/1',source:'active_native_view',
+      taskId:owner.taskId,assetId:owner.assetId,sha256:owner.sha256,
+      revision,inspection:observation.state,windowFocusNotRequired:true,
+      pixelCaptureClaimed:false};
+  }
+  async clickLive(identity,{expectedRevision,controlIndex,expectedLabel}={}){
+    if(this.liveActionBusy)throw Error('forge_view_live_busy');
+    this.liveActionBusy=true;
+    let submitted=false;
+    try{
+      const before=await this.inspectLive(identity);
+      if(before.revision!==expectedRevision||!Number.isInteger(controlIndex)||
+         controlIndex<0||controlIndex>39||
+         before.inspection.controls[controlIndex]?.label!==expectedLabel)
+        throw Error('forge_view_live_stale');
+      const {view}=this.assertLiveOwner(identity);
+      const command={mode:'click',index:controlIndex,expectedLabel,
+        expectedState:before.inspection};
+      const applied=await this.evaluateLiveView(
+        '('+inspectForgeLiveViewDom.toString()+')('+JSON.stringify(command)+')',view);
+      if(applied?.applied!==true)
+        throw Error(applied?.reason==='forge_view_live_stale'?
+          'forge_view_live_stale':'forge_view_live_action_unconfirmed');
+      submitted=true;
+      await new Promise(resolve=>setTimeout(resolve,125));
+      const after=await this.inspectLive(identity);
+      return {schema:'ordax.forge.live-view-action/1',source:'active_native_view',
+        taskId:identity.taskId,assetId:identity.assetId,sha256:identity.sha256,
+        controlIndex,expectedLabel,action:'click',dispatched:true,
+        beforeRevision:before.revision,afterRevision:after.revision,
+        observableDomChanged:before.revision!==after.revision,
+        statePersistedInLiveView:true,projectFilesModified:false,
+        externalEffectsVerified:false,websitePublished:false};
+    }catch(error){
+      if(submitted)error.forgeLiveActionSubmitted=true;
+      throw error;
+    }finally{this.liveActionBusy=false;}
   }
   bounds(rect){
     this.requestedBounds=rect&&rect.visible!==false?rect:null;
@@ -224,6 +299,7 @@ export class IsolatedInteractiveHtmlPreview {
   close(){
     const view=this.view;
     this.view=null;this.session=null;this.owner=null;
+    this.liveViewNonce=null;
     this.loaded=false;this.requestedBounds=null;
     this.opening=null;this.renderObservation=null;
     this.renderInFlight=null;this.renderReceiptRecorded=false;

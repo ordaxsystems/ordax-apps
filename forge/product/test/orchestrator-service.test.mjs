@@ -1227,3 +1227,65 @@ test('prepared proposals require canonical approved ledger and ignore corrupted 
   assert.equal(db.prepare('PRAGMA quick_check').get().quick_check,'ok');
   assert.equal(providerSends,0);
 });
+
+test('Live native View MCP uses SQLite receipts and never replays uncertain clicks',async t=>{
+  const f=fixture(t),a=await project(f);
+  let calls=0,clicked=0;
+  const base={projectId:a.p,taskId:a.w,assetId:'asset_test',
+    expectedRevision:'a'.repeat(64),controlIndex:0,expectedLabel:'Mudar'};
+  f.service.viewPort={
+    live:async(operation,input)=>{
+      calls++;
+      assert.equal(input.projectId,a.p);
+      assert.equal(operation==='project_view_live_click'||operation==='project_view_live_inspect',true);
+      if(operation==='project_view_live_inspect')
+        return {schema:'ordax.forge.live-view/1',revision:base.expectedRevision};
+      clicked++;
+      return {schema:'ordax.forge.live-view-action/1',dispatched:true,
+        statePersistedInLiveView:true,externalEffectsVerified:false};
+    }
+  };
+  const inspect=await f.call('project_view_live_inspect',{
+    projectId:a.p,taskId:a.w,assetId:base.assetId});
+  assert.equal(inspect.revision,base.expectedRevision);
+  assert.equal(f.store.db.prepare("SELECT count(*) AS n FROM lab_command_receipts WHERE operation='project_view_live_inspect'").get().n,0);
+  const input={requestId:'live_once',...base};
+  const receipt=await f.service.invoke(f.context,'project_view_live_click',input);
+  assert.equal(receipt.status,'succeeded');
+  assert.equal(receipt.result.statePersistedInLiveView,true);
+  assert.equal(clicked,1);
+  assert.deepEqual(await f.service.invoke(f.context,'project_view_live_click',input),receipt);
+  assert.equal(clicked,1);
+  await assert.rejects(f.service.invoke(f.context,'project_view_live_click',
+    {...input,expectedLabel:'Outra ação'}),/request_conflict/);
+  assert.equal(clicked,1);
+
+  f.service.viewPort.live=async()=>{calls++;throw Error('forge_view_live_stale');};
+  const stale=await f.service.invoke(f.context,'project_view_live_click',
+    {...base,requestId:'live_stale'});
+  assert.equal(stale.status,'failed');
+  assert.equal(stale.result.reason,'forge_view_live_stale');
+
+  let unknownCalls=0;
+  f.service.viewPort.live=async()=>{
+    unknownCalls++;
+    const err=Error('renderer_timeout');err.forgeLiveActionSubmitted=true;
+    throw err;
+  };
+  const pending={...base,requestId:'live_uncertain'};
+  const uncertain=await f.service.invoke(f.context,'project_view_live_click',pending);
+  assert.equal(uncertain.status,'uncertain');
+  assert.equal(uncertain.requiresReconciliation,true);
+  assert.equal(unknownCalls,1);
+  assert.deepEqual(await f.service.invoke(f.context,'project_view_live_click',pending),uncertain);
+  assert.equal(unknownCalls,1);
+
+  f.setAllowed(false);
+  await assert.rejects(f.call('project_view_live_inspect',{
+    projectId:a.p,taskId:a.w,assetId:base.assetId}),/orchestrator_access_denied/);
+  await assert.rejects(f.service.invoke(f.context,'project_view_live_click',
+    {...base,requestId:'live_denied'}),/orchestrator_access_denied/);
+  assert.equal(unknownCalls,1);
+  f.setAllowed(true);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
