@@ -34,6 +34,7 @@ import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
 import {IsolatedInteractiveHtmlPreview} from './isolated-interactive-preview.mjs';
+import {inspectForgeAppUiDom} from '../src/forge-app-ui-dom.mjs';
 import {boundedForgeViewImage,captureForgeProjectHtml} from './forge-view-capture.mjs';
 import { createProviderViewRegistry } from '../src/provider-view-registry.mjs';
 import { backgroundResidencyAllowed,backgroundStartupAllowed,backgroundModeRequested } from '../src/background-residency-policy.mjs';
@@ -1425,9 +1426,105 @@ const orchestratorKernel=createOrchestratorKernel({
 });
 localOrchestratorContext=orchestratorKernel.context;
 const {service:orchestratorService,mcp:localOrchestratorMcp}=orchestratorKernel;
-// App-owned View port. Uses the canonical project/file/Task identities and
-// real Chromium pixels; neither the MCP nor its caller can select a disk path.
+// The sole app-shell automation port controls the ACTUAL Electron renderer.
+// Native WebContentsViews are occlusion masks, not alternate HTML clones.
+let appUiActionBusy=false;
+function forgeAppUiRenderer(){
+  if(!win||win.isDestroyed()||win.webContents.isDestroyed()||
+     !win.webContents.getURL().startsWith('file:')||
+     !win.webContents.getURL().endsWith('/ui.html'))
+    throw Error('forge_app_ui_unavailable');
+  return win;
+}
+function forgeAppUiNativeOverlays(window){
+  const result=[];
+  for(const child of window.contentView.children||[]){
+    try{
+      if(!child.webContents||child.webContents.isDestroyed()||
+         child.getVisible?.()===false)continue;
+      const rect=child.getBounds();
+      if(rect.width>2&&rect.height>2)
+        result.push({x:rect.x,y:rect.y,width:rect.width,height:rect.height});
+    }catch{}
+  }
+  return result.slice(0,12);
+}
+async function forgeAppUiEvaluate(window,payload){
+  if(window!==win||window.isDestroyed()||window.webContents.isDestroyed())
+    throw Error('forge_app_ui_unavailable');
+  const command={...payload,
+    nativeOverlays:forgeAppUiNativeOverlays(window),
+    zoomFactor:window.webContents.getZoomFactor()};
+  const code='('+inspectForgeAppUiDom.toString()+')('+JSON.stringify(command)+')';
+  return window.webContents.executeJavaScriptInIsolatedWorld(1001,[{code}],false);
+}
+async function forgeAppUiInspect(window){
+  const state=await forgeAppUiEvaluate(window,{mode:'inspect'});
+  if(state?.available!==true||state.state?.schema!=='ordax.forge.app-ui-dom/1')
+    throw Error('forge_app_ui_unavailable');
+  return {schema:'ordax.forge.app-ui-inspection/1',source:'active_forge_renderer',
+    revision:createHash('sha256').update(JSON.stringify(state.state)).digest('hex'),
+    state:state.state,windowMinimized:window.isMinimized(),
+    windowFocused:window.isFocused(),windowVisible:window.isVisible(),
+    requiresForeground:false,overlayViewsIncluded:false};
+}
+// App-owned View port. Uses canonical project/file/Task identities and the
+// current native Electron UI; neither MCP nor caller selects a disk path.
 orchestratorService.viewPort=Object.freeze({
+  async ui(operation,input={}){
+    if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_mcp_app_untrusted');
+    const window=forgeAppUiRenderer();
+    if(operation==='app_ui_inspect')return forgeAppUiInspect(window);
+    if(!['app_ui_click','app_ui_fill','app_ui_scroll'].includes(operation))
+      throw Error('forge_app_ui_operation_invalid');
+    if(appUiActionBusy)throw Error('forge_app_ui_busy');
+    appUiActionBusy=true;
+    let mayHaveDispatched=false;
+    try{
+      const before=await forgeAppUiInspect(window);
+      if(before.revision!==input.expectedRevision)
+        throw Error('forge_app_ui_stale');
+      const action=operation.slice('app_ui_'.length);
+      const command={mode:action,expectedState:before.state,
+        ...(action==='scroll'?
+          {scrollIndex:input.scrollIndex,deltaY:input.deltaY}:
+          {controlIndex:input.controlIndex,expectedLabel:input.expectedLabel,
+            ...(action==='fill'?{value:input.value}:{})})};
+      mayHaveDispatched=true;
+      const result=await forgeAppUiEvaluate(window,command);
+      if(result?.applied!==true){
+        mayHaveDispatched=false;
+        throw Error(result?.reason==='forge_app_ui_stale'?
+          'forge_app_ui_stale':'forge_app_ui_unconfirmed');
+      }
+      if(action==='fill'&&result.valueAccepted!==true)
+        throw Error('forge_app_ui_fill_unconfirmed');
+      await new Promise(resolve=>setTimeout(resolve,120));
+      const after=await forgeAppUiInspect(window);
+      if(action==='fill'){
+        const verification=await forgeAppUiEvaluate(window,{
+          mode:'verify_fill',controlIndex:input.controlIndex,
+          expectedLabel:input.expectedLabel,value:input.value});
+        if(verification?.valueVerified!==true)
+          throw Error('forge_app_ui_fill_unconfirmed');
+      }
+      return {schema:'ordax.forge.app-ui-action/1',
+        source:'active_forge_renderer',action,dispatched:true,
+        beforeRevision:before.revision,afterRevision:after.revision,
+        observableDomChanged:before.revision!==after.revision,
+        ...(action==='scroll'?
+          {scrollIndex:input.scrollIndex,deltaY:input.deltaY}:
+          {controlIndex:input.controlIndex,expectedLabel:input.expectedLabel}),
+        ...(action==='fill'?{rendererValueVerified:true}:{}),
+        inputValuesIncluded:false,
+        semanticEffectVerified:false,externalEffectsVerified:false,
+        focusChanged:false};
+    }catch(error){
+      if(mayHaveDispatched)error.forgeAppUiActionSubmitted=true;
+      else error.forgeAppUiActionNotSubmitted=true;
+      throw error;
+    }finally{appUiActionBusy=false;}
+  },
   status:()=>({
     schema:'ordax.forge.app-view/1',available:Boolean(win&&!win.isDestroyed()),
     minimized:Boolean(win&&!win.isDestroyed()&&win.isMinimized()),
@@ -1439,7 +1536,10 @@ orchestratorService.viewPort=Object.freeze({
     captureScope:'forge_window_or_authorized_project_only',
     appRendererCaptureEligible:Boolean(win&&!win.isDestroyed()&&
       win.isVisible()&&!win.isMinimized()),
-    liveNativeDomInspectionAvailable:Boolean(interactiveHtmlPreview?.snapshot().active)
+    liveNativeDomInspectionAvailable:Boolean(interactiveHtmlPreview?.snapshot().active),
+    nativeAppUiNavigationAvailable:Boolean(win&&!win.isDestroyed()&&
+      win.webContents.getURL().startsWith('file:')),
+    nativeAppUiNavigationRequiresFocus:false
   }),
   async live(operation,input){
     if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_mcp_app_untrusted');
