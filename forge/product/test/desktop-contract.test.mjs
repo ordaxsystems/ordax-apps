@@ -250,7 +250,7 @@ test('work rail supports bounded batch creation without dispatching to GPT',()=>
   assert.match(uiSource,/Agents GPT: '\+executor\.maxConcurrentSends\+' sessões/);
   assert.match(uiSource,/cada agent mantém Task, Run e receipt próprios/);
 });
-test('autonomous mission recovery exposes scoped existing Tasks without replay',()=>{
+test('autonomous mission recovery exposes scoped existing Tasks without a duplicate legacy launcher',()=>{
   const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.equal((uiHtml.match(/id="autonomousReviewActions"/g)||[]).length,1);
   assert.match(source,/const reviews=\$\('autonomousReviewActions'\)/);
@@ -258,18 +258,20 @@ test('autonomous mission recovery exposes scoped existing Tasks without replay',
   assert.match(source,/for\(const item of currentJob\.reviewTasks\|\|\[\]\)/);
   assert.match(source,/await onOpenWork\(item\.taskId\)/);
   assert.match(source,/reviews\.hidden=reviews\.childElementCount===0/);
-  const start=source.slice(source.indexOf('async function launchAutonomousMission(mode)'));
-  assert.match(start,/providerComposeAvailability\(await api\.providerStatus\(\),\{hostMode:nodeHost\}\)/);
-  assert.ok(start.indexOf('providerComposeAvailability(await api.providerStatus()')<
-    start.indexOf("command('autonomous_dialogue_start'"),'fresh readiness precedes durable mission start');
-  assert.match(start,/if\(!availability\.allowed\)/);
-  assert.match(start,/Nenhuma missão foi iniciada/);
+  assert.doesNotMatch(uiHtml,/startAutonomous(?:Technical|Dialogue|Story)|orchestratorExperiments/);
+  assert.doesNotMatch(source,/launchAutonomousMission|command\('autonomous_dialogue_start'/);
+  assert.match(main,/payload\?\.operation==='forjador_send'/);
+  assert.match(main,/startDevAutonomousForjador/);
 });
-test('technical continuation is a separate user action with a fresh GPT readiness gate',()=>{
+test('technical continuation accepts the app-owned review policy and still checks fresh GPT readiness',()=>{
   const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  const autonomy=fs.readFileSync(path.join(root,'src','autonomous-dialogue.mjs'),'utf8');
   assert.equal((uiHtml.match(/id="continueAutonomousTechnical"/g)||[]).length,1);
   assert.match(uiHtml,/id="continueAutonomousTechnical"[^>]*hidden disabled/);
   assert.match(source,/continueButton\.hidden=currentJob\?\.canContinue!==true/);
+  assert.match(source,/appOwnedTechnicalReviewAvailable=result\?\.appOwnedTechnicalReviewAvailable===true/);
+  assert.match(source,/\(!coordinatorAvailable&&!appOwnedTechnicalReviewAvailable\)/);
+  assert.match(autonomy,/appOwnedTechnicalReviewAvailable:this\.service\.continuousExecutionByDefault===true/);
   const handler=source.slice(source.indexOf("$('continueAutonomousTechnical').addEventListener"));
   assert.match(handler,/snapshot\?\.mission\?\.canContinue!==true/);
   assert.match(handler,/providerComposeAvailability\(await api\.providerStatus\(\),\{hostMode:nodeHost\}\)/);
@@ -664,11 +666,11 @@ test('operational overview reuses work state and never presents an experimental 
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
-  for(const id of ['projectPulse','projectPulseTotal','projectPulseRunning','projectPulseAttention','projectPulseWaiting','projectPulseNote','openProjectWork','orchestratorExperiments'])
+  for(const id of ['projectPulse','projectPulseTotal','projectPulseRunning','projectPulseAttention','projectPulseWaiting','projectPulseNote','openProjectWork'])
     assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,'unique ID: '+id);
   assert.match(html,/<section id="projectPulse"[^>]*hidden>/);
   assert.match(html,/Resumo das frentes registradas, não uma confirmação de execução autônoma/);
-  assert.match(html,/<details id="orchestratorExperiments"/);
+  assert.doesNotMatch(html,/orchestratorExperiments|Missões legadas desativadas/);
   assert.match(orchestration,/function renderProjectPulse\(counts,total\)/);
   assert.match(orchestration,/const hasScope=Boolean\(projectId&&orchestratorId\)/);
   assert.match(orchestration,/renderProjectPulse\(counts,works\.length\)/);
@@ -679,7 +681,7 @@ test('operational overview reuses work state and never presents an experimental 
   assert.match(orchestration,/Estados das conversas registradas; não comprovam execução autônoma/);
   assert.match(css,/\.project-pulse\[hidden\]\{display:none\}/);
   assert.match(css,/\.project-pulse-stats\{display:grid;grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
-  assert.match(css,/\.orchestrator-experiments-content\{/);
+  assert.doesNotMatch(css,/orchestrator-experiments/);
 });
 
 test('project pulse opens a single filtered rail with preserved keyboard focus and no duplicate counters',()=>{

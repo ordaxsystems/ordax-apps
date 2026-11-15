@@ -468,7 +468,8 @@ export class AutonomousDialogue {
       .get(chatTaskId);
     return {mission:this.summary(row),lastUserTurnAt:lastUserTurn?.created_at||null,
       continuousExecutionEnabled:this.service.orchestrator(projectId,orchestratorId)
-        .continuous_execution_enabled===1};
+        .continuous_execution_enabled===1,
+      appOwnedTechnicalReviewAvailable:this.service.continuousExecutionByDefault===true};
   }
   start(context,{projectId,orchestratorId,mission,requestId,mode='dialogue',directUserPrompt=false,resumeSiteTaskId=null}) {
     this.service.requireAccess(context,'autonomous_dialogue_start',projectId);

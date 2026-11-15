@@ -220,9 +220,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('analyzeWorks').disabled=!coordinatorAvailable||!selectedReady||workCount===0||analysisBusy||preflightBusy||coordinatorSubmitting;
     $('inspectProjectAccess').disabled=!projectId||!selected||analysisBusy||preflightBusy||coordinatorSubmitting;
     $('prepareWork').disabled=!coordinatorAvailable||!selectedReady||analysisBusy||coordinatorSubmitting||!coordinatorDraftCommitAvailable;
-    $('startAutonomousDialogue').disabled=!coordinatorAvailable||!gptWebTransportAvailable||!selectedReady||analysisBusy||coordinatorSubmitting;
-    $('startAutonomousStory').disabled=$('startAutonomousDialogue').disabled;
-    $('startAutonomousTechnical').disabled=$('startAutonomousDialogue').disabled;
     $('coordinatorPrompt').disabled=coordinatorSubmitting||!chatTaskId;
   }
   function setCoordinatorDraftState(text='') {
@@ -1180,6 +1177,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(generation!==autonomousRefreshGeneration||p!==projectId||o!==orchestratorId)return;
     const job=result?.mission;
     const continuousEnabled=result?.continuousExecutionEnabled===true;
+    const appOwnedTechnicalReviewAvailable=result?.appOwnedTechnicalReviewAvailable===true;
     const continuousButton=$('autonomousContinuousToggle');
     continuousButton.disabled=!projectId||!orchestratorId;
     continuousButton.textContent=continuousEnabled
@@ -1289,12 +1287,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       }
     }
     reviews.hidden=reviews.childElementCount===0;
-    $('startAutonomousDialogue').disabled=Boolean(job && !['succeeded','blocked','reconciliation_required','verification_required','budget_exhausted'].includes(job.state))||!coordinatorAvailable||!gptWebTransportAvailable||analysisBusy||coordinatorSubmitting||preflightBusy;
-    $('startAutonomousStory').disabled=$('startAutonomousDialogue').disabled;
-    $('startAutonomousTechnical').disabled=$('startAutonomousDialogue').disabled;
     const continueButton=$('continueAutonomousTechnical');
     continueButton.hidden=currentJob?.canContinue!==true;
-    continueButton.disabled=continueButton.hidden||!coordinatorAvailable||
+    continueButton.disabled=continueButton.hidden||
+      (!coordinatorAvailable&&!appOwnedTechnicalReviewAvailable)||
       !gptWebTransportAvailable||analysisBusy||coordinatorSubmitting||preflightBusy;
   }
   async function renderCoordinator() {
@@ -1814,32 +1810,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     }catch{error();}
     finally{analysisBusy=false;syncCoordinatorActions();}
   });
-  async function launchAutonomousMission(mode){
-    const button=$(mode==='story'?'startAutonomousStory':
-      mode==='technical'?'startAutonomousTechnical':'startAutonomousDialogue');
-    if(button.disabled||!projectId||!orchestratorId)return;
-    const p=projectId,o=orchestratorId;
-    const mission=$('coordinatorPrompt').value.trim();
-    if(!mission){status('Descreva a missão única no campo do Forjador.');$('coordinatorPrompt').focus();return;}
-    $('startAutonomousStory').disabled=true;$('startAutonomousDialogue').disabled=true;
-    $('startAutonomousTechnical').disabled=true;
-    try {
-      // A transport function existing does not prove ChatGPT is ready now.
-      // The Electron worker still independently validates each submission.
-      let availability;
-      try{availability=providerComposeAvailability(await api.providerStatus(),{hostMode:nodeHost});}
-      catch{status('Não foi possível verificar a sessão do GPT. Nenhuma missão foi iniciada.');return;}
-      if(p!==projectId||o!==orchestratorId)return;
-      if(!availability.allowed) {
-        status(COMPOSE_STATUS_MESSAGES[availability.reason]||'Sessão do GPT não confirmada. Nenhuma missão foi iniciada.');
-        return;
-      }
-      const receipt=await command('autonomous_dialogue_start',{projectId:p,orchestratorId:o,mission,mode});
-      if(p!==projectId||o!==orchestratorId)return;
-      if(receipt.status==='succeeded')status('Missão registrada. A próxima etapa depende de Runs GPT verificados.');
-      await refreshAutonomousDialogue();
-    }catch{error();}finally{await refreshAutonomousDialogue();}
-  }
   $('autonomousContinuousToggle').addEventListener('click',async()=>{
     const button=$('autonomousContinuousToggle');
     if(button.disabled||!projectId||!orchestratorId)return;
@@ -1890,9 +1860,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     }catch{error();}
     finally{if(p===projectId&&o===orchestratorId)await refreshAutonomousDialogue();}
   });
-  $('startAutonomousTechnical').addEventListener('click',()=>void launchAutonomousMission('technical'));
-  $('startAutonomousDialogue').addEventListener('click',()=>void launchAutonomousMission('dialogue'));
-  $('startAutonomousStory').addEventListener('click',()=>void launchAutonomousMission('story'));
   $('prepareWork').addEventListener('click',async()=>{
     if($('prepareWork').disabled||analysisBusy||coordinatorSubmitting||!projectId||!orchestratorId)return;
     const p=projectId,o=orchestratorId,t=chatTaskId;

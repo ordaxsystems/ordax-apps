@@ -317,7 +317,9 @@ test('dev autonomy starts from the real forjador_send UI path and continues with
   assert.equal(receipt.operation,'forjador_send');
   assert.equal(receipt.result.provider,'forge_autonomy');
   assert.equal(receipt.result.delegation,'technical');
-  assert.equal(f.service.autonomous.status(f.context,ids).continuousExecutionEnabled,true);
+  const autonomyStatus=f.service.autonomous.status(f.context,ids);
+  assert.equal(autonomyStatus.continuousExecutionEnabled,true);
+  assert.equal(autonomyStatus.appOwnedTechnicalReviewAvailable,true);
   assert.equal(f.store.getTaskDraft(chatTaskId).draft,'');
   assert.equal(f.store.messages(chatTaskId).filter(m=>m.role==='user').length,1);
   assert.equal(f.store.messages(chatTaskId).find(m=>m.role==='user').content,content);
