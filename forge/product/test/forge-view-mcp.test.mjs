@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
+import {ORCHESTRATOR_TOOLS,validateOrchestratorInput} from '../src/forge-contract.mjs';
+import {inspectForgeLiveViewDom} from '../src/forge-live-view-dom.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
 import {inspectForgeLiveViewDom} from '../src/forge-live-view-dom.mjs';
@@ -165,4 +166,68 @@ test('live View does not click controls covered by a modal or pointer intercepti
       else delete globalThis[key];
     }
   }
+});
+
+test('live text fill keeps exact spacing, hides field values and rejects sensitive fields',()=>{
+  const rect={x:8,y:24,left:8,top:24,right:220,bottom:58,width:212,height:34};
+  const events=[];
+  const input={
+    tagName:'INPUT',type:'text',name:'query',id:'query',autocomplete:'off',
+    value:'',readOnly:false,disabled:false,labels:[],
+    getBoundingClientRect:()=>rect,
+    getAttribute:key=>key==='aria-label'?'Busca':key==='type'?'text':null,
+    closest:()=>null,matches:()=>false,
+    contains:hit=>hit===input,
+    dispatchEvent:event=>{events.push(event.type);return true;}
+  };
+  const password={...input,type:'password',name:'senha',id:'password',
+    getAttribute:key=>key==='type'?'password':key==='aria-label'?'Senha':null};
+  const globals={
+    document:{title:'Teste de campo',querySelectorAll:selector=>
+      selector==='button,[role="button"],input,textarea'?[input,password]:[],
+      elementFromPoint:()=>input},
+    location:{origin:'null'},
+    getComputedStyle:()=>({display:'block',visibility:'visible',opacity:'1'}),
+    innerWidth:600,innerHeight:400
+  };
+  const previous=Object.fromEntries(Object.keys(globals).map(key=>
+    [key,Object.getOwnPropertyDescriptor(globalThis,key)]));
+  try{
+    for(const [key,value] of Object.entries(globals))
+      Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});
+    const before=inspectForgeLiveViewDom();
+    assert.equal(before.state.controls.length,1);
+    assert.equal(before.state.controls[0].label,'Busca');
+    assert.equal(before.state.controls[0].editable,true);
+    assert.equal(before.state.controls[0].hasValue,false);
+    const fill=inspectForgeLiveViewDom({mode:'fill',index:0,
+      expectedLabel:'Busca',expectedState:before.state,value:'  termo exato  '});
+    assert.deepEqual(fill,{applied:true,valueAccepted:true});
+    assert.equal(input.value,'  termo exato  ');
+    assert.deepEqual(events,['input','change']);
+    const after=inspectForgeLiveViewDom();
+    assert.equal(after.state.controls[0].hasValue,true);
+    assert.equal(after.state.inputValuesIncluded,false);
+    assert.doesNotMatch(JSON.stringify(after),/termo exato/);
+    assert.deepEqual(inspectForgeLiveViewDom({mode:'verify_fill',index:0,
+      expectedLabel:'Busca',value:'  termo exato  '}),
+    {applied:false,valueVerified:true});
+    assert.equal(inspectForgeLiveViewDom({mode:'fill',index:0,
+      expectedLabel:'Busca',expectedState:before.state,value:'outro'}).applied,false);
+    assert.equal(input.value,'  termo exato  ');
+  }finally{
+    for(const [key,descriptor] of Object.entries(previous)){
+      if(descriptor)Object.defineProperty(globalThis,key,descriptor);
+      else delete globalThis[key];
+    }
+  }
+  const normalized=validateOrchestratorInput('project_view_live_fill',{
+    requestId:'fill_1',projectId:'project_A',taskId:'task_A',assetId:'asset_A',
+    expectedRevision:'a'.repeat(64),controlIndex:0,expectedLabel:'Busca',
+    value:'  termo exato  '});
+  assert.equal(normalized.input.value,'  termo exato  ');
+  assert.throws(()=>validateOrchestratorInput('project_view_live_fill',{
+    requestId:'fill_2',projectId:'project_A',taskId:'task_A',assetId:'asset_A',
+    expectedRevision:'a'.repeat(64),controlIndex:0,expectedLabel:'Busca',
+    value:'x'.repeat(501)}),/orchestrator_invalid_input/);
 });
