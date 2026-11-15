@@ -1,11 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import {Store} from '../src/store.mjs';
 import {SUPERVISOR_ROLES,supervisorRole,assertSupervisorRole} from '../src/supervisor-role-presets.mjs';
-import {createLocalGroqCredential} from '../src/local-supervisor-credential.mjs';
 
 test('role catalog has two distinct preparation examples and no executable authority',()=>{
   assert.deepEqual(SUPERVISOR_ROLES.map(x=>x.id),['none','math-teacher','ordax-architect']);
@@ -34,48 +31,10 @@ test('roles are persisted per Task in canonical events, not as fake provider mes
   assert.throws(()=>store.setTaskSupervisorRole('task_nonexistent','math-teacher'),/task_access_denied/);
 });
 
-test('Groq key is encrypted and scoped to private userData; never stored as plaintext',t=>{
-  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-lab-groq-vault-'));
-  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
-  const safeStorage={
-    isEncryptionAvailable:()=>true,
-    encryptString:v=>Buffer.from('protected:'+Buffer.from(v).toString('base64')),
-    decryptString:b=>Buffer.from(b.toString().slice('protected:'.length),'base64').toString()
-  };
-  const key='gsk_'+('A'.repeat(40));
-  const vault=createLocalGroqCredential({userRoot:dir,safeStorage,platform:'win32'});
-  assert.equal(vault.hasSaved(),false);
-  assert.equal(vault.isAvailable(),true);
-  assert.throws(()=>vault.save('sk-openai-not-groq'),/supervisor_key_invalid_format/);
-  assert.equal(vault.save(key).saved,true);
-  const persisted=fs.readFileSync(path.join(dir,'config','groq-key.enc'));
-  assert.ok(!persisted.toString().includes(key));
-  assert.equal(vault.hasSaved(),true);
-  assert.equal(vault.read(),key);
-  assert.equal(vault.remove().saved,false);
-  assert.equal(vault.read(),null);
-  assert.equal(fs.existsSync(path.join(dir,'config','groq-key.enc')),false);
-});
-
-test('no encrypted storage means fail closed, never fallback to a plaintext key file',t=>{
-  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-lab-no-vault-'));
-  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
-  const key='gsk_'+('X'.repeat(32));
-  for(const [platform,safeStorage] of [
-    ['linux',{isEncryptionAvailable:()=>true,encryptString:()=>Buffer.from('not-safe')}],
-    ['win32',{isEncryptionAvailable:()=>false,encryptString:()=>Buffer.from('not-safe')}]
-  ]){
-    const vault=createLocalGroqCredential({userRoot:dir,platform,safeStorage});
-    assert.equal(vault.isAvailable(),false);
-    assert.throws(()=>vault.save(key),/supervisor_secure_storage_unavailable/);
-    assert.equal(vault.read(),null);
-  }
-  assert.equal(fs.existsSync(path.join(dir,'config','groq-key.enc')),false);
-});
-
 test('legacy model-key preparation IPC is removed and local role metadata stays available',()=>{
   const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
   const preload=fs.readFileSync(new URL('../desktop/preload.cjs',import.meta.url),'utf8');
+  const hostBridge=fs.readFileSync(new URL('../desktop/host-browser-bridge.js',import.meta.url),'utf8');
   const ui=fs.readFileSync(new URL('../desktop/ui.js',import.meta.url),'utf8');
   const html=fs.readFileSync(new URL('../desktop/ui.html',import.meta.url),'utf8');
   for(const name of ['ordax:supervisor:key:save','ordax:supervisor:key:test',
@@ -83,6 +42,7 @@ test('legacy model-key preparation IPC is removed and local role metadata stays 
     'ordax:supervisor:dispatch'])
     assert.equal(main.includes("registerUiHandler('"+name+"'"),false);
   assert.doesNotMatch(preload,/supervisorSaveKey|supervisorTestKey|supervisorRemoveKey/);
+  assert.doesNotMatch(hostBridge,/supervisorSaveKey|supervisorRemoveKey|supervisorPlan|supervisorApprove|supervisorDispatch/);
   assert.doesNotMatch(html,/labSupervisorKeyInput|labSupervisorKeySettings/);
   assert.match(main,/store\.setTaskSupervisorRole\(/);
   assert.match(preload,/setTaskSupervisorRole:/);
@@ -90,13 +50,17 @@ test('legacy model-key preparation IPC is removed and local role metadata stays 
   assert.doesNotMatch(ui,/labKeyForm\.addEventListener/);
 });
 
-test('optional packaged MVP App proof stays read-only, with no role mutation or key write',()=>{
+test('optional packaged MVP App proof stays read-only and requires external-model credentials to be absent',()=>{
   const source=fs.readFileSync(new URL('../scripts/live-ui-build-proof-readonly.cjs',import.meta.url),'utf8');
   assert.match(source,/ORDAX_LAB_E2E_VERIFY_MVP_PREPARATION/);
   assert.match(source,/preparationUiVerified/);
   assert.match(source,/labSupervisorRole/);
-  assert.match(source,/labSupervisorKeyInput/);
+  assert.match(source,/keyInputAbsent/);
+  assert.match(source,/legacyCredentialStatusAbsent/);
+  assert.match(source,/provider!=='chatgpt_web'/);
+  assert.match(source,/externalModelCredentialsAbsent:true/);
   assert.match(source,/window\.ordax\.supervisorStatus\(\)/);
   assert.match(source,/lab_build_mvp_preparation_not_ready/);
+  assert.doesNotMatch(source,/keyType|formPresent|keySavePresent|keyRemovePresent|keySaved:false/);
   assert.doesNotMatch(source,/window\.ordax\.(?:send|supervisorPlan|supervisorDispatch|supervisorSaveKey|supervisorRemoveKey|setTaskSupervisorRole)\(/);
 });
