@@ -41,6 +41,6 @@ test('GPT Web readiness is independent of removed model API credentials',()=>{
 test('desktop has no external-model key or alternate coordinator execution path',()=>{
   assert.doesNotMatch(source,/currentGroqKey|testGroqApiKey|createGroqCoordinatorConversation/);
   assert.doesNotMatch(source,/ordax:supervisor:key:save|ordax:supervisor:key:test/);
-  assert.match(source,/coordinator:null/);
+  assert.doesNotMatch(source,/coordinator:null|GROQ_API_KEY|api\.groq\.com/);
   assert.match(source,/const mcpApp='forge-mcp'/);
 });

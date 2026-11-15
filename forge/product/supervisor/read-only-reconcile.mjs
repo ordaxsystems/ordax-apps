@@ -1,4 +1,4 @@
-import { authorizeLocalSupervisorTask, validateSupervisorDecision } from './coordinator.mjs';
+import { authorizeLocalSupervisorRecovery, validateHistoricalSupervisorDecision } from './recovery.mjs';
 import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { assessProviderConversationEvidence } from '../src/provider-conversation-reconciliation.mjs';
 
@@ -9,7 +9,7 @@ export async function inspectSupervisorChatReadOnly({store,worker,taskId,actionI
       typeof actionId !== 'string' || !/^action_[a-z0-9-]{8,}$/i.test(actionId)) {
     throw new Error('invalid_reconciliation_request');
   }
-  const authorize=()=>authorizeLocalSupervisorTask({
+  const authorize=()=>authorizeLocalSupervisorRecovery({
     store,actorId:'lab-owner',tenantId:null,environment:'internal',taskId,operation:'review'
   });
   if (!authorize()) throw new Error('supervisor_access_denied');
@@ -26,7 +26,7 @@ export async function inspectSupervisorChatReadOnly({store,worker,taskId,actionI
   }
   const decision=JSON.parse(row.result||'null')?.decision;
   if (!decision) return {...basic,kind:'unavailable',reason:'legacy_decision_missing'};
-  const validated=validateSupervisorDecision(decision,taskId);
+  const validated=validateHistoricalSupervisorDecision(decision,taskId);
   if (validated.type!=='send_message') return {...basic,kind:'unavailable',reason:'not_message_action'};
   const task=store.getTaskExecutionSnapshot(taskId);
   const url=canonicalProviderChatUrl(task?.chat_url);
