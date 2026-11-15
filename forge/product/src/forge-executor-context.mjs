@@ -4,7 +4,7 @@ export const FORGE_EXECUTOR_PROTOCOL=Object.freeze({
   version:'ordax.forge.executor-protocol/1',
   roles:Object.freeze({
     user:'Requests a result in the Forge chat; never needs to write MCP commands.',
-    forjador:'App routing sends ordinary chat directly to GPT; optional Groq analysis is separate and grants no filesystem authority.',
+    forjador:'App routing sends ordinary chat directly to GPT Web; project execution uses Forge MCP and only owner-authorized project capabilities.',
     forge:'Owns project identity, session, task/Run receipts, work routing, artifact verification and preview.',
     gpt:'Uses ONLY authorized MCP tools, requests context before action, and reports observed results.'
   }),
@@ -39,7 +39,7 @@ export const FORGE_SCOPED_MCP_INSTRUCTIONS='You are connected to OrdaX Forge, an
   'If a needed capability is unavailable, state the exact blocker and avoid simulated success.';
 
 export const FORGE_MCP_INSTRUCTIONS='OrdaX Forge is a project orchestrator, not a general computer shell. '+
-  'The user talks naturally to the Forjador UI; GPT is the default model. Groq is an optional analyzer. The Forge App owns routing, '+
+  'The user talks naturally to the Forjador UI; GPT Web is the sole model executor and Forge MCP is the sole project tool integration selected by Forge conversations. The Forge App owns routing, '+
   'project state and receipts. Unscoped clients first call forge_projects_list to obtain real project IDs; then call '+
   'forge_discover to learn the verified project context and tools, and '+
   'forge_project_memory when task history is relevant. '+
