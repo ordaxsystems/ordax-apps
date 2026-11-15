@@ -24,6 +24,11 @@ test('canonical instructions reference only real typed MCP tool names, never inv
   assert.ok(mentioned(scoped).includes('forge_discover'));
   assert.ok(mentioned(scoped).includes('forge_work_messages'));
   assert.ok(mentioned(FORGE_MCP_INSTRUCTIONS).includes('forge_projects_list'));
+  assert.doesNotMatch(JSON.stringify(FORGE_EXECUTOR_PROTOCOL),/\bGroq\b/i);
+  assert.doesNotMatch(FORGE_MCP_INSTRUCTIONS,/\bGroq\b/i);
+  assert.doesNotMatch(FORGE_SCOPED_MCP_INSTRUCTIONS,/\bGroq\b/i);
+  assert.match(FORGE_MCP_INSTRUCTIONS,/GPT Web is the sole model executor/);
+  assert.match(FORGE_MCP_INSTRUCTIONS,/Forge MCP is the sole project tool integration/);
 });
 
 test('Forge exposes project context without granting filesystem access or inferring a path',async t=>{
