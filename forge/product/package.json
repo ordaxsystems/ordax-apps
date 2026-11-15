@@ -59,8 +59,6 @@
       "src/*.mjs",
       "src/*.cjs",
       "supervisor/**/*",
-      "!supervisor/groq-*.mjs",
-      "!supervisor/chatgpt-plan-conversation.mjs",
       "package.json"
     ],
     "directories": {

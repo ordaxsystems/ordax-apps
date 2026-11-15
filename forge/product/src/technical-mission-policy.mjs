@@ -1,4 +1,4 @@
-// Deterministic, scope-limited role selection on the existing Groq -> GPT Web
+// Deterministic, scope-limited role selection for the GPT Web
 // mission. A specialist is an instruction profile, NOT a new executor, tool,
 // identity, autonomous approval, or simultaneous GPT submission.
 const SPECIALISTS=Object.freeze({

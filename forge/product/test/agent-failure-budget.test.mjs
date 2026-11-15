@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {diagnoseAgentFailure,describeAgentDiagnosticForGroq} from '../src/agent-failure-diagnosis.mjs';
+import {diagnoseAgentFailure} from '../src/agent-failure-diagnosis.mjs';
 
 test('pending hydration is not mistaken for failed or delivered GPT message',()=>{
  const d=diagnoseAgentFailure({code:'composer_not_found',stage:'preflight',
@@ -20,8 +20,7 @@ test('unknown or possibly delivered submission always overrides loading hints',(
     deliveryState,health:{page_state:'loading'},ageMs:100});
    assert.equal(d.category,'delivery_unconfirmed');
    assert.equal(d.replayAllowed,false);assert.equal(d.autoRetry,false);
-   const g=describeAgentDiagnosticForGroq(d);
-   assert.equal(g.mayResend,false);assert.equal(g.mayClaimRecovery,false);
+   assert.equal(d.operatorAction,'inspect_linked_thread_and_provenance');
  }
 });
 test('auth/login failure is a blocker, not wait or retry',()=>{

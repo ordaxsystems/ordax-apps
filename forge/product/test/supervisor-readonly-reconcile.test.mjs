@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store } from '../src/store.mjs';
 import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile.mjs';
-import { listLocalSupervisorRecoverable } from '../supervisor/coordinator.mjs';
+import { listLocalSupervisorRecoverable } from '../supervisor/recovery.mjs';
 
 const url='https://chatgpt.com/c/11111111-2222-4333-8444-555555555555';
 function setup(t,{status='indeterminate',decision=true,chatUrl=url,actorId='lab-owner'}={}) {

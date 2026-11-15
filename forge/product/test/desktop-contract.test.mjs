@@ -154,8 +154,7 @@ test('desktop package ships only canonical desktop runtime', () => {
   // Runtime CJS helpers are shipped beside the ESM source; tests, userData
   // and cookies remain outside the packaged file set.
   assert.deepEqual(pkg.build.files, [
-    'desktop/**/*','src/*.mjs','src/*.cjs','supervisor/**/*',
-    '!supervisor/groq-*.mjs','!supervisor/chatgpt-plan-conversation.mjs','package.json'
+    'desktop/**/*','src/*.mjs','src/*.cjs','supervisor/**/*','package.json'
   ]);
   for(const retired of ['groq-key-contract.mjs','groq-key-health.mjs','local-supervisor-credential.mjs'])
     assert.equal(fs.existsSync(path.join(root,'src',retired)),false,'retired Groq credential module must be removed: '+retired);
@@ -270,7 +269,7 @@ test('technical continuation accepts the app-owned review policy and still check
   assert.match(uiHtml,/id="continueAutonomousTechnical"[^>]*hidden disabled/);
   assert.match(source,/continueButton\.hidden=currentJob\?\.canContinue!==true/);
   assert.match(source,/appOwnedTechnicalReviewAvailable=result\?\.appOwnedTechnicalReviewAvailable===true/);
-  assert.match(source,/\(!coordinatorAvailable&&!appOwnedTechnicalReviewAvailable\)/);
+  assert.match(source,/\(!analysisAvailable&&!appOwnedTechnicalReviewAvailable\)/);
   assert.match(autonomy,/appOwnedTechnicalReviewAvailable:this\.service\.continuousExecutionByDefault===true/);
   const handler=source.slice(source.indexOf("$('continueAutonomousTechnical').addEventListener"));
   assert.match(handler,/snapshot\?\.mission\?\.canContinue!==true/);
@@ -352,7 +351,7 @@ test('Start inspects local evidence immediately and restores it without repeatin
     observation:{requested:true,active:false},
     repository:{urlRegistered:true,authenticatedRead:'unavailable'},
     runtime:{grantVerified:false},
-    coordinator:{state:'ready',modelConfigured:true},
+    analysisEngine:{state:'ready',available:true,mode:'app_owned',externalModelUsed:false},
     work:{registered:4,started:2,unresolvedSends:0},
     analysis:{attempts:1,completed:1,lastStatus:'succeeded',lastAttemptAt:'2026-11-02T03:00:00.000Z'},
     gates:{recordedWorkAnalysisEligible:true,githubObservationVerified:false,
@@ -370,7 +369,7 @@ test('Start inspects local evidence immediately and restores it without repeatin
   const missing=describeProjectPreflight({
     ...evidence,observation:{requested:false,active:false},
     repository:{urlRegistered:false,authenticatedRead:'unavailable'},
-    coordinator:{state:'paused',modelConfigured:false},
+    analysisEngine:{state:'paused',available:true,mode:'app_owned',externalModelUsed:false},
     work:{registered:0,started:0,unresolvedSends:2},
     analysis:{attempts:0,completed:0,lastStatus:null,lastAttemptAt:null},
     gates:{...evidence.gates,recordedWorkAnalysisEligible:false}
@@ -379,7 +378,7 @@ test('Start inspects local evidence immediately and restores it without repeatin
   assert.match(missing.actions.join(' '),/Reconcilie envios pendentes/);
   assert.match(missing.summary,/Análise ainda não iniciada/);
   assert.equal(missing.analysisLabel,'Analisar frentes');
-  assert.match(missing.actions.join(' '),/Retome o Administrador Geral/);
+  assert.match(missing.actions.join(' '),/Retome o Forjador/);
   assert.match(missing.actions.join(' '),/Cadastre a URL/);
   assert.throws(()=>describeProjectPreflight({
     ...evidence,provenance:{source:'app_sqlite',externalObservation:true}
@@ -796,25 +795,20 @@ test('Orchestrator workspace links project navigation, coordinator and scoped GP
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
-  const coordinatorContext=fs.readFileSync(path.join(root,'supervisor','coordinator-request-context.mjs'),'utf8');
   for(const id of ['projectNavList','orchestratorNavList','projectSelect','orchestratorSelect','orchestrationPanel','orchestratorWorkRail','orchestratorWorks','newScopedWorkForm','closeWorkRail'])
     assert.match(html,new RegExp(`id="${id}"`));
   assert.match(html,/Conversas no GPT/);
   assert.match(html,/Nova conversa no GPT/);
   assert.match(html,/id="analyzeWorks"/);
   assert.match(html,/id="remoteRepositoryCapabilityNote"/);
-  assert.match(coordinatorContext,/focusedGPTReview=analysisContext\?\.phase==='gpt_response_review'/);
-  assert.match(coordinatorContext,/historyLimit=focusedGPTReview\?0:analysisContext===null\?12:8/);
-  assert.match(coordinatorContext,/history=focusedGPTReview\?\[\]:store\.messages/);
-  assert.match(coordinatorContext,/historyMessageLimit=analysisContext===null\?4000:2000/);
   assert.match(orchestration,/command\('orchestrator_analyze'/);
   assert.match(orchestration,/call\('status'\)\.catch\(\(\)=>null\)/);
   assert.match(orchestration,/const canDisable=result\.enabled===true/);
-  assert.match(orchestration,/const canEnable=engineStatus\?\.coordinatorAvailable===true/);
+  assert.match(orchestration,/const canEnable=engineStatus\?\.analysisAvailable===true/);
   assert.match(html,/id="continuityFollowupPrepare"/);
   assert.match(orchestration,/command\('continuity_followup_prepare'/);
   assert.match(orchestration,/followup\.dataset\.reviewRunId=canPrepare\?result\.latest\.run_id:''/);
-  assert.match(orchestration,/Conecte e ative um modelo de coordenação para habilitar a análise automática/);
+  assert.match(orchestration,/A análise local do Forge não está disponível/);
   assert.match(orchestration,/engineStatus\?\.autonomousExecution===false/);
   assert.match(orchestration,/A análise só roda enquanto o processo OrdaX está aberto; o supervisor de 24 h do Runtime ainda não está conectado/);
   assert.match(orchestration,/call\('work_list'/);
@@ -911,9 +905,8 @@ test('GPT-only settings omit external-model credentials and preserve connection 
   assert.match(html,/GPT Web \+ Forge MCP/);
   assert.doesNotMatch(html,/id="labSupervisorKeyInput"|id="chatgptPlanConnect"/);
   assert.doesNotMatch(main,/createGroqCoordinatorConversation|createGroqSupervisorPlanner|testGroqApiKey/);
-  assert.doesNotMatch(host,/createHostGroqCredential|createChatGPTPlanConnection/);
-  assert.match(host,/const coordinator=null/);
-  assert.match(main,/coordinator:null/);
+  assert.doesNotMatch(host,/createHostGroqCredential|createChatGPTPlanConnection|const coordinator=null/);
+  assert.doesNotMatch(main,/coordinator:null/);
   assert.match(main,/provider:'chatgpt_web'/);
 });
 
@@ -1166,8 +1159,8 @@ test('single GPT model and Forge MCP replace the external coordinator',()=>{
   assert.match(main,/const mcpApp='forge-mcp'/);
   assert.doesNotMatch(orchestratorUI,/Conecte e selecione OrdaX MCP/);
   assert.match(orchestratorUI,/Conecte e selecione Forge MCP/);
-  assert.match(main,/coordinator:null/);
-  assert.match(host,/const coordinator=null/);
+  assert.doesNotMatch(main,/coordinator:null/);
+  assert.doesNotMatch(host,/const coordinator=null/);
   assert.doesNotMatch(main,/GROQ_API_KEY|createGroqCoordinatorConversation|supervisor:key:save/);
   assert.doesNotMatch(host,/GROQ_API_KEY|api\.groq\.com|createChatGPTPlanConnection/);
   assert.doesNotMatch(uiHtml,/labSupervisorKeySettings|chatgptPlanSettings|capabilityGroq/);
@@ -1193,13 +1186,14 @@ test('Forjador uses GPT Web and exposes no legacy coordinator-chat route',()=>{
   assert.match(ui,/flushDraft\(\);await selectRightPane\('execution'\)/);
   assert.match(ui,/await selectRightPane\('provider'\)/);
   assert.match(orchestratorUi,/orchestratorChatAvailable=gptWebTransportAvailable/);
-  assert.doesNotMatch(orchestratorUi,/orchestratorChatAvailable=coordinatorAvailable/);
+  assert.doesNotMatch(orchestratorUi,/orchestratorChatAvailable=analysisAvailable/);
   assert.match(orchestratorUi,/\$\('coordinatorComposer'\)\.addEventListener\('submit'/);
   assert.match(orchestratorUi,/command\('forjador_send'/);
   assert.match(contract,/\['forjador_send'.*directly to the GPT Web executor/);
   assert.doesNotMatch(contract,/\['orchestrator_chat'/);
-  assert.match(service,/const usesProvider=isWorkSend\|\|isForjadorSend;/);
-  assert.match(service,/const port=usesProvider\?this\.provider:this\.coordinator/);
+  assert.match(service,/dispatchLocalCoordination\(context,operation,input\)/);
+  assert.match(service,/provider:'ordax_app_policy'/);
+  assert.doesNotMatch(service,/const port=.*this\.coordinator|interpretGPTWorkReview/);
   assert.doesNotMatch(service,/operation==='orchestrator_chat'|delegateWork:operation===|jarvis_delegation/);
   assert.match(service,/orchestrator_chat remains queryable here only for receipts created by older/);
   assert.match(css,/#orchestratorWorkRail\{display:flex!important/);

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, protocol, net, dialog, safeStorage, Tray, Menu, shell } from 'electron';
-import path from 'node:path';import {existsSync} from 'node:fs';import {listLocalSupervisorRecoverable} from '../supervisor/coordinator.mjs';
+import path from 'node:path';import {existsSync} from 'node:fs';import {listLocalSupervisorRecoverable} from '../supervisor/recovery.mjs';
 import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile.mjs';
 import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
 import { bindObservedSubmittedConversation } from '../src/provider-submitted-conversation.mjs';
@@ -1402,8 +1402,7 @@ const orchestratorKernel=createOrchestratorKernel({
         }
       }
       return chatReceiptFromRunTask(execution);
-    }},
-  coordinator:null
+    }}
 });
 localOrchestratorContext=orchestratorKernel.context;
 const {service:orchestratorService,mcp:localOrchestratorMcp}=orchestratorKernel;
@@ -1844,13 +1843,13 @@ registerUiHandler('ordax:tasks:supervisor-role:set',(event,payload)=>{
 });
 registerUiHandler('ordax:supervisor:recoverable', (event,payload) => {
   requireTrustedSupervisorRenderer(event);
-  // Recovery must work after restart without Groq keys or enabled supervisor.
+  // Recovery must work after restart without any external-model credential or planner.
   return listLocalSupervisorRecoverable({store,taskId:payload?.taskId});
 });
 registerUiHandler('ordax:supervisor:inspect', async (event,payload) => {
   requireTrustedSupervisorRenderer(event);
   if (primaryProviderRunActive()||worker.active) return {kind:'unavailable',reason:'another_run_active',requiresReconciliation:true};
-  // Local, manual, read-only examination; no Groq key or auto-execution required.
+  // Local, manual, read-only examination; no external-model credential or auto-execution required.
   return inspectSupervisorChatReadOnly({
     store,worker,taskId:payload?.taskId,actionId:payload?.actionId
   });

@@ -22,7 +22,7 @@ export function resolveLabUserRoot({
   // The installed portable executable is extracted into a temporary directory.
   // Only uninstalled candidate builds inside a development dist tree require a
   // separately approved staged profile. Never let their default launch reuse
-  // the installed owner's SQLite, cookie partition or Groq credential.
+  // the installed owner's SQLite or cookie partition.
   const candidateBuild=typeof executablePath==='string' &&
     /[\\/]dist[\\/]candidate-[^\\/]+[\\/]win-unpacked[\\/][^\\/]+\.exe$/i.test(executablePath);
   const stagedIntent=approved || candidates.length>0 || argv.includes('--remote-debugging-port=9446');

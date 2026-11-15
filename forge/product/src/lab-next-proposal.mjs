@@ -128,7 +128,7 @@ export class LabNextProposal {
         WHERE review_run_id=? AND status='planning'`)
         .run(ok?'proposed':'reconciliation_required',receipt?.commandId||null,
           ok?null:sameWorkspace?'proposal_unconfirmed':'workspace_changed',this.store.now(),row.run_id).changes;
-      // A durable stop can arrive while Groq is in flight; never certify it.
+      // A durable stop can arrive while local analysis is in flight; never certify it.
       return {state:ok&&finalized===1?'proposed':'reconciliation_required',runId:row.run_id};
     }catch{
       this.db.prepare(`UPDATE lab_next_proposals

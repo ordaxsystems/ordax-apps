@@ -1,9 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {latestSiteWork} from './site-work-context.mjs';
-import {validateWorkProposal} from './orchestrator-proposal.mjs';
 import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
 import {assertTaskHasNoUncertainTransport} from './provider-uncertain-run-policy.mjs';
-import {advanceStory,STORY_TURNS} from './autonomous-story.mjs';
 import {diagnoseAgentFailure} from './agent-failure-diagnosis.mjs';
 import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
 import {technicalMissionPolicy} from './technical-mission-policy.mjs';
@@ -14,24 +12,8 @@ import {normalizedHtmlControlChecks} from './isolated-html-controls.mjs';
 // project opt-in may schedule another independently verified cycle.
 // No implicit filesystem/network grants, uncertain replays or second runtime.
 const LIMIT=2;
-// These are terminal, known-invalid Groq replies. A single fresh review may
-// be attempted after a restart, never after a running/uncertain receipt.
-// Citation enums now constrain an invalid-evidence model reply at the source.
-const RECOVERABLE_GROQ_REVIEW_FAILURES=new Set([
-  'groq_incomplete_response','groq_review_invalid_evidence',
-  // This is a fully rejected Groq response, not a GPT transport effect.
-  // One idempotent recovery may use the corrected structured step schema.
-  'groq_review_invalid_next_step'
-]);
 const noExtra=value=>typeof value==='string'&&value.trim().length>0;
 const boundedError=error=>String(error?.message||error||'autonomous_step_failed').replace(/[^a-z0-9_]/gi,'_').slice(0,90);
-const numbers=answer=>[...String(answer||'').matchAll(/\b[0-9]{1,6}\b/g)].map(m=>m[0]).filter(x=>Number(x)!==0);
-function confirmDependency(proposal,answer) {
-  const numeric=numbers(answer);
-  // Numeric answers must be cited in a follow-up question, not guessed.
-  if(numeric.length&&numeric.every(value=>!new RegExp('(^|[^0-9])'+value+'([^0-9]|$)').test(proposal.content)))
-    throw Error('autonomous_question_ignores_confirmed_answer');
-}
 export class AutonomousDialogue {
   constructor({store,service,notify=()=>{}}={}) {
     if(!store?.db||!service||typeof notify!=='function')throw Error('autonomous_ports_required');
@@ -147,8 +129,8 @@ export class AutonomousDialogue {
     history.reverse();
     const stages=[],reviewTasks=new Map();
     // Read-only projection of the budget across explicit consent cycles.
-    // A review is counted only after its GPT Run, provenance and Groq receipt
-    // are confirmed; an uncertain send is NEVER advertised as completed.
+    // A review is counted only after its GPT Run and provenance are verified;
+    // an uncertain send is NEVER advertised as completed.
     const authorizedGPTSends=history.reduce((total,mission)=>total+
       (mission.followup_policy==='review_only'?1:
         Number(mission.max_gpt_sends)===LIMIT?LIMIT:0),0);
@@ -344,7 +326,7 @@ export class AutonomousDialogue {
     });
     return this.verifiedHtmlForRun(row.projectId,row.orchestratorId,row.runId);
   }
-  // The active Groq review receives a verified, mission-scoped handoff.
+  // The app-owned review receives a verified, mission-scoped handoff.
   // This is derived only from canonical Run/mission/review evidence and
   // never authorizes another GPT send or certifies external effects.
   reviewScope(context,{projectId,orchestratorId,runId,taskId}={}) {
@@ -399,7 +381,7 @@ export class AutonomousDialogue {
         .map(([label,taskId])=>({taskId,label:semantic?'Trabalho GPT':label}));
     const chainProgress=semantic?this.technicalHistory(row):null;
     const lastReviewed=chainProgress?.stages.at(-1);
-    const verifiedArtifact=lastReviewed&&lastReviewed.cycle===chainProgress.cycles
+    let verifiedArtifact=lastReviewed&&lastReviewed.cycle===chainProgress.cycles
       ?this.verifiedHtmlForRun(row.project_id,row.orchestrator_id,lastReviewed.runId)
       :null;
     const verifiedFirstStage=chainProgress?.stages.find(stage=>
@@ -425,15 +407,18 @@ export class AutonomousDialogue {
       const reviewed=this.db.prepare('SELECT task_id,status FROM runs WHERE id=?')
         .get(decision.sourceRunId);
       if(reviewed?.status==='succeeded'&&
-        [row.task_a_id,row.task_b_id].includes(reviewed.task_id))
+        [row.task_a_id,row.task_b_id].includes(reviewed.task_id)){
         reviewedTaskId=reviewed.task_id;
+        if(!verifiedArtifact)
+          verifiedArtifact=this.verifiedHtmlForRun(row.project_id,row.orchestrator_id,decision.sourceRunId);
+      }
     }
     return {missionId:row.id,projectId:row.project_id,orchestratorId:row.orchestrator_id,
       createdAt:row.created_at,
       mission:row.mission,
       mode:story?'story':semantic?'technical':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,quality,reviewTasks,chainProgress,pendingStage,verifiedArtifact,
       technicalSpecialist:semantic?technicalMissionPolicy(row.mission).label:null,
-      state:row.state,maxGPTSends:story?STORY_TURNS:row.followup_policy==='review_only'?1:row.max_gpt_sends,
+      state:row.state,maxGPTSends:story?4:row.followup_policy==='review_only'?1:row.max_gpt_sends,
       taskAId:row.task_a_id,taskBId:row.task_b_id,reviewedTaskId,
       originMissionId:semantic?row.origin_mission_id||null:null,
       canContinue:semantic&&row.state==='budget_exhausted'&&
@@ -484,10 +469,10 @@ export class AutonomousDialogue {
       throw Error('autonomous_mission_invalid');
     if(resumeSiteTaskId&&latestSiteWork(this.store,projectId,orchestratorId)?.taskId!==resumeSiteTaskId)
       throw Error('autonomous_site_continuation_unverified');
-    const appOwnedDirect=directUserPrompt&&this.service.continuousExecutionByDefault===true;
-    if((!appOwnedDirect&&(typeof this.service.coordinator?.send!=='function'||
-         this.service.coordinator.available?.(projectId,orchestratorId)!==true))||
-       typeof this.service.provider?.send!=='function')throw Error('autonomous_provider_unavailable');
+    const appOwnedDirect=directUserPrompt&&mode==='technical'&&
+      this.service.continuousExecutionByDefault===true;
+    if(!appOwnedDirect)throw Error('autonomous_legacy_start_retired');
+    if(typeof this.service.provider?.send!=='function')throw Error('autonomous_provider_unavailable');
     const existing=this.db.prepare(`SELECT * FROM lab_autonomous_dialogues WHERE
       workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
       .get(context.workspaceSessionId,context.actorId,context.clientId,requestId);
@@ -558,8 +543,7 @@ export class AutonomousDialogue {
         return this.summary(existing);
       }
       const appOwnedContinuation=this.service.continuousExecutionByDefault===true;
-      if(owner.status!=='ready'||
-         (!appOwnedContinuation&&this.service.coordinator.available?.(projectId,orchestratorId)!==true)||
+      if(owner.status!=='ready'||!appOwnedContinuation||
          typeof this.service.provider?.send!=='function')
         throw Error('autonomous_provider_unavailable');
       const previous=this.db.prepare(`SELECT * FROM lab_autonomous_dialogues WHERE
@@ -649,31 +633,6 @@ export class AutonomousDialogue {
       throw Error('autonomous_provider_response_unconfirmed');
     return text;
   }
-  async plan(row,phase) {
-    const owner=this.service.orchestrator(row.project_id,row.orchestrator_id);
-    const prior=phase==='a'?null:phase==='b'?this.answer(row.task_a_id):this.answer(row.task_b_id);
-    const analysisContext=this.service.analysisContext(row.project_id,row.orchestrator_id);
-    const directive=phase==='a'
-      ?row.strategy==='semantic'
-        ?'Prepare UMA missão inicial concreta para o GPT: investigar ou realizar a tarefa técnica pedida, explicar os efeitos reais e as provas. '+
-          technicalMissionPolicy(row.mission).directive+
-          ' Não invente alterações nem presuma acesso externo; o modelo GPT será o executor intelectual.'
-        :'Crie apenas UMA pergunta curta e verificável ao GPT A. Não calcule a resposta.'
-      :phase==='b'
-        ?'Leia a resposta confirmada do GPT A no contexto. Crie UMA pergunta NOVA ao GPT B que DEPENDA dela e cite o resultado comprovado. Não responda à pergunta.'
-        :'Leia as respostas confirmadas GPT A e GPT B. Prepare UMA próxima pergunta que DEPENDA da resposta GPT B. Não a envie nem a execute.';
-    const authorizedSends=row.strategy==='semantic'&&row.followup_policy==='review_only'?1:LIMIT;
-    const response=await this.service.withCoordinatorTurn(owner.chat_task_id,()=>this.service.coordinator.send({
-      taskId:owner.chat_task_id,projectId:row.project_id,orchestratorId:row.orchestrator_id,
-      mission:'MISSÃO AUTÔNOMA com autorização inicial para, no máximo, '+authorizedSends+' pergunta(s) GPT: '+
-        row.mission+'\nETAPA ATUAL: '+directive+(prior?'\nResposta anterior confirmada: '+prior.slice(0,1400):''),
-      analysisContext,prepareWork:true,repositoryUrl:null
-    }));
-    const proposal=validateWorkProposal(response?.proposal);
-    if(phase!=='a')confirmDependency(proposal,prior);
-    if(phase==='b'&&proposal.content===row.question_a)throw Error('autonomous_duplicate_question');
-    return proposal;
-  }
   appOwnedTechnicalReview(row,phase) {
     const taskId=phase==='a'?row.task_a_id:row.task_b_id;
     const run=this.db.prepare("SELECT id,status FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1")
@@ -711,9 +670,8 @@ export class AutonomousDialogue {
         status:'answer_indicates_progress',observedExcerpt}
     };
   }
-  // An engineering mission uses canonical Run evidence. In normal mode the
-  // coordinator may review it; supervised dev mode uses the App-owned policy
-  // above and never needs another model to authorize continuation.
+  // Technical review is always app-owned. A second model never participates
+  // in deciding whether a confirmed GPT Run may continue.
   async reviewTechnical(row,phase,context) {
     const taskId=phase==='a'?row.task_a_id:row.task_b_id;
     const run=this.db.prepare("SELECT id,status FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1").get(taskId);
@@ -721,32 +679,12 @@ export class AutonomousDialogue {
        !this.service.reviewableGPTResult(row.project_id,row.orchestrator_id,run.id))
       throw Error('autonomous_review_source_unconfirmed');
     this.assertMissionSession(context,row);
-    if(this.service.continuousExecutionByDefault===true)
-      return this.appOwnedTechnicalReview(row,phase);
-    const baseRequestId='technical_'+row.id+'_'+phase;
-    const firstReceipt=this.db.prepare('SELECT status,result FROM lab_command_receipts WHERE '+
-      'workspace_session_id=? AND request_id=?').get(row.workspace_session_id,baseRequestId);
-    let firstFailure=null;
-    try{firstFailure=JSON.parse(firstReceipt?.result||'null');}catch{}
-    // A known terminal Groq parse/evidence failure may be reviewed once
-    // more under the strict model schema. No uncertain replay or GPT resend.
-    const retry=firstReceipt?.status==='failed'&&
-      firstFailure?.reason==='coordinator_request_failed'&&
-      RECOVERABLE_GROQ_REVIEW_FAILURES.has(firstFailure?.failureCode);
-    const receipt=await this.service.invoke(context,'orchestrator_analyze',{
-      projectId:row.project_id,orchestratorId:row.orchestrator_id,
-      reviewRunId:run.id,requestId:retry?baseRequestId+'_recovery':baseRequestId
-    });
-    if(receipt?.status!=='succeeded'||receipt?.result?.responseObserved!==true)
-      throw Error('autonomous_semantic_review_unconfirmed');
-    const decision=receipt.result.reviewDecision;
+    const decision=this.appOwnedTechnicalReview(row,phase);
     if(decision?.sourceRunId!==run.id||decision.reviewOnly!==true||
-      decision.externalEffectVerified!==false||
-      decision.automaticGPTSendAuthorized!==false)
+       decision.externalEffectVerified!==false||
+       decision.automaticGPTSendAuthorized!==false||
+       decision.reviewProvider!=='ordax_app_policy')
       throw Error('autonomous_semantic_decision_unconfirmed');
-    this.assertMissionSession(context,row);
-    // The user may have sent another GPT message while Groq was reasoning.
-    // A decision grounded in a superseded Run cannot route the next action.
     if(!this.service.reviewableGPTResult(row.project_id,row.orchestrator_id,run.id))
       throw Error('autonomous_review_source_superseded');
     return decision;
@@ -757,8 +695,7 @@ export class AutonomousDialogue {
   recordTechnicalReview(row,phase,decision) {
     // One-send TECHNICAL diagnostics deserve an attributable, idempotent
     // review. Direct natural requests use the same review_only policy but
-    // must keep their existing concise user-facing conclusion, not receive
-    // an extra technical Groq milestone in the conversation.
+    // keep their existing concise user-facing conclusion without an extra milestone.
     const directNaturalPrompt=row.followup_policy==='review_only'&&
       row.question_a===row.mission;
     if(row.strategy!=='semantic'||directNaturalPrompt||
@@ -780,13 +717,8 @@ export class AutonomousDialogue {
       this.db.prepare("SELECT task_id FROM runs WHERE id=? AND status='succeeded'")
         .get(runId)?.task_id!==taskId)
       throw Error('autonomous_review_transcript_source_invalid');
-    const receiptId='technical_'+row.id+'_'+phase;
-    const appOwnedReview=decision?.reviewProvider==='ordax_app_policy';
-    if(!appOwnedReview&&!this.db.prepare(`SELECT 1 FROM lab_command_receipts
-      WHERE workspace_session_id=? AND project_id=? AND status='succeeded'
-        AND request_id IN (?,?) LIMIT 1`).get(
-          row.workspace_session_id,row.project_id,receiptId,receiptId+'_recovery'))
-      throw Error('autonomous_review_transcript_receipt_missing');
+    if(decision?.reviewProvider!=='ordax_app_policy')
+      throw Error('autonomous_review_provider_invalid');
     const cycle=this.technicalHistory(row)?.cycles||1;
     const phaseLabel=phase==='a'?'primeira':'segunda';
     const next=['continue_same_conversation','request_correction',
@@ -814,9 +746,8 @@ export class AutonomousDialogue {
         ' ('+acceptanceLabels[acceptance.status]+').'
       :'';
     this.store.appendMessage(chatTaskId,'assistant',
-      'Ciclo '+cycle+': recebi a '+phaseLabel+' resposta GPT e registrei a revisão '+
-      (appOwnedReview?'do Forge':'Groq')+'. '+
-      'Avaliação '+(appOwnedReview?'do Forge':'Groq')+' (não certificada): '+summary+'. '+
+      'Ciclo '+cycle+': recebi a '+phaseLabel+' resposta GPT e registrei a revisão do Forge. '+
+      'Avaliação do Forge (não certificada): '+summary+'. '+
       'Motivo informado: '+reason+'. '+note+acceptanceNote+
       ' Nenhuma alteração externa foi certificada por esta revisão.');
     this.store.event(chatTaskId,'orchestrator.technical_review',{
@@ -897,43 +828,22 @@ export class AutonomousDialogue {
     if(this.service.orchestrator(row.project_id,row.orchestrator_id).status!=='ready')return {state:'paused'};
     const appOwnedSemantic=row.strategy==='semantic'&&
       this.service.continuousExecutionByDefault===true&&Boolean(row.question_a);
-    if(!appOwnedSemantic&&
-       this.service.coordinator.available?.(row.project_id,row.orchestrator_id)!==true)
-      return {state:'blocked_coordinator'};
-    // Busy is a wait condition, not an uncertain autonomous API effect.
-    if(this.service.coordinatorTurnBusy(this.service.orchestrator(row.project_id,row.orchestrator_id).chat_task_id))
-      return {state:'coordinator_busy'};
-    // Semantic planning and evidence review run only on the independent
-    // Groq coordinator lane. An occupied GPT WebContentsView must not
-    // prevent classifying an already confirmed response or stopping work.
-    const coordinatorOnly=row.strategy==='semantic'&&
-      ['queued','ready_b','ready_review_final'].includes(row.state);
-    if(!coordinatorOnly&&this.service.executorAdmission().availableSlots===0)
+    if(!appOwnedSemantic){
+      this.move(row.id,row.state,'blocked',{last_error:'legacy_external_coordinator_retired'});
+      return {state:'blocked',reason:'legacy_external_coordinator_retired'};
+    }
+    // Only real GPT Web sends consume executor capacity. App-owned review is local.
+    if(['ready_a','ready_final'].includes(row.state)&&
+       this.service.executorAdmission().availableSlots===0)
       return {state:'executor_busy'};
-    if(row.mode==='story')return advanceStory(this,context,row);
     let working='';
     try {
-      if(row.state==='queued') {
-        working='planning_a';this.move(row.id,'queued',working);
-        const p=await this.plan(row,'a');
-        this.assertMissionSession(context,row);
-        this.db.exec('SAVEPOINT autonomous_work_creation');
-        try {
-          const task=this.service.mutate('work_create',{projectId:row.project_id,
-            orchestratorId:row.orchestrator_id,title:p.title});
-          this.move(row.id,working,'ready_a',{task_a_id:task.taskId,question_a:p.content});
-          this.db.exec('RELEASE SAVEPOINT autonomous_work_creation');
-        } catch(error) {
-          this.db.exec('ROLLBACK TO SAVEPOINT autonomous_work_creation');
-          this.db.exec('RELEASE SAVEPOINT autonomous_work_creation');
-          throw error;
-        }
-      } else if(row.state==='ready_a') {
+      if(row.state==='ready_a') {
         working='sending_a';this.move(row.id,'ready_a',working);
         await this.send(row,'a',context);
         this.assertMissionSession(context,row);
         this.move(row.id,working,'ready_b');
-      } else if(row.state==='ready_b'&&row.strategy==='semantic') {
+      } else if(row.state==='ready_b') {
         working='reviewing_a';this.move(row.id,'ready_b',working);
         const decision=await this.reviewTechnical(row,'a',context);
         this.assertMissionSession(context,row);
@@ -952,7 +862,7 @@ export class AutonomousDialogue {
             {review_a_json});
         }else{
           // The owner authorized up to two GPT submissions at mission start.
-          // Groq determines WHAT to do next, but cannot grant more sends.
+          // The app-owned policy determines the next bounded step and cannot grant more sends.
           const next=decision.nextPrompt;
           if(typeof next!=='string'||next.length<20)throw Error('autonomous_semantic_next_step_missing');
           this.db.exec('SAVEPOINT semantic_work_binding');
@@ -978,35 +888,12 @@ export class AutonomousDialogue {
           this.db.exec('RELEASE SAVEPOINT technical_review_atomic');
           throw error;
         }
-      } else if(row.state==='ready_b') {
-        working='planning_b';this.move(row.id,'ready_b',working);
-        const p=await this.plan(row,'b');
-        this.assertMissionSession(context,row);
-        this.db.exec('SAVEPOINT autonomous_work_creation');
-        try {
-          const task=this.service.mutate('work_create',{projectId:row.project_id,
-            orchestratorId:row.orchestrator_id,title:p.title});
-          this.move(row.id,working,'ready_final',{task_b_id:task.taskId,question_b:p.content});
-          this.db.exec('RELEASE SAVEPOINT autonomous_work_creation');
-        } catch(error) {
-          this.db.exec('ROLLBACK TO SAVEPOINT autonomous_work_creation');
-          this.db.exec('RELEASE SAVEPOINT autonomous_work_creation');
-          throw error;
-        }
       } else if(row.state==='ready_final') {
         working='sending_b';this.move(row.id,'ready_final',working);
         await this.send(row,'b',context);
         this.assertMissionSession(context,row);
-        if(row.strategy==='semantic') {
-          this.move(row.id,working,'ready_review_final');
-        }else{
-          this.move(row.id,working,'planning_final');
-          working='planning_final';
-          const p=await this.plan(this.get(row.id),'final');
-          this.assertMissionSession(context,row);
-          this.move(row.id,working,'succeeded',{question_final:p.content});
-        }
-      } else if(row.state==='ready_review_final'&&row.strategy==='semantic') {
+        this.move(row.id,working,'ready_review_final');
+      } else if(row.state==='ready_review_final') {
         working='reviewing_final';this.move(row.id,'ready_review_final',working);
         const decision=await this.reviewTechnical(row,'final',context);
         this.assertMissionSession(context,row);
@@ -1057,7 +944,7 @@ export class AutonomousDialogue {
          'autonomous_semantic_review_unconfirmed'].includes(row.last_error)||
        !row.task_a_id||!row.question_a||row.question_final||row.review_b_json)return false;
     // Recovery is possible after either confirmed GPT turn, never between
-    // turns or when the prior Groq decision has been replaced.
+    // turns or when the prior app-owned decision has been replaced.
     const finalPhase=Boolean(row.task_b_id||row.question_b||row.review_a_json);
     if(finalPhase){
       if(!row.task_b_id||!row.question_b||!row.review_a_json)return false;
@@ -1073,7 +960,7 @@ export class AutonomousDialogue {
          (prior.decision==='new_work')!==(row.task_b_id!==row.task_a_id))return false;
     }
     this.assertMissionSession(context,row,{allowPaused:true});
-    // Another project's scoped Groq receipt must not starve this recovery.
+    // Another project's old advisory receipt must not starve this recovery.
     // Unknown/unscoped receipts and same-project uncertainty remain fail-closed;
     // the running GPT gate remains global (one physical executor).
     if(this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
@@ -1120,21 +1007,8 @@ export class AutonomousDialogue {
          !event('provider.response.reconciled'))||
        !this.service.reviewableGPTResult(row.project_id,row.orchestrator_id,run.id))
       return false;
-    if(row.last_error==='autonomous_semantic_review_unconfirmed'){
-      // Only a known terminal Groq review error is eligible. The retry has
-      // its OWN idempotent receipt and must not be attempted twice.
-      const requestId='technical_'+row.id+'_'+(finalPhase?'final':'a');
-      const first=this.db.prepare('SELECT status,result FROM lab_command_receipts '+
-        'WHERE workspace_session_id=? AND request_id=?').get(row.workspace_session_id,requestId);
-      const retried=this.db.prepare('SELECT 1 FROM lab_command_receipts '+
-        'WHERE workspace_session_id=? AND request_id=?').get(row.workspace_session_id,requestId+'_recovery');
-      let evidence=null;
-      try{evidence=JSON.parse(first?.result||'null');}catch{}
-      if(retried||first?.status!=='failed'||evidence?.reason!=='coordinator_request_failed'||
-         !RECOVERABLE_GROQ_REVIEW_FAILURES.has(evidence?.failureCode))return false;
-    }
-    // A state transition, never a second GPT submission. The existing
-    // reviewTechnical() owns the deterministic Groq review request receipt.
+    // A state transition, never a second GPT submission. App-owned review is
+    // deterministic and can be retried only while the same canonical Run remains verified.
     this.move(row.id,'reconciliation_required',finalPhase?'ready_review_final':'ready_b',
       {last_error:null});
     return true;
@@ -1183,13 +1057,13 @@ export class AutonomousDialogue {
     this.inFlight=true;
     try {
       // Recovery changes only the mission state after canonical reconciliation.
-      // The ordinary state machine performs the Groq review and any authorized
+      // The ordinary state machine performs the app-owned review and any authorized
       // next step, with its existing two-send budget and idempotent receipts.
       this.resumeReconciledTechnical(context);
       // One complete authorized mission in one handoff. Yield between durable
       // stages, while allowing a separate App event to stop at any blocker.
       let result={state:'idle'};
-      for(let i=0;i<STORY_TURNS*2+2;i++){
+      for(let i=0;i<LIMIT*2+2;i++){
         result=await this.step(context);
         // A scheduler tick may complete one authorized cycle, or schedule
         // one further cycle; never cascade multiple new consents in a single

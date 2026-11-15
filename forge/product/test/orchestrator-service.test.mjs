@@ -7,9 +7,6 @@ import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
-import {createGroqCoordinatorConversation} from '../supervisor/groq-conversation.mjs';
-
-const jsonResponse=value=>new Response(JSON.stringify(value),{headers:{'content-type':'application/json'}});
 
 function fixture(t,{provider,coordinator,repositoryPort=null,confirmProposal=()=>true,confirmProposalSend=()=>true}={}) {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-orchestration-'));
@@ -36,7 +33,7 @@ function executorReceipt(store,taskId) {
 
 async function preparedWork(f) {
   const a=await project(f);
-  const actionId=(await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Preparar pesquisa'})).result.proposalActionId;
+  const actionId=(await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Compare as alternativas.'})).result.proposalActionId;
   const created=await f.call('proposal_review',{projectId:a.p,orchestratorId:a.o,actionId,approved:true});
   return {...a,actionId,taskId:created.result.taskId,draftRevision:1};
 }
@@ -138,12 +135,18 @@ test('project preflight reports only scoped local evidence, never manufactures e
   assert.equal(providerSends,0);assert.equal(modelCalls,0);
 });
 
-test('project preflight blocks missing model and paused coordinator without changing durable tasks',async t=>{
+test('project preflight uses app-owned analysis and paused Forjador blocks without changing durable tasks',async t=>{
   const f=fixture(t),a=await project(f);
-  assert.deepEqual((await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o})).blockers,['coordinator_unavailable']);
+  const ready=await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o});
+  assert.deepEqual(ready.blockers,[]);
+  assert.equal(ready.analysisEngine.available,true);
+  assert.equal(ready.analysisEngine.mode,'app_owned');
+  assert.equal(ready.analysisEngine.externalModelUsed,false);
+  assert.equal(ready.gates.recordedWorkAnalysisEligible,true);
   await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
-  assert.deepEqual((await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o})).blockers,
-    ['coordinator_paused','coordinator_unavailable']);
+  const paused=await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o});
+  assert.deepEqual(paused.blockers,['orchestrator_paused']);
+  assert.equal(paused.gates.recordedWorkAnalysisEligible,false);
   assert.equal(f.store.getTask(a.w).status,'ready');
 });
 
@@ -489,21 +492,21 @@ test('send approval persistence is atomic and project/work-send permissions cann
   assert.equal(f.store.getTask(a.taskId).draft,'Compare as alternativas.');
 });
 
-test('coordinator work proposal survives restart and approval creates exactly one scoped work and draft without GPT',async t=>{
-  let calls=0,sends=0;
-  const f=fixture(t,{coordinator:{send:async({prepareWork})=>{
-    calls++;assert.equal(prepareWork,true);
-    return {content:'Revisar proposta',proposal:{title:'Investigar erro',content:'Analise o erro sem alterar arquivos.',reason:'Separar a investigação'}};
-  }},provider:{send:()=>{sends++;throw Error('must not send');}}}),a=await project(f),b=await project(f,'B');
+test('app-owned work proposal survives restart and approval creates exactly one scoped work and draft without GPT',async t=>{
+  let sends=0;
+  const f=fixture(t,{provider:{send:()=>{sends++;throw Error('must not send');}}}),a=await project(f),b=await project(f,'B');
   const before=f.store.db.prepare('SELECT COUNT(*) n FROM tasks').get().n;
-  f.store.setDraft(a.chat,'Prepare uma investigação',1);
-  const input={projectId:a.p,orchestratorId:a.o,content:'Prepare uma investigação',draftRevision:1,requestId:'prepare-once'};
+  const content='Investigar erro sem alterar arquivos.';
+  f.store.setDraft(a.chat,content,1);
+  const input={projectId:a.p,orchestratorId:a.o,content,draftRevision:1,requestId:'prepare-once'};
   const receipt=await f.call('orchestrator_prepare',input);
   assert.equal(receipt.status,'succeeded');
+  assert.equal(receipt.result.provider,'ordax_app_policy');
+  assert.equal(receipt.result.appOwned,true);
   assert.equal(f.store.getTaskDraft(a.chat).draft,'');
   assert.equal(f.store.getTaskDraft(a.chat).draft_revision,2);
-  assert.equal(f.store.messages(a.chat).filter(message=>message.role==='user').at(-1).content,input.content);
-  await f.call('orchestrator_prepare',input);assert.equal(calls,1);
+  assert.equal(f.store.messages(a.chat).length,0);
+  assert.deepEqual(await f.call('orchestrator_prepare',input),receipt);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM tasks').get().n,before);
   const actionId=receipt.result.proposalActionId;
   assert.equal((await f.call('proposals_list',{projectId:b.p,orchestratorId:b.o})).proposals.length,0);
@@ -512,27 +515,21 @@ test('coordinator work proposal survives restart and approval creates exactly on
   try {
     const recovered=new OrchestratorService({store:reopened,authorize:()=>true});
     assert.equal((await recovered.invoke(f.context,'proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals[0].actionId,actionId);
-    const foreign={...f.context,clientId:'other-client'};
-    assert.equal((await recovered.invoke(foreign,'proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals.length,0);
-    await assert.rejects(recovered.invoke(foreign,'proposal_review',{projectId:a.p,orchestratorId:a.o,actionId,approved:true,requestId:'foreign-review'}),/access_denied/);
-  }finally{reopened.close();}
-  const review={projectId:a.p,orchestratorId:a.o,actionId,approved:true,requestId:'review-once'};
-  const approved=await f.call('proposal_review',review);
-  assert.deepEqual(await f.call('proposal_review',review),approved);
+  } finally {reopened.close();}
+  const approved=await f.call('proposal_review',{projectId:a.p,orchestratorId:a.o,actionId,approved:true});
   assert.equal(approved.result.providerMessagesSent,0);
   const created=f.store.getTask(approved.result.taskId);
-  assert.equal(created.title,'Investigar erro');
-  assert.equal(created.draft,'Analise o erro sem alterar arquivos.');
+  assert.equal(created.title,content);
+  assert.equal(created.draft,content);
   assert.equal(created.messages.length,0);
   assert.equal((await f.call('work_get',{projectId:a.p,taskId:created.id})).orchestrator_id,a.o);
-  await assert.rejects(f.call('proposal_review',{...review,requestId:'review-again'}),/already_reviewed/);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM tasks').get().n,before+1);
   assert.equal(sends,0);
 });
 
-test('proposal rejection, paused coordinator and transaction failure never create partial work',async t=>{
-  const f=fixture(t,{coordinator:{send:async()=>({content:'Proposta',proposal:{title:'Nova frente',content:'Rascunho',reason:'Investigar'}})}}),a=await project(f);
-  const prepare=async()=> (await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Planeje'})).result.proposalActionId;
+test('proposal rejection, paused Forjador and transaction failure never create partial work',async t=>{
+  const f=fixture(t),a=await project(f);
+  const prepare=async()=> (await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Nova frente'})).result.proposalActionId;
   const actionId=await prepare();
   const scope={projectId:a.p,orchestratorId:a.o,actionId};
   await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
@@ -548,37 +545,21 @@ test('proposal rejection, paused coordinator and transaction failure never creat
   assert.equal(f.store.db.prepare("SELECT status FROM approval_ledger WHERE action_id=?").get(next).status,'pending');
 });
 
-test('invalid model proposal cannot create an approval or work, and the uncertain API call never replays',async t=>{
-  let calls=0,valid=false;
-  const f=fixture(t,{coordinator:{send:async()=>{calls++;return {content:'Proposal',proposal:{title:'X',content:'Y',reason:'Z',...(!valid?{command:'execute'}:{})}};}}}),a=await project(f);
-  const input={projectId:a.p,orchestratorId:a.o,content:'Prepare',requestId:'invalid-proposal'};
-  assert.equal((await f.call('orchestrator_prepare',input)).status,'uncertain');
-  await f.call('orchestrator_prepare',input);assert.equal(calls,1);
-  assert.equal((await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals.length,0);
-  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM approval_ledger').get().n,0);
-  valid=true;
-  const fresh=await f.call('orchestrator_prepare',{...input,requestId:'new-explicit-request',content:'Prepare uma nova proposta'});
-  assert.equal(fresh.status,'succeeded');assert.equal(calls,2);
-  assert.equal((await f.call('orchestrator_prepare',input)).status,'uncertain');assert.equal(calls,2);
-});
-
-test('an approval boolean without trusted native confirmation cannot apply a model proposal',async t=>{
-  const f=fixture(t,{confirmProposal:null,coordinator:{send:async()=>({content:'Proposta',proposal:{title:'X',content:'Y',reason:'Z'}})}}),a=await project(f);
-  const actionId=(await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Prepare'})).result.proposalActionId;
+test('an approval boolean without trusted native confirmation cannot apply an app-owned proposal',async t=>{
+  const f=fixture(t,{confirmProposal:null}),a=await project(f);
+  const actionId=(await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Nova frente'})).result.proposalActionId;
   await assert.rejects(f.call('proposal_review',{projectId:a.p,orchestratorId:a.o,actionId,approved:true}),/not_approved/);
   assert.equal((await f.call('work_list',{projectId:a.p})).works.length,1);
   assert.equal((await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals.length,1);
 });
 
-test('native review holds no database transaction and revalidates pause and authorization after confirmation',async t=>{
+test('native review of app-owned proposal holds no database transaction and revalidates pause and authorization',async t=>{
   let confirm;
-  const f=fixture(t,{confirmProposal:()=>new Promise(resolve=>{confirm=resolve;}),
-    coordinator:{send:async()=>({content:'Proposta',proposal:{title:'X',content:'Y',reason:'Z'}})}}),a=await project(f);
-  const actionId=(await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Prepare'})).result.proposalActionId;
+  const f=fixture(t,{confirmProposal:()=>new Promise(resolve=>{confirm=resolve;})}),a=await project(f);
+  const actionId=(await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Nova frente'})).result.proposalActionId;
   const input={projectId:a.p,orchestratorId:a.o,actionId,approved:true};
   const pending=f.call('proposal_review',input);
   await assert.rejects(f.call('proposal_review',input),/review_busy/);
-  // This metadata transaction must remain possible while the human reviews.
   await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
   confirm(true);await assert.rejects(pending,/paused/);
   await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:false});
@@ -587,20 +568,6 @@ test('native review holds no database transaction and revalidates pause and auth
   f.setAllowed(true);
   assert.equal((await f.call('work_list',{projectId:a.p})).works.length,1);
   assert.equal((await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals.length,1);
-});
-
-test('Groq work preparation parses a strictly bounded JSON proposal without invoking tools',async t=>{
-  const f=fixture(t),a=await project(f);
-  let response=JSON.stringify({title:'Pesquisar',content:'Pesquise as alternativas.',reason:'Fundamentar o projeto'});
-  const adapter=createGroqCoordinatorConversation({store:f.store,getApiKey:()=> 'fixture-only',isEnabled:()=>true,
-    fetchImpl:async(_url,options)=>{
-      const body=JSON.parse(options.body);assert.equal(body.tools,undefined);
-      assert.match(body.messages[0].content,/objeto JSON/);
-      return jsonResponse({choices:[{finish_reason:'stop',message:{content:response}}]});
-    }});
-  const input={taskId:a.chat,projectId:a.p,orchestratorId:a.o,mission:'Pesquisar',prepareWork:true};
-  assert.equal((await adapter.send(input)).proposal.title,'Pesquisar');
-  response='Not JSON';await assert.rejects(adapter.send(input),/groq_invalid_work_proposal/);
 });
 
 test('projects, coordinators and work persist in the same SQLite, with bounded semantic reads',async t=>{
@@ -1023,63 +990,13 @@ test('retired orchestrator_chat is rejected before receipt or model dispatch',as
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='orchestrator_chat'").get().n,0);
 });
 
-test('backend serializes analysis and proposals on one coordinator Task without starving another project',async t=>{
-  let release,entered,coordinatorCalls=0,heldProjectId=null;
-  const started=new Promise(resolve=>{entered=resolve;});
-  const gate=new Promise(resolve=>{release=resolve;});
-  const f=fixture(t,{coordinator:{available:()=>true,send:async args=>{
-    coordinatorCalls++;
-    if(args.projectId===heldProjectId){entered();await gate;}
-    return args.prepareWork
-      ?{provider:'groq',content:'Proposta confirmada',proposal:{title:'Próxima frente',content:'Revisar evidências',reason:'Teste de serialização'}}
-      :{provider:'groq',content:'Análise confirmada'};
-  }}});
-  const a=await project(f,'Projeto A');
-  const b=await project(f,'Projeto B');
-  f.store.appendMessage(a.w,'user','Contexto A confirmado.');
-  f.store.appendMessage(b.w,'user','Contexto B confirmado.');
-  heldProjectId=a.p;
-  const firstInput={requestId:'serialized-first',projectId:a.p,orchestratorId:a.o};
-  const first=f.call('orchestrator_analyze',firstInput);
-  await started;
-  assert.equal(f.service.coordinatorTurnBusy(a.chat),true);
-  assert.equal((await f.call('orchestrator_analyze',firstInput)).status,'running',
-    'same requestId returns the durable accepted receipt without another send');
-  for(const operation of ['orchestrator_analyze','orchestrator_prepare']){
-    const requestId='blocked-'+operation;
-    const input={requestId,projectId:a.p,orchestratorId:a.o,
-      ...(operation==='orchestrator_prepare'?{content:'Second concurrent operation'}:{})};
-    await assert.rejects(f.call(operation,input),/orchestrator_coordinator_busy/);
-    assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id=?')
-      .get(requestId).n,0,'rejected admission creates no command receipt');
-  }
-  const independent=await f.call('orchestrator_analyze',{requestId:'other-project',
-    projectId:b.p,orchestratorId:b.o});
-  assert.equal(independent.status,'succeeded');
-  assert.equal(f.service.coordinatorTurnBusy(b.chat),false);
-  release();
-  const completed=await first;
-  assert.equal(completed.status,'succeeded');
-  assert.equal(f.service.coordinatorTurnBusy(a.chat),false);
-  assert.equal(coordinatorCalls,2);
-  const resumed=await f.call('orchestrator_prepare',{requestId:'after-release',projectId:a.p,
-    orchestratorId:a.o,content:'Preparar próxima frente'});
-  assert.equal(resumed.status,'succeeded');
-  assert.equal(coordinatorCalls,3);
-  assert.equal(f.service.coordinatorTurnBusy(a.chat),false);
-  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
-});
-
-test('proposal preparation rejects stale revisions before any coordinator or GPT work',async t=>{
-  let gptCalls=0,coordinatorCalls=0;
-  const f=fixture(t,{provider:{send:async()=>{gptCalls++;throw Error('must_not_send_gpt');}},
-    coordinator:{available:()=>true,send:async()=>{coordinatorCalls++;return {
-      content:'Unexpected',proposal:{title:'Unexpected',content:'Unexpected',reason:'Unexpected'}};}}}),a=await project(f);
+test('proposal preparation rejects stale revisions before any app-owned proposal or GPT work',async t=>{
+  let gptCalls=0;
+  const f=fixture(t,{provider:{send:async()=>{gptCalls++;throw Error('must_not_send_gpt');}}}),a=await project(f);
   f.store.setDraft(a.chat,'Mensagem mais recente',3);
   await assert.rejects(f.call('orchestrator_prepare',{requestId:'stale-draft',projectId:a.p,orchestratorId:a.o,
     content:'Texto antigo',draftRevision:2}),/task_draft_revision_conflict/);
   assert.equal(gptCalls,0);
-  assert.equal(coordinatorCalls,0);
   assert.equal(f.store.getTaskDraft(a.chat).draft,'Mensagem mais recente');
   assert.equal(f.store.messages(a.chat).length,0);
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id=?").get('stale-draft').n,0);
@@ -1171,33 +1088,9 @@ test('work send targets the linked GitHub remote and clearly reports that no loc
     'https://github.com/ordaxsystems/veste');
 });
 
-test('Groq planning keeps its own project history and never submits to GPT',async t=>{
-  const f=fixture(t),a=await project(f);
-  await f.call('project_repository_set',{projectId:a.p,repositoryUrl:'https://github.com/ordaxsystems/veste'});
-  const requests=[];
-  f.service.coordinator=createGroqCoordinatorConversation({store:f.store,getApiKey:()=> 'fixture-only',isEnabled:()=>true,
-    fetchImpl:async(_url,options)=>{
-      const body=JSON.parse(options.body);requests.push(body);
-      assert.match(body.messages[0].content,/API não consultou o GitHub nem recebeu conteúdo/);
-      assert.ok(body.messages[0].content.includes('https://github.com/ordaxsystems/veste'));
-      return jsonResponse({choices:[{finish_reason:'stop',message:{
-        content:JSON.stringify({title:'Revisar catálogo',content:'Pesquisar itens',reason:'Planejar projeto'})}}]});
-    }});
-  const first=await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Vamos criar a loja VESTE.'});
-  const second=await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Continue pela etapa de catálogo.'});
-  assert.equal(first.status,'succeeded');assert.equal(second.status,'succeeded');
-  assert.equal(requests.length,2);
-  const secondHistory=JSON.stringify(requests[1].messages.slice(1));
-  assert.match(secondHistory,/Vamos criar a loja VESTE/);
-  assert.match(secondHistory,/Continue pela etapa de catálogo/);
-  assert.equal(f.store.messages(a.chat).filter(m=>m.role==='assistant').length,2);
-  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=?').get(a.chat).n,0);
-});
-
-test('explicit coordinator analysis is bounded to one project and orchestrator and never sends GPT work',async t=>{
-  let analysis,calls=0,providerCalls=0;
-  const f=fixture(t,{provider:{send:async()=>{providerCalls++;throw Error('must_not_send');}},
-    coordinator:{available:()=>true,send:async args=>{calls++;analysis=args.analysisContext;return {content:'A frente precisa de revisão; recomendo verificar a resposta mais recente.'};}}});
+test('app-owned analysis is bounded to one project and orchestrator and never sends GPT work',async t=>{
+  let providerCalls=0;
+  const f=fixture(t,{provider:{send:async()=>{providerCalls++;throw Error('must_not_send');}}});
   const a=await project(f);
   for(let i=0;i<5;i++)await f.call('work_create',{projectId:a.p,orchestratorId:a.o,title:`Frente ${i}`});
   const other=(await f.call('orchestrator_create',{projectId:a.p,name:'Outro orquestrador',mission:'Outra área'})).result;
@@ -1208,34 +1101,24 @@ test('explicit coordinator analysis is bounded to one project and orchestrator a
   f.store.appendMessage(a.w,'user','api_key=very-secret-value gsk_abcdefghijklmnopqrstuv https://private.example/chat');
   f.store.appendMessage(otherWork,'user','OUTRO_ORQUESTRADOR_PRIVADO');
   f.store.appendMessage(b.w,'user','OUTRO_PROJETO_PRIVADO');
-  const input={requestId:'analysis-once',projectId:a.p,orchestratorId:a.o};
-  const receipt=await f.call('orchestrator_analyze',input);
-  assert.equal(receipt.status,'succeeded');
-  assert.deepEqual(receipt.result.analysis,{workCount:4,messageCount:5});
-  assert.equal(calls,1);assert.equal(providerCalls,0);
+  const analysis=f.service.analysisContext(a.p,a.o);
   assert.equal(analysis.works.length,4);
   assert.ok(analysis.works.every(work=>work.title!=='OUTRA_FRENTE_PRIVADA'));
   const serialized=JSON.stringify(analysis);
   assert.doesNotMatch(serialized,/OUTRO_ORQUESTRADOR_PRIVADO|OUTRO_PROJETO_PRIVADO|OUTRA_FRENTE_PRIVADA/);
   assert.doesNotMatch(serialized,/very-secret-value|gsk_abcdefghijklmnopqrstuv|https:\/\/private\.example/);
   assert.match(serialized,/\[redigido\]|\[credencial redigida\]|\[link omitido\]/);
-  assert.equal(analysis.works.find(work=>work.title==='Site').messages.length,5);
   assert.doesNotMatch(serialized,/Primeira mensagem antiga/);
-  assert.deepEqual(f.store.messages(a.chat).map(message=>message.role).sort(),['assistant','user']);
-  await f.call('orchestrator_analyze',input);assert.equal(calls,1,'same receipt never repeats the API request');
-});
-
-test('late Groq planning reply after authorization revocation is not disclosed or confirmed',async t=>{
-  let resolve;
-  const gate=new Promise(r=>resolve=r);
-  const f=fixture(t,{coordinator:{available:()=>true,send:async()=>{await gate;return {content:'Private reply'};}}});
-  const a=await project(f);
-  f.store.appendMessage(a.w,'user','Analise o andamento.');
-  const pending=f.call('orchestrator_analyze',{projectId:a.p,orchestratorId:a.o});
-  f.setAllowed(false);resolve();
-  await assert.rejects(pending,/access_denied/);
-  assert.equal(f.store.messages(a.chat).length,1);
-  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE status='uncertain'").get().n,1);
+  const input={requestId:'analysis-once',projectId:a.p,orchestratorId:a.o};
+  const receipt=await f.call('orchestrator_analyze',input);
+  assert.equal(receipt.status,'succeeded');
+  assert.equal(receipt.result.provider,'ordax_app_policy');
+  assert.equal(receipt.result.appOwned,true);
+  assert.equal(receipt.result.analysisObserved,true);
+  assert.deepEqual(receipt.result.analysis,{workCount:4,messageCount:5});
+  assert.equal(providerCalls,0);
+  assert.equal(f.store.messages(a.chat).filter(message=>message.role==='assistant').length,1);
+  assert.deepEqual(await f.call('orchestrator_analyze',input),receipt);
 });
 
 test('old unbound tasks remain intact and are not silently adopted into a project',async t=>{
@@ -1286,91 +1169,6 @@ test('MCP initialize/discovery/call use exactly the same App service and persist
   f.setAllowed(false);
   assert.equal((await rpc('tools/list')).error.code,-32001);
   assert.equal((await mcp.handle([])).error.code,-32600);
-});
-
-test('Groq coordinator is opt-in, project scoped and refuses a truncated response without retries',async t=>{
-  const f=fixture(t),a=await project(f),b=await project(f,'Other secret project');
-  f.store.appendMessage(a.chat,'user','Planeje api_key=history-secret https://private.example/path');
-  f.store.appendMessage(b.chat,'user','OTHER_PRIVATE_TEXT');
-  let calls=0;
-  const adapter=createGroqCoordinatorConversation({store:f.store,getApiKey:()=> 'fixture-only',isEnabled:()=>true,
-    fetchImpl:async(_url,options)=>{
-      calls++;const body=JSON.parse(options.body);
-      assert.doesNotMatch(JSON.stringify(body),/OTHER_PRIVATE_TEXT|Other secret project|fixture-only|history-secret|https:\/\/private\.example/);
-      assert.doesNotMatch(JSON.stringify(body),/analysis-secret|https:\/\/analysis\.example/);
-      assert.match(body.messages[0].content,/somente consultiva/);
-      assert.match(options.headers.Authorization,/fixture-only/);
-      return jsonResponse({choices:[{finish_reason:'length',message:{content:'Partial'}}]});
-    }});
-  await assert.rejects(adapter.send({taskId:a.chat,projectId:a.p,orchestratorId:a.o,mission:'Planejar',
-    analysisContext:{works:[{title:'Site',messages:[{content:'api_key=analysis-secret https://analysis.example/path'}]}]}}),/incomplete/);
-  assert.equal(calls,1);
-  const disabled=createGroqCoordinatorConversation({store:f.store,getApiKey:()=>null,isEnabled:()=>false,
-    fetchImpl:async()=>{throw Error('must not call');}});
-  assert.equal(disabled.available(),false);
-  await assert.rejects(disabled.send({taskId:a.chat,projectId:a.p,mission:'Planejar'}),/disabled/);
-});
-
-test('Groq coordinator receives only bounded workspace facts and is instructed not to invent local evidence',async t=>{
-  const f=fixture(t),a=await project(f);
-  const adapter=createGroqCoordinatorConversation({store:f.store,getApiKey:()=> 'fixture-only',isEnabled:()=>true,
-    fetchImpl:async(_url,options)=>{
-      const body=JSON.parse(options.body),system=body.messages[0].content;
-      assert.match(system,/única evidência sobre o workspace/);
-      assert.match(system,/não afirme branch, HEAD nem estado do Git/);
-      assert.match(system,/nenhum conteúdo de arquivo foi lido/);
-      assert.match(system,/"state":"capability_unavailable"/);
-      assert.match(system,/"filesRead":0/);
-      assert.doesNotMatch(system,/C:\\private\\VESTE|resource_private-id/);
-      return jsonResponse({choices:[{finish_reason:'stop',message:{content:'Nenhum arquivo foi lido.'}}]});
-    }});
-  const result=await adapter.send({taskId:a.chat,projectId:a.p,orchestratorId:a.o,mission:'Planejar',
-    workspaceObservation:{state:'capability_unavailable',capabilityAvailable:false,snapshotObserved:false,
-      gitMetadataAvailable:false,fileContentAvailable:false,filesRead:0,filesWritten:0,
-      absolutePath:'C:\\private\\VESTE',resourceId:'resource_private-id'}});
-  assert.equal(result.content,'Nenhum arquivo foi lido.');
-});
-
-
-test('pause and immediate resume quarantine late analysis and proposal replies',async t=>{
-  for(const operation of ['orchestrator_analyze','orchestrator_prepare']){
-    let entered,release,coordinatorCalls=0,gptCalls=0;
-    const started=new Promise(resolve=>{entered=resolve;});
-    const gate=new Promise(resolve=>{release=resolve;});
-    const f=fixture(t,{provider:{send:async()=>{gptCalls++;throw Error('gpt_must_not_send');}},
-      coordinator:{available:()=>true,send:async()=>{
-        coordinatorCalls++;entered();await gate;
-        return {provider:'groq',content:'A resposta antiga não pode confirmar progresso',
-          proposal:{title:'Não criar',content:'Sem envio',reason:'Resposta tardia'}};
-      }}});
-    const a=await project(f,'Projeto pause '+operation);
-    f.store.appendMessage(a.w,'user','Contexto do trabalho confirmado.');
-    const input={requestId:'paused_'+operation,projectId:a.p,orchestratorId:a.o,
-      ...(operation==='orchestrator_analyze'?{}:{content:'Planeje e revise esta missão.'})};
-    const pending=f.call(operation,input);
-    await started;
-    assert.equal(f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE request_id=?')
-      .get(input.requestId).status,'running');
-    await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
-    assert.equal(f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE request_id=?')
-      .get(input.requestId).status,'uncertain');
-    await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:false});
-    release();
-    const result=await pending;
-    assert.equal(result.status,'uncertain');
-    assert.equal(result.result.reason,'coordinator_paused_inflight');
-    assert.equal(result.result.taskId,a.chat);
-    assert.equal(result.requiresReconciliation,true);
-    assert.equal(coordinatorCalls,1);
-    assert.equal(gptCalls,0);
-    assert.deepEqual(f.store.messages(a.chat).map(m=>m.role),['user'],
-      'late model response must not create assistant evidence');
-    assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM action_ledger WHERE action_type='orchestrator.work-proposal'").get().n,0,
-      'late planning must not create a reviewable proposal');
-    assert.deepEqual(await f.call(operation,input),result,'same requestId must never replay');
-    assert.equal(coordinatorCalls,1);
-    assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
-  }
 });
 
 test('corrupt proposal payload does not block legitimate pending review or reveal another project',async t=>{
@@ -1427,89 +1225,4 @@ test('prepared proposals require canonical approved ledger and ignore corrupted 
   assert.equal(db.prepare('SELECT result FROM action_ledger WHERE id=?').get(malformed).result,'{"broken"');
   assert.equal(db.prepare('PRAGMA quick_check').get().quick_check,'ok');
   assert.equal(providerSends,0);
-});
-
-
-test('in-flight analysis does not occupy the single GPT Web executor',async t=>{
-  let enterAnalysis,releaseAnalysis,analysisCalls=0,gptCalls=0;
-  const started=new Promise(resolve=>{enterAnalysis=resolve;});
-  const gate=new Promise(resolve=>{releaseAnalysis=resolve;});
-  const f=fixture(t,{
-    coordinator:{available:()=>true,send:async()=>{
-      analysisCalls++;enterAnalysis();await gate;return {content:'Análise confirmada'};
-    }},
-    provider:{busy:()=>false,send:async({taskId})=>{
-      gptCalls++;
-      const runId=f.store.startRun(taskId);
-      f.store.appendMessage(taskId,'assistant','Resposta GPT confirmada pela fixture');
-      f.store.finishRun(taskId,runId);
-      return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
-    }}
-  });
-  const a=await project(f,'Análise A'),b=await project(f,'Execução B');
-  f.store.appendMessage(a.w,'user','Contexto A confirmado.');
-  const pending=f.call('orchestrator_analyze',{requestId:'analysis-held',projectId:a.p,orchestratorId:a.o});
-  await started;
-  const duringAnalysis=f.service.executorAdmission();
-  assert.equal(duringAnalysis.activeRuns,0);
-  assert.equal(duringAnalysis.activeCommands,0,
-    'a running analysis command must not be counted as a GPT submission');
-  assert.equal(duringAnalysis.availableSlots,1);
-  const result=await f.call('work_send',{requestId:'gpt-during-analysis',projectId:b.p,
-    taskId:b.w,content:'Verifique trabalho B'});
-  assert.equal(result.status,'succeeded');
-  assert.equal(gptCalls,1);
-  assert.equal(analysisCalls,1);
-  assert.equal(f.service.coordinatorTurnBusy(a.chat),true,
-    'GPT completion must not interrupt analysis A');
-  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
-  releaseAnalysis();
-  assert.equal((await pending).status,'succeeded');
-  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
-});
-
-test('GPT admission still serializes provider sends while analysis is in flight',async t=>{
-  let enterAnalysis,releaseAnalysis,enterGPT,releaseGPT,gptCalls=0;
-  const analysisStarted=new Promise(resolve=>{enterAnalysis=resolve;});
-  const analysisGate=new Promise(resolve=>{releaseAnalysis=resolve;});
-  const gptStarted=new Promise(resolve=>{enterGPT=resolve;});
-  const gptGate=new Promise(resolve=>{releaseGPT=resolve;});
-  const f=fixture(t,{
-    coordinator:{available:()=>true,send:async()=>{
-      enterAnalysis();await analysisGate;return {content:'Análise preservada'};
-    }},
-    provider:{busy:()=>false,send:async({taskId})=>{
-      gptCalls++;
-      if(gptCalls===1){enterGPT();await gptGate;}
-      const runId=f.store.startRun(taskId);
-      f.store.appendMessage(taskId,'assistant','GPT confirmado');
-      f.store.finishRun(taskId,runId);
-      return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
-    }}
-  });
-  const a=await project(f,'Análise A'),b=await project(f,'GPT B'),c=await project(f,'GPT C');
-  f.store.appendMessage(a.w,'user','Contexto A confirmado.');
-  const analysis=f.call('orchestrator_analyze',{requestId:'held-analysis',projectId:a.p,orchestratorId:a.o});
-  await analysisStarted;
-  const provider=f.call('work_send',{requestId:'held-gpt',projectId:b.p,
-    taskId:b.w,content:'Executar B'});
-  await gptStarted;
-  const admission=f.service.executorAdmission();
-  assert.equal(admission.activeCommands,1);
-  assert.equal(admission.availableSlots,0);
-  await assert.rejects(f.call('work_send',{requestId:'second-gpt-blocked',projectId:c.p,
-    taskId:c.w,content:'Executar C'}),/executor_busy/);
-  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id=?')
-    .get('second-gpt-blocked').n,0,'a rejected send must not reserve or transmit');
-  assert.equal(gptCalls,1);
-  releaseGPT();
-  assert.equal((await provider).status,'succeeded');
-  assert.equal(f.service.executorAdmission().availableSlots,1,
-    'analysis A must not keep GPT capacity reserved after GPT B completes');
-  assert.equal((await f.call('work_send',{requestId:'gpt-after-gpt',projectId:c.p,
-    taskId:c.w,content:'Executar C'})).status,'succeeded');
-  assert.equal(gptCalls,2);
-  releaseAnalysis();
-  assert.equal((await analysis).status,'succeeded');
-  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });

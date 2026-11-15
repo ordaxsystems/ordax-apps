@@ -1,6 +1,6 @@
 // UI-only admission for an explicit review of a confirmed GPT Run.
 // The existing orchestrator service remains authoritative for provenance,
-// ownership, stale Runs and actual Groq dispatch.
+// ownership, stale Runs and actual review dispatch.
 export function reviewCandidateRun({task,binding,projectId,orchestratorId}={}) {
   const run=task?.latest_run;
   if(binding?.kind!=='work'||binding.project_id!==projectId||
@@ -14,7 +14,7 @@ export function reviewCandidateRun({task,binding,projectId,orchestratorId}={}) {
 }
 
 // Render only a scoped receipt projection read from the canonical Store.
-// Missing, mismatched, failed or unknown reads never authorize a Groq request.
+// Missing, mismatched, failed or unknown reads never authorize a review.
 export function runReviewButtonState({runId,receipt,attempted=false,busy=false}={}) {
   if(!runId)return {enabled:false,message:''};
   if(busy)return {enabled:false,message:'Revisão em andamento; nenhum novo envio permitido.'};
@@ -23,7 +23,7 @@ export function runReviewButtonState({runId,receipt,attempted=false,busy=false}=
     return {enabled:false,message:'Não foi possível confirmar os recibos deste Run. Nenhum envio autorizado.'};
   switch(receipt.status) {
     case 'not_requested':return {enabled:true,message:''};
-    case 'succeeded':return {enabled:false,message:'Revisão Groq já registrada para este Run. Efeitos externos não comprovados.'};
+    case 'succeeded':return {enabled:false,message:'Revisão do Forge já registrada para este Run. Efeitos externos não comprovados.'};
     case 'running':return {enabled:false,message:'Revisão em andamento; aguarde o recibo.'};
     case 'uncertain':return {enabled:false,message:'Revisão com resultado incerto; reconciliação necessária, sem reenvio.'};
     case 'failed':return {enabled:false,message:'Revisão anterior falhou; consulte os recibos antes de uma recuperação controlada.'};
