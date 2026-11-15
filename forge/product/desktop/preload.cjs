@@ -28,6 +28,9 @@ contextBridge.exposeInMainWorld('ordax', {
   forgeWorkspaceCreate: projectId => ipcRenderer.invoke('ordax:forge:workspace:create',projectId),
   forgeWorkspaceChoose: projectId => ipcRenderer.invoke('ordax:forge:workspace:choose',projectId),
   forgeWorkspaceMigrate: projectId => ipcRenderer.invoke('ordax:forge:workspace:migrate',projectId),
+  forgeDevelopmentStatus: projectId => ipcRenderer.invoke('ordax:forge:development:status',projectId),
+  forgeDevelopmentApprove: projectId => ipcRenderer.invoke('ordax:forge:development:approve',projectId),
+  forgeDevelopmentRevoke: projectId => ipcRenderer.invoke('ordax:forge:development:revoke',projectId),
   onOrchestratorChanged: callback => {
     const listener=()=>callback();
     ipcRenderer.on('ordax:orchestrator:changed',listener);

@@ -10,7 +10,7 @@
   <main class="app-shell">
     <aside class="left-rail">
       <header class="brand-row">
-        <div class="logo">O</div>
+        <div class="logo" aria-hidden="true">F</div>
         <div class="brand-copy">
           <h1 id="productNameHeader">OrdaX Forge</h1>
           <p id="brandMode">Projeto dedicado • carregando ambiente</p>
@@ -21,7 +21,7 @@
       <section class="project-hub" aria-label="Gerenciar e alternar projetos">
         <div class="project-hub-heading">
           <strong>Projetos</strong>
-          <button id="quickNewProject" type="button" aria-controls="projectSetup" aria-label="Criar novo projeto">＋ Novo</button>
+          <button id="quickNewProject" type="button" aria-controls="projectSetup" aria-label="Criar novo projeto">＋ Novo projeto</button>
         </div>
         <section class="project-identity" aria-label="Projeto selecionado">
           <span class="project-identity-kicker">EM FOCO</span>
@@ -56,20 +56,21 @@
         </button>
       </nav>
       <section class="orchestration-navigation" aria-label="Configuração do projeto e administração">
+        <details id="projectSetup" class="nav-setup">
+          <summary>Novo projeto</summary>
+          <form id="newProjectForm">
+            <label for="projectName">Nome do projeto</label><input id="projectName" maxlength="140" placeholder="Ex.: OrdaX" />
+            <label for="projectObjective">O que você quer construir? (opcional)</label><textarea id="projectObjective" maxlength="4000" rows="3" placeholder="Descreva brevemente a ideia do seu projeto."></textarea>
+            <label for="projectRepositoryUrl">Repositório GitHub (opcional)</label><input id="projectRepositoryUrl" type="url" maxlength="300" placeholder="https://github.com/owner/repository" />
+            <small>O projeto é criado sem enviar mensagens ao GPT. Acesso a arquivos e integrações depende de autorização.</small>
+            <button type="submit">Criar projeto</button>
+          </form>
+        </details>
         <details id="forgeProjectAdvanced" class="forge-project-advanced"><summary>Gerenciar projeto</summary>
         <div class="nav-section-heading"><span>Configuração do projeto</span><div class="nav-heading-actions"><button id="renameProjectButton" class="nav-add" type="button" aria-label="Renomear projeto" disabled>✎</button><button id="deleteProjectButton" class="nav-add" type="button" aria-label="Excluir projeto" disabled>×</button><button id="addProject" class="nav-add" type="button" aria-label="Conectar projeto">+</button></div></div>
 
         <select id="projectSelect" class="native-state-control" aria-label="Selecionar projeto ativo" title="Projeto ativo"><option value="">Conversas sem projeto</option></select>
-        <details id="projectSetup" class="nav-setup">
-          <summary>Conectar projeto</summary>
-          <form id="newProjectForm">
-            <label for="projectName">Nome do projeto</label><input id="projectName" maxlength="140" placeholder="Ex.: OrdaX" />
-            <label for="projectObjective">Objetivo e orientações (opcional)</label><textarea id="projectObjective" maxlength="4000" rows="3" placeholder="Pode deixar vazio: a coordenação começa com o nome do projeto."></textarea>
-            <label for="projectRepositoryUrl">Repositório GitHub remoto (opcional)</label><input id="projectRepositoryUrl" type="url" maxlength="300" placeholder="https://github.com/owner/repository" />
-            <small>Informe um nome ou objetivo. Conectar cria o projeto, o Administrador Geral e a primeira frente; não envia ao GPT. Ao iniciar, o app consulta o inventário local e solicita uma análise sem prompt somente se os gates permitirem.</small>
-            <button type="submit">Conectar projeto</button>
-          </form>
-        </details>
+
         <details id="projectRenameSetup" class="nav-setup">
           <summary>Renomear projeto</summary>
           <form id="renameProjectForm">
@@ -96,6 +97,14 @@
             <button type="submit">Criar administrador</button>
           </form>
         </details>
+        <section id="forgeDevelopmentAccess" class="forge-development-access" aria-label="Autorização de desenvolvimento">
+          <strong>Desenvolvimento com GPT</strong>
+          <small id="forgeDevelopmentAccessStatus" role="status">Escolha um projeto para configurar o terminal.</small>
+          <div class="forge-development-actions">
+            <button id="forgeDevelopmentApprove" type="button">Autorizar terminal</button>
+            <button id="forgeDevelopmentRevoke" type="button">Revogar</button>
+          </div>
+        </section>
         </details>
       </section>
       <button id="newTask" class="primary new-task">＋ Nova conversa GPT</button>
@@ -127,15 +136,7 @@
         <div class="footer-actions">
           <button id="login" class="icon-button" aria-label="Entrar no ChatGPT" title="Entrar no ChatGPT">Entrar no ChatGPT</button>
         </div>
-        <div class="observer-row">
-          <label for="observerMode">Resposta</label>
-          <select id="observerMode">
-            <option value="auto">Automático</option>
-            <option value="fast">Fast</option>
-            <option value="beta">Beta</option>
-          </select>
-          <span id="observerHint">Fast quando disponível.</span>
-        </div>
+
         <details id="hostBrowserControls" class="host-browser-controls" hidden>
           <summary id="hostBrowserStatusSummary">Host local ativo</summary>
           <div class="host-browser-controls-panel">
@@ -311,22 +312,22 @@
       </section>
 
       <section id="empty" class="empty">
-        <div class="empty-mark">O</div>
-        <h2>Seu projeto começa no Forge.</h2>
-        <p>Crie ou selecione um projeto à esquerda. Depois, converse normalmente com o Forjador; a execução e os resultados aparecem à direita.</p>
-        <button class="primary empty-create" type="button" data-start-project>Começar pelo Forge</button>
+        <span class="empty-eyebrow">PRONTO PARA COMEÇAR</span>
+        <h2>Seu próximo projeto começa aqui.</h2>
+        <p>Organize suas ideias, converse com o Forjador e acompanhe o trabalho real em um único lugar.</p>
+        <button class="primary empty-create" type="button" data-start-project>＋ Criar meu primeiro projeto</button>
       </section>
     </section>
 
     <aside id="contextRail" class="context-rail">
       <nav id="rightPaneTabs" class="right-pane-tabs" aria-label="Painel de trabalho" role="tablist">
-        <button id="executionPaneTab" class="right-pane-tab active" type="button" role="tab" aria-selected="true" aria-controls="executionOverview" data-pane="execution">Execução</button>
-        <button id="previewPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="previewPanel" data-pane="preview">Preview</button>
+        <button id="executionPaneTab" class="right-pane-tab active" type="button" role="tab" aria-selected="true" aria-controls="executionOverview" data-pane="execution">Trabalhos</button>
+        <button id="previewPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="previewPanel" data-pane="preview">Prévia</button>
         <button id="filesPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="filesPanel" data-pane="files">Arquivos</button>
         <button id="providerPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="providerPanel" data-pane="provider">GPT Web</button>
         <button id="contextPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="contextPanel" data-pane="context" hidden>Frentes</button>
       </nav>
-      <section id="providerPanel" class="right-pane-panel provider-panel" role="tabpanel" aria-labelledby="providerPaneTab">
+      <section id="providerPanel" class="right-pane-panel provider-panel" role="tabpanel" aria-labelledby="providerPaneTab" hidden>
         <div class="provider-toolbar" aria-label="Navegação do ChatGPT">
           <div class="provider-navigation">
             <button id="providerBack" type="button" aria-label="Voltar uma página" title="Voltar" disabled>←</button>
@@ -357,7 +358,7 @@
           <p id="workSurfaceStatus" role="status" aria-live="polite">Prévia visual segura. JavaScript, rede e envio de formulários desativados; não publicado.</p>
         </section>
         <header class="execution-overview-head">
-          <div><span class="command-eyebrow">CENTRAL DE OPERAÇÕES</span><h2 id="executionOverviewTitle">Acompanhamento do projeto</h2><p id="executionOverviewDescription">Lendo os Runs e evidências registrados neste projeto.</p></div>
+          <div><span class="command-eyebrow">VISÃO DO PROJETO</span><h2 id="executionOverviewTitle">Trabalhos e andamento</h2><p id="executionOverviewDescription">Lendo os Runs e evidências registrados neste projeto.</p></div>
           <button id="refreshExecutionOverview" type="button" aria-label="Atualizar execução" title="Atualizar dados locais">↻</button>
         </header>
         <article class="execution-mission-card">
@@ -562,7 +563,7 @@
   <dialog id="appSettingsDialog" class="app-settings-dialog" aria-labelledby="appSettingsTitle">
     <div class="app-settings-frame">
       <header class="app-settings-header">
-        <div class="app-settings-heading"><span class="app-settings-wordmark"><span class="app-settings-logo" aria-hidden="true">⬡</span><span id="productBrandEyebrow">OrdaX Forge</span></span><span class="app-settings-heading-copy"><h2 id="appSettingsTitle">Configurações</h2><p>Preferências do Forge, sessão GPT e conexão MCP.</p></span></div>
+        <div class="app-settings-heading"><span class="app-settings-wordmark"><span class="app-settings-logo" aria-hidden="true">F</span><span id="productBrandEyebrow">OrdaX Forge</span></span><span class="app-settings-heading-copy"><h2 id="appSettingsTitle">Configurações</h2><p>Preferências do Forge, sessão GPT e conexão MCP.</p></span></div>
         <button id="closeAppSettings" class="app-settings-close" type="button" aria-label="Fechar configurações">×</button>
       </header>
       <div class="app-settings-body">
@@ -592,6 +593,15 @@
               <p id="settingsChatGptStatus">Verificando a sessão do navegador…</p>
               <p>A sessão usa o perfil persistente deste aplicativo. O OrdaX não salva sua senha; os cookies podem expirar ou ser invalidados pelo próprio serviço.</p>
               <button id="settingsOpenChatGptLogin" type="button" class="mini-secondary">Abrir sessão do ChatGPT</button>
+              <div class="observer-row">
+          <label for="observerMode">Modo de resposta</label>
+          <select id="observerMode">
+            <option value="auto">Automático</option>
+            <option value="fast">Fast</option>
+            <option value="beta">Beta</option>
+          </select>
+          <span id="observerHint">Fast quando disponível.</span>
+        </div>
             </section>
             <section class="app-settings-card" aria-label="Modo GPT único">
               <span class="app-settings-eyebrow">MODELO ÚNICO</span><h3>GPT Web + Forge MCP</h3>

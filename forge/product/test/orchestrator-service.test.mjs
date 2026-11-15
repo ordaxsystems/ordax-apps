@@ -1142,7 +1142,8 @@ test('MCP initialize/discovery/call use exactly the same App service and persist
   const tools=(await rpc('tools/list')).result.tools;
   // The GPT-first direct send is native UI-only; it must not be recursively
   // advertised to a GPT client through the Forge's own MCP adapter.
-  const exposed=ORCHESTRATOR_TOOLS.filter(tool=>tool.operation!=='forjador_send');
+  const exposed=ORCHESTRATOR_TOOLS.filter(tool=>tool.operation!=='forjador_send'&&
+    (tool.operation!=='project_command_run'||Boolean(f.service.development)));
   assert.equal(tools.length,exposed.length);
   assert.deepEqual(new Set(tools.map(tool=>tool.name)),new Set(exposed.map(tool=>tool.name)));
   assert.equal(tools.some(tool=>tool.name==='forge_forjador_send'),false);

@@ -26,6 +26,7 @@ import {ForgeLocalWorkspaces,resolveForgeWorkspaceDocumentsDirectory} from '../s
 import {forgeFreshConversationContext} from '../src/forge-fresh-conversation-context.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {createForgeLoopbackMcp,FORGE_APP_MCP_SCOPE,FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
+import {ForgeProjectDevelopment} from '../src/forge-project-development.mjs';
 import {createForgeProductSession} from '../src/forge-product-session.mjs';
 import {ForgeRemoteGatewayClient} from '../src/forge-remote-gateway-client.mjs';
 import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
@@ -33,6 +34,7 @@ import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
 import {IsolatedInteractiveHtmlPreview} from './isolated-interactive-preview.mjs';
+import {boundedForgeViewImage,captureForgeProjectHtml} from './forge-view-capture.mjs';
 import { createProviderViewRegistry } from '../src/provider-view-registry.mjs';
 import { backgroundResidencyAllowed,backgroundStartupAllowed,backgroundModeRequested } from '../src/background-residency-policy.mjs';
 import { createProviderExecutionScheduler } from '../src/provider-execution-scheduler.mjs';
@@ -1315,8 +1317,25 @@ let localOrchestratorContext=null;
 const lastGptDispatchByTask=new Map();
 let runtimeOrchestratorBridge=null;
 let closeRuntimeOrchestratorPipe=null;
+const forgeMcpTrusted=new ForgeMcpOwnerTrust({store,
+  appIdentity:app.getPath('userData'),
+  scopeSignature:projectId=>{
+    const binding=forgeLocalWorkspaces.binding(projectId);
+    if(!binding)return 'app-private:'+projectId;
+    if(!forgeLocalWorkspaces.status(projectId).verified)
+      throw Error('forge_mcp_trust_workspace_unverified');
+    return 'owner-bound:'+binding.root+':'+binding.identity;
+  }
+});
+// One native capability port; project consent is bound to the already verified
+// workspace identity in the EXISTING Forge SQLite, not a new permission store.
+const forgeProjectDevelopment=new ForgeProjectDevelopment({
+  store,workspaces:forgeLocalWorkspaces,ownerTrust:forgeMcpTrusted
+});
+
 const orchestratorKernel=createOrchestratorKernel({
   store,version:app.getVersion(),fileBroker:forgeProjectFiles,
+  development:forgeProjectDevelopment,
   continuousExecutionByDefault:forgeDevAutonomyEnabled,
   // Reuse the exact preview's path, symlink, structure and SHA-256 verifier.
   // Never expose HTML bytes to remote planning or arbitrary file reads.
@@ -1406,14 +1425,75 @@ const orchestratorKernel=createOrchestratorKernel({
 });
 localOrchestratorContext=orchestratorKernel.context;
 const {service:orchestratorService,mcp:localOrchestratorMcp}=orchestratorKernel;
-const forgeMcpTrusted=new ForgeMcpOwnerTrust({store,
-  appIdentity:app.getPath('userData'),
-  scopeSignature:projectId=>{
-    const binding=forgeLocalWorkspaces.binding(projectId);
-    if(!binding)return 'app-private:'+projectId;
-    if(!forgeLocalWorkspaces.status(projectId).verified)
-      throw Error('forge_mcp_trust_workspace_unverified');
-    return 'owner-bound:'+binding.root+':'+binding.identity;
+// App-owned View port. Uses the canonical project/file/Task identities and
+// real Chromium pixels; neither the MCP nor its caller can select a disk path.
+orchestratorService.viewPort=Object.freeze({
+  status:()=>({
+    schema:'ordax.forge.app-view/1',available:Boolean(win&&!win.isDestroyed()),
+    minimized:Boolean(win&&!win.isDestroyed()&&win.isMinimized()),
+    focused:Boolean(win&&!win.isDestroyed()&&win.isFocused()),
+    visible:Boolean(win&&!win.isDestroyed()&&win.isVisible()),
+    providerRuns:providerViews.activeRunCount,
+    interactivePreview:interactiveHtmlPreview?.snapshot()??{active:false},
+    supportsProjectCapture:true,requiresForeground:false,
+    captureScope:'forge_window_or_authorized_project_only'
+  }),
+  async capture(operation,input){
+    if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_mcp_app_untrusted');
+    if(operation==='app_view_capture'){
+      if(!win||win.isDestroyed())throw Error('forge_view_window_unavailable');
+      // Renderer pixels only. Native overlay WebContentsViews are separate
+      // and must not be misrepresented as included in this screenshot.
+      const image=boundedForgeViewImage(await win.webContents.capturePage());
+      return {schema:'ordax.forge.view-capture/1',source:'app_renderer',
+        includesNativeOverlayViews:false,focusChanged:false,
+        deploymentVerified:false,image};
+    }
+    if(!['project_view_capture','project_view_probe'].includes(operation))
+      throw Error('forge_view_operation_invalid');
+    const projectId=input.projectId;
+    let html,sourceSha256,sourceIdentity,interactive=false;
+    if(input.target==='project_index'){
+      if(input.taskId||input.assetId)throw Error('forge_view_scope_invalid');
+      if(forgeLocalWorkspaces.status(projectId)?.verified!==true)
+        throw Error('forge_view_project_workspace_unverified');
+      const file=forgeProjectFiles.read(projectId,'index.html');
+      if(file?.projectId!==projectId||file?.path!=='index.html'||
+         file?.verified!=='local_readback'||!/^([a-f0-9]{64})$/.test(file.sha256))
+        throw Error('forge_view_project_file_unverified');
+      html=file.content;sourceSha256=file.sha256;
+      sourceIdentity={projectId,path:'index.html',sha256:sourceSha256};
+    }else if(input.target==='task_artifact'){
+      if(!input.taskId||!input.assetId)
+        throw Error('forge_view_artifact_identity_required');
+      orchestratorService.task(projectId,input.taskId);
+      const proof=readVerifiedHtmlPreview({taskId:input.taskId,assetId:input.assetId});
+      html=proof.html;sourceSha256=proof.sha256;interactive=true;
+      sourceIdentity={projectId,taskId:input.taskId,assetId:input.assetId,sha256:sourceSha256};
+    }else throw Error('forge_view_target_invalid');
+    const probing=operation==='project_view_probe';
+    if(probing&&input.expectedSha256!==sourceSha256)
+      throw Error('forge_view_source_stale');
+    const {image,inspection,probe}=await captureForgeProjectHtml({
+      html,interactive:interactive||probing,
+      probe:probing?{controlIndex:input.controlIndex,expectedLabel:input.expectedLabel}:null
+    });
+    // A project/task/file can change while the isolated view is rendering.
+    orchestratorService.requireAccess(localOrchestratorContext,operation,projectId);
+    if(input.target==='project_index'){
+      if(forgeLocalWorkspaces.status(projectId)?.verified!==true||
+         forgeProjectFiles.read(projectId,'index.html')?.sha256!==sourceSha256)
+        throw Error('forge_view_source_changed');
+    }else{
+      orchestratorService.task(projectId,input.taskId);
+      if(readVerifiedHtmlPreview({taskId:input.taskId,assetId:input.assetId}).sha256!==sourceSha256)
+        throw Error('forge_view_source_changed');
+    }
+    return {schema:'ordax.forge.view-capture/1',
+      source:'verified_project_html',target:input.target,identity:sourceIdentity,
+      rendering:'isolated_offscreen_chromium',focusChanged:false,
+      nativeRendererPixels:true,websitePublished:false,
+      externalDeploymentVerified:false,inspection,...(probe?{probe}:{}),image};
   }
 });
 const forgeRemoteMcp=createOrchestratorMcp({
@@ -1566,6 +1646,41 @@ registerUiHandler('ordax:forge:workspace:migrate',async(event,projectId)=>{
   if(!accepted)return {cancelled:true};
   orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
   return forgeLocalWorkspaces.migrateLegacy(projectId);
+});
+// Native Owner approval of a project terminal is separate from app MCP OAuth.
+// It persists for the verified physical folder, is revocable, and is never
+// granted by a model, a URL, an MCP call or a project objective.
+registerUiHandler('ordax:forge:development:status',(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_development_native_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'project_development_status',projectId);
+  return forgeProjectDevelopment.status(projectId);
+});
+registerUiHandler('ordax:forge:development:approve',async(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_development_native_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'project_development_status',projectId);
+  if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_development_mcp_app_approval_required');
+  if(!forgeLocalWorkspaces.status(projectId).verified)throw Error('forge_development_workspace_unverified');
+  const scopeHash=forgeMcpTrusted.scopeHash(projectId);
+  const accepted=await confirmInActiveUi({
+    title:'Autorizar desenvolvimento completo pelo Forge MCP',
+    message:'Permitir que o GPT execute comandos, testes, builds e Git neste projeto?',
+    detail:'Autorização única, revogável. O terminal abre na pasta vinculada, mas executa com as permissões da conta Windows e NÃO é um sandbox: comandos também podem acessar outras áreas do computador. Comandos e resultados podem constar nos recibos do Forge MCP; nunca inclua senhas ou segredos.',
+    approveLabel:'Autorizar terminal'
+  });
+  if(!accepted)return {cancelled:true};
+  orchestratorService.requireAccess(localOrchestratorContext,'project_development_status',projectId);
+  if(!forgeLocalWorkspaces.status(projectId).verified)throw Error('forge_development_workspace_unverified');
+  forgeProjectDevelopment.approve(projectId,{expectedScopeHash:scopeHash});
+  return forgeProjectDevelopment.status(projectId);
+});
+registerUiHandler('ordax:forge:development:revoke',(event,projectId)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw Error('forge_development_native_ui_only');
+  orchestratorService.requireAccess(localOrchestratorContext,'project_development_status',projectId);
+  forgeProjectDevelopment.revoke(projectId);
+  return forgeProjectDevelopment.status(projectId);
 });
 // Local MCP is explicitly enabled only from the trusted Electron settings UI.
 // Activation returns a one-time bearer token; status never returns it.
@@ -1896,8 +2011,11 @@ app.whenReady().then(async () => {
       }
     }
     if(forgeMcpTrusted.isAppTrusted()&&forgeProductSession.status().connected){
-      try{await forgeRemoteGateway.start();}
-      catch{/* Account/gateway is fail-soft; local Forge remains usable offline. */}
+      // Registration and network recovery belong to the Electron main process,
+      // but must never delay the visible application startup.
+      void forgeRemoteGateway.start().catch(()=>{
+        // The gateway schedules its own bounded retry; Forge stays usable offline.
+      });
     }
   }
   await createWindow();

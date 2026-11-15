@@ -73,7 +73,7 @@ test('loopback MCP requires explicit token and keeps tools inside one project',a
   const listed=await rpc(endpoint,token,init.session,{jsonrpc:'2.0',id:3,method:'tools/list'});
   const tools=listed.payload.result.tools.map(t=>t.name);
   assert.ok(tools.includes('forge_project_file_write'));
-  assert.ok(!tools.includes('forge_project_delete'));
+  assert.ok(tools.includes('forge_project_delete'));
   assert.ok(!tools.includes('forge_work_send'));
   assert.ok(!tools.includes('forge_forjador_send'));
   assert.ok(!tools.includes('forge_projects_list'));
@@ -90,7 +90,7 @@ test('loopback MCP requires explicit token and keeps tools inside one project',a
   }));
   assert.equal(repeat.payload.result.structuredContent.commandId,
     wrote.payload.result.structuredContent.commandId);
-  const denied=await rpc(endpoint,token,init.session,call(8,'project_delete',{projectId:a}));
+  const denied=await rpc(endpoint,token,init.session,call(8,'project_delete',{projectId:b,confirmName:'transport_b',requestId:'cannot_delete_other'}));
   assert.equal(denied.payload.error.code,-32602);
   const invalid=await rpc(endpoint,token,'00000000-0000-0000-0000-000000000000',
     call(9,'project_files_status',{projectId:a}));

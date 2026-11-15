@@ -90,6 +90,7 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
           if(message.params?.cursor!==undefined)return error(id,-32602,'Invalid cursor');
           const tools=ORCHESTRATOR_TOOLS.filter(tool=>{
             if(UI_ONLY_OPERATIONS.has(tool.operation)||
+              (tool.operation==='project_command_run'&&!service.development)||
               (allow!==null&&!allow.has(tool.operation)))return false;
             try {service.requireAccess(context,tool.operation,scoped?allowedProjectId:null);return true;}catch{return false;}
           }).map(({operation,readOnly,...tool})=>{
@@ -121,6 +122,12 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
                authorizeFileRead(args.projectId)!==true)
               throw Error('forge_mcp_file_workspace_not_authorized');
             const output=await service.invoke(context,tool.operation,args);
+            if(output?.image?.mimeType==='image/jpeg'&&typeof output.image.data==='string'){
+              const {data,mimeType,...imageMetadata}=output.image;
+              const metadata={...output,image:imageMetadata};
+              return result(id,{content:[{type:'image',mimeType,data},
+                {type:'text',text:JSON.stringify(metadata)}],structuredContent:metadata});
+            }
             return result(id,{content:[{type:'text',text:JSON.stringify(output)}],structuredContent:output});
           } catch {
             return result(id,{isError:true,content:[{type:'text',text:'Command unavailable or input rejected. Inspect authorized state; do not repeat an uncertain effect.'}]});

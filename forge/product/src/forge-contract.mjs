@@ -7,6 +7,10 @@ const requestId = {...text(120),pattern:'^[A-Za-z0-9_-]+$'};
 const definitions = [
   ['status','Inspect local engine state and limitations.',{},[],true],
   ['projects_list','List accessible Forge projects.',{},[],true],
+  ['app_view_status','Inspect the real Forge window and preview state, including whether it is minimized. No screenshot, project creation or focus change.',{},[],true],
+  ['app_view_capture','Capture only the Forge application renderer pixels, never the Windows desktop. Does not raise or focus the window; native overlay Views are excluded.',{},[],true],
+  ['project_view_capture','Render and capture a verified project HTML preview in an isolated native renderer, even with Forge minimized. Project files use script-free previews; Task artifacts require exact Task and asset identity. Never captures another project.',{projectId:id,target:{...text(20),pattern:'^(project_index|task_artifact)$'},taskId:id,assetId:id},['projectId','target'],true],
+  ['project_view_probe','Safely test a visible button in a fresh isolated, network-denied preview clone and return screenshot and controls after the click. Never interacts with the live Forge View, publishes a site, modifies files or persists UI state. Requires source SHA-256 and exact observed control index/label to reject stale actions.',{projectId:id,target:{...text(20),pattern:'^(project_index|task_artifact)$'},taskId:id,assetId:id,expectedSha256:{...text(64),pattern:'^[a-f0-9]{64}$'},controlIndex:{type:'integer',minimum:0,maximum:39},expectedLabel:text(100)},['projectId','target','expectedSha256','controlIndex','expectedLabel'],true],
   ['project_preflight','Inspect project-scoped local evidence and external capability blockers without a provider request, GitHub read, grant or GPT send.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
   ['forge_discover','Read the actual Forge app capabilities and authorized current project. Start here to avoid assuming folder access, completed operations, or deployment.',{projectId:id},['projectId'],true],
   ['project_context','Discover the canonical Forge execution protocol, selected project identity, workspace grant state and work availability. Does not read or create files, grant access or send GPT.',{projectId:id},['projectId'],true],
@@ -15,6 +19,8 @@ const definitions = [
   ['project_administrator_snapshot','Read a bounded project-wide evidence snapshot of works, GPT Runs, unresolved commands, accepted notes and pending suggestions. Not a semantic model review or proof of file changes.',{projectId:id},['projectId'],true],
   ['project_handoff','Read a bounded project handoff from canonical SQLite: tasks, message excerpts, accepted decisions, pending receipts and an optional selected task. No GPT send, session rotation, model summary or filesystem proof.',{projectId:id,taskId:id},['projectId'],true],
   ['project_files_status','Inspect the single Forge project workspace: owner-bound Windows folder when verified, otherwise legacy private sandbox. Never grants an external path.',{projectId:id},['projectId'],true],
+  ['project_development_status','Read the owner-approved development permission. Commands run as the logged-in Windows user, not in a sandbox.',{projectId:id},['projectId'],true],
+  ['project_command_run','Run a real terminal command in the owner-bound workspace. Requires one-time native Owner approval; no per-command confirmation. This command inherits Windows user privileges, so the project folder is a working directory, NOT a sandbox. Avoid secrets in commands and output.',{projectId:id,command:text(8000),workingDirectory:text(1000,0),timeoutMs:{type:'integer',minimum:1000,maximum:1800000}},['projectId','command'],false],
   ['project_files_list','List up to 100 entries in the currently bound project workspace using relative paths; rejects traversal and reparse points.',{projectId:id,directory:text(240,0)},['projectId'],true],
   ['project_file_read','Read one UTF-8 file up to 64 KiB in the authorized project workspace, with SHA-256. No arbitrary disk access.',{projectId:id,path:text(240)},['projectId','path'],true],
   ['project_file_write','Create or replace one UTF-8 file up to 64 KiB inside the Forge-bound project workspace. Existing files require previous SHA-256; writes receive durable receipts and checked readback. Never chooses a folder or grants access.',{projectId:id,path:text(240),content:text(65536,0),expectedSha256:{...text(64),pattern:'^[a-f0-9]{64}$'}},['projectId','path','content'],false],
@@ -64,8 +70,9 @@ export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,desc
   inputSchema:{type:'object',additionalProperties:false,
     properties:{...(!readOnly?{requestId}:{}),...properties},
     required:[...(!readOnly?['requestId']:[]),...required]},
-  annotations:{readOnlyHint:readOnly,destructiveHint:operation==='project_delete',idempotentHint:true,
-    openWorldHint:['work_send','proposal_send','forjador_send','autonomous_dialogue_start','autonomous_dialogue_continue'].includes(operation)}
+  annotations:{readOnlyHint:readOnly,destructiveHint:['project_delete','project_command_run'].includes(operation),
+    idempotentHint:operation!=='project_command_run',
+    openWorldHint:['project_command_run','work_send','proposal_send','forjador_send','autonomous_dialogue_start','autonomous_dialogue_continue'].includes(operation)}
 })));
 
 export function validateOrchestratorInput(operation, input) {

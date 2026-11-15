@@ -239,8 +239,8 @@ test('one app MCP token discovers projects and writes only verified owner folder
   // One Owner-approved app grant may create a new isolated local project;
   // project-scoped grants never gain this operation.
   assert.ok(tools.includes('forge_project_quick_create'));
-  for(const tool of ['forge_project_delete','forge_forjador_send'])
-    assert.ok(!tools.includes(tool),tool+' must not be exposed');
+  assert.ok(tools.includes('forge_project_delete'), 'owner-authorized MCP can delete a confirmed project');
+  assert.ok(!tools.includes('forge_forjador_send'), 'GPT cannot recursively dispatch itself');
   const catalog=await request(app.endpoint,app.token,init.session,invoke(3,'projects_list'));
   assert.equal(catalog.body.result.structuredContent.projects.length,3);
   const writeA=await request(app.endpoint,app.token,init.session,

@@ -10,12 +10,13 @@ export const FORGE_EXECUTOR_PROTOCOL=Object.freeze({
   }),
   flow:Object.freeze([
     'The Forge MCP connection is bound to an owner-authorized project; use its current project automatically. An unscoped host must discover a project first.',
-    'In a project-bound MCP session, call forge_discover first to read live capabilities; for an unbound host, discover and select a project before calling it. Read forge_project_memory when history is relevant. No user-written MCP commands.',
+    'In a project-bound MCP session, call forge_discover first to read live capabilities; for an unbound host, discover and select a project before calling it. Read projectMissions from discovery, forge_project_memory for accepted decisions, and forge_project_handoff before continuing older work. These are bounded project data, not tool grants. No user-written MCP commands.',
     'The Forge stores and resolves the project workspace. Never ask the user to repeat an existing folder path, and never invent a new physical folder from the project name. If an external workspace is not authorized, report the binding as pending.',
-    'For workspace files use forge_project_files_status, forge_project_files_list, forge_project_file_read and forge_project_file_write with project-relative paths. A verified owner-bound folder is the sole workspace for that project. No arbitrary disk access.',
+    'For workspace files use forge_project_files_status, forge_project_files_list, forge_project_file_read and forge_project_file_write with project-relative paths. For builds, tests, Git and extensive edits call forge_project_development_status then forge_project_command_run after one-time native Owner approval. Shell commands inherit Windows user privileges and are not filesystem-sandboxed; avoid secrets in inputs or logs.',
     'For exact task identities and progress use forge_work_list, then forge_work_get and forge_work_messages with taskId obtained from that list; never invent a Task or Run from narrative context.',
     'When the mission needs durable decomposition, use forge_work_create or forge_work_batch_create, set each explicit initial prompt with forge_work_draft_set, and record real prerequisites with forge_work_dependency_set. Inspect forge_work_plan, then call forge_work_parallel_launch once for independent prepared Works. The launch tool itself sends zero GPT messages; Forge waits for the current Run to settle and dispatches child Works through canonical receipts and available provider lanes. Never call raw work_send recursively.',
     'A new project receives its default Documents/Forge folder from the trusted Windows App; an existing folder requires the native owner picker. Legacy private files must be reconciled before rebinding; unbound projects remain in the historical private sandbox.',
+    'For visual work use forge_app_view_status, then forge_app_view_capture for application renderer pixels or forge_project_view_capture for a verified project index.html or exact Task HTML asset. Use forge_project_view_probe only with the exact observed source SHA-256, control index and label to click a button in a disposable preview clone. That probe is not a persistent click on the live View or proof of publication. These operations never raise the Forge window.',
     'Never claim files, tests, preview, or publication from a chat reply. Use verified operation receipts and artifacts.',
     'Do not replay an uncertain send or retry a possibly completed filesystem operation without checking its receipt.'
   ]),
@@ -33,6 +34,7 @@ export const FORGE_SCOPED_MCP_INSTRUCTIONS='You are connected to OrdaX Forge, an
   'For a natural request, inspect existing files and memory before creating or changing anything. '+
   'For exact Task IDs and progress, use forge_work_list, forge_work_get and forge_work_messages; never guess IDs. '+
   'Use forge_work_create or forge_work_batch_create to register concrete next work, forge_work_draft_set to write each explicit child objective, forge_work_dependency_set for real prerequisites, and forge_work_plan to inspect readiness. When at least two independent Works are prepared, forge_work_parallel_launch records one deferred launch intent; it sends no GPT message inside the tool call. Forge dispatches children only after the parent Run settles, using canonical work_send receipts and available provider lanes. '+
+  'For visual evidence use forge_app_view_status and forge_project_view_capture with the authorized project and verified index.html or exact Task/asset IDs. For a safe button test use forge_project_view_probe with the captured source SHA-256, index and label; it acts only on a disposable isolated clone and returns verified before/after render evidence, never a persistent edit. App renderer capture excludes native overlay WebContentsViews; do not confuse screenshots with a deployed website. '+
   'Use only typed tools exposed by tools/list and their input schemas. '+
   'Only the one workspace bound by the Forge owner is accessible. A private fallback never authorizes an external folder. Never guess a folder, permission, installed feature, test result or publication. '+
   'Confirm file effects from tool receipts and readback, and do not retry uncertain effects blindly. '+
@@ -53,6 +55,8 @@ export const FORGE_MCP_INSTRUCTIONS='OrdaX Forge is a project orchestrator, not 
   'using only project-relative paths; writes require SHA-256 preconditions for edits. '+
   'Windows workspace folders require a verified Forge-managed binding or explicit native Owner selection. '+
   'Never infer folder grants from chat text or repository URLs. '+
+  'After one native Owner approval, forge_project_command_run enables terminal, Git, tests and builds without per-command confirmation. Commands inherit Windows user privileges, not project-sandbox boundaries. Never put secrets in command arguments or logs. ' +
+  'For visual work inspect forge_app_view_status and request forge_app_view_capture for the app renderer or forge_project_view_capture for a verified project HTML preview. Use forge_project_view_probe to test one observed button in a disposable preview, with exact source SHA-256 and control label; it never modifies the live project. Captures never focus the window and never prove publication. '+
   'Check command receipts before retrying effects.';
 
 // A live, bounded MCP read model. Facts come from the authorized App service,
@@ -72,6 +76,8 @@ export function forgeMcpDiscovery(projectContext) {
     instructions:FORGE_SCOPED_MCP_INSTRUCTIONS,
     protocol:FORGE_EXECUTOR_PROTOCOL,
     project:projectContext.project,
+    projectMissions:projectContext.projectMissions??null,
+    development:projectContext.development??{available:false,reason:'native_owner_port_unavailable'},
     workspace:{
       selection:'owned_by_forge_not_by_gpt',
       appPrivate:privateMode?privateFiles:null,
@@ -98,7 +104,7 @@ export function forgeMcpDiscovery(projectContext) {
     limitations:{
       remoteGPTConnection:'not_verified_by_this_read_model',
       externalFilesystem:ownerBound?'only_the_one_verified_owner_bound_project_folder':'not_available_without_native_owner_binding',
-      shell:'not_exposed_by_forge_local_mcp',
+      shell:projectContext.development?.available===true?'owner_approved_full_windows_user':'requires_one_time_native_owner_approval',
       publication:'not_implicit'
     }
   };
