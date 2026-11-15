@@ -1899,7 +1899,7 @@ registerUiHandler('ordax:forge:local-mcp:start',async event=>{
       !await confirmInActiveUi({
     title:'Autorizar MCP do aplicativo Forge',
     message:'Autorizar uma conexão MCP para o Forge inteiro?',
-    detail:'O cliente MCP poderá listar os projetos do Forge, consultar trabalhos e ler/gravar arquivos SOMENTE nas pastas de projeto vinculadas e verificadas. Isso inclui projetos novos após sua criação, sem autorizações MCP separadas. Não dá acesso geral ao Windows, não publica uma porta na internet e não inicia o túnel GPT. A conexão local usa uma chave temporária; a confiança no aplicativo não salva essa chave.',
+    detail:'O cliente MCP poderá navegar na interface real deste Forge, localizar controles, clicar, digitar em campos não sensíveis e alternar projetos, administradores e conversas sem manter o aplicativo em primeiro plano. Um clique pode acionar operações normais do Forge; confirmações nativas continuam obrigatórias. Também poderá consultar trabalhos e ler/gravar arquivos SOMENTE em pastas de projeto vinculadas e verificadas. Não dá acesso geral ao Windows, não publica porta na internet e não inicia o túnel GPT. A autorização é feita uma vez e pode ser revogada.',
     approveLabel:'Autorizar Forge MCP'}))return {running:false,declined:true};
   orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
   if(forgeMcpTrusted.appScopeHash()!==consentScopeHash)
