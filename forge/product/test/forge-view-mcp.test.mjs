@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
+import {inspectForgeLiveViewDom} from '../src/forge-live-view-dom.mjs';
 
 const imageData=Buffer.from('test-jpeg-bytes').toString('base64');
 const project='project_VisualTest';
@@ -109,4 +110,59 @@ test('MCP reports a bounded recovery route for occluded app pixels without leaki
   assert.equal(unknown.result.isError,true);
   assert.equal(unknown.result.structuredContent,undefined);
   assert.doesNotMatch(unknown.result.content[0].text,/private_debug_token/);
+});
+
+test('live View does not click controls covered by a modal or pointer interception',()=>{
+  const rect={x:12,y:18,left:12,top:18,right:132,bottom:54,width:120,height:36};
+  let clicked=0;
+  const button={
+    tagName:'BUTTON',innerText:'Confirmar',disabled:false,
+    getBoundingClientRect:()=>rect,
+    getAttribute:key=>key==='aria-label'?'Confirmar':null,
+    closest:()=>null,contains:element=>element===button,
+    click:()=>{clicked++;}
+  };
+  const overlay={tagName:'DIV'};
+  let topmost=button;
+  const doc={
+    title:'Teste visual',querySelectorAll:selector=>
+      selector==='button,[role="button"]'?[button]:[],
+    elementFromPoint:()=>topmost
+  };
+  const globals={document:doc,location:{origin:'null'},
+    getComputedStyle:()=>({display:'block',visibility:'visible',opacity:'1'}),
+    innerWidth:600,innerHeight:400};
+  const previous=Object.fromEntries(Object.keys(globals).map(key=>
+    [key,Object.getOwnPropertyDescriptor(globalThis,key)]));
+  try{
+    for(const [key,value] of Object.entries(globals))
+      Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});
+    const allowed=inspectForgeLiveViewDom();
+    assert.equal(allowed.available,true);
+    assert.equal(allowed.state.controls[0].interactable,true);
+    assert.equal(allowed.state.controls[0].obscured,false);
+    const accepted=inspectForgeLiveViewDom({mode:'click',index:0,
+      expectedLabel:'Confirmar',expectedState:allowed.state});
+    assert.equal(accepted.applied,true);
+    assert.equal(clicked,1);
+
+    topmost=overlay;
+    const blocked=inspectForgeLiveViewDom();
+    assert.equal(blocked.state.controls[0].obscured,true);
+    assert.equal(blocked.state.controls[0].interactable,false);
+    const rejected=inspectForgeLiveViewDom({mode:'click',index:0,
+      expectedLabel:'Confirmar',expectedState:blocked.state});
+    assert.equal(rejected.applied,false);
+    assert.equal(rejected.reason,'forge_view_live_stale');
+    assert.equal(clicked,1);
+    const stale=inspectForgeLiveViewDom({mode:'click',index:0,
+      expectedLabel:'Confirmar',expectedState:allowed.state});
+    assert.equal(stale.applied,false);
+    assert.equal(clicked,1);
+  }finally{
+    for(const [key,descriptor] of Object.entries(previous)){
+      if(descriptor)Object.defineProperty(globalThis,key,descriptor);
+      else delete globalThis[key];
+    }
+  }
 });
