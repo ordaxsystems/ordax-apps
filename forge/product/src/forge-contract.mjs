@@ -9,6 +9,11 @@ const definitions = [
   ['projects_list','List accessible Forge projects.',{},[],true],
   ['app_view_status','Inspect the real Forge window and preview state, including whether it is minimized. No screenshot, project creation or focus change.',{},[],true],
   ['app_view_capture','Capture only the Forge application renderer pixels, never the Windows desktop. Does not raise or focus the window; native overlay Views are excluded.',{},[],true],
+  ['app_ui_inspect','Inspect the real Forge Electron app shell, including while minimized, returning visible controls, headings and scroll panes. No input values, foreground focus changes or external provider windows.',{},[],true],
+  ['app_ui_click','Click a previously inspected control in the real Forge Electron app shell (projects, administrators, Tasks, dialogs) without focusing the window. Exact DOM revision, control index and label are required; stores an idempotent receipt. No arbitrary JS or CSS selector.',{expectedRevision:{...text(64),pattern:'^[a-f0-9]{64}$'},controlIndex:{type:'integer',minimum:0,maximum:119},expectedLabel:text(120)},['expectedRevision','controlIndex','expectedLabel'],false],
+  ['app_ui_fill','Fill a previously inspected non-sensitive text field or choose a listed option in the real Forge Electron shell. Preserves exact content but never echoes it. Password, token, payment, OTP, file, hidden or read-only controls are excluded; effect gets an idempotent receipt.',{expectedRevision:{...text(64),pattern:'^[a-f0-9]{64}$'},controlIndex:{type:'integer',minimum:0,maximum:119},expectedLabel:text(120),value:text(2000,0)},['expectedRevision','controlIndex','expectedLabel','value'],false],
+  ['app_ui_scroll','Scroll one inspected native Forge pane by a bounded offset without focusing or scrolling the GPT provider window. Requires exact DOM revision and idempotent request ID.',{expectedRevision:{...text(64),pattern:'^[a-f0-9]{64}$'},scrollIndex:{type:'integer',minimum:0,maximum:23},deltaY:{type:'integer',minimum:-1200,maximum:1200}},['expectedRevision','scrollIndex','deltaY'],false],
+
   ['project_view_capture','Render and capture a verified project HTML preview in an isolated native renderer, even with Forge minimized. Project files use script-free previews; Task artifacts require exact Task and asset identity. Never captures another project.',{projectId:id,target:{...text(20),pattern:'^(project_index|task_artifact)$'},taskId:id,assetId:id},['projectId','target'],true],
   ['project_view_probe','Safely test a visible button in a fresh isolated, network-denied preview clone and return screenshot and controls after the click. Never interacts with the live Forge View, publishes a site, modifies files or persists UI state. Requires source SHA-256 and exact observed control index/label to reject stale actions.',{projectId:id,target:{...text(20),pattern:'^(project_index|task_artifact)$'},taskId:id,assetId:id,expectedSha256:{...text(64),pattern:'^[a-f0-9]{64}$'},controlIndex:{type:'integer',minimum:0,maximum:39},expectedLabel:text(100)},['projectId','target','expectedSha256','controlIndex','expectedLabel'],true],
   ['project_view_live_inspect','Inspect the actual open native project View (not a clone), including visible buttons and headings, even while Forge is minimized. No input values or screenshot; requires the exact project, Task and asset identity.',{projectId:id,taskId:id,assetId:id},['projectId','taskId','assetId'],true],
@@ -73,9 +78,9 @@ export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,desc
   inputSchema:{type:'object',additionalProperties:false,
     properties:{...(!readOnly?{requestId}:{}),...properties},
     required:[...(!readOnly?['requestId']:[]),...required]},
-  annotations:{readOnlyHint:readOnly,destructiveHint:['project_delete','project_command_run'].includes(operation),
+  annotations:{readOnlyHint:readOnly,destructiveHint:['project_delete','project_command_run','app_ui_click'].includes(operation),
     idempotentHint:operation!=='project_command_run',
-    openWorldHint:['project_command_run','work_send','proposal_send','forjador_send','autonomous_dialogue_start','autonomous_dialogue_continue'].includes(operation)}
+    openWorldHint:['project_command_run','work_send','proposal_send','forjador_send','autonomous_dialogue_start','autonomous_dialogue_continue','app_ui_click','app_ui_fill'].includes(operation)}
 })));
 
 export function validateOrchestratorInput(operation, input) {
@@ -99,7 +104,8 @@ export function validateOrchestratorInput(operation, input) {
       // silently trimming either would bypass validation or alter source code.
       normalized[key]=((operation.startsWith('project_file_')&&['content','path'].includes(key))||
         (operation==='project_files_list'&&key==='directory')||
-        (operation==='project_view_live_fill'&&key==='value'))?value:value.trim();
+        (operation==='project_view_live_fill'&&key==='value')||
+        (operation==='app_ui_fill'&&key==='value'))?value:value.trim();
     } else if(schema.type==='array') {
       const item=schema.items;
       if(!Array.isArray(value)||value.length>schema.maxItems||

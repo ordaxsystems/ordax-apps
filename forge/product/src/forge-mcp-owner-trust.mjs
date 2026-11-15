@@ -37,7 +37,7 @@ export class ForgeMcpOwnerTrust {
   appScopeHash(){
     const session=this.currentSession();
     if(!this.appIdentity)throw Error('forge_mcp_app_identity_unavailable');
-    return createHash('sha256').update('forge-app-mcp/1\\n'+session.id+'\\n'+this.appIdentity).digest('hex');
+    return createHash('sha256').update('forge-app-mcp/2\\n'+session.id+'\\n'+this.appIdentity).digest('hex');
   }
   isAppTrusted(){
     const session=this.currentSession();
