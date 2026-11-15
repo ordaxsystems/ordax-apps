@@ -1241,8 +1241,15 @@ test('Live native View MCP uses SQLite receipts and never replays uncertain clic
       if(operation==='project_view_live_inspect')
         return {schema:'ordax.forge.live-view/1',revision:base.expectedRevision};
       clicked++;
-      return {schema:'ordax.forge.live-view-action/1',dispatched:true,
-        statePersistedInLiveView:true,externalEffectsVerified:false};
+      return {schema:'ordax.forge.live-view-action/1',
+        source:'active_native_view',projectId:a.p,taskId:a.w,
+        assetId:base.assetId,sha256:'a'.repeat(64),
+        action:'click',dispatched:true,controlIndex:base.controlIndex,
+        expectedLabel:base.expectedLabel,
+        beforeRevision:base.expectedRevision,afterRevision:'b'.repeat(64),
+        observableDomChanged:true,statePersistedInLiveView:true,
+        projectFilesModified:false,externalEffectsVerified:false,
+        websitePublished:false};
     }
   };
   const inspect=await f.call('project_view_live_inspect',{
@@ -1279,6 +1286,22 @@ test('Live native View MCP uses SQLite receipts and never replays uncertain clic
   assert.equal(unknownCalls,1);
   assert.deepEqual(await f.service.invoke(f.context,'project_view_live_click',pending),uncertain);
   assert.equal(unknownCalls,1);
+
+  // A native port may return without enough evidence to prove the click.
+  // Treat malformed/misattributed replies as uncertain, not succeeded, and
+  // never silently click again on a repeated requestId.
+  let invalidCalls=0;
+  f.service.viewPort.live=async()=>{
+    invalidCalls++;
+    return {schema:'ordax.forge.live-view-action/1',dispatched:true};
+  };
+  const malformed={...base,requestId:'live_malformed'};
+  const invalid=await f.service.invoke(f.context,'project_view_live_click',malformed);
+  assert.equal(invalid.status,'uncertain');
+  assert.equal(invalid.requiresReconciliation,true);
+  assert.equal(invalid.result.reason,'forge_view_live_action_unconfirmed');
+  assert.deepEqual(await f.service.invoke(f.context,'project_view_live_click',malformed),invalid);
+  assert.equal(invalidCalls,1);
 
   f.setAllowed(false);
   await assert.rejects(f.call('project_view_live_inspect',{
