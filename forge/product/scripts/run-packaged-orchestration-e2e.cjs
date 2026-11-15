@@ -38,6 +38,21 @@ let phase='preflight';
     if(spawnFailed||code!==0)throw Error('packaged_orchestration_scenario_failed');
     phase='runtime_host_scenario';
     await verifyHostFixture({child,root,profile,exchange:hostFixture.exchange});
+    // Same packaged Electron process and disposable profile, after the
+    // existing Runtime host has verified its unchanged 3-Work baseline.
+    // A real user now switches three administrators and three GPT Tasks.
+    phase='multiagent_user_scenario';
+    const multiagent=spawn(process.execPath,
+      [path.join(__dirname,'live-ui-multiagent-user-smoke.cjs')],
+      {cwd:root,env,stdio:'inherit'});
+    const multiagentExit=await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>{
+        multiagent.kill();reject(Error('packaged_multiagent_scenario_timeout'));
+      },150000);
+      multiagent.on('error',error=>{clearTimeout(timer);reject(error);});
+      multiagent.on('exit',value=>{clearTimeout(timer);resolve(value);});
+    });
+    if(multiagentExit!==0)throw Error('packaged_multiagent_scenario_failed');
   }finally{
     // Exact child PID owned by this runner, never process-name matching.
     if(child.pid)await new Promise(resolve=>{
@@ -52,7 +67,8 @@ let phase='preflight';
     'host_replay_guard_missing','host_signature_guard_missing','host_write_not_blocked',
     'host_unexpected_provider_message','host_pipe_timeout','host_pipe_unavailable',
     'host_frame_invalid','host_frame_oversized','host_fixture_requires_ci',
-    'host_response_unsolicited','host_pipe_ended','host_pipe_write_failed','host_pipe_read_failed']);
+    'host_response_unsolicited','host_pipe_ended','host_pipe_write_failed','host_pipe_read_failed',
+    'packaged_multiagent_scenario_timeout','packaged_multiagent_scenario_failed']);
   console.error(JSON.stringify({schema:'ordax.lab.packaged-orchestration-failure.v1',phase,
     reason:allowed.has(error?.message)?error.message:'packaged_orchestration_e2e_failed'}));
   process.exitCode=2;
