@@ -11,7 +11,7 @@ const $ = selector => document.querySelector(selector);
 document.title = PRODUCT_NAME;
 for(const id of ['productNameHeader','productNameSettings']) {
   const target=document.getElementById(id);
-  if(target)target.textContent=PRODUCT_NAME;
+  if(target)target.textContent=id==='productNameHeader'?PRODUCT_SHORT_NAME:PRODUCT_NAME;
 }
 const brandEyebrow=document.getElementById('productBrandEyebrow');
 if(brandEyebrow)brandEyebrow.textContent=PRODUCT_NAME.toUpperCase();
@@ -62,7 +62,6 @@ document.getElementById('settingsOpenChatGptLogin')?.addEventListener('click',()
 document.getElementById('settingsOpenProject')?.addEventListener('click',async()=>{
   settingsDialog?.close();
   if(!orchestrationUi?.getProjectId?.()) {
-    document.getElementById('forgeProjectAdvanced').open=true;
     document.getElementById('projectSetup').open=true;
     document.getElementById('projectName').focus();
     return;
@@ -71,6 +70,55 @@ document.getElementById('settingsOpenProject')?.addEventListener('click',async()
   const integrations=document.getElementById('orchestrationIntegrations');
   if(integrations)integrations.open=true;
   requestAnimationFrame(()=>document.getElementById('projectRepositoryInput')?.focus());
+});
+
+async function refreshForgeDevelopmentAccess() {
+  const projectId=orchestrationUi?.getProjectId?.()||null;
+  const status=document.getElementById('forgeDevelopmentAccessStatus');
+  const approve=document.getElementById('forgeDevelopmentApprove');
+  const revoke=document.getElementById('forgeDevelopmentRevoke');
+  if(!status||!approve||!revoke)return;
+  approve.disabled=!projectId;revoke.disabled=true;
+  if(!projectId){status.textContent='Selecione um projeto.';return;}
+  try {
+    const access=await window.ordax.forgeDevelopmentStatus(projectId);
+    if(orchestrationUi?.getProjectId?.()!==projectId)return;
+    approve.disabled=access.available||!access.ownerBoundWorkspace;
+    revoke.disabled=!access.ownerApproved;
+    status.textContent=access.available
+      ?'Terminal autorizado. O GPT pode executar comandos sem confirmações repetidas.'
+      :access.ownerBoundWorkspace
+        ?'Terminal desativado. Ative uma vez para liberar comandos, Git e builds.'
+        :'Vincule a pasta do projeto antes de habilitar comandos.';
+  }catch {
+    status.textContent='Não foi possível verificar a autorização.';
+    approve.disabled=true;revoke.disabled=true;
+  }
+}
+document.getElementById('forgeProjectAdvanced')?.addEventListener('toggle',event=>{
+  if(event.target.open)void refreshForgeDevelopmentAccess();
+});
+document.getElementById('forgeDevelopmentApprove')?.addEventListener('click',async()=>{
+  const projectId=orchestrationUi?.getProjectId?.();
+  if(!projectId)return;
+  try {
+    const reply=await window.ordax.forgeDevelopmentApprove(projectId);
+    if(reply?.cancelled)return;
+  }catch(error) {
+    document.getElementById('forgeDevelopmentAccessStatus').textContent=
+      'Não foi possível autorizar: '+String(error?.message||'verifique a pasta e a conexão MCP');
+  }
+  await refreshForgeDevelopmentAccess();
+});
+document.getElementById('forgeDevelopmentRevoke')?.addEventListener('click',async()=>{
+  const projectId=orchestrationUi?.getProjectId?.();
+  if(!projectId)return;
+  try{await window.ordax.forgeDevelopmentRevoke(projectId);}
+  catch(error){
+    document.getElementById('forgeDevelopmentAccessStatus').textContent=
+      'Falha ao revogar: '+String(error?.message||'indisponível');
+  }
+  await refreshForgeDevelopmentAccess();
 });
 let workSurfacePreviewEpoch=0,workSurfacePreviewKey=null;
 let workSurfacePreviewTaskId=null,workSurfaceInteractiveActive=false;
@@ -1927,7 +1975,7 @@ document.getElementById('backgroundExitApp')?.addEventListener('click',async()=>
   catch {button.disabled=false;backgroundMessage.textContent='Saída não confirmada: o processo permanece ativo.';}
 });
 
-document.getElementById('brandMode').textContent=PRODUCT_SHORT_NAME+' • GPT Web + Forge MCP';
+document.getElementById('brandMode').textContent='ESTÚDIO DE PROJETOS';
 document.getElementById('labVersion').textContent=PRODUCT_NAME+' • GPT único';
 labRecoverButton.disabled=false;
 labRecoverButton.addEventListener("click", async () => {

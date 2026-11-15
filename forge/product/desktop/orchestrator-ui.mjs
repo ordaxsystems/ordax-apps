@@ -876,12 +876,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   $('coordinatorApiSettings').addEventListener('click',()=>onOpenAppSettings?.('providers'));
   function openNewProjectForm(){
-    $('forgeProjectAdvanced').open=true;
     const form=$('projectSetup');
     form.open=true;
     // The same canonical form serves the desktop shortcut and compact header.
     // No separate project-creation implementation or duplicate draft.
-    form.scrollIntoView({block:'nearest',behavior:'auto'});
     $('projectName').focus();
   }
   $('addProject').addEventListener('click',openNewProjectForm);

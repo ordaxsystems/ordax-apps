@@ -163,7 +163,8 @@ test('desktop package ships only canonical desktop runtime', () => {
   assert.match(main,/const hostBrowserMode=!app\.isPackaged&&/);
   assert.match(main,/await import\('\.\.\/host\/host-browser-server\.mjs'\)/);
   assert.match(main,/createTaskUiHandlers/);
-  assert.match(ui,/PRODUCT_SHORT_NAME\+' • GPT Web \+ Forge MCP'/);
+  assert.match(ui,/brandMode'\)\.textContent='ESTÚDIO DE PROJETOS'/);
+  assert.match(uiHtml,/GPT Web \+ Forge MCP/);
   assert.equal(pkg.build.productName,PRODUCT_NAME);
   assert.match(ui,/const observer=\$\('\.observer-row'\);/);
   assert.match(ui,/observer\.classList\.add\('hidden'\)/);
@@ -178,14 +179,26 @@ test('desktop package ships only canonical desktop runtime', () => {
   assert.ok(!JSON.stringify(pkg.build.files).includes('chrome-extension'));
 });
 
+test('lean project shell keeps technical preferences available without duplicate onboarding',()=>{
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  assert.match(css,/body:has\(#empty:not\(\.hidden\)\) #contextRail\{display:none!important\}/);
+  assert.doesNotMatch(uiHtml,/id="forgeStartGuide"/);
+  assert.equal((uiHtml.match(/id="quickNewProject"/g)||[]).length,1);
+  assert.equal((uiHtml.match(/data-start-project/g)||[]).length,1);
+  assert.equal((uiHtml.match(/id="observerMode"/g)||[]).length,1);
+  const providerSettings=uiHtml.slice(uiHtml.indexOf('id="settingsPanelProviders"'),uiHtml.indexOf('id="settingsPanelConnections"'));
+  assert.match(providerSettings,/id="observerMode"/);
+  assert.match(uiHtml,/id="projectSetup"/);
+});
+
 test('empty project state promises persistence without claiming autonomous execution',()=>{
-  assert.match(uiHtml,new RegExp('Seu projeto começa no '+PRODUCT_SHORT_NAME));
-  assert.match(uiHtml,new RegExp('data-start-project>Começar pelo '+PRODUCT_SHORT_NAME));
+  assert.match(uiHtml,/<h2>Seu próximo projeto começa aqui\.<\/h2>/);
+  assert.match(uiHtml,/data-start-project>[^<]*Criar meu primeiro projeto/);
   assert.doesNotMatch(uiHtml,/data-create-task/);
   assert.match(ui,/document\.querySelector\('\[data-start-project\]'\)/);
   assert.doesNotMatch(ui,/querySelector\('\[data-create-task\]'\)/);
 
-  assert.match(uiHtml,/Converse normalmente com o Forjador|converse normalmente com o Forjador/);
+  assert.match(uiHtml,/converse com o Forjador/);
   assert.doesNotMatch(uiHtml,/continuar amanhã|gerencia automaticamente as conversas internas/);
 });
 
@@ -222,7 +235,7 @@ test('project onboarding accepts a name without a written mission, without impli
   assert.match(inferred,/não enviar mensagens ao GPT Web/i);
   assert.ok(inferred.length<4000);
   const html=uiHtml;
-  assert.match(html,/id="projectObjective"[^>]+placeholder="Pode deixar vazio:[^>]+><\/textarea>/);
+  assert.match(html,/id="projectObjective"[^>]+placeholder="Descreva brevemente a ideia do seu projeto\."[^>]*><\/textarea>/);
   assert.equal((html.match(/id="analyzeWorks"/g)||[]).length,1);
   assert.ok(html.indexOf('id="analyzeWorks"')<html.indexOf('id="orchestrationIntegrations"'));
   assert.match(html,/id="analysisScopeHint"[^>]*>[^<]*Iniciar consulta o estado local e os recibos/);
@@ -314,7 +327,7 @@ test('Start persists consent and requests one prompt-free local analysis only wh
   const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.equal((uiHtml.match(/id="projectObservationToggle"/g)||[]).length,1);
   assert.equal((uiHtml.match(/id="projectObservationState"/g)||[]).length,1);
-  assert.match(uiHtml,/solicita uma análise sem prompt somente se os gates permitirem/);
+  assert.match(uiHtml,/id="analysisScopeHint"[^>]*>Iniciar consulta o estado local e os recibos/);
   assert.match(source,/project\?\.observation_requested===1/);
   assert.match(source,/command\('project_observation_set',\{projectId:p,enabled\}\)/);
   assert.match(source,/async function analyzeRegisteredWorks\(p,o,\{automatic=false\}=\{\}\)/);

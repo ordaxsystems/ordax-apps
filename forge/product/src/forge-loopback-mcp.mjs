@@ -1,27 +1,16 @@
 import http from 'node:http';
 import {randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
+import {ORCHESTRATOR_TOOLS} from './forge-contract.mjs';
 
 export const FORGE_APP_MCP_SCOPE='forge_app';
-export const FORGE_LOCAL_MCP_OPERATIONS=Object.freeze([
-  'projects_list','forge_discover','project_context','project_memory','project_memory_propose',
-  'project_administrator_snapshot','project_handoff',
-  'project_files_status','project_files_list','project_file_read','project_file_write',
-  'orchestrators_list','continuity_status','autonomous_dialogue_status',
-  // A tool-using GPT may organize durable work in the already authorized
-  // project. Raw provider dispatch remains App-owned: work_send/forjador_send
-  // are deliberately NOT exposed. work_parallel_launch records a deferred
-  // durable intent; the App scheduler creates child work_send receipts only
-  // after the current parent Run settles.
-  'work_create','work_batch_create','work_draft_set','work_dependency_set',
-  'work_parallel_launch','work_list','work_plan','work_get','work_messages'
-]);
-// The native Forge uses one owner-approved application grant. That connection
-// may create local synthetic projects/coordinators for autonomous lab work,
-// while a project-scoped grant can never escape its selected project.
-export const FORGE_APP_MCP_OPERATIONS=Object.freeze([
-  ...FORGE_LOCAL_MCP_OPERATIONS,
-  'project_create','project_quick_create','mission_create','orchestrator_create'
-]);
+// One operation catalog shared with the App. Provider-to-GPT dispatch remains
+// app-owned to prevent recursive model sends; all other typed capabilities
+// are available through owner-authorized MCP sessions.
+const APP_PROVIDER_DISPATCH=new Set(['work_send','proposal_send','forjador_send','autonomous_dialogue_continue']);
+export const FORGE_APP_MCP_OPERATIONS=Object.freeze(ORCHESTRATOR_TOOLS
+  .map(tool=>tool.operation).filter(op=>!APP_PROVIDER_DISPATCH.has(op)));
+export const FORGE_LOCAL_MCP_OPERATIONS=Object.freeze(FORGE_APP_MCP_OPERATIONS
+  .filter(op=>!['project_create','project_quick_create','mission_create'].includes(op)));
 const MAX_REQUEST_BYTES=180_000;
 const MAX_RESPONSE_BYTES=450_000;
 const ID=/^(?:forge_app|project_[a-zA-Z0-9-]{1,100})$/;

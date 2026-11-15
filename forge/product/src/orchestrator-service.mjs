@@ -14,6 +14,7 @@ import {forgeProjectContext,forgeMcpDiscovery} from './forge-executor-context.mj
 import {forgeProjectMemoryView} from './forge-project-memory-view.mjs';
 import {forgeProjectAdministratorView} from './forge-project-administrator-view.mjs';
 import {forgeProjectHandoffView} from './forge-project-handoff-view.mjs';
+import {forgeProjectMissionsView} from './forge-project-missions-view.mjs';
 import {UNTITLED_FORGE_PROJECT,suggestForgeProjectTitle} from './project-auto-title.mjs';
 import {deleteProjectRecords} from './project-deletion.mjs';
 import {ProjectRepository} from './project-repository.mjs';
@@ -63,10 +64,13 @@ function appOwnedRunReview(source) {
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
 export class OrchestratorService {
-  constructor({store,authorize,provider=null,confirmProposal=null,confirmProposalSend=null,workspacePort=null,fileBroker=null,repositoryPort=null,verifyLocalArtifact=null,continuousExecutionByDefault=false}={}) {
+  constructor({store,authorize,provider=null,confirmProposal=null,confirmProposalSend=null,workspacePort=null,fileBroker=null,development=null,repositoryPort=null,verifyLocalArtifact=null,continuousExecutionByDefault=false}={}) {
     if(!store?.db || typeof authorize!=='function')throw Error('orchestrator_ports_required');
     this.store=store; this.db=store.db; this.authorize=authorize;
     this.provider=provider;
+    // Native renderer proof is an optional App-owned read-only port. It is
+    // never used as project authorization or as evidence of publication.
+    this.viewPort=null;
     this.continuousExecutionByDefault=continuousExecutionByDefault===true;
     // Optional App-owned, read-only local proof port. No filesystem authority
     // is inferred from a persisted model answer, asset path or remote URL.
@@ -177,6 +181,7 @@ export class OrchestratorService {
     this.autonomous=new AutonomousDialogue({store,service:this});
     this.workspace=new ProjectWorkspace({store,port:workspacePort});
     this.files=fileBroker;
+    this.development=development;
     this.repository=new ProjectRepository({port:repositoryPort});
   }
 
@@ -428,6 +433,13 @@ export class OrchestratorService {
       }
     }
     this.requireAccess(context,operation,input.projectId||null);
+    if(operation==='app_view_status')return this.viewPort?.status()??{available:false,reason:'forge_native_view_unavailable'};
+    if(['app_view_capture','project_view_capture','project_view_probe'].includes(operation)){
+      if(typeof this.viewPort?.capture!=='function')throw Error('forge_native_view_unavailable');
+      const image=await this.viewPort.capture(operation,input);
+      this.requireAccess(context,operation,input.projectId||null);
+      return image;
+    }
     if(operation==='autonomous_dialogue_status')return this.autonomous.status(context,input);
     if(operation==='autonomous_continuous_set')return {status:'succeeded',operation,
       result:this.autonomous.setContinuousExecution(context,input)};
@@ -470,6 +482,8 @@ export class OrchestratorService {
       return this.finish(reserved.commandId,result);
     });
     if(operation==='project_file_write')return this.writeProjectFile(context,input);
+    if(operation==='project_development_status')return this.development?.status(input.projectId)??{projectId:input.projectId,available:false,reason:'native_owner_port_unavailable'};
+    if(operation==='project_command_run')return this.runProjectCommand(context,input);
     if(tool.readOnly)return this.read(context,operation,input);
     if(operation==='proposal_send')return this.confirmAndSendProposal(context,input);
     if(operation==='proposal_review'&&input.approved)return this.confirmAndReviewProposal(context,input);
@@ -486,6 +500,27 @@ export class OrchestratorService {
         .run(result.projectId,reserved.commandId);
       return this.finish(reserved.commandId,result);
     });
+  }
+
+  // Never repeat an uncertain terminal command: it may already have changed files.
+  async runProjectCommand(context,input) {
+    if(!this.development)throw Error('forge_development_unavailable');
+    const reserved=this.transaction(()=>this.reserve(context,'project_command_run',input));
+    if(reserved.existing)return reserved.existing;
+    try {
+      this.requireAccess(context,'project_command_run',input.projectId);
+      const result=await this.development.run(input);
+      return this.transaction(()=>this.finish(reserved.commandId,result));
+    }catch(error) {
+      const deterministic=new Set(['forge_development_owner_approval_required',
+        'forge_development_command_invalid','forge_development_directory_invalid',
+        'forge_workspace_missing_or_moved','forge_workspace_project_unavailable']);
+      try{this.transaction(()=>this.finish(reserved.commandId,{
+        reason:deterministic.has(error?.message)?error.message:'forge_development_command_outcome_uncertain',
+        externalEffectsVerified:false},deterministic.has(error?.message)?'failed':'uncertain'));}
+      catch{}
+      throw error;
+    }
   }
 
   // A filesystem effect must reserve its durable command BEFORE writing.
@@ -589,6 +624,8 @@ export class OrchestratorService {
       return {...forgeProjectContext({projectId:input.projectId,project,
         workspace:this.workspace.status(context,input.projectId),workCount:total,
         latestRunStatus:last?.status||null}),
+        projectMissions:forgeProjectMissionsView(this.store,input.projectId),
+        development:this.development?.status(input.projectId)??{available:false,reason:'native_owner_port_unavailable'},
         appPrivateFiles:this.files?.status(input.projectId)||{available:false,mode:'capability_unavailable'}};
     }
     if(operation==='project_memory')return forgeProjectMemoryView(this.store,input.projectId);
