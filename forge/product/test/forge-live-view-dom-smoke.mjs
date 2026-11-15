@@ -18,7 +18,8 @@ app.whenReady().then(async()=>{
     const html='<!doctype html><html><head><title>Teste real</title></head><body>'+
       '<h1>Antes</h1><button type="button" aria-label="Mudar" '+
       'onclick="document.querySelector(\'h1\').textContent=\'Depois\'">Mudar</button>'+
-      '<input type="password" value="segredo_nao_expor_123"></body></html>';
+      '<input type="password" value="segredo_nao_expor_123">'+
+      '<input type="text" aria-label="Busca" value=""></body></html>';
     await preview.open({...identity,html});
     preview.bounds({x:25,y:40,width:700,height:460,visible:true});
     win.showInactive();
@@ -38,6 +39,15 @@ app.whenReady().then(async()=>{
       controlIndex:button.index,expectedLabel:'Mudar'});}
     catch(error){staleError=String(error?.message||error)}
     result.staleError=staleError;
+    const field=after.inspection.controls.find(c=>c.label==='Busca');
+    const filled=await preview.fillLive(identity,{expectedRevision:after.revision,
+      controlIndex:field?.index,expectedLabel:'Busca',value:'  termo de busca  '});
+    const filledState=await preview.inspectLive(identity);
+    const filledField=filledState.inspection.controls.find(c=>c.label==='Busca');
+    result.fill={verified:filled?.valueVerifiedAfterInput,
+      hasValue:filledField?.hasValue,
+      valueLeaked:JSON.stringify(filledState).includes('termo de busca')||
+        JSON.stringify(filled).includes('termo de busca')};
     // A real overlay should make a visible button non-interactable.
     await preview.view.webContents.executeJavaScriptInIsolatedWorld(1001,[{
       code:"(()=>{const modal=document.createElement('div');modal.id='blocking-modal';"+
@@ -50,18 +60,28 @@ app.whenReady().then(async()=>{
     try{await preview.clickLive(identity,{expectedRevision:obstructed.revision,
       controlIndex:buttonBlocked?.index,expectedLabel:'Mudar'});}
     catch(error){obstructionError=String(error?.message||error);}
+    const fieldBlocked=obstructed.inspection.controls.find(c=>c.label==='Busca');
+    let fillObstructionError=null;
+    try{await preview.fillLive(identity,{expectedRevision:obstructed.revision,
+      controlIndex:fieldBlocked?.index,expectedLabel:'Busca',value:'bloqueado'});}
+    catch(error){fillObstructionError=String(error?.message||error);}
     result.obstruction={obscured:buttonBlocked?.obscured,
-      interactable:buttonBlocked?.interactable,error:obstructionError};
+      interactable:buttonBlocked?.interactable,error:obstructionError,
+      fieldObscured:fieldBlocked?.obscured,fillError:fillObstructionError};
     result.focused=win.isFocused();
     result.ok=result.minimized&&!result.focused&&
       before.inspection.headings[0]?.text==='Antes'&&
       after.inspection.headings[0]?.text==='Depois'&&
       clicked?.statePersistedInLiveView===true&&
       clicked?.observableDomChanged===true&&
+      result.fill.verified===true&&result.fill.hasValue===true&&
+      result.fill.valueLeaked===false&&
       staleError==='forge_view_live_stale'&&
       result.obstruction.obscured===true&&
       result.obstruction.interactable===false&&
       result.obstruction.error==='forge_view_live_stale'&&
+      result.obstruction.fieldObscured===true&&
+      result.obstruction.fillError==='forge_view_live_stale'&&
       !JSON.stringify(result).includes('segredo_nao_expor_123');
   }catch(error){result.error=String(error?.stack||error)}
   finally{
