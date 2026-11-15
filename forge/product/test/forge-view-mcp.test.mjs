@@ -23,6 +23,11 @@ test('one canonical tool catalog publishes bounded app and scoped preview views'
   assert.ok(FORGE_APP_MCP_OPERATIONS.includes('project_view_live_click'));
   assert.deepEqual(live.inputSchema.required,['requestId','projectId','taskId','assetId',
     'expectedRevision','controlIndex','expectedLabel']);
+  const fill=tools.get('forge_project_view_live_fill');
+  assert.equal(fill.readOnly,false);
+  assert.equal(FORGE_APP_MCP_OPERATIONS.includes('project_view_live_fill'),true);
+  assert.deepEqual(fill.inputSchema.required,['requestId','projectId','taskId','assetId',
+    'expectedRevision','controlIndex','expectedLabel','value']);
 });
 
 test('Forge MCP returns real image content once, without duplicating base64 in structured metadata',async()=>{
