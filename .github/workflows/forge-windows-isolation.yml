@@ -90,7 +90,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ordaxsystems/ordax-runtime
-          ref: '5bb5aadef27a3cf6681ebeda50a6052ed5003601'
+          ref: '6a3655f83f97198ead114c6902175794b47a00bb'
           path: _runtime-contract
           persist-credentials: false
 
@@ -184,7 +184,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ordaxsystems/ordax-runtime
-          ref: '5bb5aadef27a3cf6681ebeda50a6052ed5003601'
+          ref: '6a3655f83f97198ead114c6902175794b47a00bb'
           path: .ordax/runtime-orchestrator-host
           persist-credentials: false
       - name: Python 3.12 for canonical Runtime client
