@@ -72,3 +72,41 @@ test('Forge MCP returns real image content once, without duplicating base64 in s
   }});
   assert.equal(deniedProbe.error.code,-32602);
 });
+
+test('MCP reports a bounded recovery route for occluded app pixels without leaking errors',async()=>{
+  let failure='forge_app_view_renderer_occluded';
+  const service={
+    requireAccess:()=>{},
+    invoke:async(_context,operation)=>{
+      if(operation==='status')return {ok:true};
+      if(operation==='app_view_capture')throw Error(failure);
+      return {available:true};
+    }
+  };
+  const mcp=createOrchestratorMcp({service,getContext:()=>({actorId:'owner'})});
+  await mcp.handle({jsonrpc:'2.0',id:10,method:'initialize',
+    params:{protocolVersion:'2025-11-25',capabilities:{},
+      clientInfo:{name:'view-test',version:'1'}}});
+  await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
+  const call=()=>mcp.handle({jsonrpc:'2.0',id:11,method:'tools/call',
+    params:{name:'forge_app_view_capture',arguments:{}}});
+  const occluded=await call();
+  assert.equal(occluded.result.isError,true);
+  assert.equal(occluded.result.structuredContent.schema,'ordax.forge.capture-error/1');
+  assert.equal(occluded.result.structuredContent.reason,'forge_app_view_renderer_occluded');
+  assert.equal(occluded.result.structuredContent.effectDispatched,false);
+  assert.match(occluded.result.structuredContent.recovery,/forge_project_view_capture/);
+  assert.match(occluded.result.structuredContent.recovery,/forge_project_view_live_inspect/);
+  assert.equal(occluded.result.content.some(x=>x.type==='image'),false);
+
+  failure='forge_app_view_capture_timeout';
+  const timeout=await call();
+  assert.equal(timeout.result.structuredContent.reason,'forge_app_view_capture_timeout');
+  assert.equal(timeout.result.structuredContent.effectDispatched,false);
+
+  failure='private_debug_token_never_expose';
+  const unknown=await call();
+  assert.equal(unknown.result.isError,true);
+  assert.equal(unknown.result.structuredContent,undefined);
+  assert.doesNotMatch(unknown.result.content[0].text,/private_debug_token/);
+});

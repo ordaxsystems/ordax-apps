@@ -1,6 +1,12 @@
 import {ORCHESTRATOR_TOOLS,ORCHESTRATOR_CONTRACT} from './forge-contract.mjs';
 import {PRODUCT_NAME} from './product-brand.mjs';
 import {FORGE_EXECUTOR_PROTOCOL,FORGE_MCP_INSTRUCTIONS,FORGE_SCOPED_MCP_INSTRUCTIONS} from './forge-executor-context.mjs';
+// Only these App-owned, non-sensitive read-only capture failures may be
+// projected as actionable MCP diagnostics. Other failures remain opaque.
+const SAFE_APP_CAPTURE_ERRORS=Object.freeze({
+  forge_app_view_renderer_occluded:'The Forge application renderer is minimized or hidden. For authorized project evidence, use forge_project_view_capture; for an already open Task HTML View, use forge_project_view_live_inspect. Neither requires bringing Forge to the foreground.',
+  forge_app_view_capture_timeout:'The Forge application renderer did not return pixels. Inspect forge_app_view_status and use an authorized project preview or live DOM inspection instead of repeating the same capture.'
+});
 // The direct GPT send is a trusted GUI action, never an MCP tool exposed to GPT.
 // Prevent a model from invoking itself recursively through this same adapter.
 const UI_ONLY_OPERATIONS=new Set(['forjador_send']);
@@ -129,7 +135,19 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
                 {type:'text',text:JSON.stringify(metadata)}],structuredContent:metadata});
             }
             return result(id,{content:[{type:'text',text:JSON.stringify(output)}],structuredContent:output});
-          } catch {
+          } catch (cause) {
+            const reason=typeof cause?.message==='string'?cause.message:'';
+            if(tool.operation==='app_view_capture'&&
+               Object.hasOwn(SAFE_APP_CAPTURE_ERRORS,reason)){
+              const diagnostic={
+                schema:'ordax.forge.capture-error/1',status:'unavailable',
+                reason,effectDispatched:false,externalEffectsVerified:false,
+                recovery:SAFE_APP_CAPTURE_ERRORS[reason]
+              };
+              return result(id,{isError:true,
+                content:[{type:'text',text:JSON.stringify(diagnostic)}],
+                structuredContent:diagnostic});
+            }
             return result(id,{isError:true,content:[{type:'text',text:'Command unavailable or input rejected. Inspect authorized state; do not repeat an uncertain effect.'}]});
           }
         }
