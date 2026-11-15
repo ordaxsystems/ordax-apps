@@ -433,6 +433,54 @@ export class OrchestratorService {
       }
     }
     this.requireAccess(context,operation,input.projectId||null);
+    if(operation==='app_ui_inspect'){
+      if(typeof this.viewPort?.ui!=='function')throw Error('forge_app_ui_unavailable');
+      const result=await this.viewPort.ui(operation,input);
+      this.requireAccess(context,operation);
+      return result;
+    }
+    if(['app_ui_click','app_ui_fill','app_ui_scroll'].includes(operation)){
+      if(typeof this.viewPort?.ui!=='function')throw Error('forge_app_ui_unavailable');
+      const reserved=this.transaction(()=>this.reserve(context,operation,input));
+      if(reserved.existing)return reserved.existing;
+      let applied=false;
+      try{
+        this.requireAccess(context,operation);
+        const result=await this.viewPort.ui(operation,input);
+        applied=true;
+        const action=operation.slice('app_ui_'.length);
+        if(result?.schema!=='ordax.forge.app-ui-action/1'||
+           result.source!=='active_forge_renderer'||
+           result.action!==action||result.dispatched!==true||
+           result.beforeRevision!==input.expectedRevision||
+           !/^[a-f0-9]{64}$/.test(result.afterRevision||'')||
+           typeof result.observableDomChanged!=='boolean'||
+           result.inputValuesIncluded!==false||
+           result.semanticEffectVerified!==false||
+           result.externalEffectsVerified!==false||
+           result.focusChanged!==false||
+           (action==='scroll'?
+             result.scrollIndex!==input.scrollIndex||
+             result.deltaY!==input.deltaY:
+             result.controlIndex!==input.controlIndex||
+             result.expectedLabel!==input.expectedLabel)||
+           (action==='fill'&&result.rendererValueVerified!==true))
+          throw Error('forge_app_ui_receipt_invalid');
+        this.requireAccess(context,operation);
+        return this.transaction(()=>this.finish(reserved.commandId,result));
+      }catch(error){
+        const safeBeforeAction=!applied&&!error?.forgeAppUiActionSubmitted&&
+          (error?.forgeAppUiActionNotSubmitted===true||
+           ['forge_app_ui_stale','forge_app_ui_busy',
+            'forge_app_ui_unavailable'].includes(error?.message));
+        const code=safeBeforeAction?error?.message:'forge_app_ui_action_unconfirmed';
+        this.transaction(()=>this.finish(reserved.commandId,
+          {reason:code,actionVerified:false},
+          safeBeforeAction?'failed':'uncertain'));
+        this.requireAccess(context,operation);
+        return this.getReceipt(context,reserved.commandId);
+      }
+    }
     if(operation==='app_view_status')return this.viewPort?.status()??{available:false,reason:'forge_native_view_unavailable'};
     if(['app_view_capture','project_view_capture','project_view_probe'].includes(operation)){
       if(typeof this.viewPort?.capture!=='function')throw Error('forge_native_view_unavailable');
