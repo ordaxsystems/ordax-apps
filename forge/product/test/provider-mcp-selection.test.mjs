@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {classifyProviderMcpSelection,requireSelectedMcpForPrompt,requiresMcpForProjectPrompt,inspectProviderMcpComposerSelection,inspectProviderMcpAddContextTrigger,activateProviderMcpAddContextTrigger,inspectProviderMcpPickerOption,activateProviderMcpPickerOption,placeProviderComposerCaretAtEnd,isStandaloneMcpSelection,providerMcpAppSpec} from '../src/provider-mcp-selection.mjs';
+import {classifyProviderMcpSelection,requireSelectedMcpForPrompt,requiresMcpForProjectPrompt,inspectProviderMcpComposerSelection,inspectProviderMcpAddContextTrigger,activateProviderMcpAddContextTrigger,prepareProviderMcpMentionSearch,inspectProviderMcpMentionOption,activateProviderMcpMentionOption,inspectProviderMcpPickerOption,activateProviderMcpPickerOption,placeProviderComposerCaretAtEnd,isStandaloneMcpSelection,providerMcpAppSpec} from '../src/provider-mcp-selection.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -187,6 +187,53 @@ test('real ChatGPT Forge MCP picker binds only the exact installed Forge app ID'
     'another installed app ID must never become Forge authority');
 });
 
+test('Forge MCP mention fallback searches only the canonical provider app ID',()=>{
+  const spec=providerMcpAppSpec('forge-mcp');
+  let expanded='true',focused=false,clicks=0,y=180;
+  const trigger={
+    getAttribute:name=>name==='aria-expanded'?expanded:null,
+    click:()=>{clicks++;expanded='false';}
+  };
+  const form={querySelectorAll:()=>[trigger]};
+  const composer={
+    innerText:'',
+    closest:name=>name==='form'?form:null,
+    focus:()=>{focused=true;doc.activeElement=composer;},
+    contains:node=>node===composer
+  };
+  const option={
+    getAttribute:name=>name==='data-plugin-impression-id'?spec.providerAppId:null,
+    getBoundingClientRect:()=>({left:20,top:y,width:220,height:36}),
+    scrollIntoView:()=>{y=140;},
+    contains:node=>node===option,
+    click:()=>{clicks++;}
+  };
+  let options=[option],hit=option;
+  const doc={
+    activeElement:null,
+    defaultView:{innerWidth:900,innerHeight:700},
+    querySelectorAll:()=>options,
+    elementFromPoint:()=>hit
+  };
+  const prepared=prepareProviderMcpMentionSearch(doc,composer,spec);
+  assert.deepEqual(prepared,{ready:true,query:'@Forge MCP'});
+  assert.equal(expanded,'false');
+  assert.equal(focused,true);
+  const inspected=inspectProviderMcpMentionOption(doc,spec);
+  assert.equal(inspected.optionCount,1);
+  assert.equal(inspected.selectable,true);
+  assert.deepEqual(activateProviderMcpMentionOption(doc,spec),{activated:true,optionCount:1});
+  assert.equal(clicks,2);
+  options=[{
+    ...option,
+    getAttribute:name=>name==='data-plugin-impression-id'?'asdk_app_other':null
+  }];
+  hit=options[0];
+  assert.equal(inspectProviderMcpMentionOption(doc,spec).optionCount,0);
+  composer.innerText='user draft';
+  assert.equal(prepareProviderMcpMentionSearch(doc,composer,spec).ready,false);
+});
+
 test('provider composer caret is placed after the selected app token before payload insertion',()=>{
   const calls=[];
   const range={
@@ -295,6 +342,11 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   assert.match(worker,/provider_mcp_picker_did_not_open/);
   assert.match(worker,/provider_mcp_app_unavailable/);
   assert.match(worker,/provider_mcp_option_unhittable/);
+  assert.match(worker,/prepareProviderMcpMentionSearch\.toString\(\)/);
+  assert.match(worker,/inspectProviderMcpMentionOption\.toString\(\)/);
+  assert.match(worker,/activateProviderMcpMentionOption\.toString\(\)/);
+  assert.match(worker,/provider_mcp_search_result_unavailable/);
+  assert.match(worker,/#discardOwnedMcpSearchQuery\(mcpSearchQuery\)/);
   assert.match(worker,/#discardOwnedMcpPreflightDraft\(core,spec\)/);
   assert.match(worker,/mentions\.length!==1/);
   assert.match(worker,/remaining===''\|\|remaining===owned/);

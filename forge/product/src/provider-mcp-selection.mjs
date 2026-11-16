@@ -4,7 +4,8 @@ export const PROVIDER_MCP_APPS=Object.freeze({
   'forge-mcp':Object.freeze({
     key:'forge-mcp',
     providerAppId:'asdk_app_6af8d30d21388191a9673484150a8b4a',
-    mentionName:'forge-mcp',displayName:'forge mcp',promptLinkLabel:'$forge-mcp'
+    mentionName:'forge-mcp',displayName:'forge mcp',promptLinkLabel:'$forge-mcp',
+    mentionSearchQuery:'@Forge MCP'
   })
 });
 
@@ -112,6 +113,86 @@ export function activateProviderMcpAddContextTrigger(doc,composer) {
 // Match exactly one requested installed app in the OPEN provider menu by the
 // canonical provider app ID. Display metadata may lag a rename, but another
 // app ID is never accepted as Forge MCP.
+export function prepareProviderMcpMentionSearch(doc,composer,spec=null) {
+  const expected=spec&&typeof spec==='object'?spec:{
+    mentionSearchQuery:'@Forge MCP'
+  };
+  if(!doc||!composer||typeof composer.closest!=='function'||
+     typeof composer.focus!=='function')return {ready:false};
+  const form=composer.closest('form');
+  if(!form||typeof form.querySelectorAll!=='function')return {ready:false};
+  const candidates=Array.from(form.querySelectorAll(
+    'button[data-composer-navigation-target="add-context"]'
+  ));
+  if(candidates.length!==1)return {ready:false};
+  const trigger=candidates[0];
+  if(trigger.getAttribute('aria-expanded')==='true')trigger.click();
+  const text=String(composer.innerText||composer.textContent||'')
+    .replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim();
+  if(text)return {ready:false};
+  const query=String(expected.mentionSearchQuery||'').trim();
+  if(!query.startsWith('@')||query.length<3||query.length>80)return {ready:false};
+  composer.focus();
+  return {
+    ready:doc.activeElement===composer||composer.contains?.(doc.activeElement)===true,
+    query
+  };
+}
+
+export function inspectProviderMcpMentionOption(doc,spec=null) {
+  const expected=spec&&typeof spec==='object'?spec:{
+    providerAppId:'asdk_app_6af8d30d21388191a9673484150a8b4a'
+  };
+  if(!doc||typeof doc.querySelectorAll!=='function')return {optionCount:0,selectable:false};
+  const wanted=String(expected.providerAppId||'');
+  if(!/^asdk_app_[a-zA-Z0-9_-]+$/.test(wanted))return {optionCount:0,selectable:false};
+  const visible=node=>{
+    const r=node?.getBoundingClientRect?.();
+    if(!r||r.width<=0||r.height<=0)return false;
+    const style=typeof getComputedStyle==='function'?getComputedStyle(node):null;
+    return !style||(style.display!=='none'&&style.visibility!=='hidden');
+  };
+  const matches=Array.from(doc.querySelectorAll(
+    'button[data-list-navigation-item="true"][data-plugin-impression-id^="asdk_app_"]'
+  )).filter(node=>visible(node)&&node.getAttribute('data-plugin-impression-id')===wanted);
+  if(matches.length!==1)return {optionCount:matches.length,selectable:false};
+  const node=matches[0];
+  node.scrollIntoView?.({block:'center',inline:'nearest'});
+  const r=node.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
+  const w=doc.defaultView?.innerWidth??Infinity,h=doc.defaultView?.innerHeight??Infinity;
+  const hit=x>=0&&y>=0&&x<w&&y<h?doc.elementFromPoint?.(x,y):null;
+  return {optionCount:1,selectable:Boolean(hit&&(hit===node||node.contains?.(hit))),x,y};
+}
+
+export function activateProviderMcpMentionOption(doc,spec=null) {
+  const expected=spec&&typeof spec==='object'?spec:{
+    providerAppId:'asdk_app_6af8d30d21388191a9673484150a8b4a'
+  };
+  if(!doc||typeof doc.querySelectorAll!=='function')return {activated:false,optionCount:0};
+  const wanted=String(expected.providerAppId||'');
+  if(!/^asdk_app_[a-zA-Z0-9_-]+$/.test(wanted))
+    return {activated:false,optionCount:0};
+  const visible=node=>{
+    const r=node?.getBoundingClientRect?.();
+    if(!r||r.width<=0||r.height<=0)return false;
+    const style=typeof getComputedStyle==='function'?getComputedStyle(node):null;
+    return !style||(style.display!=='none'&&style.visibility!=='hidden');
+  };
+  const matches=Array.from(doc.querySelectorAll(
+    'button[data-list-navigation-item="true"][data-plugin-impression-id^="asdk_app_"]'
+  )).filter(node=>visible(node)&&node.getAttribute('data-plugin-impression-id')===wanted);
+  if(matches.length!==1)return {activated:false,optionCount:matches.length};
+  const node=matches[0];
+  node.scrollIntoView?.({block:'center',inline:'nearest'});
+  const r=node.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
+  const w=doc.defaultView?.innerWidth??Infinity,h=doc.defaultView?.innerHeight??Infinity;
+  const hit=x>=0&&y>=0&&x<w&&y<h?doc.elementFromPoint?.(x,y):null;
+  if(!hit||!(hit===node||node.contains?.(hit)))
+    return {activated:false,optionCount:1};
+  node.click();
+  return {activated:true,optionCount:1};
+}
+
 export function inspectProviderMcpPickerOption(doc,spec=null) {
   const expected=spec&&typeof spec==='object'?spec:{
     providerAppId:'asdk_app_6af8d30d21388191a9673484150a8b4a'

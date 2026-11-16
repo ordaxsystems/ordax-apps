@@ -24,7 +24,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import {HTML_ARTIFACT_LIMIT_BYTES,validateHtmlArtifactName} from '../src/provider-html-artifact.mjs';
-import {classifyProviderMcpSelection,requireSelectedMcpForPrompt,inspectProviderMcpComposerSelection,inspectProviderMcpAddContextTrigger,activateProviderMcpAddContextTrigger,inspectProviderMcpPickerOption,activateProviderMcpPickerOption,placeProviderComposerCaretAtEnd,isStandaloneMcpSelection,providerMcpAppSpec} from '../src/provider-mcp-selection.mjs';
+import {classifyProviderMcpSelection,requireSelectedMcpForPrompt,inspectProviderMcpComposerSelection,inspectProviderMcpAddContextTrigger,activateProviderMcpAddContextTrigger,prepareProviderMcpMentionSearch,inspectProviderMcpMentionOption,activateProviderMcpMentionOption,inspectProviderMcpPickerOption,activateProviderMcpPickerOption,placeProviderComposerCaretAtEnd,isStandaloneMcpSelection,providerMcpAppSpec} from '../src/provider-mcp-selection.mjs';
 import { fileURLToPath } from 'node:url';
 import { classifyProviderContextAttachmentObservation, selectProviderContextFileInput, PROVIDER_CONTEXT_FILE_INPUT_SELECTOR, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
 
@@ -637,7 +637,7 @@ export class EmbeddedChatWorker {
       try{if(!wc.debugger.isAttached())wc.debugger.attach('1.3');}
       catch{if(!wc.debugger.isAttached())throw Error('chromium_input_channel_unavailable');}
       let selected=readySelection;
-      let ownsMcpPreflightDraft=false;
+      let ownsMcpPreflightDraft=false,ownsMcpSearchQuery=false,mcpSearchQuery='';
       try {
       if(!reusable){
         const triggerExpression='(()=>{const inspect='+inspectProviderMcpAddContextTrigger.toString()+
@@ -672,20 +672,51 @@ export class EmbeddedChatWorker {
           ';return activate(document,'+JSON.stringify(spec)+')})()';
         let clicked=false,lastChoice=null;
         selected=null;
-        for(let i=0;i<24;i++){
+        for(let i=0;i<6;i++){
           selected=await this.inspectMcpSelectionReadOnly({allowDuringRun:true,app:mcpApp});
           if(selected.selectionObserved===true)break;
           const choice=await wc.executeJavaScript(choiceExpression).catch(()=>null);
           lastChoice=choice;
           if(choice?.optionCount>1)throw Error('provider_mcp_picker_ambiguous');
           if(!clicked&&choice?.selectable===true&&choice.optionCount===1){
-            // The exact provider app ID is the authority. The visible label may
-            // lag a rename, but no different app ID can satisfy this gate.
             const activated=await wc.executeJavaScript(activateChoiceExpression).catch(()=>null);
             if(activated?.activated!==true)throw Error('provider_mcp_option_unhittable');
             clicked=true;
           }
-          await sleep(150);
+          await sleep(120);
+        }
+        if(selected?.selectionObserved!==true&&lastChoice?.optionCount===0){
+          const prepareSearchExpression='(()=>{const prepare='+prepareProviderMcpMentionSearch.toString()+
+            ';return prepare(document,'+composerExpression()+','+JSON.stringify(spec)+')})()';
+          const preparedSearch=await wc.executeJavaScript(prepareSearchExpression).catch(()=>null);
+          if(preparedSearch?.ready!==true||preparedSearch.query!==spec.mentionSearchQuery)
+            throw Error('provider_mcp_search_prepare_failed');
+          mcpSearchQuery=preparedSearch.query;
+          await wc.debugger.sendCommand('Input.insertText',{text:mcpSearchQuery});
+          ownsMcpSearchQuery=true;
+          const mentionChoiceExpression='(()=>{const inspect='+inspectProviderMcpMentionOption.toString()+
+            ';return inspect(document,'+JSON.stringify(spec)+')})()';
+          const activateMentionExpression='(()=>{const activate='+activateProviderMcpMentionOption.toString()+
+            ';return activate(document,'+JSON.stringify(spec)+')})()';
+          let mentionChoice=null;
+          for(let i=0;i<16;i++){
+            mentionChoice=await wc.executeJavaScript(mentionChoiceExpression).catch(()=>null);
+            if(mentionChoice?.optionCount>1)throw Error('provider_mcp_search_ambiguous');
+            if(mentionChoice?.optionCount===1&&mentionChoice?.selectable===true){
+              const activated=await wc.executeJavaScript(activateMentionExpression).catch(()=>null);
+              if(activated?.activated!==true)throw Error('provider_mcp_search_option_unhittable');
+              break;
+            }
+            if(i<15)await sleep(100);
+          }
+          for(let i=0;i<16;i++){
+            selected=await this.inspectMcpSelectionReadOnly({allowDuringRun:true,app:mcpApp});
+            if(selected.selectionObserved===true)break;
+            if(i<15)await sleep(100);
+          }
+          if(selected?.selectionObserved!==true)throw Error('provider_mcp_search_result_unavailable');
+          ownsMcpSearchQuery=false;
+          clicked=true;
         }
         if(selected?.selectionObserved!==true){
           const finalTrigger=await wc.executeJavaScript(triggerExpression).catch(()=>null);
@@ -715,11 +746,31 @@ export class EmbeddedChatWorker {
         chatUrl:wc.getURL(),startsFresh,mcpApp};
       return {providerPrompt:stagedText};
       } catch(error) {
+        if(ownsMcpSearchQuery)
+          await this.#discardOwnedMcpSearchQuery(mcpSearchQuery).catch(()=>false);
         if(ownsMcpPreflightDraft)
           await this.#discardOwnedMcpPreflightDraft(core,spec).catch(()=>false);
         throw error;
       }
     });
+  }
+
+  async #discardOwnedMcpSearchQuery(query) {
+    const wc=this.view.webContents;
+    if(!wc||wc.isDestroyed?.())return false;
+    const safe=await wc.executeJavaScript(`(() => {
+      const composer=${composerExpression()};
+      if(!composer)return false;
+      const mentions=Array.from(composer.querySelectorAll?.('[app-mention-name]')||[]);
+      if(mentions.length!==0)return false;
+      const normalize=value=>String(value||'').replace(/\\u00a0/g,' ')
+        .replace(/\\s+/g,' ').trim();
+      const current=normalize('value' in composer?composer.value:(composer.innerText||composer.textContent||''));
+      return current===normalize(${JSON.stringify(String(query||''))});
+    })()`).catch(()=>false);
+    if(safe!==true)return false;
+    try{await this.#clearNewChatComposer();}catch{return false;}
+    return !(await this.#composerState()).text.trim();
   }
 
   async #discardOwnedMcpPreflightDraft(core,spec) {
