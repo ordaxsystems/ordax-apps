@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {routeForConversation,providerMessage,chatSessionReadiness,matchesStoredConversation} from '../provider-routing.mjs';
+import {routeForConversation,providerMessage,chatSessionReadiness,matchesStoredConversation,providerIsSettled} from '../provider-routing.mjs';
 
 const repo='ordaxos-admin/TESTES-FORGE-GIT';
 const branch='forge-git/agent-2-2b64f1cd';
@@ -58,4 +58,16 @@ test('reconciliação exige a conversa salva, não a home nem outra conversa',()
  assert.equal(matchesStoredConversation(null,url),false);
  assert.equal(matchesStoredConversation(url,'https://chatgpt.com/c/other'),false);
  assert.equal(matchesStoredConversation(url,'https://example.com/c/other'),false);
+});
+test('commit remoto não libera continuação enquanto GPT ainda responde',()=>{
+ const settled={auth_state:'session_present',health_observed:true,
+   composer_ready:true,verification_required:false,provider_access_problem:null,
+   response_generation_active:false};
+ assert.equal(providerIsSettled(settled),true);
+ assert.equal(providerIsSettled({...settled,response_generation_active:true}),false);
+ assert.equal(providerIsSettled({...settled,response_generation_active:undefined}),false);
+ assert.equal(providerIsSettled({...settled,auth_state:'anonymous'}),false);
+ assert.equal(providerIsSettled({...settled,composer_ready:false}),false);
+ assert.equal(providerIsSettled({...settled,health_observed:false}),false);
+ assert.equal(providerIsSettled(null),false);
 });

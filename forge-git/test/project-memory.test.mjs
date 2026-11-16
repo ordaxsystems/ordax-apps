@@ -117,3 +117,20 @@ test('nova conversa zera URL antiga antes de qualquer envio GPT',()=>{
    assert.equal(result.autoPending,false);
  }finally{rmSync(dir,{force:true,recursive:true});}
 });
+test('o começo do turno guarda HEAD antes da execução e suporta recuperação',()=>{
+  const dir=mkdtempSync(path.join(os.tmpdir(),'forge-git-inflight-'));
+  try{
+    const mem=openProjectMemory(dir);
+    const baseline='a'.repeat(40);
+    mem.patch('agent-2',{lastHead:baseline,chatUrl:'https://chatgpt.com/c/prior'});
+    mem.beginTurn('agent-2','Melhore testes e acessibilidade.');
+    const interrupted=openProjectMemory(dir).agent('agent-2');
+    assert.equal(interrupted.turnStartHead,baseline);
+    assert.equal(interrupted.status,'running');
+    assert.equal(interrupted.chatUrl,'https://chatgpt.com/c/prior');
+    mem.patch('agent-2',{status:'awaiting-provider',lastHead:'b'.repeat(40)});
+    const resumed=openProjectMemory(dir).agent('agent-2');
+    assert.notEqual(resumed.lastHead,resumed.turnStartHead);
+    assert.equal(resumed.status,'awaiting-provider');
+  }finally{rmSync(dir,{recursive:true,force:true});}
+});
