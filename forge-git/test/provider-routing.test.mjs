@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {routeForConversation,providerMessage,chatSessionReadiness,matchesStoredConversation,providerIsSettled} from '../provider-routing.mjs';
+import {routeForConversation,providerMessage,chatSessionReadiness,matchesStoredConversation,providerIsSettled,navigationTimeoutRecovered} from '../provider-routing.mjs';
 
 const repo='ordaxos-admin/TESTES-FORGE-GIT';
 const branch='forge-git/agent-2-2b64f1cd';
@@ -70,4 +70,24 @@ test('commit remoto não libera continuação enquanto GPT ainda responde',()=>{
  assert.equal(providerIsSettled({...settled,composer_ready:false}),false);
  assert.equal(providerIsSettled({...settled,health_observed:false}),false);
  assert.equal(providerIsSettled(null),false);
+});
+test('navegação recuperada libera apenas chat exato e trabalho confirmado',()=>{
+ const url='https://chatgpt.com/c/6afad00d-a524-83e8-9108-3a09dd560d3f';
+ const agent={status:'blocked',lastError:'provider_navigation_timeout',
+   chatUrl:url,lastHead:'a'.repeat(40),turnStartHead:'b'.repeat(40),
+   autoContinue:false,autoPending:false};
+ const idle={auth_state:'session_present',health_observed:true,composer_ready:true,
+   verification_required:false,provider_access_problem:null,
+   response_generation_active:false};
+ assert.equal(navigationTimeoutRecovered(agent,idle,url),true);
+ assert.equal(navigationTimeoutRecovered({...agent,turnStartHead:null},idle,url),true);
+ assert.equal(navigationTimeoutRecovered(agent,{...idle,response_generation_active:true},url),false);
+ assert.equal(navigationTimeoutRecovered(agent,idle,'https://chatgpt.com/'),false);
+ assert.equal(navigationTimeoutRecovered(agent,idle,'https://chatgpt.com/c/other'),false);
+ assert.equal(navigationTimeoutRecovered({...agent,autoContinue:true},idle,url),false);
+ assert.equal(navigationTimeoutRecovered({...agent,autoPending:true},idle,url),false);
+ assert.equal(navigationTimeoutRecovered({...agent,turnStartHead:'a'.repeat(40)},idle,url),false);
+ assert.equal(navigationTimeoutRecovered({...agent,lastHead:null},idle,url),false);
+ assert.equal(navigationTimeoutRecovered({...agent,lastError:'other'},idle,url),false);
+ assert.equal(navigationTimeoutRecovered(agent,{...idle,auth_state:'anonymous'},url),false);
 });

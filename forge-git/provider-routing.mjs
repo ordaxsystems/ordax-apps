@@ -44,3 +44,13 @@ export function providerIsSettled(health) {
     !health.provider_access_problem &&
     health.response_generation_active===false;
 }
+export function navigationTimeoutRecovered(agent,health,observedUrl){
+  const sha=agent?.lastHead;
+  const proved=typeof sha==='string'&&/^[a-f0-9]{40}$/i.test(sha)&&
+    (!agent.turnStartHead||agent.turnStartHead!==sha);
+  return Boolean(agent?.status==='blocked'&&
+    agent.lastError==='provider_navigation_timeout'&&
+    agent.autoContinue!==true&&agent.autoPending!==true&&
+    proved&&providerIsSettled(health)&&
+    matchesStoredConversation(agent.chatUrl,observedUrl));
+}

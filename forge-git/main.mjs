@@ -7,7 +7,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EmbeddedChatWorker} from '../forge/product/desktop/embedded-worker.mjs';
 import {REPO,ROLES,openProjectMemory,nextAutonomousCheckpoint} from './project-memory.mjs';
-import {routeForConversation,providerMessage,chatSessionReadiness,matchesStoredConversation,providerIsSettled} from './provider-routing.mjs';
+import {routeForConversation,providerMessage,chatSessionReadiness,matchesStoredConversation,providerIsSettled,navigationTimeoutRecovered} from './provider-routing.mjs';
 import {canonicalProviderChatUrl} from '../forge/product/src/conversation-policy.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
@@ -15,6 +15,7 @@ const cli=promisify(execFile);
 const SIDE=430,TOP=46;
 const AUTO_MAX_ROUNDS=6;
 const scheduledAuto=new Set();
+const nextNavigationRetry=new Map();
 let win,store,token='',login='',active='forjador';
 const workers=new Map(),busy=new Set(),ready=new Set(),sessionStates=new Map();
 
@@ -87,6 +88,29 @@ async function checkSessions(){
   await Promise.all([...workers].map(async([id,worker])=>{
     const health=await worker.health().catch(()=>null);
     recordSessionReadiness(id,health);
+    const agent=store.agent(id);
+    if(navigationTimeoutRecovered(agent,health,worker.status().url)){
+      store.patch(id,{status:'idle',lastError:null});
+      emit(id+': conversa GPT recuperada, sem reenviar trabalho.');
+      return;
+    }
+    // Navigation timeout can precede a successful, delayed page load.
+    // Retry only a read-only navigation to the saved thread, never a GPT send.
+    if(agent.status!=='blocked'||agent.lastError!=='provider_navigation_timeout'||
+       !agent.chatUrl||agent.autoContinue||busy.has(id)||
+       health?.auth_state!=='session_present'||health.composer_ready!==true||
+       health.response_generation_active!==false||
+       health.verification_required===true||health.provider_access_problem||
+       canonicalProviderChatUrl(worker.status().url)||
+       Date.now()<(nextNavigationRetry.get(id)||0))return;
+    nextNavigationRetry.set(id,Date.now()+180_000);
+    await worker.load(agent.chatUrl).catch(()=>{});
+    const recoveredHealth=await worker.health().catch(()=>null);
+    recordSessionReadiness(id,recoveredHealth);
+    if(navigationTimeoutRecovered(store.agent(id),recoveredHealth,worker.status().url)){
+      store.patch(id,{status:'idle',lastError:null});
+      emit(id+': conversa GPT recuperada, sem reenviar trabalho.');
+    }
   }));
 }
 function scheduleAuto(agentId){
