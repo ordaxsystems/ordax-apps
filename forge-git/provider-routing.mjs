@@ -54,3 +54,9 @@ export function navigationTimeoutRecovered(agent,health,observedUrl){
     proved&&providerIsSettled(health)&&
     matchesStoredConversation(agent.chatUrl,observedUrl));
 }
+export function coordinatorMemoryPrompt(summary){
+ const text=String(summary||'').trim();
+ if(!text||text.length>1000)throw Error('resumo_forjador_invalido');
+ return 'No Forge MCP, consulte forge_project_memory com projectId "forge_git" e confira: '+
+   text+'. Resuma apenas o que a memória canônica confirmar.';
+}

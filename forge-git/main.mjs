@@ -7,7 +7,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EmbeddedChatWorker} from '../forge/product/desktop/embedded-worker.mjs';
 import {REPO,ROLES,openProjectMemory,nextAutonomousCheckpoint,coordinatorAutoAlerts} from './project-memory.mjs';
-import {routeForConversation,providerMessage,chatSessionReadiness,matchesStoredConversation,providerIsSettled,navigationTimeoutRecovered} from './provider-routing.mjs';
+import {routeForConversation,providerMessage,chatSessionReadiness,matchesStoredConversation,providerIsSettled,navigationTimeoutRecovered,coordinatorMemoryPrompt} from './provider-routing.mjs';
 import {canonicalProviderChatUrl} from '../forge/product/src/conversation-policy.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
@@ -394,12 +394,12 @@ async function autoNotifyForjador(){
     if(!reserved.length)return false;
     const summary=reserved.map(item=>item.agent+': '+item.kind+
       (item.sha?' @'+item.sha.slice(0,12):'')).join('; ');
-    const prompt='Confira pelo Forge MCP a memória do Forge Git e avalie os resultados confirmados: '+
-      summary+'. A memória já é mantida pelo aplicativo; não repita o trabalho dos agentes.';
+    const prompt=coordinatorMemoryPrompt(summary);
     const result=await send({agentId:'forjador',text:prompt});
     if(result?.verified===true){
-      store.acknowledge(reserved);
-      emit('Forjador informado dos resultados; memória do Forge Git preservada.');
+      // A GPT response proves delivery to the chat, not that it called the
+      // correct Forge MCP memory resource. Preserve unread evidence.
+      emit('Forjador respondeu; leitura MCP ainda sem recibo, aviso preservado.');
       return true;
     }
     emit('Aviso ao Forjador incerto: mantido para revisão manual, sem reenvio automático.');
@@ -463,14 +463,13 @@ function events(){
     // The Forge MCP plugin is for the original Forge, not this GitHub app.
     const summary=unread.map(item=>item.agent+': '+item.kind+
       (item.sha?' @'+item.sha.slice(0,12):'')).join('; ');
-    const message='Revise os avisos confirmados do Forge Git: '+summary+
-      '. O estado já está registrado no Forge Git; não altere a memória do Forge local.';
+    const message=coordinatorMemoryPrompt(summary);
     const result=await send({agentId:'forjador',text:message});
     if(result?.verified!==true){
       return {message:'Resposta do Forjador não confirmada. Avisos permanecem pendentes.'};
     }
-    store.acknowledge(unread);
-    return result;
+    // A natural-language response is not proof of the MCP memory lookup.
+    return {...result,message:'Forjador respondeu; confirmação de leitura MCP pendente.'};
   });
   guarded('fg:open-url',async url=>{
     if(typeof url!=='string'||!/^https:\/\/github\.com\/ordaxos-admin\/TESTES-FORGE-GIT(?:\/[A-Za-z0-9/_#.-]*)?$/.test(url))
