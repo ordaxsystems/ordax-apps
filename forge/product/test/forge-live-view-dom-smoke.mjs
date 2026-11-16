@@ -34,7 +34,8 @@ app.whenReady().then(async()=>{
     const pixelBefore=(await preview.captureLive(identity)).toPNG();
     const button=before.inspection.controls.find(c=>c.label==='Mudar');
     result.before={revision:before.revision,headings:before.inspection.headings,
-      buttons:before.inspection.controls.length,inputValuesIncluded:before.inspection.inputValuesIncluded};
+      buttons:before.inspection.controls.length,inputValuesIncluded:before.inspection.inputValuesIncluded,
+      layout:before.inspection.layout};
     const clicked=await preview.clickLive(identity,{expectedRevision:before.revision,
       controlIndex:button?.index,expectedLabel:'Mudar'});
     result.clicked=clicked;
@@ -89,6 +90,10 @@ app.whenReady().then(async()=>{
     result.focused=win.isFocused();
     result.ok=result.minimized&&!result.focused&&
       before.inspection.headings[0]?.text==='Antes'&&
+      Number.isFinite(result.before.layout?.documentWidth)&&
+      Number.isFinite(result.before.layout?.documentHeight)&&
+      typeof result.before.layout?.horizontalOverflow==='boolean'&&
+      typeof result.before.layout?.verticalOverflow==='boolean'&&
       after.inspection.headings[0]?.text==='Depois'&&
       clicked?.statePersistedInLiveView===true&&
       clicked?.observableDomChanged===true&&

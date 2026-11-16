@@ -75,8 +75,16 @@ export function inspectForgeLiveViewDom(command={mode:'inspect'}){
     .slice(0,12).map(element=>({
       level:element.tagName.toLowerCase(),text:clean(element.innerText||element.textContent)
     }));
+  // Same live renderer: measure overflow without accessing values or URLs.
+  const documentWidth=Math.max(0,document.documentElement?.scrollWidth||0,
+    document.body?.scrollWidth||0);
+  const documentHeight=Math.max(0,document.documentElement?.scrollHeight||0,
+    document.body?.scrollHeight||0);
+  const layout={documentWidth,documentHeight,
+    horizontalOverflow:documentWidth>innerWidth+2,
+    verticalOverflow:documentHeight>innerHeight+2};
   const state={schema:'ordax.forge.live-view-dom/1',title:clean(document.title),
-    viewport:{width:innerWidth,height:innerHeight},headings,controls,
+    viewport:{width:innerWidth,height:innerHeight},layout,headings,controls,
     truncated:controls.length===40,inputValuesIncluded:false};
   if(command?.mode==='inspect'||command?.mode===undefined)return {available:true,state};
   const index=command.index,expectedLabel=command.expectedLabel;

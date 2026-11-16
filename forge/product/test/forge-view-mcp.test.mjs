@@ -279,6 +279,8 @@ test('live View navigates only within the verified document and rejects hidden o
   const hidden=anchor('#cardapio','Oculto',true);
   const globals={document:{
     title:'Pizzaria de teste',
+    documentElement:{scrollWidth:642,scrollHeight:950},
+    body:{scrollWidth:640,scrollHeight:900},
     querySelectorAll:selector=>selector==='button,[role="button"],a[href],input,textarea'?
       [local,external,malformed,missing,hidden]:[],
     getElementById:id=>id==='cardapio'?{}:null,
@@ -292,6 +294,8 @@ test('live View navigates only within the verified document and rejects hidden o
     for(const [key,value] of Object.entries(globals))
       Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});
     const before=inspectForgeLiveViewDom();
+    assert.deepEqual(before.state.layout,{documentWidth:642,documentHeight:950,
+      horizontalOverflow:true,verticalOverflow:true});
     assert.deepEqual(before.state.controls.map(x=>x.label),['Cardápio','Oculto']);
     assert.equal(before.state.controls[0].interactable,true);
     assert.equal(before.state.controls[1].interactable,false);
