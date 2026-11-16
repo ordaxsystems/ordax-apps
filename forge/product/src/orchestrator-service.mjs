@@ -1456,6 +1456,39 @@ export class OrchestratorService {
       this.store.rotateConversation(input.taskId,'orchestrator_command');
       return {taskId:input.taskId,rotationPrepared:true,providerMessagesSent:0};
     }
+    if(operation==='work_failover_prepare') {
+      this.task(input.projectId,input.taskId,'work');
+      assertTaskHasNoUncertainTransport(this.store,input.taskId);
+      if(this.hasUnresolvedWorkReceipt(input.projectId,input.taskId,{includeRunning:true}))
+        throw Error('orchestrator_reconciliation_required');
+      const latest=this.db.prepare(`SELECT id,status,error,completed_at,worker_id
+        FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1`).get(input.taskId);
+      if(!latest)throw Error('orchestrator_failover_source_missing');
+      if(latest.status==='running')throw Error('orchestrator_failover_source_still_running');
+      if(latest.status==='interrupted')throw Error('orchestrator_reconciliation_required');
+      if(latest.status!=='failed')throw Error('orchestrator_failover_source_not_failed');
+      const active=this.db.prepare(`SELECT id,sequence,chat_url FROM task_conversations
+        WHERE task_id=? AND status='active' ORDER BY sequence DESC LIMIT 1`).get(input.taskId)||null;
+      const generation=Number(this.db.prepare(`SELECT COUNT(*) n FROM events
+        WHERE task_id=? AND kind='provider.failover.prepared'`).get(input.taskId)?.n||0)+1;
+      this.store.rotateConversation(input.taskId,'orchestrator_failover');
+      const checkpoint=this.store.checkpoint(input.taskId,
+        `Failover GPT preparado após falha confirmada do Run ${latest.id}; geração ${generation}.`,{
+          failover_generation:generation,source_run_id:latest.id,
+          source_worker_id:latest.worker_id||null,source_error:latest.error||null,
+          previous_conversation_id:active?.id||null,previous_conversation_sequence:active?.sequence||null,
+          external_effect_replayed:false
+        });
+      this.store.event(input.taskId,'provider.failover.prepared',{
+        generation,source_run_id:latest.id,source_status:latest.status,
+        checkpoint_version:checkpoint.version,previous_conversation_id:active?.id||null,
+        provider_messages_sent:0
+      });
+      return {taskId:input.taskId,sourceRunId:latest.id,failoverGeneration:generation,
+        checkpointVersion:checkpoint.version,rotationPrepared:true,
+        previousConversationId:active?.id||null,providerMessagesSent:0,
+        effectsReplayed:false};
+    }
     throw Error('orchestrator_unknown_operation');
   }
 

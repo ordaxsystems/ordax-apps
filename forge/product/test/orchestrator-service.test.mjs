@@ -1452,3 +1452,56 @@ test('real Electron app UI MCP action receipts are idempotent and unknown effect
   await assert.rejects(f.service.invoke(f.context,'app_ui_click',
     {...click,requestId:'app_ui_access_denied'}),/access_denied/);
 });
+
+
+test('work failover rotates only a terminal failed GPT attempt and records a fenced checkpoint without sending',async t=>{
+  let sends=0;
+  const f=fixture(t,{provider:{send:async()=>{sends++;throw Error('must_not_send');}}});
+  const a=await project(f,'Failover seguro');
+  f.store.setChatUrl(a.w,'https://chatgpt.com/c/11111111-1111-4111-8111-111111111111');
+  const sourceRun=f.store.startRun(a.w,'worker_original');
+  f.store.recordRunMetrics(a.w,sourceRun,'auto',{
+    failedStage:'health',providerDeliveryState:'not_submitted',runStartedAt:Date.now()
+  });
+  f.store.finishRun(a.w,sourceRun,'provider_session_failed');
+  const result=await f.call('work_failover_prepare',{projectId:a.p,taskId:a.w});
+  assert.equal(result.status,'succeeded');
+  assert.equal(result.result.sourceRunId,sourceRun);
+  assert.equal(result.result.failoverGeneration,1);
+  assert.equal(result.result.rotationPrepared,true);
+  assert.equal(result.result.providerMessagesSent,0);
+  assert.equal(result.result.effectsReplayed,false);
+  assert.equal(sends,0);
+  assert.equal(f.store.getTask(a.w).chat_url,null);
+  const conversations=f.store.listConversations(a.w);
+  assert.equal(conversations.length,1);
+  assert.equal(conversations[0].status,'archived');
+  const checkpoint=f.store.latestCheckpoint(a.w);
+  assert.equal(checkpoint.version,result.result.checkpointVersion);
+  assert.equal(checkpoint.payload.failover_generation,1);
+  assert.equal(checkpoint.payload.source_run_id,sourceRun);
+  assert.equal(checkpoint.payload.external_effect_replayed,false);
+  const event=f.store.db.prepare("SELECT payload FROM events WHERE task_id=? AND kind='provider.failover.prepared' ORDER BY seq DESC LIMIT 1").get(a.w);
+  assert.equal(JSON.parse(event.payload).generation,1);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('work failover refuses running, interrupted and unresolved attempts while independent work remains available',async t=>{
+  let sends=0;
+  const f=fixture(t,{provider:{send:async({taskId})=>{sends++;return executorReceipt(f.store,taskId);}}});
+  const a=await project(f,'Alvo'),b=await project(f,'Independente');
+  const running=f.store.startRun(a.w,'worker_stuck');
+  await assert.rejects(f.call('work_failover_prepare',{projectId:a.p,taskId:a.w}),/failover_source_still_running/);
+  f.store.finishRun(a.w,running,'provider_process_interrupted');
+  f.store.db.prepare("UPDATE runs SET status='interrupted',error='process_interrupted' WHERE id=?").run(running);
+  f.store.db.prepare("UPDATE tasks SET status='interrupted' WHERE id=?").run(a.w);
+  await assert.rejects(f.call('work_failover_prepare',{projectId:a.p,taskId:a.w}),/reconciliation_required/);
+  const reserved=f.service.transaction(()=>f.service.reserve(f.context,'work_send',{
+    requestId:'uncertain_failover_source',projectId:a.p,taskId:a.w,content:'efeito possivelmente enviado'}));
+  f.service.finish(reserved.commandId,{taskId:a.w,reason:'transport_unknown'},'uncertain');
+  await assert.rejects(f.call('work_failover_prepare',{projectId:a.p,taskId:a.w}),/reconciliation_required/);
+  const independent=await f.call('work_send',{projectId:b.p,taskId:b.w,content:'Continuar frente independente'});
+  assert.equal(independent.status,'succeeded');
+  assert.equal(sends,1);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
