@@ -13,10 +13,10 @@ export function ordaxRepository(value) {
   const raw = String(value ?? '').trim();
   const full = repositoryName(raw.includes('/') ? raw : 'ordaxsystems/' + raw);
   const [owner, name] = full.split('/');
-  if (owner.toLowerCase() !== 'ordaxsystems') {
-    throw new Error('Este protótipo só trabalha em repositórios da organização ordaxsystems.');
-  }
-  return 'ordaxsystems/' + name;
+  if (owner.toLowerCase() === 'ordaxsystems') return 'ordaxsystems/' + name;
+  if (owner.toLowerCase() === 'ordaxos-admin' && name.toLowerCase() === 'testes-forge-git')
+    return 'ordaxos-admin/TESTES-FORGE-GIT';
+  throw new Error('Somente repositórios ordaxsystems ou o sandbox ordaxos-admin/TESTES-FORGE-GIT são permitidos.');
 }
 
 export function filePath(value) {
