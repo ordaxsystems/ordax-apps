@@ -10,6 +10,9 @@ import {
 } from '../lib/dev-supervisor-lifecycle.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const supervisorArgs=process.argv.slice(2);
+const backgroundStart=supervisorArgs.length===1&&supervisorArgs[0]==='--background-start';
+if(supervisorArgs.length&&!backgroundStart)throw Error('usage: node scripts/dev-supervisor.mjs [--background-start]');
 const {stateDir,lockPath,statePath,heartbeatPath}=forgeDevSupervisorPaths();
 const launcher=path.join(root,'scripts','start-lab.mjs');
 fs.mkdirSync(stateDir,{recursive:true});
@@ -60,8 +63,9 @@ function launch(){
   if(stopping)return;
   launchStartedAt=Date.now();
   hangTerminationPending=false;
-  const env={...process.env,ORDAX_FORGE_DEV_AUTONOMY:'1',ORDAX_FORGE_SUPERVISOR_CHILD:'1'};
-  child=spawn(process.execPath,[launcher],{
+  const env={...process.env,ORDAX_FORGE_DEV_AUTONOMY:'1',ORDAX_FORGE_SUPERVISOR_CHILD:'1',
+    ORDAX_FORGE_SUPERVISOR_NODE:process.execPath};
+  child=spawn(process.execPath,[launcher,...(backgroundStart?['--background-start']:[])],{
     cwd:root,env,stdio:'inherit',windowsHide:false
   });
   state('running',{launchedAt:launchStartedAt});

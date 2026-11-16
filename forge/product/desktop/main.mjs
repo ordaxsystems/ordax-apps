@@ -169,7 +169,18 @@ function showCanonicalWindow(){
   if(win.isMinimized())win.restore();
   win.show();win.focus();
 }
-const canonicalLoginItem=()=>({path:process.execPath,args:['--ordax-background-start']});
+function canonicalLoginItem(){
+  if(supervisedDevelopmentResident){
+    const nodePath=process.env.ORDAX_FORGE_SUPERVISOR_NODE;
+    const supervisorEntry=path.resolve(root,'..','scripts','dev-supervisor.mjs');
+    if(typeof nodePath!=='string'||!path.isAbsolute(nodePath)||
+       path.basename(nodePath).toLowerCase()!=='node.exe'||
+       !existsSync(nodePath)||!existsSync(supervisorEntry))
+      throw Error('forge_supervisor_login_identity_unavailable');
+    return {path:nodePath,args:[supervisorEntry,'--background-start']};
+  }
+  return {path:process.execPath,args:['--ordax-background-start']};
+}
 function updateLoginStartup(enabled) {
   if(!backgroundSupported)return false;
   try {

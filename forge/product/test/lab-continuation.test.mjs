@@ -65,6 +65,61 @@ test('opt-in analyzes confirmed Runs locally without any second model or GPT sen
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM runs WHERE status='running'").get().n,0);
 });
 
+test('periodic coordinator review is configurable and analyzes only changed project state',async t=>{
+  const f=setup(t);
+  const a=await prepare(f);
+  const enabled=await f.call('continuity_set',{
+    projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true,
+    reviewIntervalMinutes:60
+  });
+  assert.equal(enabled.result.periodicReview.intervalMinutes,60);
+  assert.equal(enabled.result.periodicReview.state,'scheduled');
+  const forceDue=()=>f.store.db.prepare(
+    "UPDATE lab_continuation_policies SET last_periodic_review_at='2000-01-01T00:00:00.000Z' WHERE orchestrator_id=?"
+  ).run(a.orchestratorId);
+  forceDue();
+  const unchanged=await f.service.continuation.tick(f.context);
+  assert.equal(unchanged.state,'periodic_unchanged');
+  assert.equal(f.store.db.prepare(
+    "SELECT COUNT(*) n FROM lab_command_receipts WHERE project_id=? AND operation='orchestrator_analyze'"
+  ).get(a.projectId).n,0);
+
+  await f.call('work_create',{
+    projectId:a.projectId,orchestratorId:a.orchestratorId,title:'Nova frente verificável'
+  });
+  forceDue();
+  const changed=await f.service.continuation.tick(f.context);
+  assert.equal(changed.state,'periodic_analyzed');
+  const receipt=f.store.db.prepare(
+    "SELECT status,result FROM lab_command_receipts WHERE project_id=? AND operation='orchestrator_analyze' ORDER BY rowid DESC LIMIT 1"
+  ).get(a.projectId);
+  assert.equal(receipt.status,'succeeded');
+  const result=JSON.parse(receipt.result);
+  assert.equal(result.appOwned,true);
+  assert.equal(result.provider,'ordax_app_policy');
+  assert.equal(result.analysisObserved,true);
+  const status=await f.call('continuity_status',{
+    projectId:a.projectId,orchestratorId:a.orchestratorId
+  });
+  assert.equal(status.periodicReview.intervalMinutes,60);
+  assert.equal(status.periodicReview.state,'scheduled');
+  assert.equal(status.periodicReview.stateFingerprintRecorded,true);
+  assert.equal((await f.service.continuation.tick(f.context)).state,'idle');
+});
+
+test('periodic review interval rejects values outside the bounded policy',async t=>{
+  const f=setup(t);
+  const a=await prepare(f);
+  await assert.rejects(()=>f.call('continuity_set',{
+    projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true,
+    reviewIntervalMinutes:4
+  }),/orchestrator_invalid_input|continuation_review_interval_invalid/);
+  await assert.rejects(()=>f.call('continuity_set',{
+    projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true,
+    reviewIntervalMinutes:1441
+  }),/orchestrator_invalid_input|continuation_review_interval_invalid/);
+});
+
 test('local proposal is review-only and creates no Work or GPT Run before approval',async t=>{
   const f=setup(t);
   const a=await prepare(f);

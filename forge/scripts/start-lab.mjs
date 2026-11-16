@@ -11,7 +11,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const product = path.join(root, 'product');
 const args = process.argv.slice(2);
 const staged = args.length === 1 && args[0] === '--staged';
-if (args.length && !staged) throw Error('usage: node scripts/start-lab.mjs [--staged]');
+const backgroundStart = args.length === 1 && args[0] === '--background-start';
+if (args.length && !staged && !backgroundStart)
+  throw Error('usage: node scripts/start-lab.mjs [--staged|--background-start]');
 const supervisorChild=process.env.ORDAX_FORGE_SUPERVISOR_CHILD==='1';
 const {lockPath:supervisorLockPath}=forgeDevSupervisorPaths();
 
@@ -78,6 +80,7 @@ function start() {
     delete env.GROQ_API_KEY;
   }
   const electronArgs = [electronCli, '.'];
+  if (backgroundStart) electronArgs.push('--ordax-background-start');
   if (staged) electronArgs.push('--ordax-lab-staged-approved',
     '--ordax-lab-staged-localappdata=' + env.LOCALAPPDATA,
     '--remote-debugging-port=9446');

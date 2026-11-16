@@ -46,6 +46,10 @@ function appOwnedAnalysisSummary(context) {
       Number(planning.waitingCount||0)+' aguardando dependência, '+
       Number(planning.blockedCount||0)+' bloqueada(s), '+
       Number(planning.verificationRequiredCount||0)+' aguardando verificação.',
+    'Evidência local: '+Number(context?.evidence?.workspace?.entries?.length||0)+' entrada(s) de workspace, '+
+      Number(context?.evidence?.commands?.length||0)+' comando(s)/teste(s) recente(s), '+
+      Number(context?.evidence?.receipts?.uncertain||0)+' recibo(s) incerto(s); Git histórico '+
+      (context?.evidence?.repository?'disponível':'indisponível')+'.',
     'Nenhum modelo externo foi consultado e nenhuma mensagem GPT foi enviada.'].join(' ');
 }
 
@@ -1029,7 +1033,7 @@ export class OrchestratorService {
 
   analysisContext(projectId,orchestratorId) {
     const owner=this.orchestrator(projectId,orchestratorId);
-    const project=this.db.prepare(`SELECT name,objective FROM lab_projects
+    const project=this.db.prepare(`SELECT name,objective,repository_url FROM lab_projects
       WHERE id=? AND workspace_session_id=?`).get(projectId,this.store.getWorkspaceSession().id);
     if(!project)throw Error('orchestrator_project_unavailable');
 
@@ -1091,6 +1095,41 @@ export class OrchestratorService {
     const ordered=[...overviewRows].sort((a,b)=>priority(a)-priority(b)||
       String(b.updated_at).localeCompare(String(a.updated_at))||a.id.localeCompare(b.id));
     const rows=ordered.slice(0,4);
+
+    // Coordinator evidence is read from the same bounded owner ports and
+    // canonical receipts. It contains hashes/statuses only, never arbitrary
+    // file contents, and cached Git metadata is explicitly historical.
+    let workspaceEvidence={available:false,entries:[],truncated:false};
+    if(this.files)try{
+      const root=this.files.list(projectId,'');
+      const entries=[];
+      for(const entry of (root.entries||[]).slice(0,32)){
+        if(entry.kind==='file'){
+          const proof=this.files.read(projectId,entry.name);
+          entries.push({path:entry.name,kind:'file',bytes:proof.bytes,sha256:proof.sha256});
+        }else entries.push({path:entry.name,kind:entry.kind});
+      }
+      workspaceEvidence={available:true,entries,truncated:root.truncated===true||
+        (root.entries||[]).length>entries.length};
+    }catch(error){
+      workspaceEvidence={available:false,entries:[],truncated:false,
+        reason:String(error?.message||'workspace_unavailable').slice(0,80)};
+    }
+    const commandEvidence=this.db.prepare(`SELECT operation,status,updated_at,
+      CASE WHEN json_valid(result) THEN json_extract(result,'$.exitCode') END exit_code,
+      CASE WHEN json_valid(result) THEN json_extract(result,'$.commandOutcome') END command_outcome
+      FROM lab_command_receipts
+      WHERE project_id=? AND operation='project_command_run'
+      ORDER BY rowid DESC LIMIT 12`).all(projectId);
+    const receiptSummary=this.db.prepare(`SELECT
+      COUNT(*) total,
+      COALESCE(SUM(CASE WHEN status='running' THEN 1 ELSE 0 END),0) running,
+      COALESCE(SUM(CASE WHEN status='uncertain' THEN 1 ELSE 0 END),0) uncertain,
+      COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),0) failed
+      FROM lab_command_receipts WHERE project_id=?`).get(projectId);
+    const repositoryEvidence=project.repository_url
+      ?this.historicalRepositoryHead(projectId,project.repository_url):null;
+    const rowsWithEvidence=rows;
     return {
       planning,
       project:{name:redactOrchestratorAnalysisText(project.name,160),objective:redactOrchestratorAnalysisText(project.objective,600)},
@@ -1103,7 +1142,15 @@ export class OrchestratorService {
         status:row.status,latestRunStatus:row.last_run_status,
         readiness:readiness(row.id),updatedAt:row.updated_at
       })),
-      works:rows.map(row=>{
+      evidence:{
+        workspace:workspaceEvidence,
+        commands:commandEvidence.map(row=>({operation:row.operation,status:row.status,
+          updatedAt:row.updated_at,exitCode:row.exit_code,commandOutcome:row.command_outcome})),
+        receipts:{total:Number(receiptSummary.total||0),running:Number(receiptSummary.running||0),
+          uncertain:Number(receiptSummary.uncertain||0),failed:Number(receiptSummary.failed||0)},
+        repository:repositoryEvidence
+      },
+      works:rowsWithEvidence.map(row=>{
         const runs=this.db.prepare(`SELECT status,started_at,completed_at,heartbeat_at
           FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 3`).all(row.id);
         const messages=this.store.messages(row.id,{limit:5}).map(message=>({
@@ -1236,7 +1283,9 @@ export class OrchestratorService {
     }
     if(operation==='continuity_set') {
       this.orchestrator(input.projectId,input.orchestratorId);
-      return this.continuation.configure(input.projectId,input.orchestratorId,input.enabled);
+      return this.continuation.configure(input.projectId,input.orchestratorId,input.enabled,{
+        reviewIntervalMinutes:input.reviewIntervalMinutes??null
+      });
     }
     if(operation==='continuity_followup_prepare') {
       const owner=this.orchestrator(input.projectId,input.orchestratorId);
