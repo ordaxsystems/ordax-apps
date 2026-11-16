@@ -86,6 +86,11 @@ export class ForgeLocalWorkspaces {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )`);
+    const worktreeColumns=this.db.prepare('PRAGMA table_info(forge_task_worktrees)').all().map(column=>column.name);
+    if(!worktreeColumns.includes('integrated_head_sha'))
+      this.db.exec('ALTER TABLE forge_task_worktrees ADD COLUMN integrated_head_sha TEXT');
+    if(!worktreeColumns.includes('integrated_at'))
+      this.db.exec('ALTER TABLE forge_task_worktrees ADD COLUMN integrated_at TEXT');
     this.db.exec('CREATE INDEX IF NOT EXISTS idx_forge_task_worktrees_project ON forge_task_worktrees(project_id,status)');
     this.initialized=true;
   }
@@ -127,7 +132,8 @@ export class ForgeLocalWorkspaces {
     this.taskRow(projectId,taskId);
     const row=this.db.prepare(`SELECT task_id AS taskId,project_id AS projectId,
       worktree_root AS root,physical_identity AS identity,branch_name AS branchName,
-      base_head_sha AS baseHeadSha,status,created_at AS createdAt,updated_at AS updatedAt
+      base_head_sha AS baseHeadSha,integrated_head_sha AS integratedHeadSha,
+      integrated_at AS integratedAt,status,created_at AS createdAt,updated_at AS updatedAt
       FROM forge_task_worktrees WHERE project_id=? AND task_id=?`).get(projectId,taskId);
     if(!row)return null;
     const expected=this.expectedTaskWorktreeRoot(projectId,taskId);
@@ -173,6 +179,19 @@ export class ForgeLocalWorkspaces {
        branch_name,base_head_sha,status,created_at,updated_at)
       VALUES(?,?,?,?,?,?,?,'active',?,?)`).run(taskId,projectId,session.id,
         root,identity,branchName,baseHeadSha,now,now);
+    return this.taskWorktree(projectId,taskId);
+  }
+  markTaskWorktreeIntegrated(projectId,taskId,{integratedHeadSha}={}){
+    const row=this.taskWorktree(projectId,taskId);
+    if(!row||row.status!=='active')throw Error('forge_worktree_state_invalid');
+    if(typeof integratedHeadSha!=='string'||!SHA.test(integratedHeadSha))
+      throw Error('forge_worktree_metadata_invalid');
+    const now=this.store.now();
+    const changed=this.db.prepare(`UPDATE forge_task_worktrees
+      SET status='integrated',integrated_head_sha=?,integrated_at=?,updated_at=?
+      WHERE project_id=? AND task_id=? AND status='active'`)
+      .run(integratedHeadSha,now,now,projectId,taskId).changes;
+    if(changed!==1)throw Error('forge_worktree_state_conflict');
     return this.taskWorktree(projectId,taskId);
   }
   legacyStatus(projectId){
