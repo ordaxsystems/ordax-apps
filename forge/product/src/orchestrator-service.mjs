@@ -1066,9 +1066,14 @@ export class OrchestratorService {
       }))};
     if(operation==='work_get') {
       const task=this.task(input.projectId,input.taskId);
+      // Expose only revision/readiness, never the unsubmitted prompt. Agents
+      // can prepare the next draft with CAS without racing the Electron editor.
+      const draft=this.store.getTaskDraft(task.id);
+      const draftState={revision:draft.draft_revision,
+        prepared:typeof draft.draft==='string'&&Boolean(draft.draft.trim())};
       const runs=this.db.prepare(`SELECT id,status,started_at,completed_at,heartbeat_at
         FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 10`).all(task.id);
-      return {...task,runs,
+      return {...task,draftState,runs,
         latestRunReview:task.kind==='work'&&runs[0]?.status==='succeeded'
           ?this.runReviewReceipt(context,input.projectId,runs[0].id):null,
         conversations:this.store.listConversations(task.id).slice(-50),

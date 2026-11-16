@@ -577,6 +577,7 @@ test('projects, coordinators and work persist in the same SQLite, with bounded s
   const work=await f.call('work_get',{projectId:a.p,taskId:a.w});
   assert.equal(work.monitor.mayAutomaticallySend,false);
   assert.equal(work.orchestrator_id,a.o);
+  assert.deepEqual(work.draftState,{revision:0,prepared:false});
   await assert.rejects(f.call('work_get',{projectId:b.p,taskId:a.w}),/work_unavailable/);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM messages').get().n,0);
   const original=f.store.db.prepare('SELECT COUNT(*) n FROM tasks').get().n;
@@ -588,6 +589,27 @@ test('projects, coordinators and work persist in the same SQLite, with bounded s
     assert.equal(reopened.db.prepare('SELECT COUNT(*) n FROM lab_projects').get().n,2);
     assert.equal(reopened.db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');
   }finally{reopened.close();}
+});
+
+test('work_get exposes draft CAS version without leaking an unpublished prompt or bypassing scope',async t=>{
+  const f=fixture(t),a=await project(f),b=await project(f,'Outro projeto');
+  const input={projectId:a.p,taskId:a.w},secret='SEGREDO_DE_RASCUNHO_NAO_PUBLICADO';
+  const initial=await f.call('work_get',input);
+  assert.deepEqual(initial.draftState,{revision:0,prepared:false});
+  assert.equal(JSON.stringify(initial).includes(secret),false);
+  const created=await f.call('work_draft_set',{...input,content:secret,draftRevision:1});
+  assert.equal(created.status,'succeeded');
+  const readback=await f.call('work_get',input);
+  assert.deepEqual(readback.draftState,{revision:1,prepared:true});
+  assert.equal(JSON.stringify(readback).includes(secret),false);
+  await assert.rejects(f.call('work_draft_set',{
+    ...input,content:'Rascunho atrasado',draftRevision:1
+  }),/task_draft_revision_conflict/);
+  assert.equal(f.store.getTaskDraft(a.w).draft,secret);
+  await assert.rejects(f.call('work_get',{
+    projectId:b.p,taskId:a.w
+  }),/work_unavailable/);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=?').get(a.w).n,0);
 });
 
 test('metadata commands are atomic, idempotent, and reject a reused request with different input',async t=>{
