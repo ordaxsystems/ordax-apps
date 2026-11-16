@@ -978,6 +978,8 @@ test('drafts are scoped to a Task, revision-guarded and saved without entering p
   assert.match(store, /this\.setDraft\(taskId, '', draftRevision\)/);
   assert.match(ui, /draftCache/);
   assert.match(ui, /flushDraft/);
+  assert.match(ui, /if \(id !== currentTaskId\) await flushDraft\(\);/);
+  assert.match(ui, /await flushDraft\(\);await selectRightPane\('execution'\);/);
   assert.match(ui, /navigationEpoch/);
   assert.match(ui, /draftRevision/);
   assert.match(html, /draftState/);

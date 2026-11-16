@@ -636,7 +636,8 @@ export class OrchestratorService {
       return this.finish(reserved.commandId,result);
     });
     if(operation==='project_file_write')return this.writeProjectFile(context,input);
-    if(operation==='project_development_status')return this.development?.status(input.projectId)??{projectId:input.projectId,available:false,reason:'native_owner_port_unavailable'};
+    if(operation==='project_development_status')return this.development?.status(input.projectId,{taskId:input.taskId??null})??{projectId:input.projectId,available:false,reason:'native_owner_port_unavailable'};
+    if(operation==='project_worktree_prepare')return this.prepareProjectWorktree(context,input);
     if(operation==='project_command_run')return this.runProjectCommand(context,input);
     if(tool.readOnly)return this.read(context,operation,input);
     if(operation==='proposal_send')return this.confirmAndSendProposal(context,input);
@@ -656,9 +657,45 @@ export class OrchestratorService {
     });
   }
 
+  scopedTaskId(input){
+    if(input.taskId!==undefined&&input.taskId!==null){
+      this.task(input.projectId,input.taskId,'work');
+      return input.taskId;
+    }
+    if(this.development?.requiresTaskScope?.(input.projectId))
+      throw Error('forge_task_workspace_required');
+    return null;
+  }
+
+  async prepareProjectWorktree(context,input){
+    if(!this.development)throw Error('forge_development_unavailable');
+    this.task(input.projectId,input.taskId,'work');
+    const reserved=this.transaction(()=>this.reserve(context,'project_worktree_prepare',input));
+    if(reserved.existing)return reserved.existing;
+    try{
+      this.requireAccess(context,'project_worktree_prepare',input.projectId);
+      const result=await this.development.prepareWorktree(input.projectId,input.taskId);
+      return this.transaction(()=>this.finish(reserved.commandId,result));
+    }catch(error){
+      const deterministic=new Set(['forge_development_owner_approval_required',
+        'forge_workspace_binding_required','forge_workspace_missing_or_moved',
+        'forge_workspace_project_unavailable','forge_worktree_task_invalid',
+        'forge_worktree_task_unavailable','forge_worktree_main_dirty',
+        'forge_worktree_branch_exists','forge_worktree_repository_root_mismatch',
+        'forge_worktree_git_metadata_invalid','forge_worktree_state_invalid',
+        'forge_worktree_record_invalid','forge_worktree_metadata_invalid']);
+      try{this.transaction(()=>this.finish(reserved.commandId,{
+        taskId:input.taskId,reason:deterministic.has(error?.message)
+          ?error.message:'forge_worktree_effect_uncertain',verified:false},
+        deterministic.has(error?.message)?'failed':'uncertain'));}catch{}
+      throw error;
+    }
+  }
+
   // Never repeat an uncertain terminal command: it may already have changed files.
   async runProjectCommand(context,input) {
     if(!this.development)throw Error('forge_development_unavailable');
+    if(input.taskId!==undefined&&input.taskId!==null)this.task(input.projectId,input.taskId,'work');
     const reserved=this.transaction(()=>this.reserve(context,'project_command_run',input));
     if(reserved.existing)return reserved.existing;
     try {
@@ -668,7 +705,8 @@ export class OrchestratorService {
     }catch(error) {
       const deterministic=new Set(['forge_development_owner_approval_required',
         'forge_development_command_invalid','forge_development_directory_invalid',
-        'forge_workspace_missing_or_moved','forge_workspace_project_unavailable']);
+        'forge_workspace_missing_or_moved','forge_workspace_project_unavailable',
+        'forge_worktree_task_unprepared']);
       try{this.transaction(()=>this.finish(reserved.commandId,{
         reason:deterministic.has(error?.message)?error.message:'forge_development_command_outcome_uncertain',
         externalEffectsVerified:false},deterministic.has(error?.message)?'failed':'uncertain'));}
@@ -686,14 +724,17 @@ export class OrchestratorService {
     if(reserved.existing)return reserved.existing;
     try {
       this.requireAccess(context,'project_file_write',input.projectId);
+      const taskId=this.scopedTaskId(input);
       const proof=this.files.write(input.projectId,input.path,input.content,
-        input.expectedSha256??null);
+        input.expectedSha256??null,taskId);
       return this.transaction(()=>this.finish(reserved.commandId,proof));
     }catch(error){
       const deterministic=new Set(['forge_file_path_invalid','forge_file_content_invalid',
         'forge_file_size_limit','forge_file_expected_hash_invalid',
         'forge_file_version_conflict','forge_file_not_found','forge_file_reparse_denied',
-        'forge_workspace_binding_required']);
+        'forge_file_internal_path_denied','forge_workspace_binding_required',
+        'forge_worktree_task_unprepared','forge_task_workspace_required',
+        'orchestrator_task_unavailable']);
       const reason=deterministic.has(error?.message)?error.message:'forge_file_effect_uncertain';
       try{this.transaction(()=>this.finish(reserved.commandId,
         {reason,path:input.path,verified:false},
@@ -784,15 +825,20 @@ export class OrchestratorService {
     }
     if(operation==='project_memory')return forgeProjectMemoryView(this.store,input.projectId);
     if(operation==='project_administrator_snapshot')return forgeProjectAdministratorView(this.store,input.projectId);
-    if(operation==='project_files_status')return this.files?.status(input.projectId)||{
-      projectId:input.projectId,available:false,mode:'capability_unavailable'};
+    if(operation==='project_files_status'){
+      const taskId=this.scopedTaskId(input);
+      return this.files?.status(input.projectId,taskId)||{
+        projectId:input.projectId,available:false,mode:'capability_unavailable'};
+    }
     if(operation==='project_files_list'){
       if(!this.files)throw Error('forge_file_broker_unavailable');
-      return this.files.list(input.projectId,input.directory||'');
+      const taskId=this.scopedTaskId(input);
+      return this.files.list(input.projectId,input.directory||'',taskId);
     }
     if(operation==='project_file_read'){
       if(!this.files)throw Error('forge_file_broker_unavailable');
-      return this.files.read(input.projectId,input.path);
+      const taskId=this.scopedTaskId(input);
+      return this.files.read(input.projectId,input.path,taskId);
     }
     if(operation==='project_handoff')return forgeProjectHandoffView(this.store,input.projectId,{taskId:input.taskId||null});
     if(operation==='continuity_status') {

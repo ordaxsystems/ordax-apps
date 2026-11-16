@@ -131,7 +131,7 @@ const forgeLocalWorkspaces=new ForgeLocalWorkspaces({
     .filter(value=>typeof value==='string'&&path.isAbsolute(value))
 });
 const forgeProjectFiles=new ForgeProjectFiles({root:path.join(dataRoot,'project-files'),
-  workspaceLookup:projectId=>forgeLocalWorkspaces.rootForProject(projectId),
+  workspaceLookup:(projectId,taskId=null)=>forgeLocalWorkspaces.rootForProject(projectId,taskId),
   requireOwnerBinding:true});
 
 const stagedLab=process.argv.includes('--ordax-lab-staged-approved');
