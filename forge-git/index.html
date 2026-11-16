@@ -45,19 +45,23 @@
       <div class="mark">FG</div>
     </header>
     <section>
-      <h2>01 / GitHub</h2>
-      <label for="token">Token pessoal GitHub</label>
-      <div class="line">
-        <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_...">
-        <button id="connect" type="button">Conectar</button>
-      </div>
-      <div class="muted" style="margin-top:9px">Permissões: Contents e Pull requests (leitura/escrita). Token mantido somente na memória do aplicativo.</div>
-      <div id="account" class="connected" role="status"></div>
+      <h2>01 / GitHub • ordaxsystems</h2>
+      <button id="connect-local" class="primary fill" type="button">Conectar GitHub OrdaX do Windows</button>
+      <div id="account" class="connected" role="status">Verificando a sessão GitHub existente…</div>
+      <details style="margin-top:12px">
+        <summary class="muted" style="cursor:pointer">Conexão manual (outro computador)</summary>
+        <label for="token">Token GitHub com acesso à OrdaX</label>
+        <div class="line">
+          <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_...">
+          <button id="connect" type="button">Usar token</button>
+        </div>
+      </details>
+      <div class="muted" style="margin-top:9px">A autenticação existente do GitHub CLI será reutilizada. Nenhum token é enviado ao GPT Web nem gravado pelo aplicativo.</div>
     </section>
     <section>
       <h2>02 / Tarefa remota</h2>
       <label for="repo">Repositório</label>
-      <input id="repo" type="text" spellcheck="false" placeholder="proprietário/repositório">
+      <input id="repo" type="text" spellcheck="false" value="ordaxsystems/ordax-apps" placeholder="ordaxsystems/repositório">
       <label for="filename">Arquivo que o GPT pode editar</label>
       <input id="filename" type="text" spellcheck="false" placeholder="README.md">
       <button id="inspect" class="fill" type="button">Conferir arquivo remoto</button>
