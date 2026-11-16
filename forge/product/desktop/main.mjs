@@ -39,7 +39,7 @@ import {boundedForgeViewImage,captureForgeProjectHtml} from './forge-view-captur
 import { createProviderViewRegistry } from '../src/provider-view-registry.mjs';
 import { backgroundResidencyAllowed,backgroundStartupAllowed,backgroundModeRequested } from '../src/background-residency-policy.mjs';
 import { createProviderExecutionScheduler } from '../src/provider-execution-scheduler.mjs';
-import { normalizeProviderViewBounds } from '../src/provider-view-bounds.mjs';
+import { normalizeProviderViewBounds, providerAppPanelUsable } from '../src/provider-view-bounds.mjs';
 import { createProviderProvisionalRecorder } from '../src/provider-provisional-recorder.mjs';
 import { resolveLabUserRoot, labProfileFingerprint } from '../src/lab-profile-binding.mjs';
 import { PRODUCT_NAME } from '../src/product-brand.mjs';
@@ -545,7 +545,11 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
     let staged=null;
     try{
       staged=await runWorker.prepareMcpPrompt({
-        prompt:providerPrompt,chatUrl:task.chat_url,newSession:conversationPlan.newSession,mcpApp
+        prompt:providerPrompt,chatUrl:task.chat_url,newSession:conversationPlan.newSession,mcpApp,
+        // A provider navigation may reset native view geometry after the first
+        // run layout. Reassert the existing canonical host layout before each
+        // hit-test; never bypass the provider-owned control verification.
+        ensureRunPresentation:layoutViews
       });
       providerPrompt=staged.providerPrompt;
       if(contextManifest&&contextAttachmentNotice){
@@ -804,7 +808,9 @@ function layoutViews() {
   const bounds=providerViewBounds?normalizeProviderViewBounds(providerViewBounds,{
     contentWidth:width,contentHeight:height,zoomFactor:win.webContents.getZoomFactor()
   }):null;
-  const panelUsable=Boolean(chatVisible&&bounds&&bounds.width>=320&&bounds.height>=250);
+  const panelUsable=providerAppPanelUsable({
+    chatVisible,bounds,windowVisible:win.isVisible(),windowMinimized:win.isMinimized()
+  });
   const [hostWidth,hostHeight]=providerHostWindow.getContentSize();
   const workerWidth=Math.max(900,hostWidth);
   const workerHeight=Math.max(700,hostHeight);
