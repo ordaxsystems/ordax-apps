@@ -1,6 +1,6 @@
 const $=id=>document.getElementById(id);
 const IDS=['forjador','agent-1','agent-2'];
-let state=null,active='forjador',connected=false,ready=[],busy=[],operation=false;
+let state=null,active='forjador',connected=false,ready=[],busy=[],operation=false,sessions=new Map();
 const nameOf=id=>({forjador:'Forjador','agent-1':'Agente 1','agent-2':'Agente 2'})[id]||id;
 function message(text){$('status').textContent=String(text||'');}
 function render(){
@@ -27,8 +27,14 @@ function render(){
   $('notify-forjador').disabled=operation||!connected||busy.includes('forjador')||
     !state.inbox.some(x=>!x.delivered);
   const branch=agent.branch||'(sem branch)';
+  const chatStatus={
+    'ready':'pronto',
+    'login-required':'login necessário',
+    'authenticating':'autenticando',
+    'unavailable':'aguardando verificação'
+  }[sessions.get(active)]||'carregando';
   $('agent-status').textContent=
-    'Estado: '+agent.status+'\nBranch: '+branch+
+    'Estado: '+agent.status+'\nGPT Web: '+chatStatus+'\nBranch: '+branch+
     '\nConversa: '+(agent.chatUrl?'vinculada':'nova')+
     (agent.lastError?'\nBloqueio: '+agent.lastError:'')+
     (agent.autoContinue?'\nContinuidade automática: ativa ('+(agent.autoRounds||0)+'/6)':'');
@@ -61,6 +67,7 @@ function apply(data){
   if(data.active)active=data.active;
   if(data.ready)ready=data.ready;
   if(data.busy)busy=data.busy;
+  if(data.sessions)sessions=new Map(data.sessions);
   if(data.message)message(data.message);
   render();
 }

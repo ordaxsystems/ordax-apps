@@ -23,3 +23,11 @@ export function providerMessage({agentId,task,repo,branch,continuation=false,hea
     '. Objetivo: '+objective+
     '. Confira o que já foi feito no GitHub e prossiga sem repetir trabalho.';
 }
+export function chatSessionReadiness(health) {
+  if(health?.auth_state==='anonymous')return 'login-required';
+  if(health?.auth_state==='authenticating')return 'authenticating';
+  if(health?.auth_state==='session_present' && health.health_observed===true &&
+     health.composer_ready===true && health.verification_required!==true &&
+     !health.provider_access_problem) return 'ready';
+  return 'unavailable';
+}
