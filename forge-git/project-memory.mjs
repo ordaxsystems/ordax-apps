@@ -105,10 +105,24 @@ export function openProjectMemory(dir){
      persist();
      return item;
    },
-   acknowledge:(count)=>{
-     const n=Math.max(0,Math.min(40,Number(count)||0));
-     for(let i=0;i<n&&i<state.inbox.length;i++)state.inbox[i].delivered=true;
-     persist();
+   acknowledge:(receipts)=>{
+     if(!Array.isArray(receipts)||receipts.length>40)
+       throw Error('avisos_a_confirmar_invalidos');
+     // Only acknowledge the exact alerts observed before the GPT send.
+     // A new GitHub event during an awaited reply must remain unread.
+     const key=item=>JSON.stringify([
+       item.agent,item.kind,item.sha,item.detail,item.at
+     ]);
+     const selected=new Set(receipts.map(key));
+     let changed=false;
+     for(const item of state.inbox){
+       if(!item.delivered&&selected.has(key(item))){
+         item.delivered=true;
+         changed=true;
+       }
+     }
+     if(changed)persist();
+     return changed;
    },
    context:()=>{
      const branches=state.agents.filter(a=>a.branch).map(a=>a.name+': '+a.branch+

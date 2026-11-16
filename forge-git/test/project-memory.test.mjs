@@ -21,7 +21,7 @@ test('uma única memória independente de conversas, com fatos versionados',()=>
     assert.equal(second.snapshot().inbox.filter(x=>!x.delivered).length,1);
     assert.match(second.context(),/GitHub:/);
     assert.doesNotMatch(second.context(),/Commit confirmado|Avisos pendentes|Eventos confirmados/);
-    second.acknowledge(1);
+    second.acknowledge(second.snapshot().inbox.filter(x=>!x.delivered));
     assert.equal(openProjectMemory(dir).snapshot().inbox.filter(x=>!x.delivered).length,0);
     assert.ok(!readFileSync(memoryFile(dir),'utf8').includes('github_pat_'));
   }finally{rmSync(dir,{recursive:true,force:true});}
@@ -160,4 +160,38 @@ test('limite de seis ciclos não depende do número de commits',()=>{
  assert.deepEqual(last,{autoRounds:6,autoContinue:false,autoPending:false});
  assert.equal(nextAutonomousCheckpoint(last,{limit:6}),null);
  assert.equal(nextAutonomousCheckpoint({autoContinue:false,autoPending:false,autoRounds:2}),null);
+});
+test('confirma somente os avisos entregues; eventos concorrentes ficam pendentes',()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'forge-git-concurrent-inbox-'));
+ try{
+  const state=openProjectMemory(dir);
+  state.event({kind:'github_revision',agent:'agent-1',sha:'a'.repeat(40),
+    detail:'Primeira alteração',forCoordinator:true});
+  const sent=state.snapshot().inbox.filter(x=>!x.delivered);
+  state.event({kind:'github_revision',agent:'agent-2',sha:'b'.repeat(40),
+    detail:'Outra alteração durante resposta do Forjador',forCoordinator:true});
+  state.acknowledge(sent);
+  const remaining=state.snapshot().inbox.filter(x=>!x.delivered);
+  assert.equal(remaining.length,1);
+  assert.equal(remaining[0].agent,'agent-2');
+  assert.equal(remaining[0].sha,'b'.repeat(40));
+  assert.throws(()=>state.acknowledge(2),/avisos_a_confirmar_invalidos/);
+  assert.equal(openProjectMemory(dir).snapshot().inbox.filter(x=>!x.delivered).length,1);
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
+test('novo aviso do mesmo agente substitui o antigo sem reconhecimento indevido',()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'forge-git-replace-inbox-'));
+ try{
+  const state=openProjectMemory(dir);
+  state.event({kind:'github_change_unverified',agent:'agent-2',
+    detail:'Sem commit',forCoordinator:true});
+  const obsolete=state.snapshot().inbox.filter(x=>!x.delivered);
+  state.event({kind:'github_revision',agent:'agent-2',sha:'c'.repeat(40),
+    detail:'Commit confirmado depois',forCoordinator:true});
+  state.acknowledge(obsolete);
+  const current=state.snapshot().inbox.filter(x=>!x.delivered);
+  assert.equal(current.length,1);
+  assert.equal(current[0].kind,'github_revision');
+  assert.equal(current[0].sha,'c'.repeat(40));
+ }finally{rmSync(dir,{recursive:true,force:true});}
 });
