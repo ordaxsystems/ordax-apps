@@ -1,12 +1,12 @@
 # Forge GPT-first — execução canônica e Administrador de Projeto
 
-Status: **implementação integrada progressivamente à main e validada no Windows**; homologação longa e conector GPT→MCP remoto continuam pendentes. Owner único: `ordaxsystems/ordax-apps`, `forge`.
-Atualizado: 2026-11-15. **Precedência para direção Forge V3: este plano único > documentos históricos anteriores.** Para afirmações de entrega, código + testes + prova física prevalecem. `ORCHESTRATOR-CANONICAL-PRODUCT.md` permanece apenas como registro histórico do desenho de 01/11.
+Status: **P0 GPT→Forge MCP externo comprovado fisicamente no Windows; P1–P4 em execução progressiva**. A homologação longa do executor interno Forjador→GPT Web, recuperação autônoma e host independente ainda não deve ser anunciada como concluída. Owner único: `ordaxsystems/ordax-apps`, `forge`.
+Atualizado: 2026-11-16. **Precedência para direção Forge V3: este plano único > documentos históricos anteriores.** Para afirmações de entrega, código + testes + prova física prevalecem. `ORCHESTRATOR-CANONICAL-PRODUCT.md` permanece apenas como registro histórico do desenho de 01/11.
 
 
 ## Direção vigente — MCP-first e agentes resilientes (15/11/2026)
 
-> **Nova direção de produto decidida pelo Owner, NÃO uma entrega já implementada.** Esta seção tem precedência arquitetural sobre referências históricas a “App-owned” ou “Electron como centro”, mas **não altera** os gates GPT→MCP existentes, a segurança nem o estado dos executáveis atuais. Sem roadmap paralelo: manter as evidências e próximos passos exclusivamente neste documento. Preservar o checkout Windows e a PR #553 de envio/seleção MCP em andamento. Evolução Rápida: corrigir a causa raiz e entregar uma fatia funcional por vez, sem novos serviços, filas, bancos, builds ou workflows apenas para justificar a arquitetura.
+> **Nova direção de produto decidida pelo Owner, NÃO uma entrega já implementada.** Esta seção tem precedência arquitetural sobre referências históricas a “App-owned” ou “Electron como centro”, mas **não altera** os gates GPT→MCP existentes, a segurança nem o estado dos executáveis atuais. Sem roadmap paralelo: manter as evidências e próximos passos exclusivamente neste documento. Preservar o checkout Windows e a correção de envio/seleção MCP já integrada pela PR #553 (`3785bcbe`). Evolução Rápida: corrigir a causa raiz e entregar uma fatia funcional por vez, sem novos serviços, filas, bancos, builds ou workflows apenas para justificar a arquitetura.
 
 ### Visão de produto e exemplo verificável
 
@@ -57,11 +57,20 @@ Código de partida: forge/product/src/orchestrator-kernel.mjs, orchestrator-serv
 | **P4 — View profissional** | GPT observa, navega e testa site de verdade sem roubar foco; anexar provas ao mesmo Run. | Defeito encontrado pelo agente, corrigido e revalidado no navegador; comprovada captura/ação no escopo do projeto |
 | **P5 — opcional** | Sincronização Supabase e/ou executor remoto somente por demanda verificada. | Permissões, RLS quando aplicável, proveniência, resiliência e não duplicação de autoridade |
 
+### Execução comprovada em 16/11/2026 — P0 GPT → Forge MCP
+
+- PR #553 já estava integrada à `main` (`3785bcbe`); a correção de envio/seleção não foi duplicada. A branch da PR #554 foi reconciliada com essa `main` antes de editar.
+- A primeira chamada real desta sessão ChatGPT ao Forge MCP (`forge_mission_create`) revelou a causa raiz: projetos criados pelo gateway remoto não passavam pelo mesmo `ForgeLocalWorkspaces.createDefault()` usado na UI, ficando `owner_workspace_not_verified` e sem escrita.
+- O adaptador MCP canônico agora possui pós-invocação hospedado pelo owner; criação via MCP e via UI reutilizam o mesmo `ForgeLocalWorkspaces`, SQLite e regras de isolamento. O MCP recebe apenas `configured/kind/verified`, sem caminho absoluto; a UI nativa continua podendo projetar o caminho local.
+- Prova física após reinício da única instância DEV: projeto `project_dc332b0d-1a8d-454a-bcee-b70a83a49eeb` criado por `forge_mission_create` recebeu workspace `default`, `configured=true`, `verified=true`. A chamada `forge_project_file_write` criou `index.html` com **3.859 bytes**, SHA-256 `6e91913402a6aebd2a0be794d1f252b1656c8c07e3e7d16092e86d24cea586d8`, `verification=sha256_readback` e recibo `command_5284ca75-4234-44da-b5db-c4b3490f3785`.
+- Verificação independente fora do MCP leu `forge_local_project_roots` no SQLite operacional e o arquivo físico em `C:\\Users\\ordax\\Documents\\Forge\\Forge-MCP-Acceptance-Pizzaria-P0\\index.html`: mesmos **3.859 bytes** e mesmo SHA-256; `PRAGMA quick_check=ok`.
+- Testes direcionados: sintaxe de `desktop/main.mjs` e `src/orchestrator-mcp.mjs`, `MCP initialize/discovery/call` aprovado, suites de workspace/loopback com escrita física aprovadas e `git diff --check` limpo. P0 de autoria/efeito GPT→MCP está comprovado para esta sessão externa; o fluxo interno Forjador→GPT Web→MCP continua sendo validado separadamente quando aplicável.
+
 **MVP de referência:** pedido natural de site → projeto/pasta real → GPT executa via MCP → falha de sessão recuperada com checkpoint → arquivos e Git verificados → View funcional → conclusão. Implementar primeiro a menor fatia que fecha esse ciclo, em vez de abrir novas páginas, provas genéricas ou serviços. P3–P5 não bloqueiam o MVP. Segurança, consentimento e proteção de dados não são opcionais.
 
 ### Snapshot e instruções de retomada para qualquer novo chat/Codex
 
-**Snapshot consultado em 15/11/2026 (volátil):** Forge MCP online, versão 0.2.0-alpha.42, `engine=app-owned`, pool anunciado até quatro envios; `autonomousExecution=false`, `continuationEnabled=0`, `workspacePortAvailable=false`, `repositoryPortAvailable=false`. Catálogo anunciado inclui UI/View e envios, mas há divergência entre ferramentas anunciadas e expostas ao cliente GPT. **Não afirmar que operação autônoma, agentes substituíveis, workspace remoto ou visual headless já funcionam.** PR #553 está aberta para corrigir envio GPT Web/seleção MCP; altera desktop/main.mjs e test/provider-mcp-selection.test.mjs, **não** este roadmap.
+**Snapshot consultado em 16/11/2026 (volátil):** Forge MCP online, versão 0.2.0-alpha.42, `engine=app-owned`, pool anunciado até quatro envios; `autonomousExecution=false`, `continuationEnabled=0`, `workspacePortAvailable=false`, `repositoryPortAvailable=false`. PR #553 está integrada à `main` (`3785bcbe`). A criação de projeto/pasta e escrita física via Forge MCP externo já foi comprovada conforme a seção P0 acima. **Ainda não afirmar** operação headless independente da janela, recuperação autônoma completa ou integração Git automática; esses são P1–P3.
 
 **Checklist obrigatório de retomada:**
 1. Leia esta seção, o P0 e AGENTS.md. Compare main, PRs ativas, estado físico do Windows e alterações não commitadas; preserve autores paralelos. Não começar outro roadmap nem rever dezenas de documentos para tarefa localizada.

@@ -1131,7 +1131,14 @@ test('old unbound tasks remain intact and are not silently adopted into a projec
 
 test('MCP initialize/discovery/call use exactly the same App service and persisted state',async t=>{
   const f=fixture(t);
-  const mcp=createOrchestratorMcp({service:f.service,getContext:()=>f.context});
+  const postInvokes=[];
+  const mcp=createOrchestratorMcp({service:f.service,getContext:()=>f.context,
+    afterToolInvoke:({operation,args,output})=>{
+      postInvokes.push({operation,projectId:output?.result?.projectId||args?.projectId||null});
+      if(operation!=='project_create'||output?.status!=='succeeded')return output;
+      return {...output,result:{...output.result,
+        workspaceSetup:{configured:true,verified:true,kind:'default'}}};
+    }});
   const rpc=(method,params={},id=1)=>mcp.handle({jsonrpc:'2.0',id,method,params});
   assert.equal((await rpc('tools/list')).error.code,-32002);
   const init=await rpc('initialize',{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'fixture',version:'1'}});
@@ -1163,6 +1170,9 @@ test('MCP initialize/discovery/call use exactly the same App service and persist
   const created=await rpc('tools/call',{name:'forge_project_create',arguments:{requestId:'mcp-one',name:'MCP project'}});
   const receipt=created.result.structuredContent;
   assert.equal(receipt.status,'succeeded');
+  assert.deepEqual(receipt.result.workspaceSetup,{configured:true,verified:true,kind:'default'});
+  assert.equal(postInvokes.at(-1).operation,'project_create');
+  assert.equal(postInvokes.at(-1).projectId,receipt.result.projectId);
   assert.equal((await f.call('projects_list')).projects[0].id,receipt.result.projectId);
   const repeated=await rpc('tools/call',{name:'forge_project_create',arguments:{requestId:'mcp-one',name:'MCP project'}});
   assert.deepEqual(repeated.result.structuredContent,receipt);

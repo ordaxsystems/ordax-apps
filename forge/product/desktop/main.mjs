@@ -1653,9 +1653,29 @@ orchestratorService.viewPort=Object.freeze({
       externalDeploymentVerified:false,inspection,...(probe?{probe}:{}),image};
   }
 });
+const FORGE_PROJECT_CREATION_OPERATIONS=new Set([
+  'project_create','project_quick_create','mission_create'
+]);
+function attachDefaultWorkspaceToProjectCreation(operation,output,{exposePath=false}={}){
+  if(!FORGE_PROJECT_CREATION_OPERATIONS.has(operation)||output?.status!=='succeeded'||
+      typeof output?.result?.projectId!=='string')return output;
+  let workspaceSetup;
+  try{workspaceSetup=forgeLocalWorkspaces.createDefault(output.result.projectId);}
+  catch(error){workspaceSetup={configured:false,blocked:true,
+    reason:String(error?.message||'forge_workspace_creation_failed').slice(0,120)};}
+  const projected=exposePath?workspaceSetup:{
+    configured:workspaceSetup.configured===true,
+    ...(typeof workspaceSetup.kind==='string'?{kind:workspaceSetup.kind}:{}),
+    ...(typeof workspaceSetup.verified==='boolean'?{verified:workspaceSetup.verified}:{}),
+    ...(workspaceSetup.blocked===true?{blocked:true}:{}),
+    ...(typeof workspaceSetup.reason==='string'?{reason:workspaceSetup.reason}:{})
+  };
+  return {...output,result:{...output.result,workspaceSetup:projected}};
+}
 const forgeRemoteMcp=createOrchestratorMcp({
   service:orchestratorService,getContext:()=>localOrchestratorContext,
   version:app.getVersion(),allowedOperations:FORGE_APP_MCP_OPERATIONS,
+  afterToolInvoke:({operation,output})=>attachDefaultWorkspaceToProjectCreation(operation,output),
   authorizeFileRead:requestedProjectId=>{
     try{return forgeLocalWorkspaces.status(requestedProjectId).verified===true;}
     catch{return false;}
@@ -1695,6 +1715,7 @@ const forgeLocalMcp=createForgeLoopbackMcp({
   createMcp:({projectId,allowedOperations})=>createOrchestratorMcp({
     service:orchestratorService,getContext:()=>localOrchestratorContext,
     version:app.getVersion(),allowedProjectId:projectId,allowedOperations,
+    afterToolInvoke:({operation,output})=>attachDefaultWorkspaceToProjectCreation(operation,output),
     authorizeFileRead:requestedProjectId=>{
       try{return forgeLocalWorkspaces.status(requestedProjectId).verified===true;}
       catch{return false;}
@@ -1980,17 +2001,10 @@ registerUiHandler('ordax:orchestrator:invoke',async(event,payload)=>{
   if(payload?.operation==='project_file_write'&&receipt?.status==='succeeded'&&
       typeof payload?.input?.projectId==='string')
     emitRendererEvent('ordax:forge:project-file:changed',{projectId:payload.input.projectId});
-  // New projects receive a real workspace at the Windows Documents known
-  // folder. The DB project survives a filesystem failure, but the UI must
-  // report the failure, never claim a workspace that was not verified.
-  if(['project_create','project_quick_create','mission_create'].includes(payload?.operation)&&
-      receipt?.status==='succeeded'&&typeof receipt?.result?.projectId==='string'){
-    let workspaceSetup;
-    try{workspaceSetup=forgeLocalWorkspaces.createDefault(receipt.result.projectId);}
-    catch(error){workspaceSetup={configured:false,blocked:true,
-      reason:String(error?.message||'forge_workspace_creation_failed').slice(0,120)};}
-    result={...result,result:{...result.result,workspaceSetup}};
-  }
+  // Project creation through either the trusted UI or MCP uses the same
+  // owner-known Windows Documents root and the same SQLite binding logic.
+  // No client/model path can create or widen filesystem authority.
+  result=attachDefaultWorkspaceToProjectCreation(payload?.operation,result,{exposePath:true});
   if(ORCHESTRATOR_TOOLS.some(t=>t.operation===payload?.operation&&!t.readOnly)&&win&&!win.isDestroyed())
     emitRendererEvent('ordax:orchestrator:changed');
   return result;
