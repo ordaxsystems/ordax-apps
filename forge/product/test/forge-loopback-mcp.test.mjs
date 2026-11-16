@@ -8,7 +8,7 @@ import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {ForgeProjectFiles} from '../src/forge-project-files.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
-import {createForgeLoopbackMcp,FORGE_APP_MCP_SCOPE} from '../src/forge-loopback-mcp.mjs';
+import {createForgeLoopbackMcp,FORGE_APP_MCP_SCOPE,FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
 
 function fixture(t,{onProjectFileChanged=()=>{}}={}) {
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'forge-loopback-'));
@@ -113,13 +113,15 @@ test('application MCP can create durable synthetic projects without exposing rec
   await rpc(ready.endpoint,ready.token,init.session,notify);
   const tools=(await rpc(ready.endpoint,ready.token,init.session,
     {jsonrpc:'2.0',id:30,method:'tools/list'})).payload.result.tools.map(tool=>tool.name);
-  for(const name of ['forge_projects_list','forge_project_create','forge_project_quick_create',
-    'forge_mission_create','forge_orchestrator_create','forge_work_create','forge_work_batch_create',
-    'forge_work_draft_set','forge_work_parallel_launch'])
+  for(const name of ['forge_projects_list','forge_mission_create','forge_orchestrator_create',
+    'forge_work_create','forge_work_batch_create','forge_work_draft_set','forge_work_parallel_launch'])
     assert.ok(tools.includes(name),'application MCP tool missing: '+name);
-  for(const name of ['forge_work_send','forge_forjador_send','forge_autonomous_dialogue_start',
+  for(const name of ['forge_project_create','forge_project_quick_create','forge_project_auto_title',
+    'forge_work_send','forge_forjador_send','forge_autonomous_dialogue_start',
     'forge_autonomous_dialogue_continue'])
-    assert.ok(!tools.includes(name),'recursive GPT dispatch must stay App-owned: '+name);
+    assert.ok(!tools.includes(name),'App-internal or recursive operation leaked into ChatGPT MCP: '+name);
+  assert.equal(FORGE_APP_MCP_OPERATIONS.length,64,'shared remote catalog must remain within the gateway contract');
+  assert.ok(tools.length<=64,'runtime capability filtering may only reduce the canonical catalog');
   const created=await rpc(ready.endpoint,ready.token,init.session,call(31,'mission_create',{
     name:'Synthetic autonomy lab',mission:'Exercise durable Task and Run continuity.',
     requestId:'app_mission_create_1'

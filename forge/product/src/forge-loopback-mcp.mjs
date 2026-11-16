@@ -3,14 +3,20 @@ import {randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
 import {ORCHESTRATOR_TOOLS} from './forge-contract.mjs';
 
 export const FORGE_APP_MCP_SCOPE='forge_app';
-// One operation catalog shared with the App. Provider-to-GPT dispatch remains
-// app-owned to prevent recursive model sends; all other typed capabilities
-// are available through owner-authorized MCP sessions.
-const APP_PROVIDER_DISPATCH=new Set(['work_send','proposal_send','forjador_send','autonomous_dialogue_continue']);
+// One canonical App/ChatGPT projection. Provider-to-GPT dispatch remains
+// app-owned to prevent recursive model sends. Project bootstrapping also has
+// one external authority: mission_create. project_create/project_quick_create
+// and project_auto_title remain App-internal UI mechanics, not overlapping MCP
+// entrypoints. This keeps one shared remote catalog without transport-specific
+// truncation or duplicate project creation semantics.
+const APP_MCP_EXCLUDED=new Set([
+  'work_send','proposal_send','forjador_send','autonomous_dialogue_continue',
+  'project_create','project_quick_create','project_auto_title'
+]);
 export const FORGE_APP_MCP_OPERATIONS=Object.freeze(ORCHESTRATOR_TOOLS
-  .map(tool=>tool.operation).filter(op=>!APP_PROVIDER_DISPATCH.has(op)));
+  .map(tool=>tool.operation).filter(op=>!APP_MCP_EXCLUDED.has(op)));
 export const FORGE_LOCAL_MCP_OPERATIONS=Object.freeze(FORGE_APP_MCP_OPERATIONS
-  .filter(op=>!['project_create','project_quick_create','mission_create'].includes(op)));
+  .filter(op=>op!=='mission_create'));
 const MAX_REQUEST_BYTES=180_000;
 const MAX_RESPONSE_BYTES=450_000;
 const ID=/^(?:forge_app|project_[a-zA-Z0-9-]{1,100})$/;

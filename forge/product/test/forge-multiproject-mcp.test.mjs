@@ -7,7 +7,7 @@ import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {ForgeProjectFiles} from '../src/forge-project-files.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
-import {createForgeLoopbackMcp,FORGE_APP_MCP_SCOPE} from '../src/forge-loopback-mcp.mjs';
+import {createForgeLoopbackMcp,FORGE_APP_MCP_SCOPE,FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
 
 function fixture(t) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'forge-multi-mcp-'));
@@ -236,9 +236,14 @@ test('one app MCP token discovers projects and writes only verified owner folder
   const tools=list.body.result.tools.map(tool=>tool.name);
   for(const tool of ['forge_projects_list','forge_project_file_write','forge_project_file_read'])
     assert.ok(tools.includes(tool),tool+' must be available on the app');
-  // One Owner-approved app grant may create a new isolated local project;
-  // project-scoped grants never gain this operation.
-  assert.ok(tools.includes('forge_project_quick_create'));
+  // ChatGPT has one project bootstrap authority: mission_create. Quick
+  // creation and auto-title remain App UI mechanics and never duplicate it.
+  assert.ok(tools.includes('forge_mission_create'));
+  assert.equal(tools.includes('forge_project_create'),false);
+  assert.equal(tools.includes('forge_project_quick_create'),false);
+  assert.equal(tools.includes('forge_project_auto_title'),false);
+  assert.equal(FORGE_APP_MCP_OPERATIONS.length,64);
+  assert.ok(tools.length<=64);
   assert.ok(tools.includes('forge_project_delete'), 'owner-authorized MCP can delete a confirmed project');
   assert.ok(!tools.includes('forge_forjador_send'), 'GPT cannot recursively dispatch itself');
   const catalog=await request(app.endpoint,app.token,init.session,invoke(3,'projects_list'));
