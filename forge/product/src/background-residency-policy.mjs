@@ -2,17 +2,18 @@
 // embedded GPT worker, not a separate service, executable or provider.
 export function backgroundResidencyAllowed({
   optedIn=false,hostMode=false,quitting=false,trayReady=false,
-  platform=process.platform,packaged=false
+  platform=process.platform,packaged=false,supervisedDevelopment=false
 }={}) {
+  const trustedRuntime=packaged===true||supervisedDevelopment===true;
   return optedIn===true&&hostMode!==true&&quitting!==true&&
-    trayReady===true&&platform==='win32'&&packaged===true;
+    trayReady===true&&platform==='win32'&&trustedRuntime;
 }
 export function backgroundStartupAllowed({
   optedIn=false,hostMode=false,trayReady=false,
-  platform=process.platform,packaged=false,requestedHidden=false
+  platform=process.platform,packaged=false,supervisedDevelopment=false,requestedHidden=false
 }={}) {
   return requestedHidden===true&&backgroundResidencyAllowed({
-    optedIn,hostMode,quitting:false,trayReady,platform,packaged
+    optedIn,hostMode,quitting:false,trayReady,platform,packaged,supervisedDevelopment
   });
 }
 export function backgroundModeRequested(value) {

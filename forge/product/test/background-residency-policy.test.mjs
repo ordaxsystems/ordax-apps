@@ -12,8 +12,11 @@ test('single native Windows app can remain resident only when explicitly opted-i
   assert.equal(backgroundResidencyAllowed(eligible),true);
   for(const [key,value] of [
     ['optedIn',false],['hostMode',true],['quitting',true],
-    ['trayReady',false],['platform','linux'],['packaged',false]
+    ['trayReady',false],['platform','linux']
   ])assert.equal(backgroundResidencyAllowed({...eligible,[key]:value}),false,key);
+  assert.equal(backgroundResidencyAllowed({...eligible,packaged:false}),false,'ordinary unpackaged Electron');
+  assert.equal(backgroundResidencyAllowed({...eligible,packaged:false,supervisedDevelopment:true}),true,
+    'the canonical supervised DEV child may remain resident');
   assert.equal(backgroundResidencyAllowed({}),false);
 });
 test('start hidden requires both native opt-in and the intentional startup flag',()=>{

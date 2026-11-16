@@ -156,7 +156,10 @@ if(forgeDevAutonomyEnabled){
   writeForgeHeartbeat('starting');
   forgeHeartbeatTimer=setInterval(()=>writeForgeHeartbeat('alive'),5_000);
 }
-const backgroundSupported=process.platform==='win32'&&app.isPackaged&&!hostBrowserMode&&!stagedLab;
+const supervisedDevelopmentResident=forgeDevAutonomyEnabled&&
+  process.env.ORDAX_FORGE_SUPERVISOR_CHILD==='1';
+const backgroundSupported=process.platform==='win32'&&!hostBrowserMode&&!stagedLab&&
+  (app.isPackaged||supervisedDevelopmentResident);
 let backgroundOptedIn=backgroundSupported&&
   store.getWorkspaceSession()?.metadata?.keep_running_in_background===true;
 let backgroundTray=null,backgroundTrayPending=null,quittingIntentionally=false;
@@ -208,7 +211,8 @@ function backgroundState(){
   return {supported:backgroundSupported,optedIn:backgroundOptedIn,
     resident:backgroundResidencyAllowed({optedIn:backgroundOptedIn,
       hostMode:hostBrowserMode,trayReady:Boolean(backgroundTray),
-      quitting:quittingIntentionally,platform:process.platform,packaged:app.isPackaged}),
+      quitting:quittingIntentionally,platform:process.platform,packaged:app.isPackaged,
+      supervisedDevelopment:supervisedDevelopmentResident}),
     startupEnabled,requiresWindowsUserSession:true,unattended24hCertified:false};
 }
 
@@ -779,7 +783,8 @@ async function createWindowOnce() {
     autoHideMenuBar: true,
     show:!hostBrowserMode&&!backgroundStartupAllowed({optedIn:backgroundOptedIn,
       hostMode:hostBrowserMode,trayReady:true,requestedHidden:backgroundStartupRequested,
-      platform:process.platform,packaged:app.isPackaged}),
+      platform:process.platform,packaged:app.isPackaged,
+      supervisedDevelopment:supervisedDevelopmentResident}),
     webPreferences: {
       backgroundThrottling:false,
       preload: path.join(here, 'preload.cjs'),
@@ -866,7 +871,8 @@ async function createWindowOnce() {
   win.on('close', event => {
     if(backgroundResidencyAllowed({optedIn:backgroundOptedIn,
       hostMode:hostBrowserMode,trayReady:Boolean(backgroundTray),
-      quitting:quittingIntentionally,platform:process.platform,packaged:app.isPackaged})) {
+      quitting:quittingIntentionally,platform:process.platform,packaged:app.isPackaged,
+      supervisedDevelopment:supervisedDevelopmentResident})) {
       event.preventDefault();
       win.hide();
       return;
