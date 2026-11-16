@@ -59,3 +59,25 @@ test('inbox não duplica avisos idênticos',()=>{
   assert.equal(mem.snapshot().events.filter(x=>x.kind==='github_revision').length,1);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
+test('checkpoint da continuação só é consumido quando a nova execução é registrada',()=>{
+  const dir=mkdtempSync(path.join(os.tmpdir(),'forge-git-claim-'));
+  try{
+    const state=openProjectMemory(dir);
+    state.patch('agent-2',{autoContinue:true,autoPending:true,autoGoal:'Continuar tarefas reais'});
+    // Janela programada, ainda sem envio: deve sobreviver a reinício.
+    assert.equal(openProjectMemory(dir).agent('agent-2').autoPending,true);
+    assert.throws(()=>state.beginTurn('agent-1','Continue.',{continuation:true}),
+      /continuacao_nao_autorizada/);
+    const before=openProjectMemory(dir).agent('agent-2');
+    assert.equal(before.status,'idle');
+    state.beginTurn('agent-2','Continue a missão.',{continuation:true});
+    // Após registrar o turno, um reinício não pode reenviá-lo automaticamente.
+    const after=openProjectMemory(dir).agent('agent-2');
+    assert.equal(after.status,'running');
+    assert.equal(after.autoPending,false);
+    assert.equal(after.autoContinue,true);
+    assert.equal(after.task,'Continue a missão.');
+    assert.throws(()=>state.beginTurn('agent-2','Continue de novo.',{continuation:true}),
+      /continuacao_nao_autorizada/);
+  }finally{rmSync(dir,{recursive:true,force:true});}
+});

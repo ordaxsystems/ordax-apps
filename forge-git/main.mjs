@@ -74,7 +74,8 @@ function scheduleAuto(agentId){
     scheduledAuto.delete(agentId);
     const current=store.agent(agentId);
     if(!win||!current.autoContinue||!current.autoPending||busy.has(agentId)||current.status!=='idle')return;
-    store.patch(agentId,{autoPending:false});
+    // Keep the checkpoint until send() atomically records the next active turn.
+    // A crash before dispatch must not lose the continuation.
     emit('Continuação automática autorizada: '+agentId+' (ciclo '+(Number(current.autoRounds)+1)+').');
     void send({agentId,text:'Continue a missão.',newSession:true,continuation:true})
       .catch(error=>emit('Continuação interrompida: '+String(error?.message||error)));
@@ -184,8 +185,10 @@ async function send({agentId,text,newSession=false,autoContinue=null,continuatio
   }else if(autoContinue===false && agentId!=='forjador'){
     store.patch(agentId,{autoContinue:false,autoPending:false});
   }
+  // One durable transition claims the next turn before contacting GPT Web.
+  // An interrupted in-flight turn is reconciled, never blindly resent.
+  store.beginTurn(agentId,task,{continuation});
   busy.add(agentId);
-  store.patch(agentId,{status:'running',lastError:null,task});
   emit('GPT Web: '+agentId+' iniciou uma conversa.');
   try{
     const worker=workers.get(agentId);
