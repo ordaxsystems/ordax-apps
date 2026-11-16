@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline';">
+  <title>OrdaX Forge Git</title>
+  <style>
+    :root { color-scheme:dark; font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#17191c; color:#edecea; }
+    aside { width:430px; height:100vh; overflow:auto; padding:22px 24px 28px; border-right:1px solid #303337; }
+    h1 { font-size:24px; letter-spacing:-.7px; margin:0; }
+    h2 { font-size:13px; color:#c7b9aa; font-weight:650; margin:0 0 14px; letter-spacing:.3px; }
+    p { margin:6px 0 0; color:#aaabb0; font-size:12px; }
+    header { display:flex; justify-content:space-between; align-items:start; margin-bottom:24px; }
+    .mark { background:#b86e5c; color:#17191c; border-radius:10px; font-weight:800; padding:8px 10px; font-size:14px; }
+    section { padding:18px; margin:0 0 14px; border:1px solid #33363b; border-radius:14px; background:#202226; }
+    label { display:block; color:#d2d1d0; font-size:12px; font-weight:600; margin:13px 0 6px; }
+    input,textarea { width:100%; background:#17191c; color:#f2f1ef; border:1px solid #48494c; border-radius:8px; padding:10px 11px; font:inherit; outline:none; }
+    textarea { min-height:108px; resize:vertical; }
+    input:focus,textarea:focus { border-color:#c98269; }
+    input::placeholder,textarea::placeholder { color:#74787f; }
+    button { appearance:none; cursor:pointer; border-radius:9px; padding:10px 12px; border:1px solid #666; background:#303236; color:#f3f3f3; font:600 13px system-ui; }
+    button.primary { background:#c27c65; color:#1b1715; border:1px solid #c27c65; }
+    button:disabled { opacity:.38; cursor:not-allowed; }
+    .line { display:flex; gap:8px; align-items:center; }
+    .line input { min-width:0; flex:1; }
+    .line button { flex:0 0 auto; }
+    .fill { width:100%; margin-top:12px; }
+    .muted { font-size:12px; line-height:1.5; color:#999ca2; }
+    .status { padding:10px 12px; margin-top:12px; background:#17191c; border:1px solid #37393c; border-radius:9px; color:#c9c7c5; word-break:break-word; }
+    .status strong { color:#e9c1a5; }
+    .connected { color:#86c8a2; margin-top:8px; font-size:12px; }
+    #proposal { display:none; }
+    #proposal.visible { display:block; }
+    #result { overflow-wrap:anywhere; }
+    .small { font-size:11px; color:#8f9399; margin-top:14px; }
+  </style>
+</head>
+<body>
+  <aside>
+    <header>
+      <div><h1>Forge Git</h1><p>GPT Web + desenvolvimento remoto</p></div>
+      <div class="mark">FG</div>
+    </header>
+    <section>
+      <h2>01 / GitHub</h2>
+      <label for="token">Token pessoal GitHub</label>
+      <div class="line">
+        <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_...">
+        <button id="connect" type="button">Conectar</button>
+      </div>
+      <div class="muted" style="margin-top:9px">Permissões: Contents e Pull requests (leitura/escrita). Token mantido somente na memória do aplicativo.</div>
+      <div id="account" class="connected" role="status"></div>
+    </section>
+    <section>
+      <h2>02 / Tarefa remota</h2>
+      <label for="repo">Repositório</label>
+      <input id="repo" type="text" spellcheck="false" placeholder="proprietário/repositório">
+      <label for="filename">Arquivo que o GPT pode editar</label>
+      <input id="filename" type="text" spellcheck="false" placeholder="README.md">
+      <button id="inspect" class="fill" type="button">Conferir arquivo remoto</button>
+      <label for="instruction">O que o GPT deve fazer?</label>
+      <textarea id="instruction" placeholder="Ex.: Melhore as instruções de instalação do README, mantendo o restante."></textarea>
+      <button id="run" class="primary fill" type="button">Executar no GPT Web</button>
+      <p>O GPT recebe o conteúdo real do arquivo. Nenhuma gravação acontece antes da aprovação.</p>
+    </section>
+    <section>
+      <h2>03 / Resultado</h2>
+      <div class="status" id="status" role="status"><strong>Pronto.</strong> Conecte o GitHub e entre no ChatGPT Web à direita.</div>
+      <div id="proposal">
+        <p id="summary"></p>
+        <button id="publish" class="primary fill" type="button">Criar branch, commit e PR</button>
+      </div>
+      <div id="result"></div>
+      <button id="login" class="fill" type="button">Abrir login ChatGPT</button>
+    </section>
+    <p class="small">MVP: uma alteração por vez, PR em rascunho, sem merge automático. Esta versão não executa missões em segundo plano.</p>
+  </aside>
+  <script type="module" src="./renderer.mjs"></script>
+</body>
+</html>
