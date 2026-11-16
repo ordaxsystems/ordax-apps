@@ -24,6 +24,54 @@ export function providerComposeAvailability(status,{hostMode=false}={}) {
   return base;
 }
 
+// Read-only status for Forge MCP clients. A working App transport is not a
+// logged-in ChatGPT session. Never export cookies, account info or page text.
+export function providerSessionReport(health){
+  if(Array.isArray(health)){
+    // Each worker owns an independent ChatGPT DOM even with one shared
+    // persistent Electron partition. One ready primary lane cannot certify
+    // the other lanes or authorize a parallel agent launch.
+    const workers=health.map((lane,index)=>{
+      const report=providerSessionReport(lane);
+      return Object.freeze({
+        id:/^[A-Za-z0-9_-]{1,80}$/.test(lane?.id||'')?lane.id:'unknown-'+index,
+        authState:report.authState,
+        sendReady:report.sendReady,
+        reason:report.reason
+      });
+    });
+    const readyWorkers=workers.filter(w=>w.sendReady).length;
+    const allReady=workers.length>0&&readyWorkers===workers.length;
+    const loginRequired=workers.some(w=>w.reason==='login_required');
+    const reason=allReady?'ready':loginRequired?'login_required':
+      (workers.find(w=>!w.sendReady)?.reason||'unverified');
+    const seen=new Set(workers.map(w=>w.authState));
+    return Object.freeze({
+      schema:'ordax.forge.provider-session/1',
+      authState:allReady?'session_present':seen.size>1?'mixed':
+        (seen.values().next().value||'unknown'),
+      healthObserved:allReady,
+      composerReady:allReady,
+      sendReady:allReady,
+      reason,loginRequired,identityVerified:false,
+      readyWorkers,totalWorkers:workers.length,workers:Object.freeze(workers)
+    });
+  }
+  const availability=providerComposeAvailability(health);
+  const authState=['session_present','anonymous','authenticating'].includes(health?.auth_state)
+    ?health.auth_state:'unknown';
+  return Object.freeze({
+    schema:'ordax.forge.provider-session/1',
+    authState,
+    healthObserved:health?.health_observed===true,
+    composerReady:health?.composer_ready===true,
+    sendReady:availability.allowed===true,
+    reason:availability.reason,
+    loginRequired:availability.reason==='login_required',
+    identityVerified:false
+  });
+}
+
 export function canStartFreshProviderChat({task,status,availability,activeRun=false,hostMode=false}={}) {
   if(hostMode || activeRun || !task?.chat_url || !status || typeof status!=='object')return false;
   const sessionObserved=status.auth_state==='session_present'&&status.health_observed===true&&

@@ -149,6 +149,10 @@
     </aside>
 
     <section class="chat-column">
+      <div id="forgeProviderGate" class="forge-provider-gate" role="status" aria-live="polite">
+        <span id="forgeProviderGateText">Verificando o login do GPT Web antes de liberar os agentes.</span>
+        <button id="forgeProviderGateLogin" type="button" class="mini-secondary" hidden>Abrir GPT Web</button>
+      </div>
       <section id="orchestrationPanel" class="orchestration-panel" hidden aria-label="Conversa com o Forjador">
         <header class="coordinator-head">
           <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><span class="route-kicker" id="coordinatorRouteLabel">FORJADOR</span><h2 id="orchestratorTitle">Conversa</h2><p id="orchestratorMission"></p></div></div>

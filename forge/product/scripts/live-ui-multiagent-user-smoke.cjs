@@ -109,8 +109,24 @@ let phase='startup',failurePhase=null;
       })()`);
       if(!(await wait(`document.getElementById('taskTitle').textContent===
         ${JSON.stringify(title)}&&
-        !document.getElementById('taskPanel').classList.contains('hidden')`)))
+        !document.getElementById('taskPanel').classList.contains('hidden')`))){
+        // Diagnostic is limited to synthetic fixture booleans/counts, never
+        // credentials, user content, or provider URLs. The gate still fails.
+        try{
+          const diagnostic=await evaluate(`(async()=>({
+            taskTitleMatches:document.getElementById('taskTitle')?.textContent===
+              ${JSON.stringify(title)},
+            taskPanelVisible:!document.getElementById('taskPanel')?.classList.contains('hidden'),
+            selectedAdmin:document.getElementById('orchestratorSelect')?.value===
+              ${JSON.stringify(adminId)},
+            workExists:(await window.ordax.orchestratorInvoke('work_list',
+              {projectId:${JSON.stringify(p)}})).works.some(w=>w.title===${JSON.stringify(title)})
+          }))()`);
+          console.error(JSON.stringify({schema:'ordax.forge.packaged-work-create-diagnostic/1',
+            phase,diagnostic}));
+        }catch{}
         throw Error('multiagent_work_creation_failed');
+      }
       const taskId=await evaluate("document.getElementById('taskId').textContent.trim()");
       if(!taskId||tasks.some(t=>t.taskId===taskId))
         throw Error('multiagent_work_creation_failed');

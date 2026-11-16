@@ -10,6 +10,7 @@ import {AutonomousDialogue} from './autonomous-dialogue.mjs';
 import {appOwnedSiteDecision} from './natural-site-intent.mjs';
 import {latestSiteWork} from './site-work-context.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
+import {providerSessionReport} from './provider-compose-availability.mjs';
 import {forgeProjectContext,forgeMcpDiscovery} from './forge-executor-context.mjs';
 import {forgeProjectMemoryView} from './forge-project-memory-view.mjs';
 import {forgeProjectAdministratorView} from './forge-project-administrator-view.mjs';
@@ -642,6 +643,16 @@ export class OrchestratorService {
     if(operation==='project_worktree_verify')return this.verifyProjectWorktree(context,input);
     if(operation==='project_worktree_integrate')return this.integrateProjectWorktree(context,input);
     if(operation==='project_command_run')return this.runProjectCommand(context,input);
+    if(tool.readOnly&&operation==='status'){
+      const status=this.read(context,operation,input);
+      // A provider SEND method is only an installed adapter, not login proof.
+      // Probe the real currently idle ChatGPT WebContentsView with bounded
+      // read-only health; an unavailable/failed probe stays unverified.
+      let observed=null;
+      try{observed=await this.provider?.sessionHealth?.();}catch{}
+      this.requireAccess(context,operation);
+      return {...status,providerSession:providerSessionReport(observed)};
+    }
     if(tool.readOnly)return this.read(context,operation,input);
     if(operation==='proposal_send')return this.confirmAndSendProposal(context,input);
     if(operation==='proposal_review'&&input.approved)return this.confirmAndReviewProposal(context,input);

@@ -137,6 +137,12 @@ button{color:inherit}
 .observer-row span{grid-column:1/-1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 .chat-column{position:relative;display:flex;flex-direction:column;background:var(--bg)}
+.forge-provider-gate:not([hidden]){display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:8px 14px;flex:none;padding:10px 16px;
+  border-bottom:1px solid var(--border-strong);background:var(--panel-2);
+  color:var(--text);font-size:12px;line-height:1.45}
+.forge-provider-gate[hidden],.forge-provider-gate button[hidden]{display:none!important}
+.forge-provider-gate button{flex:none;min-height:36px}
 .task-panel{height:100%;display:flex;flex-direction:column;min-height:0}
 .task-head{min-height:72px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;justify-content:space-between;gap:18px;padding:12px 20px 11px}
 .task-identity{display:flex;align-items:center;gap:11px;min-width:0}

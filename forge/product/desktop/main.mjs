@@ -314,6 +314,50 @@ let workerPreload = { ready:false, url:null, at:null };
 let providerHealthInFlight = null;
 let providerHealthCache = null;
 let providerScheduler = null;
+let providerPoolHealthInFlight=null;
+let providerPoolHealthCache=new Map();
+let providerPoolHealthObservedAt=0;
+function currentProviderPoolHealth(){
+  if(providerWorkers.length===0)return [];
+  const now=Date.now();
+  if(!providerPoolHealthInFlight&&
+     (!providerPoolHealthObservedAt||now-providerPoolHealthObservedAt>15000)){
+    // Read-only, bounded health of EVERY idle worker. Never let the primary
+    // user's ready composer represent a different worker's login state.
+    const expected=providerWorkers.slice();
+    providerPoolHealthCache=new Map();
+    providerPoolHealthInFlight=Promise.all(expected.map(async candidate=>{
+      if(candidate.active)return [candidate.id,null];
+      try{
+        const health=await candidate.health();
+        return [candidate.id,{
+          auth_state:health?.connected===true?health.auth_state:'unknown',
+          composer_ready:health?.composer_ready===true,
+          health_observed:health?.health_observed===true,
+          verification_required:health?.verification_required===true,
+          provider_access_problem:health?.provider_access_problem||null
+        }];
+      }catch{return [candidate.id,null];}
+    })).then(samples=>{
+      if(expected.every((candidate,i)=>providerWorkers[i]===candidate))
+        providerPoolHealthCache=new Map(samples);
+      providerPoolHealthObservedAt=Date.now();
+    }).catch(()=>{providerPoolHealthCache=new Map();
+      providerPoolHealthObservedAt=Date.now();})
+      .finally(()=>{providerPoolHealthInFlight=null;});
+  }
+  const fresh=Date.now()-providerPoolHealthObservedAt<30000&&
+    !providerPoolHealthInFlight;
+  return providerWorkers.map(candidate=>{
+    const state=fresh&&!candidate.active?providerPoolHealthCache.get(candidate.id):null;
+    return {id:candidate.id,...candidate.status(),
+      auth_state:state?.auth_state||'unknown',
+      composer_ready:state?.composer_ready===true,
+      health_observed:state?.health_observed===true,
+      verification_required:state?.verification_required===true,
+      provider_access_problem:state?.provider_access_problem||null};
+  });
+}
 const providerCapacity=()=>{
   const snapshot=providerScheduler?.snapshot?.()||{
     lanes:providerWorkers.length||providerWorkerCount,active:0,queued:0,pendingTasks:0,closed:false
@@ -1251,11 +1295,12 @@ registerUiHandler('ordax:lab:profile-proof', event => {
 });
 registerUiHandler('ordax:provider:status', async () => {
   const base = worker.status();
+  const poolHealth=currentProviderPoolHealth();
   if (base.active) {
     const cached = providerHealthCache || { composer_ready:false, verification_required:false, auth_state:'loading' };
     return { ...cached, ...base, observer_mode:observerMode, worker_preload:workerPreload,
       health_pending:Boolean(providerHealthInFlight),executor:providerCapacity(),
-      worker_pool:providerWorkers.map(candidate=>({id:candidate.id,...candidate.status()})) };
+      worker_pool:poolHealth };
   }
   if (!providerHealthInFlight) {
     providerHealthInFlight = worker.health()
@@ -1267,7 +1312,7 @@ registerUiHandler('ordax:provider:status', async () => {
   const status = fresh || providerHealthCache || { ...base, composer_ready:false, verification_required:false, auth_state:'loading' };
   return { ...status, observer_mode:observerMode, worker_preload:workerPreload, health_pending:!fresh,
     executor:providerCapacity(),
-    worker_pool:providerWorkers.map(candidate=>({id:candidate.id,...candidate.status()})) };
+    worker_pool:poolHealth };
 });
 registerUiHandler('ordax:provider:observer-mode:get', () => observerMode);
 registerUiHandler('ordax:provider:observer-mode:set', (_event, mode) => {
@@ -1420,6 +1465,11 @@ const orchestratorKernel=createOrchestratorKernel({
   }),
   provider:{
     capacity:()=>providerCapacity(),
+    sessionHealth:async()=>{
+      // Shared, non-blocking health snapshot for all workers. Never evaluate
+      // a WebContents while a generic Forge status/Task operation is pending.
+      return currentProviderPoolHealth();
+    },
     busy:()=>{
       const capacity=providerCapacity();
       return capacity.closed||capacity.availableSlots===0;
