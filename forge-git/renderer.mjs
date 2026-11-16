@@ -33,8 +33,8 @@ function connectedAs(user) {
   connected = true;
   hasProposal = false;
   $('proposal').classList.remove('visible');
-  $('account').textContent = 'GitHub: ' + user.login + ' • organização ordaxsystems';
-  status('GitHub OrdaX conectado. Escolha o arquivo e a tarefa.');
+  $('account').textContent = 'GitHub: ' + user.login + ' • OrdaX + sandbox';
+  status('GitHub conectado. Sandbox de testes selecionado.');
 }
 
 function args() {
