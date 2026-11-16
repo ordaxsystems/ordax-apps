@@ -13,6 +13,7 @@ function status(message, stage = 'ready') {
 
 function buttons() {
   $('connect').disabled = running;
+  $('connect-local').disabled = running;
   $('inspect').disabled = running || !connected;
   $('run').disabled = running || !connected;
   $('publish').disabled = running || !hasProposal;
@@ -28,6 +29,14 @@ async function perform(operation) {
   finally { running = false; buttons(); }
 }
 
+function connectedAs(user) {
+  connected = true;
+  hasProposal = false;
+  $('proposal').classList.remove('visible');
+  $('account').textContent = 'GitHub: ' + user.login + ' • organização ordaxsystems';
+  status('GitHub OrdaX conectado. Escolha o arquivo e a tarefa.');
+}
+
 function args() {
   return {
     repo:$('repo').value.trim(),
@@ -36,15 +45,16 @@ function args() {
   };
 }
 
+$('connect-local').addEventListener('click', () => perform(async () => {
+  const user = await window.forgeGit.connectLocal();
+  connectedAs(user);
+}));
+
 $('connect').addEventListener('click', () => perform(async () => {
   const token = $('token').value;
   const user = await window.forgeGit.connect(token);
   $('token').value = '';
-  connected = true;
-  hasProposal = false;
-  $('proposal').classList.remove('visible');
-  $('account').textContent = 'Conectado como ' + user.login;
-  status('GitHub conectado. Selecione o arquivo e a tarefa.');
+  connectedAs(user);
 }));
 
 $('inspect').addEventListener('click', () => perform(async () => {
@@ -92,3 +102,12 @@ window.forgeGit.onStatus(event => {
 });
 
 buttons();
+perform(async () => {
+  try {
+    const user = await window.forgeGit.connectLocal();
+    connectedAs(user);
+  } catch (error) {
+    $('account').textContent = 'Conexão automática indisponível. Clique para tentar novamente.';
+    status(String(error?.message || error), 'error');
+  }
+});
