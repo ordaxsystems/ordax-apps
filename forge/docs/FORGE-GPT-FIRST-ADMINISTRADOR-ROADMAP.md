@@ -1,7 +1,75 @@
 # Forge GPT-first — execução canônica e Administrador de Projeto
 
 Status: **implementação integrada progressivamente à main e validada no Windows**; homologação longa e conector GPT→MCP remoto continuam pendentes. Owner único: `ordaxsystems/ordax-apps`, `forge`.
-Atualizado: 2026-11-12. **Precedência para direção Forge V3: este plano único > documentos históricos anteriores.** Para afirmações de entrega, código + testes + prova física prevalecem. `ORCHESTRATOR-CANONICAL-PRODUCT.md` permanece apenas como registro histórico do desenho de 01/11.
+Atualizado: 2026-11-15. **Precedência para direção Forge V3: este plano único > documentos históricos anteriores.** Para afirmações de entrega, código + testes + prova física prevalecem. `ORCHESTRATOR-CANONICAL-PRODUCT.md` permanece apenas como registro histórico do desenho de 01/11.
+
+
+## Direção vigente — MCP-first e agentes resilientes (15/11/2026)
+
+> **Nova direção de produto decidida pelo Owner, NÃO uma entrega já implementada.** Esta seção tem precedência arquitetural sobre referências históricas a “App-owned” ou “Electron como centro”, mas **não altera** os gates GPT→MCP existentes, a segurança nem o estado dos executáveis atuais. Sem roadmap paralelo: manter as evidências e próximos passos exclusivamente neste documento. Preservar o checkout Windows e a PR #553 de envio/seleção MCP em andamento. Evolução Rápida: corrigir a causa raiz e entregar uma fatia funcional por vez, sem novos serviços, filas, bancos, builds ou workflows apenas para justificar a arquitetura.
+
+### Visão de produto e exemplo verificável
+
+O Forge deve ser um **orquestrador persistente de missões com agentes substituíveis**. O usuário conversa normalmente no ChatGPT, invoca o Forge MCP e pede: “Crie um site de pizzaria, com cardápio, carrinho e versão mobile; organize os agentes, teste e continue até ficar funcional; não publique”. O MCP encontra a instância autorizada, usa a **pasta raiz escolhida no aplicativo pelo Owner**, cria projeto/pasta/Tasks e coordena execução real. O usuário abre o Electron apenas para configurar raiz/permissões, ver arquivos, agentes, agenda e navegar no View. Não deve precisar digitar “continue” nem copiar prompts entre conversas para retomar uma missão.
+
+**Princípio central:** a autoridade de objetivo, Task, Run, artefato, revisão, autorização e evidência pertence ao Forge e ao workspace, **não** ao histórico de uma conversa GPT. O GPT interpreta e executa por ferramentas MCP realmente disponíveis; a conversa é um executor substituível. O Core decide pelo estado verificado dos arquivos, testes, Git e recibos, não pelo texto “terminei”.
+
+### Fronteiras: um Forge MCP Host, um Core, um aplicativo mínimo
+
+- **Forge MCP Host:** processo operacional persistente que hospeda **o Core e a interface MCP no mesmo serviço/pacote**, mantendo separação de módulos. MCP é protocolo de ferramentas, não agendador nem modelo. A lógica não deve morar nos handlers do protocolo. Evitar um segundo daemon/conector/banco/executor concorrente.
+- **Forge Core:** reaproveitar OrchestratorKernel, OrchestratorService, Store/SQLite, Projects/Tasks/Runs/recibos, provider workers, broker e catálogo tipado existentes. Core é dono do scheduler, supervisor, coordenação, limites, autorização, decisões, Git e reavaliação. **Um Store/SQLite/SSOT operacional**, sem espelho em Supabase ou Electron.
+- **Forge App (Electron):** cliente visual fino, apenas projetos, seleção da raiz de arquivos, autorizações e conta, status/agenda, agentes, arquivos e View. Toda alteração vai pelo Core compartilhado; app não recebe outro loop autônomo, banco ou catálogo. A janela pode fechar sem matar missões **somente depois de comprovado** o ciclo de vida independente.
+- **Ciclo de vida sem ruptura:** primeiro manter os workers GPT Web existentes e provar GPT→MCP real. Depois substituir a autoridade de ciclo de vida atualmente atrelada ao Electron por host persistente, usando os mesmos módulos/dados. Não executar Core antigo e novo simultaneamente sobre o mesmo perfil. Validar lock, início com Windows, janela fechada, revogação e reinício antes de afirmar operação headless.
+- **Executores:** GPT Web autenticado e outros provedores autorizados são adaptadores de execução, não autoridades do projeto. Nenhuma sessão web é garantida 24h; nenhuma aba pode ser criada ou operada por meios que contornem controles do provedor. Sem Groq obrigatória por envio. Falta de provedor = missão preservada e bloqueio explícito, não resultado inventado.
+
+Código de partida: forge/product/src/orchestrator-kernel.mjs, orchestrator-service.mjs, forge-contract.mjs, orchestrator-mcp.mjs, desktop/main.mjs, desktop/embedded-worker.mjs, Store e supervisor existentes. Owner exclusivo do produto: ordaxsystems/ordax-apps/forge. Não extrair repo “forge-core” só por organização.
+
+### Continuidade real e substituição de chats
+
+1. **Modelo de trabalho:** missão (objetivo/critérios/limites), Task (dependências/owner), Run (tentativa e sessão executora), recibos de comandos, checkpoints, hashes e evidências são persistidos no Store existente. “Agente Frontend” sem Run/sessão/recibo é só papel, não executor ativo.
+2. **Coordenador permanente do Core:** examina arquivos reais, Git/diff/HEAD, testes, processo, View, recibos, pendências e decisões aceitas. Planeja/atribui tarefas quando necessário, revisa imediatamente após eventos; chama IA apenas para decisões ou trabalhos que exijam raciocínio.
+3. **Sessão GPT travada:** página branca, timeout, “tente novamente” ou silêncio visual **não provam falha da ação**. Verificar sessão, mensagens persistidas, efeitos de ferramenta, processos e arquivos. Se houver envio com resultado incerto, marcar como incerto, tentar reconciliar, **não reenviar cegamente**.
+4. **Failover:** liberar a tarefa apenas após falha confirmada/reconciliação ou isolamento da tentativa anterior; novo agente recebe handoff escopado com missão, requisitos, branch, último HEAD, diffs, arquivos/hashes, testes, efeitos comprovados, comandos incertos e próximo passo. Implementar lease/fencing por Task para impedir que agente antigo retomado sobrescreva o sucessor.
+5. **Paralelismo:** outras Tasks independentes podem continuar se uma conversa travar. Limites de sessões/provedores, quotas e permissões continuam válidos. Evitar duas escritas simultâneas no mesmo conjunto de arquivos sem locks, worktree ou serialização.
+6. **Concluir com critérios:** um projeto termina quando a evidência satisfaz os critérios definidos; o Coordenador para de despachar. Não criar tarefas infinitas, revisões cosméticas, chamadas de modelo em loop ou “continue” automático sem delta real.
+
+### Duas rotinas de agenda, um só registro canônico
+
+- **Supervisor operacional:** evento + heartbeat local + inicialização Windows. Observa conectividade, processo, sessão, recibos, leases, estado de tarefas e integridade; usa backoff ao detectar falhas, recupera após internet/reboot e recusa replay de efeito incerto. Não chama GPT para medir se o processo está vivo.
+- **Coordenador de missão:** evento de conclusão/desbloqueio + revisão periódica configurável (exemplo 1 hora). Compara **mudança comprovada** e critérios, atualiza o plano, atribui agentes livres e dispara apenas execuções autorizadas. Não deve aguardar a hora cheia quando uma dependência termina nem iniciar nova IA quando nada mudou.
+- Agenda, opções, estado de pausa/revogação, tentativas e status ficam no Store atual, não em uma segunda fila/cron/SQLite. O computador desligado não executa o Core local; retomada ao religar. Execução durante desligamento exige um executor remoto autorizado, opcional e posterior.
+
+### Git, PR, integrador, remoto e visualização
+
+- **Não construir GitHub próprio.** Usar Git local, branches/worktrees isoladas quando necessárias e GitHub/PRs quando houver remoto autorizado. A main representa código integrado e verificado; um agente Integrador compara mudanças com critérios, diffs, testes, QA visual e conflitos. Não eleger “melhor solução” por opinião textual, nem fazer merge de trabalho incerto.
+- **Agentes dinâmicos:** o MCP pode criar/atualizar/pausar papéis, Tasks e políticas de delegação dentro de cotas, privilégios e limites estabelecidos pelo Owner; não implica liberar shells irrestritos, criação infinita de agentes ou ações destrutivas. Trabalhos pequenos continuam simples.
+- **Supabase somente se houver valor real:** possível sincronização autenticada e mínima de metadados/checkpoints entre dispositivos com RLS e identidade, **não** um segundo Store, repositório de código nem fila concorrente. Git/GitHub permanece autoridade de revisão; arquivos físicos permanecem no workspace. Sincronização não equivale a agente remoto nem é pré-requisito do MVP.
+- **Repositório externo de DLL de jogos (referência, não dependência):** https://gitlab.com/corruptedang3l-group/llm-game-automation-mcp . Adotar **conceitos** de controle em segundo plano, captura por sessão e execução de sequências verificáveis. Não instalar a DLL nem injetar código nos processos Windows por padrão. Reusar app_ui/project_view/live_view e Visual Host. DOM, acessibilidade e CDP primeiro; visão/OCR como fallback; ações com identidade e revisão exatas, inspeção separada de execução e prova após cada efeito. Preview isolado que não executa JS não prova site funcional ou publicação.
+
+### Fases de execução: gates e limites
+
+| Ordem | Entrega funcional | Critério para marcar concluída |
+| --- | --- | --- |
+| **P0 — GPT→MCP verdadeiro** | Resolver envio/seleção GPT Web do fluxo atual sem atropelar a PR #553. Criar/editar site por **chamada originada no GPT**, não por engenheiro externo. | Sessão real, autorização real, chamada MCP atribuível, arquivo físico com SHA/readback, receipt, testes e View; nenhum “eco” como prova |
+| **P1 — Core MCP-first** | Core/Store compartilhados e independentes do ciclo de vida da janela; Electron como projeção visual, preservando executor atual até substituição validada. | Um único processo/owner de Store, janela fechada/minimizada, criação pelo MCP, reinício e revogação sem perda de dados |
+| **P2 — recuperação e agenda** | Dois mecanismos de supervisão/coordenação; handoff com checkpoints e controle de tentativa antiga. | Simular internet caída, reboot e GPT branco; provar ausência de replay, recuperação por outra sessão válida e continuidade de outra Task |
+| **P3 — agentes + integração** | Dois agentes reais independentes, isolamento Git necessário, revisão e integração controlada. | Duas execuções comprovadas, conflitos detectados, testes realizados e merge apenas com evidência/gates |
+| **P4 — View profissional** | GPT observa, navega e testa site de verdade sem roubar foco; anexar provas ao mesmo Run. | Defeito encontrado pelo agente, corrigido e revalidado no navegador; comprovada captura/ação no escopo do projeto |
+| **P5 — opcional** | Sincronização Supabase e/ou executor remoto somente por demanda verificada. | Permissões, RLS quando aplicável, proveniência, resiliência e não duplicação de autoridade |
+
+**MVP de referência:** pedido natural de site → projeto/pasta real → GPT executa via MCP → falha de sessão recuperada com checkpoint → arquivos e Git verificados → View funcional → conclusão. Implementar primeiro a menor fatia que fecha esse ciclo, em vez de abrir novas páginas, provas genéricas ou serviços. P3–P5 não bloqueiam o MVP. Segurança, consentimento e proteção de dados não são opcionais.
+
+### Snapshot e instruções de retomada para qualquer novo chat/Codex
+
+**Snapshot consultado em 15/11/2026 (volátil):** Forge MCP online, versão 0.2.0-alpha.42, `engine=app-owned`, pool anunciado até quatro envios; `autonomousExecution=false`, `continuationEnabled=0`, `workspacePortAvailable=false`, `repositoryPortAvailable=false`. Catálogo anunciado inclui UI/View e envios, mas há divergência entre ferramentas anunciadas e expostas ao cliente GPT. **Não afirmar que operação autônoma, agentes substituíveis, workspace remoto ou visual headless já funcionam.** PR #553 está aberta para corrigir envio GPT Web/seleção MCP; altera desktop/main.mjs e test/provider-mcp-selection.test.mjs, **não** este roadmap.
+
+**Checklist obrigatório de retomada:**
+1. Leia esta seção, o P0 e AGENTS.md. Compare main, PRs ativas, estado físico do Windows e alterações não commitadas; preserve autores paralelos. Não começar outro roadmap nem rever dezenas de documentos para tarefa localizada.
+2. Prove qual é a primeira etapa incompleta e corrija diretamente a causa raiz nos módulos canônicos; valide com testes proporcionais e E2E físico quando a capacidade depender de GPT/Electron real.
+3. Registre **neste mesmo documento** o que foi planejado, implementado, verificado e o que ficou bloqueado, com commit/PR/evidência. Não confundir ferramenta registrada com ferramenta invocada, resposta GPT com efeito ou preview com navegador funcional.
+4. Sem projeto real do usuário nos testes; sem apagar workspace/credenciais/SQLite, sem processos instalados duplicados, sem grants por prompt, sem retries cegos nem publicação externa sem autorização. Entregar pela main após checks e autorização pertinentes.
+
+---
 
 ## Plano executivo — checkout Windows como execução DEV canônica (12/11/2026)
 
