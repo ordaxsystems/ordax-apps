@@ -36,3 +36,11 @@ export function matchesStoredConversation(saved,observed){
   const expected=canonicalProviderChatUrl(saved);
   return Boolean(expected && expected===canonicalProviderChatUrl(observed));
 }
+export function providerIsSettled(health) {
+  return health?.health_observed===true &&
+    health.auth_state==='session_present' &&
+    health.composer_ready===true &&
+    health.verification_required!==true &&
+    !health.provider_access_problem &&
+    health.response_generation_active===false;
+}

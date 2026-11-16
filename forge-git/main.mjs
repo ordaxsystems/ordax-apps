@@ -7,7 +7,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EmbeddedChatWorker} from '../forge/product/desktop/embedded-worker.mjs';
 import {REPO,ROLES,openProjectMemory} from './project-memory.mjs';
-import {routeForConversation,providerMessage,chatSessionReadiness,matchesStoredConversation} from './provider-routing.mjs';
+import {routeForConversation,providerMessage,chatSessionReadiness,matchesStoredConversation,providerIsSettled} from './provider-routing.mjs';
 import {canonicalProviderChatUrl} from '../forge/product/src/conversation-policy.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
@@ -136,8 +136,10 @@ async function refresh({agentId=null,notifyCoordinator=false}={}){
         }
         store.patch(agentId,{lastHead:current});
         if(['unverified','awaiting-github'].includes(agent.status) && changed){
-          store.patch(agentId,{status:'idle',lastError:null,awaitingSince:null});
-          note+='; pendência reconciliada por commit confirmado';
+          // A commit does not prove the GPT has stopped generating.
+          store.patch(agentId,{status:'awaiting-provider',lastError:null,
+            awaitingSince:new Date().toISOString()});
+          note+='; commit confirmado, aguardando término do GPT';
         }
       } else {
         note='Sem novo commit remoto confirmado em '+agent.branch;
@@ -188,7 +190,7 @@ async function ensureBranch(agentId){
   await gh(repoPath+'/git/refs',{method:'POST',body:{ref:'refs/heads/'+branch,sha:baseSha}});
   const verified=await head(branch);
   if(verified!==baseSha)throw Error('Branch criada mas não confirmada; conferir GitHub.');
-  store.patch(agentId,{branch,lastHead:verified});
+  store.patch(agentId,{branch,lastHead:verified,turnStartHead:verified});
   store.event({kind:'branch_created',agent:agentId,sha:verified,detail:branch,forCoordinator:true});
   return branch;
 }
@@ -241,7 +243,7 @@ async function send({agentId,text,newSession=false,autoContinue=null,continuatio
       requiresMcp:route.requiresMcp,mcpApp:route.mcpApp??'forge-mcp'
     });
     store.patch(agentId,{
-      chatUrl:answer.chatUrl||old.chatUrl,
+      chatUrl:answer.chatUrl||store.agent(agentId).chatUrl||old.chatUrl,
       status:'verifying',
       lastResponse:String(answer.text||'').slice(0,320),
       lastError:null
@@ -260,22 +262,26 @@ async function send({agentId,text,newSession=false,autoContinue=null,continuatio
     const observedHead=store.agent(agentId).lastHead;
     const proved=agentId==='forjador'||observation.changed===true||
       Boolean(startedHead && observedHead && startedHead!==observedHead);
+    const providerDone=agentId==='forjador'||
+      await providerIdleFor(store.agent(agentId),worker);
     store.patch(agentId,{
-      status:proved?'idle':'awaiting-github',
+      status:providerDone?(proved?'idle':'awaiting-github'):'awaiting-provider',
       lastError:null,
-      awaitingSince:proved?null:new Date().toISOString()
+      awaitingSince:(providerDone&&proved)?null:new Date().toISOString()
     });
     // Routine chat responses are not project facts; do not spam the coordinator.
     if(!proved && agentId!=='forjador')
       store.event({kind:'github_verification_pending',agent:agentId,
         detail:'Resposta recebida; aguardando commit remoto.'});
-    emit(proved?'Resposta recebida e GitHub conferido.':'Resposta recebida; aguardando confirmação do GitHub.');
-    return {chatUrl:answer.chatUrl||old.chatUrl,note:observation.note,verified:proved};
+    emit(!providerDone?'GPT ainda em execução: aguardando término da conversa.':
+      proved?'Resposta e commit confirmados.':'GPT concluiu; aguardando confirmação do GitHub.');
+    return {chatUrl:store.agent(agentId).chatUrl,note:observation.note,
+      verified:proved&&providerDone,pending:!providerDone};
   }catch(e){
     const reason=String(e?.message||e).slice(0,240);
     // GPT may publish GitHub commits yet its Web reply may not be observable.
     // Reconcile external proof without treating the uncertain reply as completed.
-    if(agentId!=='forjador'&&store.agent(agentId).autoContinue&&
+    if(agentId!=='forjador'&&
        /response_not_observed|response_observation_timeout/.test(reason)){
       store.patch(agentId,{status:'awaiting-provider',awaitingSince:new Date().toISOString(),
         lastError:'Aguardando término do GPT e confirmação do GitHub.'});
@@ -293,16 +299,27 @@ async function send({agentId,text,newSession=false,autoContinue=null,continuatio
     scheduleAuto(agentId);
   }
 }
-async function syncAgents(){
+async function providerIdleFor(agent,worker){
+  if(!matchesStoredConversation(agent.chatUrl,worker.status().url))return false;
+  const first=await worker.health().catch(()=>null);
+  if(!providerIsSettled(first))return false;
+  await new Promise(resolve=>setTimeout(resolve,750));
+  const second=await worker.health().catch(()=>null);
+  return providerIsSettled(second)&&
+    matchesStoredConversation(agent.chatUrl,worker.status().url);
+}
+async function syncAgents({recoverOnStartup=false}={}){
   if(!token)return;
   for(const role of ROLES.filter(item=>item.role==='executor')){
     if(busy.has(role.id)||!store.agent(role.id).branch)continue;
     // A previous process may have terminated during GPT execution.
     // Do not blindly resend; reconcile GitHub before attempting a new turn.
     const previous=store.agent(role.id);
-    if(previous.status==='running'||previous.status==='verifying')
-      store.patch(role.id,{status:previous.autoContinue?'awaiting-provider':'awaiting-github',
+    if(previous.status==='running'||previous.status==='verifying'||
+       (recoverOnStartup&&previous.status==='awaiting-github')){
+      store.patch(role.id,{status:'awaiting-provider',
         awaitingSince:previous.awaitingSince||new Date().toISOString()});
+    }
     try{await refresh({agentId:role.id,notifyCoordinator:true});}
     catch(error){emit('Não foi possível verificar '+role.name+': '+String(error?.message||error));continue;}
     const after=store.agent(role.id);
@@ -313,23 +330,21 @@ async function syncAgents(){
         lastError:'Confirmação do GPT indisponível após 10 minutos.',awaitingSince:null});
       emit('Continuidade pausada: GPT não confirmou estado ocioso.');continue;
     }
-    // Two independent read-only observations prevent overlapping GPT sessions.
+    // Observe the exact original conversation twice before allowing a new turn.
     const worker=workers.get(role.id);
-    // A homepage is NOT the unfinished conversation. Do not start another
-    // GPT turn unless this exact thread was restored after the crash.
-    if(!matchesStoredConversation(after.chatUrl,worker.status().url))continue;
-    const first=await worker.health().catch(()=>null);
-    if(first?.health_observed!==true||first.composer_ready!==true||
-       first.response_generation_active!==false)continue;
-    await new Promise(resolve=>setTimeout(resolve,750));
-    const second=await worker.health().catch(()=>null);
-    if(second?.health_observed===true&&second.composer_ready===true&&
-       second.auth_state==='session_present'&&
-       second.response_generation_active===false&&
-       matchesStoredConversation(after.chatUrl,worker.status().url)){
-      if(after.autoPending||!after.autoContinue){
+    if(await providerIdleFor(after,worker)){
+      // The original provider is idle, but its GitHub write may be delayed.
+      // Preserve the task until either its revision is proven or the
+      // existing GitHub verification window expires.
+      const proved=Boolean(after.turnStartHead&&after.lastHead&&
+        after.turnStartHead!==after.lastHead);
+      if(proved){
         store.patch(role.id,{status:'idle',lastError:null,awaitingSince:null});
         scheduleAuto(role.id);
+      }else{
+        store.patch(role.id,{
+          status:'awaiting-github',lastError:null,awaitingSince:new Date().toISOString()
+        });
       }
     }
   }
@@ -347,7 +362,7 @@ function events(){
     if(repository?.permissions?.push!==true)throw Error('GitHub sem acesso de escrita ao sandbox.');
     token=candidate;login=who.login;
     await refresh();
-    await syncAgents();
+    await syncAgents({recoverOnStartup:true});
     emit('GitHub conectado: '+login);
     return {login,repo:REPO};
   });
