@@ -31,6 +31,25 @@ export function nextAutonomousCheckpoint(agent,{limit=6}={}){
  const continueAllowed=rounds<limit;
  return {autoRounds:rounds,autoContinue:continueAllowed,autoPending:continueAllowed};
 }
+const alertKey=item=>JSON.stringify([
+  item.agent,item.kind,item.sha,item.detail,item.at
+]);
+
+// Only a confirmed finished turn from an explicitly authorized automatic
+// mission is eligible for unattended notification of the GPT coordinator.
+export function coordinatorAutoAlerts(snapshot){
+  const agents=new Map((snapshot?.agents||[]).map(a=>[a.id,a]));
+  return (snapshot?.inbox||[]).filter(item=>{
+    if(item.delivered===true||item.autoNotified===true)return false;
+    const agent=agents.get(item.agent);
+    if(!agent||agent.status!=='idle')return false;
+    if(['autonomous_mission_finished','autonomous_limit_reached'].includes(item.kind))
+      return true;
+    return item.kind==='github_revision'&&agent.autoContinue===true&&
+      typeof item.sha==='string'&&/^[a-f0-9]{40}$/i.test(item.sha)&&
+      item.sha===agent.lastHead&&agent.turnStartHead!==agent.lastHead;
+  });
+}
 export function memoryFile(dir){return path.join(dir,'forge-git-project.json')}
 export function openProjectMemory(dir){
  mkdirSync(dir,{recursive:true});
@@ -105,18 +124,31 @@ export function openProjectMemory(dir){
      persist();
      return item;
    },
+   // Claim before sending to GPT. If the process exits mid-send, the
+   // unconfirmed alert remains visible, but is never sent twice unattended.
+   reserveCoordinatorAuto:(receipts)=>{
+     if(!Array.isArray(receipts)||receipts.length>40)
+       throw Error('avisos_a_confirmar_invalidos');
+     const selected=new Set(receipts.map(alertKey));
+     const reserved=[];
+     for(const item of state.inbox){
+       if(!item.delivered&&!item.autoNotified&&selected.has(alertKey(item))){
+         item.autoNotified=true;
+         reserved.push({...item});
+       }
+     }
+     if(reserved.length)persist();
+     return reserved;
+   },
    acknowledge:(receipts)=>{
      if(!Array.isArray(receipts)||receipts.length>40)
        throw Error('avisos_a_confirmar_invalidos');
      // Only acknowledge the exact alerts observed before the GPT send.
      // A new GitHub event during an awaited reply must remain unread.
-     const key=item=>JSON.stringify([
-       item.agent,item.kind,item.sha,item.detail,item.at
-     ]);
-     const selected=new Set(receipts.map(key));
+     const selected=new Set(receipts.map(alertKey));
      let changed=false;
      for(const item of state.inbox){
-       if(!item.delivered&&selected.has(key(item))){
+       if(!item.delivered&&selected.has(alertKey(item))){
          item.delivered=true;
          changed=true;
        }

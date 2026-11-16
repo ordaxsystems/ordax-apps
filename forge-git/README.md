@@ -16,6 +16,8 @@ GPT Web desenvolve no GitHub remoto; o aplicativo mantém estado, abas e continu
 
 **Sessão GPT Web:** a aba só fica pronta quando o editor e a sessão estão observados. Login ausente, autenticação em andamento e indisponibilidade aparecem no painel; o app não envia uma tarefa por presumir que a página carregou.
 
+**Forjador automático:** durante uma missão contínua já autorizada, o aplicativo informa o Forjador ao confirmar o resultado remoto e o término da conversa do agente. O aviso é curto, consulta a memória pelo Forge MCP e registra a tentativa antes do envio. Se o retorno for incerto, o aviso continua pendente para revisão manual, sem reenvio automático.
+
 **Forjador:** os avisos são enviados em resumo curto. Só os avisos efetivamente apresentados e com resposta confirmada são reconhecidos; avisos novos permanecem pendentes. O Forge MCP original não atualiza esta memória do Forge Git.
 
 **Forge MCP:** a ferramenta existente `forge_project_memory` com `projectId=forge_git` lê o checkpoint persistido do Forge Git no mesmo perfil Windows, sem gravar nem importar dados para o SQLite do Forge. A gravação e a verificação GitHub continuam sob responsabilidade do Forge Git; a ferramenta só aparece quando o Forge MCP nativo atualizado oferece esse acesso.

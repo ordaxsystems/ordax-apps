@@ -6,7 +6,7 @@ import {randomBytes} from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EmbeddedChatWorker} from '../forge/product/desktop/embedded-worker.mjs';
-import {REPO,ROLES,openProjectMemory,nextAutonomousCheckpoint} from './project-memory.mjs';
+import {REPO,ROLES,openProjectMemory,nextAutonomousCheckpoint,coordinatorAutoAlerts} from './project-memory.mjs';
 import {routeForConversation,providerMessage,chatSessionReadiness,matchesStoredConversation,providerIsSettled,navigationTimeoutRecovered} from './provider-routing.mjs';
 import {canonicalProviderChatUrl} from '../forge/product/src/conversation-policy.mjs';
 
@@ -15,6 +15,7 @@ const cli=promisify(execFile);
 const SIDE=430,TOP=46;
 const AUTO_MAX_ROUNDS=6;
 const scheduledAuto=new Set();
+let notifyingForjador=false;
 const nextNavigationRetry=new Map();
 let win,store,token='',login='',active='forjador';
 const workers=new Map(),busy=new Set(),ready=new Set(),sessionStates=new Map();
@@ -302,6 +303,8 @@ async function send({agentId,text,newSession=false,autoContinue=null,continuatio
         detail:'Resposta recebida; aguardando commit remoto.'});
     emit(!providerDone?'GPT ainda em execução: aguardando término da conversa.':
       proved?'Resposta e commit confirmados.':'GPT concluiu; aguardando confirmação do GitHub.');
+    if(agentId!=='forjador'&&providerDone&&proved)
+      void autoNotifyForjador();
     return {chatUrl:store.agent(agentId).chatUrl,note:observation.note,
       verified:proved&&providerDone,pending:!providerDone};
   }catch(e){
@@ -367,6 +370,7 @@ async function syncAgents({recoverOnStartup=false}={}){
         after.turnStartHead!==after.lastHead);
       if(proved){
         store.patch(role.id,{status:'idle',lastError:null,awaitingSince:null});
+        void autoNotifyForjador();
         scheduleAuto(role.id);
       }else{
         store.patch(role.id,{
@@ -375,6 +379,35 @@ async function syncAgents({recoverOnStartup=false}={}){
       }
     }
   }
+}
+// Autonomous mission consent also permits one short coordinator handoff.
+// Persist the attempt before sending: an interrupted GPT response must not
+// cause duplicate automatic notifications after restart.
+async function autoNotifyForjador(){
+  if(notifyingForjador||!token||!win||!ready.has('forjador')||
+     busy.has('forjador')||store.agent('forjador').status!=='idle')return false;
+  const candidates=coordinatorAutoAlerts(store.snapshot());
+  if(!candidates.length)return false;
+  notifyingForjador=true;
+  try{
+    const reserved=store.reserveCoordinatorAuto(candidates);
+    if(!reserved.length)return false;
+    const summary=reserved.map(item=>item.agent+': '+item.kind+
+      (item.sha?' @'+item.sha.slice(0,12):'')).join('; ');
+    const prompt='Confira pelo Forge MCP a memória do Forge Git e avalie os resultados confirmados: '+
+      summary+'. A memória já é mantida pelo aplicativo; não repita o trabalho dos agentes.';
+    const result=await send({agentId:'forjador',text:prompt});
+    if(result?.verified===true){
+      store.acknowledge(reserved);
+      emit('Forjador informado dos resultados; memória do Forge Git preservada.');
+      return true;
+    }
+    emit('Aviso ao Forjador incerto: mantido para revisão manual, sem reenvio automático.');
+    return false;
+  }catch(error){
+    emit('Aviso ao Forjador não confirmado: permanece pendente para revisão manual.');
+    return false;
+  }finally{notifyingForjador=false;}
 }
 function events(){
   guarded('fg:state',()=>({snapshot:store.snapshot(),active,ready:[...ready],busy:[...busy],sessions:[...sessionStates]}));
@@ -486,6 +519,7 @@ app.whenReady().then(async()=>{
     try{
       await checkSessions();
       await syncAgents();
+      void autoNotifyForjador();
     }finally{polling=false;}
   },45_000);
   watcher.unref();
