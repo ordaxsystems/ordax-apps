@@ -37,5 +37,9 @@ test('MCP picker reasserts the one canonical native view layout without bypassin
   assert.match(host,/ensureRunPresentation:layoutViews/);
   assert.match(host,/const panelUsable=providerAppPanelUsable\(/);
   assert.match(worker,/if\(typeof ensureRunPresentation==='function'\)ensureRunPresentation\(\)/);
-  assert.match(worker,/if\(!trigger\?\.selectable\)throw Error\('provider_mcp_picker_unavailable'\)/);
+  assert.match(worker,/if\(trigger\?\.selectable===true\)break/);
+  assert.match(worker,/const triggerAvailable=trigger\?\.selectable===true/);
+  assert.match(worker,/if\(triggerAvailable\)\{/);
+  assert.match(worker,/prepareProviderMcpMentionSearch\.toString\(\)/);
+  assert.match(worker,/requireSelectedMcpForPrompt\(/);
 });
