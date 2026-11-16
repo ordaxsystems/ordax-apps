@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
+import {mkdtempSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {openProjectMemory,memoryFile,REPO} from '../project-memory.mjs';
@@ -79,5 +79,28 @@ test('checkpoint da continuação só é consumido quando a nova execução é r
     assert.equal(after.task,'Continue a missão.');
     assert.throws(()=>state.beginTurn('agent-2','Continue de novo.',{continuation:true}),
       /continuacao_nao_autorizada/);
+  }finally{rmSync(dir,{recursive:true,force:true});}
+});
+test('inbox mantém um estado recente por agente e preserva todo o histórico',()=>{
+  const dir=mkdtempSync(path.join(os.tmpdir(),'forge-git-inbox-'));
+  try{
+    const mem=openProjectMemory(dir);
+    const first={kind:'github_change_unverified',agent:'agent-2',
+      detail:'Sem commit ainda',forCoordinator:true};
+    const second={kind:'github_revision',agent:'agent-2',sha:'c'.repeat(40),
+      detail:'Commit remoto confirmado',forCoordinator:true};
+    mem.event(first);
+    mem.event(second);
+    assert.equal(mem.snapshot().inbox.filter(x=>!x.delivered&&x.agent==='agent-2').length,1);
+    assert.equal(mem.snapshot().events.length,2);
+    // An older checkpoint is compacted on reopen, without discarding evidence.
+    const filename=memoryFile(dir);
+    const legacy=JSON.parse(readFileSync(filename,'utf8'));
+    legacy.inbox.unshift({...legacy.events[0],delivered:false});
+    writeFileSync(filename,JSON.stringify(legacy));
+    const restored=openProjectMemory(dir).snapshot();
+    assert.equal(restored.inbox.filter(x=>!x.delivered&&x.agent==='agent-2').length,1);
+    assert.equal(restored.events.length,2);
+    assert.equal(restored.inbox.find(x=>!x.delivered).kind,'github_revision');
   }finally{rmSync(dir,{recursive:true,force:true});}
 });

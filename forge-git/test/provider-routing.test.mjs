@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {routeForConversation,providerMessage} from '../provider-routing.mjs';
+import {routeForConversation,providerMessage,chatSessionReadiness} from '../provider-routing.mjs';
 
 const repo='ordaxos-admin/TESTES-FORGE-GIT';
 const branch='forge-git/agent-2-2b64f1cd';
@@ -35,4 +35,18 @@ test('continuação sem checkpoint é bloqueada',()=>{
  assert.throws(()=>providerMessage({agentId:'agent-2',repo,branch,task:'Continue.',continuation:true,headSha:null,goal:'Site'}));
  assert.throws(()=>providerMessage({agentId:'agent-2',repo,branch:'main',task:'Faça algo.'}));
  assert.throws(()=>routeForConversation('desconhecido'));
+});
+test('sessão ChatGPT só aparece pronta com composer e autenticação observados',()=>{
+  const healthy={
+    auth_state:'session_present',health_observed:true,composer_ready:true,
+    verification_required:false,provider_access_problem:null
+  };
+  assert.equal(chatSessionReadiness(healthy),'ready');
+  assert.equal(chatSessionReadiness({...healthy,auth_state:'anonymous'}),'login-required');
+  assert.equal(chatSessionReadiness({...healthy,auth_state:'authenticating'}),'authenticating');
+  assert.equal(chatSessionReadiness({...healthy,auth_state:'unknown'}),'unavailable');
+  assert.equal(chatSessionReadiness({...healthy,composer_ready:false}),'unavailable');
+  assert.equal(chatSessionReadiness({...healthy,health_observed:false}),'unavailable');
+  assert.equal(chatSessionReadiness({...healthy,verification_required:true}),'unavailable');
+  assert.equal(chatSessionReadiness(null),'unavailable');
 });

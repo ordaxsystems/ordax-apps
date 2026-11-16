@@ -7,7 +7,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EmbeddedChatWorker} from '../forge/product/desktop/embedded-worker.mjs';
 import {REPO,ROLES,openProjectMemory} from './project-memory.mjs';
-import {routeForConversation,providerMessage} from './provider-routing.mjs';
+import {routeForConversation,providerMessage,chatSessionReadiness} from './provider-routing.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const cli=promisify(execFile);
@@ -15,11 +15,11 @@ const SIDE=430,TOP=46;
 const AUTO_MAX_ROUNDS=6;
 const scheduledAuto=new Set();
 let win,store,token='',login='',active='forjador';
-const workers=new Map(),busy=new Set(),ready=new Set();
+const workers=new Map(),busy=new Set(),ready=new Set(),sessionStates=new Map();
 
 function emit(message){
   if(win&&!win.isDestroyed())win.webContents.send('forge-git:event',{
-    message,snapshot:store.snapshot(),active,ready:[...ready],busy:[...busy]
+    message,snapshot:store.snapshot(),active,ready:[...ready],busy:[...busy],sessions:[...sessionStates]
   });
 }
 function guarded(channel,fn){
@@ -65,6 +65,29 @@ function layout(){
     });
   }
 }
+function recordSessionReadiness(id,health){
+  const state=chatSessionReadiness(health);
+  const old=sessionStates.get(id);
+  if(state==='ready')ready.add(id);
+  else ready.delete(id);
+  sessionStates.set(id,state);
+  if(state!==old){
+    const descriptions={
+      'ready':'sessão GPT Web disponível',
+      'login-required':'login GPT Web obrigatório',
+      'authenticating':'login GPT Web em andamento',
+      'unavailable':'sessão GPT Web ainda não verificável'
+    };
+    emit(id+': '+descriptions[state]);
+  }
+  if(state==='ready'&&old!==state)scheduleAuto(id);
+}
+async function checkSessions(){
+  await Promise.all([...workers].map(async([id,worker])=>{
+    const health=await worker.health().catch(()=>null);
+    recordSessionReadiness(id,health);
+  }));
+}
 function scheduleAuto(agentId){
   if(!agentId||scheduledAuto.has(agentId)||busy.has(agentId)||!ready.has(agentId)||!win)return;
   const agent=store.agent(agentId);
@@ -73,7 +96,8 @@ function scheduleAuto(agentId){
   const timeout=setTimeout(()=>{
     scheduledAuto.delete(agentId);
     const current=store.agent(agentId);
-    if(!win||!current.autoContinue||!current.autoPending||busy.has(agentId)||current.status!=='idle')return;
+    if(!win||!ready.has(agentId)||!current.autoContinue||!current.autoPending||
+       busy.has(agentId)||current.status!=='idle')return;
     // Keep the checkpoint until send() atomically records the next active turn.
     // A crash before dispatch must not lose the continuation.
     emit('Continuação automática autorizada: '+agentId+' (ciclo '+(Number(current.autoRounds)+1)+').');
@@ -305,7 +329,7 @@ async function syncAgents(){
   }
 }
 function events(){
-  guarded('fg:state',()=>({snapshot:store.snapshot(),active,ready:[...ready],busy:[...busy]}));
+  guarded('fg:state',()=>({snapshot:store.snapshot(),active,ready:[...ready],busy:[...busy],sessions:[...sessionStates]}));
   guarded('fg:connect',async()=>{
     const {stdout}=await cli('gh',['auth','token','--hostname','github.com'],{
       timeout:10_000,windowsHide:true,maxBuffer:16_000
@@ -393,13 +417,16 @@ app.whenReady().then(async()=>{
   const watcher=setInterval(async()=>{
     if(polling||!win||!token)return;
     polling=true;
-    try{await syncAgents();}
-    finally{polling=false;}
+    try{
+      await checkSessions();
+      await syncAgents();
+    }finally{polling=false;}
   },45_000);
   watcher.unref();
   for(const [id,worker] of workers){
-    worker.load().then(()=>{
-      ready.add(id);emit(id+' disponível no GPT Web.');
+    worker.load().then(async()=>{
+      const health=await worker.health().catch(()=>null);
+      recordSessionReadiness(id,health);
     }).catch(e=>{
       store.patch(id,{status:'blocked',lastError:String(e?.message||e).slice(0,200)});
       emit(id+' indisponível: '+String(e?.message||e));

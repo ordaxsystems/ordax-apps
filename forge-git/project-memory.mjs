@@ -17,6 +17,14 @@ function validate(snapshot){
    snapshot.agents.length!==ROLES.length||!ROLES.every((role,i)=>snapshot.agents[i]?.id===role.id)||
    !Array.isArray(snapshot.events)||!Array.isArray(snapshot.inbox))throw Error('memoria_invalida');
 }
+function compactInbox(items){
+  const newest=new Map();
+  items.forEach((item,index)=>{
+    if(!item.delivered)newest.set(item.agent??'project',index);
+  });
+  return items.filter((item,index)=>item.delivered||
+    newest.get(item.agent??'project')===index).slice(-40);
+}
 export function memoryFile(dir){return path.join(dir,'forge-git-project.json')}
 export function openProjectMemory(dir){
  mkdirSync(dir,{recursive:true});
@@ -32,6 +40,11 @@ export function openProjectMemory(dir){
    renameSync(temp,file);
  };
  if(!existsSync(file))persist();
+ const compacted=compactInbox(state.inbox);
+ if(compacted.length!==state.inbox.length){
+   state.inbox=compacted;
+   persist();
+ }
  return {
    snapshot:()=>JSON.parse(JSON.stringify(state)),
    agent:id=>{
@@ -79,7 +92,7 @@ export function openProjectMemory(dir){
        const exists=state.inbox.some(e=>!e.delivered&&e.agent===item.agent&&
          e.kind===item.kind&&e.sha===item.sha&&e.detail===item.detail);
        if(!exists)state.inbox.push({...item,delivered:false});
-       state.inbox=state.inbox.slice(-40);
+       state.inbox=compactInbox(state.inbox);
      }
      persist();
      return item;
