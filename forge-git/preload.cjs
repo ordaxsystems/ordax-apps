@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('forgeGit',{
   connect:()=>ipcRenderer.invoke('fg:connect'),
   select:id=>ipcRenderer.invoke('fg:tab',id),
   send:args=>ipcRenderer.invoke('fg:send',args),
+  pauseAuto:id=>ipcRenderer.invoke('fg:auto-pause',id),
   refresh:()=>ipcRenderer.invoke('fg:refresh'),
   agentRefresh:id=>ipcRenderer.invoke('fg:agent-refresh',id),
   newChat:id=>ipcRenderer.invoke('fg:new-chat',id),

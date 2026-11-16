@@ -11,6 +11,7 @@ Protótipo Windows isolado em forge-git/, no repositório canônico ordaxsystems
 5. O Forjador seleciona o Forge MCP para coordenação. Os agentes recebem a missão no GPT Web sem Forge MCP obrigatório e usam as ferramentas GitHub que estiverem autorizadas na própria conversa.
 6. A resposta não precisa conter JSON. O app consulta o GitHub para verificar alterações e atualizar a memória. Resposta do GPT sem novo commit permanece como não verificada.
 7. Qualquer conversa nova recebe o estado verificado. Use Atualizar memória pelo GitHub ou Informar o Forjador.
+8. Para testar a continuidade, clique Missão contínua no agente. Após cada commit confirmado, o app envia a próxima instrução curta ao GPT até uma PR ou o limite de 6 ciclos. O botão Pausar interrompe novas mensagens sem cancelar a operação atual.
 
 ## Segurança e limites
 
@@ -20,6 +21,7 @@ Protótipo Windows isolado em forge-git/, no repositório canônico ordaxsystems
 - O GPT pode trabalhar no GitHub com as ferramentas de escrita autorizadas em sua sessão. A conexão GitHub padrão pode ter acesso somente leitura e o sandbox pode estar fora da instalação autorizada; o erro 403 precisa ser resolvido no acesso GitHub do GPT, não com JSON em mensagens.
 - Memória própria do protótipo: forge-git-project.json no userData do aplicativo; registros de HEADs verificados, eventos, abas e conversas.
 - Um Forjador e dois agentes, branches isoladas, inbox sem loops e sem merge automático.
+- Respostas GPT sem commit imediato entram em verificação pendente; o monitor consulta o GitHub e retoma apenas após prova. Após 5 minutos sem commit, para com evidência de bloqueio. O limite é de 6 ciclos confirmados.
 - Execução 24h contínua ainda não homologada. Login, ferramenta remota e disponibilidade podem bloquear.
 
 ## Testes

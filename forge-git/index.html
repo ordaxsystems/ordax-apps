@@ -7,7 +7,7 @@
 <title>OrdaX Forge Git</title>
 <style>
 :root{color-scheme:dark;font:14px/1.5 system-ui,"Segoe UI",sans-serif;background:#17191c;color:#edeae6}
-*{box-sizing:border-box}body{margin:0;background:#17191c}
+*[hidden]{display:none!important}*{box-sizing:border-box}body{margin:0;background:#17191c}
 aside{position:absolute;left:0;top:0;width:430px;height:100vh;overflow:auto;padding:22px;border-right:1px solid #34363b}
 h1{font-size:23px;letter-spacing:-.7px;margin:0}
 h2{font-size:13px;color:#d8a990;margin:0 0 10px}
@@ -52,6 +52,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 <label for="instruction">Missão ou mensagem</label>
 <textarea id="instruction" placeholder="Crie um site de pizzaria neste repositório, teste e corrija até ficar pronto."></textarea>
 <button id="send" class="primary full" type="button">Enviar ao GPT Web com MCP</button>
+<div class="grid" id="autonomy-controls" style="margin-top:9px">
+  <button id="auto-start" type="button">Missão contínua</button>
+  <button id="auto-pause" type="button">Pausar</button>
+</div>
+<p id="autonomy-help">Continua depois dos commits confirmados, até 6 ciclos ou PR. Não faz merge.</p>
 <div class="grid" style="margin-top:9px">
 <button id="new-chat" type="button">Nova conversa</button>
 <button id="check-agent" type="button">Verificar GitHub</button>

@@ -13,8 +13,13 @@ function render(){
     button.classList.toggle('active',id===active);
     button.setAttribute('aria-selected',String(id===active));
   }
+  $('autonomy-controls').hidden=active==='forjador';
+  $('autonomy-help').hidden=active==='forjador';
   const doing=busy.includes(active)||agent.status==='running';
-  $('send').disabled=operation||!connected||doing||!ready.includes(active);
+  const awaiting=agent.status==='awaiting-github';
+  $('send').disabled=operation||!connected||doing||awaiting||!ready.includes(active);
+  $('auto-start').disabled=operation||!connected||doing||awaiting||!ready.includes(active);
+  $('auto-pause').disabled=!connected||!agent.autoContinue;
   $('new-chat').disabled=operation||doing;
   $('check-agent').disabled=operation||!connected;
   $('refresh').disabled=operation||!connected;
@@ -25,7 +30,8 @@ function render(){
   $('agent-status').textContent=
     'Estado: '+agent.status+'\nBranch: '+branch+
     '\nConversa: '+(agent.chatUrl?'vinculada':'nova')+
-    (agent.lastError?'\nBloqueio: '+agent.lastError:'');
+    (agent.lastError?'\nBloqueio: '+agent.lastError:'')+
+    (agent.autoContinue?'\nContinuidade automática: ativa ('+(agent.autoRounds||0)+'/6)':'');
   const observed=state.observed||{};
   $('revision').textContent='Main: '+(observed.base||'?')+'@'+(observed.sha||'?').slice(0,12)+
     (observed.at?'\nVerificado: '+observed.at:'');
@@ -87,6 +93,22 @@ $('send').addEventListener('click',()=>action(async()=>{
   await window.forgeGit.send({agentId:active,text});
   apply(await window.forgeGit.state());
 }));
+$('auto-start').addEventListener('click',()=>action(async()=>{
+  if(active==='forjador')throw Error('Missão contínua pertence aos agentes.');
+  const text=$('instruction').value.trim();
+  if(!text)throw Error('Escreva a missão.');
+  if(!confirm('Autorizar até 6 ciclos GPT Web consecutivos após commits GitHub confirmados, apenas na branch de testes? Sem merge automático.'))return;
+  $('instruction').value='';
+  message('Missão contínua iniciada. O aplicativo só continuará após comprovar commits remotos.');
+  await window.forgeGit.send({agentId:active,text,autoContinue:true});
+  apply(await window.forgeGit.state());
+}));
+$('auto-pause').addEventListener('click',async()=>{
+  try{
+    apply({snapshot:await window.forgeGit.pauseAuto(active)});
+    message('Continuidade pausada; a operação já em curso terminará normalmente.');
+  }catch(error){message('Erro: '+String(error?.message||error));}
+});
 $('new-chat').addEventListener('click',()=>action(async()=>{
   if(!confirm('Iniciar nova conversa para '+nameOf(active)+' preservando a memória do projeto?'))return;
   apply({snapshot:await window.forgeGit.newChat(active)});

@@ -7,7 +7,7 @@ export const ROLES=Object.freeze([
  {id:'agent-1',name:'Agente 1',role:'executor'},
  {id:'agent-2',name:'Agente 2',role:'executor'}
 ]);
-const makeAgent=role=>({...role,chatUrl:null,branch:null,task:'',status:'idle',lastResponse:'',lastHead:null,lastError:null});
+const makeAgent=role=>({...role,chatUrl:null,branch:null,task:'',status:'idle',lastResponse:'',lastHead:null,lastError:null,awaitingSince:null,autoContinue:false,autoRounds:0,autoPending:false,autoGoal:''});
 const fresh=()=>({
  version:1,repository:REPO,revision:0,observed:{base:null,sha:null,at:null},
  agents:ROLES.map(makeAgent),events:[],inbox:[],updatedAt:new Date().toISOString()
@@ -42,7 +42,7 @@ export function openProjectMemory(dir){
    patch:(id,values)=>{
      const agent=state.agents.find(a=>a.id===id);
      if(!agent)throw Error('agente_desconhecido');
-     const allowed=['chatUrl','branch','task','status','lastResponse','lastHead','lastError'];
+     const allowed=['chatUrl','branch','task','status','lastResponse','lastHead','lastError','awaitingSince','autoContinue','autoRounds','autoPending','autoGoal'];
      for(const [key,value] of Object.entries(values)){
        if(!allowed.includes(key))throw Error('campo_nao_autorizado');
        agent[key]=value;

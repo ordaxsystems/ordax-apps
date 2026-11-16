@@ -34,3 +34,16 @@ test('memória bloqueia entradas arbitrárias e commits sem identidade válida',
     assert.throws(()=>memory.observe({base:'main',sha:'fake',at:''}));
   }finally{rmSync(dir,{recursive:true,force:true});}
 });
+test('continuidade autorizada persiste entre reinicializações sem guardar segredo',()=>{
+  const dir=mkdtempSync(path.join(os.tmpdir(),'forge-git-auto-'));
+  try{
+    const memory=openProjectMemory(dir);
+    memory.patch('agent-2',{autoContinue:true,autoRounds:2,autoPending:true,autoGoal:'Crie site de pizzaria funcional'});
+    const restored=openProjectMemory(dir).agent('agent-2');
+    assert.equal(restored.autoContinue,true);
+    assert.equal(restored.autoRounds,2);
+    assert.equal(restored.autoPending,true);
+    assert.match(restored.autoGoal,/pizzaria/);
+    assert.equal(restored.token,undefined);
+  }finally{rmSync(dir,{force:true,recursive:true});}
+});
