@@ -124,9 +124,12 @@ export function prepareProviderMcpMentionSearch(doc,composer,spec=null) {
   const candidates=Array.from(form.querySelectorAll(
     'button[data-composer-navigation-target="add-context"]'
   ));
-  if(candidates.length!==1)return {ready:false};
+  // The provider can expose @ app mentions without an Add Context button.
+  // Only a unique optional trigger may be closed; a missing trigger does not
+  // waive exact app-ID selection, verified later in the live composer.
+  if(candidates.length>1)return {ready:false};
   const trigger=candidates[0];
-  if(trigger.getAttribute('aria-expanded')==='true')trigger.click();
+  if(trigger?.getAttribute('aria-expanded')==='true')trigger.click();
   const text=String(composer.innerText||composer.textContent||'')
     .replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim();
   if(text)return {ready:false};

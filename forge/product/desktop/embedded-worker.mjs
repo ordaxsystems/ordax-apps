@@ -655,7 +655,13 @@ export class EmbeddedChatWorker {
           if(trigger?.selectable===true)break;
           if(attempt<24)await sleep(120);
         }
-        if(!trigger?.selectable)throw Error('provider_mcp_picker_unavailable');
+        // The ChatGPT @-mention route is independently authenticated by the
+        // provider's exact app ID. Use it if Add Context is missing or cannot
+        // be hit-tested, never a blind click or a textual @ substitution.
+        const triggerAvailable=trigger?.selectable===true;
+        let clicked=false,lastChoice=null;
+        selected=null;
+        if(triggerAvailable){
         if(!trigger.open){
           const activateExpression='(()=>{const activate='+activateProviderMcpAddContextTrigger.toString()+
             ';return activate(document,'+composerExpression()+')})()';
@@ -674,8 +680,6 @@ export class EmbeddedChatWorker {
           ';return inspect(document,'+JSON.stringify(spec)+')})()';
         const activateChoiceExpression='(()=>{const activate='+activateProviderMcpPickerOption.toString()+
           ';return activate(document,'+JSON.stringify(spec)+')})()';
-        let clicked=false,lastChoice=null;
-        selected=null;
         for(let i=0;i<6;i++){
           selected=await this.inspectMcpSelectionReadOnly({allowDuringRun:true,app:mcpApp});
           if(selected.selectionObserved===true)break;
@@ -689,7 +693,9 @@ export class EmbeddedChatWorker {
           }
           await sleep(120);
         }
-        if(selected?.selectionObserved!==true&&lastChoice?.optionCount===0){
+        }
+        if(selected?.selectionObserved!==true&&
+           (!triggerAvailable||lastChoice?.optionCount===0)){
           const prepareSearchExpression='(()=>{const prepare='+prepareProviderMcpMentionSearch.toString()+
             ';return prepare(document,'+composerExpression()+','+JSON.stringify(spec)+')})()';
           const preparedSearch=await wc.executeJavaScript(prepareSearchExpression).catch(()=>null);

@@ -334,7 +334,8 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   assert.match(worker,/inspectProviderMcpAddContextTrigger\.toString\(\)/);
   assert.match(worker,/for\(let attempt=0;attempt<25;attempt\+\+\)/);
   assert.match(worker,/if\(trigger\?\.selectable===true\)break/);
-  assert.match(worker,/if\(!trigger\?\.selectable\)throw Error\('provider_mcp_picker_unavailable'\)/);
+  assert.match(worker,/const triggerAvailable=trigger\?\.selectable===true/);
+  assert.match(worker,/\(!triggerAvailable\|\|lastChoice\?\.optionCount===0\)/);
   assert.match(worker,/activateProviderMcpAddContextTrigger\.toString\(\)/);
   assert.match(worker,/activateProviderMcpPickerOption\.toString\(\)/);
   assert.match(worker,/provider_mcp_picker_activation_failed/);
@@ -374,4 +375,35 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   assert.match(coordinatorUi,/rascunho foi preservado/);
   assert.match(main,/withForjadorMcpMention/);
   assert.match(main,/mention_requested:mentionRequested/);
+});
+
+test('missing Add Context button permits only exact-ID @ mention search, never a textual Forge claim',()=>{
+  const spec=providerMcpAppSpec('forge-mcp');
+  let candidates=[],focused=0,clicked=0;
+  const form={querySelectorAll:()=>candidates};
+  const doc={activeElement:null,defaultView:{innerWidth:800,innerHeight:600},
+    querySelectorAll:()=>[option],elementFromPoint:()=>option};
+  const composer={innerText:'',closest:s=>s==='form'?form:null,
+    focus(){focused++;doc.activeElement=this;},contains:x=>x===this};
+  const option={getAttribute:key=>key==='data-plugin-impression-id'?spec.providerAppId:null,
+    getBoundingClientRect:()=>({left:20,top:20,width:180,height:38}),
+    scrollIntoView(){},contains:x=>x===this,click(){clicked++}};
+  assert.deepEqual(prepareProviderMcpMentionSearch(doc,composer,spec),
+    {ready:true,query:'@Forge MCP'});
+  assert.equal(focused,1);
+  assert.equal(inspectProviderMcpMentionOption(doc,spec).optionCount,1);
+  assert.deepEqual(activateProviderMcpMentionOption(doc,spec),
+    {activated:true,optionCount:1});
+  assert.equal(clicked,1);
+  candidates=[{},{}]; // Ambiguous provider triggers: fail closed.
+  assert.equal(prepareProviderMcpMentionSearch(doc,composer,spec).ready,false);
+  candidates=[];
+  composer.innerText='preserve this existing user draft';
+  assert.equal(prepareProviderMcpMentionSearch(doc,composer,spec).ready,false);
+  // A different installed app ID is never Forge, even with a matching label.
+  const other={...option,getAttribute:key=>key==='data-plugin-impression-id'?
+    'asdk_app_6ad82c252584819192ac71cf3389e4a6':null};
+  doc.querySelectorAll=()=>[other];
+  composer.innerText='';
+  assert.equal(inspectProviderMcpMentionOption(doc,spec).optionCount,0);
 });
