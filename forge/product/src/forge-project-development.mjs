@@ -130,6 +130,12 @@ export class ForgeProjectDevelopment {
     const dirty=await git('git status --porcelain=v1 --untracked-files=all');
     if(dirty)throw Error('forge_worktree_main_dirty');
     const baseHeadSha=await git('git rev-parse HEAD');
+    if(!/^[a-f0-9]{40}$/.test(baseHeadSha))throw Error('forge_worktree_head_invalid');
+    const branchName='forge/'+taskId;
+    const branchProbe=await this.run({projectId,
+      command:'git show-ref --verify --quiet refs/heads/'+branchName,timeoutMs:15000});
+    if(branchProbe.exitCode===0)throw Error('forge_worktree_branch_exists');
+    if(branchProbe.exitCode!==1)throw Error('forge_worktree_git_command_failed');
     const info=path.join(common,'info');fs.mkdirSync(info,{recursive:true});
     const exclude=path.join(info,'exclude');
     let excludeText='';
@@ -138,12 +144,6 @@ export class ForgeProjectDevelopment {
     }
     if(!excludeText.split(/\r?\n/).map(line=>line.trim()).includes('.forge-worktrees/'))
       fs.appendFileSync(exclude,(excludeText&&!excludeText.endsWith('\n')?'\n':'')+'.forge-worktrees/\n','utf8');
-    if(!/^[a-f0-9]{40}$/.test(baseHeadSha))throw Error('forge_worktree_head_invalid');
-    const branchName='forge/'+taskId;
-    const branchProbe=await this.run({projectId,
-      command:'git show-ref --verify --quiet refs/heads/'+branchName,timeoutMs:15000});
-    if(branchProbe.exitCode===0)throw Error('forge_worktree_branch_exists');
-    if(branchProbe.exitCode!==1)throw Error('forge_worktree_git_command_failed');
     const relative='.forge-worktrees/'+taskId;
     let physicalCreated=false;
     try {
