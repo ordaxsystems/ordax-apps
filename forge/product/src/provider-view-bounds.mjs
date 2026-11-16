@@ -13,3 +13,11 @@ export function normalizeProviderViewBounds(rect,{contentWidth,contentHeight,zoo
   if(right-left<200||bottom-top<160)return null;
   return {x:left,y:top,width:right-left,height:bottom-top};
 }
+
+/** Hidden/minimized Forge windows cannot host a hit-testable ChatGPT view.
+ * Keep the primary lane in the existing native host during background work.
+ */
+export function providerAppPanelUsable({chatVisible=false,bounds=null,windowVisible=false,windowMinimized=false}={}) {
+  return Boolean(chatVisible && windowVisible && !windowMinimized &&
+    bounds && bounds.width>=320 && bounds.height>=250);
+}

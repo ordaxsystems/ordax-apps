@@ -600,7 +600,7 @@ export class EmbeddedChatWorker {
 
   // Stage one real, selected ChatGPT app token before beginning the SQLite Run.
   // The provider app picker, not a textual @ mention, supplies the connection.
-  async prepareMcpPrompt({prompt,chatUrl=null,newSession=false,mcpApp='forge-mcp'}={}) {
+  async prepareMcpPrompt({prompt,chatUrl=null,newSession=false,mcpApp='forge-mcp',ensureRunPresentation=null}={}) {
     return this.enqueue(async()=>{
       if(this.preparedMcpPrompt)throw Error('provider_mcp_preparation_already_pending');
       const spec=providerMcpAppSpec(mcpApp);
@@ -647,6 +647,10 @@ export class EmbeddedChatWorker {
         // from a DOM element that exists but is still outside the viewport.
         let trigger=null;
         for(let attempt=0;attempt<25;attempt++){
+          // The app owns the physical WebContentsView: ask it to restore the
+          // executing lane's viewport after navigation before hit-testing.
+          // Never synthesize a click or accept a 1x1 offscreen control.
+          if(typeof ensureRunPresentation==='function')ensureRunPresentation();
           trigger=await wc.executeJavaScript(triggerExpression).catch(()=>null);
           if(trigger?.selectable===true)break;
           if(attempt<24)await sleep(120);
