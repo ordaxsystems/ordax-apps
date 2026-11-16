@@ -664,12 +664,13 @@ export class EmbeddedChatWorker {
         if(!trigger.open)await nativeClick(trigger);
         const choiceExpression='(()=>{const inspect='+inspectProviderMcpPickerOption.toString()+
           ';return inspect(document,'+JSON.stringify(spec)+')})()';
-        let clicked=false;
+        let clicked=false,lastChoice=null;
         selected=null;
         for(let i=0;i<24;i++){
           selected=await this.inspectMcpSelectionReadOnly({allowDuringRun:true,app:mcpApp});
           if(selected.selectionObserved===true)break;
           const choice=await wc.executeJavaScript(choiceExpression).catch(()=>null);
+          lastChoice=choice;
           if(choice?.optionCount>1)throw Error('provider_mcp_picker_ambiguous');
           if(!clicked&&choice?.selectable===true&&choice.optionCount===1){
             // The provider's real app menu is the authority, not the app name
@@ -679,7 +680,14 @@ export class EmbeddedChatWorker {
           }
           await sleep(150);
         }
-        if(selected?.selectionObserved!==true)throw Error('provider_mcp_selection_required');
+        if(selected?.selectionObserved!==true){
+          const finalTrigger=await wc.executeJavaScript(triggerExpression).catch(()=>null);
+          if(finalTrigger?.open!==true)throw Error('provider_mcp_picker_did_not_open');
+          if(lastChoice?.optionCount===0)throw Error('provider_mcp_app_unavailable');
+          if(lastChoice?.optionCount===1&&lastChoice?.selectable!==true)
+            throw Error('provider_mcp_option_unhittable');
+          throw Error('provider_mcp_selection_required');
+        }
       }
       if(!await wc.executeJavaScript(focusExpression).catch(()=>false))
         throw Error('composer_focus_not_observed');

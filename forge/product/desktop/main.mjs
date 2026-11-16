@@ -266,6 +266,8 @@ const MIME_EXT = new Map([
 ]);
 
 let win;
+let providerHostWindow=null;
+const providerViewParents=new Map();
 let worker; // Primary provider view exposed in the human UI.
 let providerWorkers=[];
 const providerWorkerCount=(()=>{
@@ -740,34 +742,49 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   }
 }
 
+function attachProviderView(candidate,targetWindow) {
+  if(!candidate?.view||!targetWindow||targetWindow.isDestroyed?.())return false;
+  const current=providerViewParents.get(candidate);
+  if(current===targetWindow)return true;
+  if(current&&!current.isDestroyed?.()){
+    try{current.contentView.removeChildView(candidate.view);}catch{}
+  }
+  targetWindow.contentView.addChildView(candidate.view);
+  providerViewParents.set(candidate,targetWindow);
+  return true;
+}
+
 function layoutViews() {
-  if (!win || !worker) return;
+  if (!win || !worker || !providerHostWindow || providerHostWindow.isDestroyed()) return;
   const [width,height]=win.getContentSize();
   const bounds=providerViewBounds?normalizeProviderViewBounds(providerViewBounds,{
     contentWidth:width,contentHeight:height,zoomFactor:win.webContents.getZoomFactor()
   }):null;
   const panelUsable=Boolean(chatVisible&&bounds&&bounds.width>=320&&bounds.height>=250);
-  const offscreenWidth=Math.max(900,width);
-  const offscreenHeight=Math.max(700,height);
-  providerWorkers.forEach((candidate,index)=>{
+  const [hostWidth,hostHeight]=providerHostWindow.getContentSize();
+  const workerWidth=Math.max(900,hostWidth);
+  const workerHeight=Math.max(700,hostHeight);
+  providerWorkers.forEach(candidate=>{
     if(!candidate?.view||candidate.view.webContents.isDestroyed?.())return;
     const isPrimary=candidate===worker;
     const executing=providerRunPresentationWorkers.has(candidate)||
       Boolean(providerViews.runForWorker(candidate));
     if(isPrimary&&panelUsable){
+      attachProviderView(candidate,win);
       candidate.view.setBounds(bounds);
       candidate.view.setVisible(true);
       return;
     }
+    // Provider automation must have a real viewport even when the Forge App
+    // window is closed/hidden. A dedicated hidden native host keeps each
+    // WebContentsView in-bounds without painting over or focusing user UI.
+    attachProviderView(candidate,providerHostWindow);
     if(executing){
-      candidate.view.setBounds({
-        x:Math.max(1,width)+64+(index*8),y:0,
-        width:offscreenWidth,height:offscreenHeight
-      });
+      candidate.view.setBounds({x:0,y:0,width:workerWidth,height:workerHeight});
       candidate.view.setVisible(true);
       return;
     }
-    candidate.view.setBounds({x:Math.max(1,width)+64+(index*8),y:0,width:1,height:1});
+    candidate.view.setBounds({x:0,y:0,width:1,height:1});
     candidate.view.setVisible(false);
   });
   interactiveHtmlPreview?.relayout();
@@ -804,6 +821,14 @@ async function createWindowOnce() {
       nodeIntegration: false
     }
   });
+  providerHostWindow=new BrowserWindow({
+    width:1000,height:760,show:false,focusable:false,skipTaskbar:true,
+    frame:false,autoHideMenuBar:true,backgroundColor:'#0b0e13',
+    webPreferences:{backgroundThrottling:false,contextIsolation:true,sandbox:true,nodeIntegration:false}
+  });
+  providerHostWindow.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+  providerHostWindow.webContents.on('will-navigate',event=>event.preventDefault());
+  await providerHostWindow.loadURL('about:blank');
 
   // HTML previews are child frames of this privileged first-party renderer.
   // Even a scriptless sandbox may contain clickable external links. Deny
@@ -862,16 +887,20 @@ async function createWindowOnce() {
         runStartedAt:routed.startedAt,workerId:registeredWorker.id
       });
     });
-    // Native WebContentsView defaults to visible. Attach every lane once; the
-    // layout function keeps idle auxiliary views hidden and active ones
-    // off-canvas with a real viewport.
-    win.contentView.addChildView(registeredWorker.view);
+    // Provider lanes live in one hidden native host by default. The primary
+    // lane is re-parented into the App only while the user opens the Chat view.
+    attachProviderView(registeredWorker,providerHostWindow);
   }
   hostStartupLog('provider_worker_pool_constructed_'+String(providerWorkers.length));
   hostStartupLog('provider_views_attached');
   layoutViews();
   win.on('resize', layoutViews);
-  win.on('closed',()=>{interactiveHtmlPreview?.close();interactiveHtmlPreview=null;});
+  win.on('closed',()=>{
+    interactiveHtmlPreview?.close();interactiveHtmlPreview=null;
+    providerViewParents.clear();
+    if(providerHostWindow&&!providerHostWindow.isDestroyed())providerHostWindow.destroy();
+    providerHostWindow=null;
+  });
   win.on('maximize', layoutViews);
   win.on('unmaximize', layoutViews);
   // The user can close Electron while a provider request was accepted but

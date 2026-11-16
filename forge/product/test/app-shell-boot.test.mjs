@@ -13,12 +13,13 @@ const createWindow=main.slice(
 );
 
 test('App renderer never starts beneath a visible embedded provider view',()=>{
-  const attach=createWindow.indexOf('win.contentView.addChildView(registeredWorker.view)');
+  const attach=createWindow.indexOf('attachProviderView(registeredWorker,providerHostWindow)');
   const firstLayout=createWindow.indexOf('layoutViews();',attach);
   const loadApp=createWindow.indexOf("await win.loadFile(path.join(here, 'ui.html'))");
   const loadProvider=createWindow.indexOf('providerWorkers.forEach((candidate,index)=>');
   assert.ok(attach>=0 && firstLayout>attach && loadApp>firstLayout &&
-    loadProvider>loadApp,'attach all lanes and load the App before provider navigation');
+    loadProvider>loadApp,'attach all lanes to the hidden provider host and load the App before provider navigation');
+  assert.match(createWindow,/providerHostWindow=new BrowserWindow\(\{[\s\S]*?show:false[\s\S]*?focusable:false[\s\S]*?skipTaskbar:true/);
   assert.match(createWindow,/void candidate\.load\('https:\/\/chatgpt\.com\/'\)\.catch/);
   assert.doesNotMatch(createWindow,/await candidate\.load\('https:\/\/chatgpt\.com\/'\)/,
     'a provider timeout must not reject the App startup promise');
@@ -67,6 +68,9 @@ test('concurrent startup, activation and second-instance events share one window
   assert.match(createWindowEntry,/if\(win&&!win\.isDestroyed\(\)\)return win/);
   assert.match(createWindowEntry,/Promise\.resolve\(\)\.then\(createWindowOnce\)/);
   assert.match(createWindowEntry,/finally\{if\(windowCreationPromise===creation\)windowCreationPromise=null;\}/);
-  assert.equal((main.match(/new BrowserWindow\(/g)||[]).length,1,
-    'only the single-flight creation path may construct the Lab window');
+  assert.equal((main.match(/new BrowserWindow\(/g)||[]).length,2,
+    'the single-flight path owns exactly one App window plus one hidden provider host');
+  assert.match(createWindow,/providerHostWindow=new BrowserWindow\(\{/);
+  assert.doesNotMatch(main,/new BrowserWindow\([\s\S]*?providerHostWindow=new BrowserWindow\([\s\S]*?providerHostWindow=new BrowserWindow\(/,
+    'provider host construction must not be duplicated outside the single-flight window path');
 });

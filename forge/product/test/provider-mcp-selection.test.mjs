@@ -211,7 +211,10 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   assert.match(main,/providerRunPresentationWorkers\.add\(runWorker\)/);
   assert.match(main,/providerRunPresentationWorkers\.delete\(runWorker\)/);
   assert.match(main,/candidate\.view\.setVisible\(true\)/);
-  assert.match(main,/width:offscreenWidth,height:offscreenHeight/);
+  assert.match(main,/providerHostWindow=new BrowserWindow\(\{/);
+  assert.match(main,/show:false,focusable:false,skipTaskbar:true/);
+  assert.match(main,/attachProviderView\(candidate,providerHostWindow\)/);
+  assert.match(main,/width:workerWidth,height:workerHeight/);
   assert.ok(main.indexOf('providerRunPresentationWorkers.add(runWorker);')<
     main.indexOf('health=await runWorker.health();'),
     'the selected lane must get a usable viewport before health observation');
@@ -238,6 +241,9 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   assert.match(worker,/for\(let attempt=0;attempt<25;attempt\+\+\)/);
   assert.match(worker,/if\(trigger\?\.selectable===true\)break/);
   assert.match(worker,/if\(!trigger\?\.selectable\)throw Error\('provider_mcp_picker_unavailable'\)/);
+  assert.match(worker,/provider_mcp_picker_did_not_open/);
+  assert.match(worker,/provider_mcp_app_unavailable/);
+  assert.match(worker,/provider_mcp_option_unhittable/);
   assert.match(worker,/inspectProviderMcpPickerOption\.toString\(\)/);
   assert.doesNotMatch(worker,/Input\.insertText',\{text:'@'\}/);
   assert.match(worker,/provider_mcp_prepared_prompt_unverified/);
