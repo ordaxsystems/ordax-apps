@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {openProjectMemory,memoryFile,REPO ,nextAutonomousCheckpoint} from '../project-memory.mjs';
+import {openProjectMemory,memoryFile,REPO,nextAutonomousCheckpoint,coordinatorAutoAlerts} from '../project-memory.mjs';
 
 test('uma única memória independente de conversas, com fatos versionados',()=>{
   const dir=mkdtempSync(path.join(os.tmpdir(),'forge-git-memory-'));
@@ -193,5 +193,54 @@ test('novo aviso do mesmo agente substitui o antigo sem reconhecimento indevido'
   assert.equal(current.length,1);
   assert.equal(current[0].kind,'github_revision');
   assert.equal(current[0].sha,'c'.repeat(40));
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
+test('Forjador automático recebe só turno concluído de missão contínua autorizada',()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'forge-git-auto-forjador-'));
+ try{
+  const mem=openProjectMemory(dir);
+  const first='a'.repeat(40),latest='b'.repeat(40);
+  mem.patch('agent-1',{status:'idle',autoContinue:false,lastHead:latest,turnStartHead:first});
+  mem.patch('agent-2',{status:'running',autoContinue:true,lastHead:latest,turnStartHead:first});
+  mem.event({kind:'github_revision',agent:'agent-1',sha:latest,detail:'Manual',forCoordinator:true});
+  mem.event({kind:'github_revision',agent:'agent-2',sha:latest,detail:'Auto',forCoordinator:true});
+  assert.equal(coordinatorAutoAlerts(mem.snapshot()).length,0);
+  mem.patch('agent-2',{status:'idle'});
+  const eligible=coordinatorAutoAlerts(mem.snapshot());
+  assert.equal(eligible.length,1);
+  assert.equal(eligible[0].agent,'agent-2');
+  assert.equal(eligible[0].sha,latest);
+  const claimed=mem.reserveCoordinatorAuto(eligible);
+  assert.equal(claimed.length,1);
+  const restarted=openProjectMemory(dir);
+  assert.equal(coordinatorAutoAlerts(restarted.snapshot()).length,0);
+  assert.equal(restarted.snapshot().inbox.find(e=>e.agent==='agent-2').delivered,false);
+  assert.equal(restarted.snapshot().inbox.find(e=>e.agent==='agent-2').autoNotified,true);
+  assert.deepEqual(restarted.reserveCoordinatorAuto(eligible),[]);
+  // An uncertain GPT send remains visible; it must not retry automatically.
+  const stillUnread=restarted.snapshot().inbox.filter(e=>!e.delivered);
+  assert.equal(stillUnread.length,2);
+  restarted.acknowledge(claimed);
+  assert.equal(openProjectMemory(dir).snapshot().inbox.find(e=>e.agent==='agent-2').delivered,true);
+  assert.equal(openProjectMemory(dir).snapshot().inbox.find(e=>e.agent==='agent-1').delivered,false);
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
+test('finalização autorizada notifica uma vez, mas não repete avisos anteriores',()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'forge-git-auto-finish-'));
+ try{
+  const mem=openProjectMemory(dir);
+  mem.patch('agent-1',{status:'idle',autoContinue:false});
+  mem.event({kind:'autonomous_mission_finished',agent:'agent-1',
+    detail:'PR remota confirmada',forCoordinator:true});
+  const eligible=coordinatorAutoAlerts(mem.snapshot());
+  assert.equal(eligible.length,1);
+  mem.reserveCoordinatorAuto(eligible);
+  assert.equal(coordinatorAutoAlerts(openProjectMemory(dir).snapshot()).length,0);
+  assert.equal(mem.snapshot().inbox[0].delivered,false);
+  // A new confirmed completion replaces the prior pending notice and can notify again.
+  mem.event({kind:'autonomous_limit_reached',agent:'agent-1',
+    detail:'Novo resultado confirmado',forCoordinator:true});
+  assert.equal(coordinatorAutoAlerts(mem.snapshot()).length,1);
+  assert.equal(coordinatorAutoAlerts(mem.snapshot())[0].kind,'autonomous_limit_reached');
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
