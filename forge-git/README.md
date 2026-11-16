@@ -6,6 +6,8 @@ GPT Web desenvolve no GitHub remoto; o aplicativo mantém estado, abas e continu
 
 **Missão contínua:** o app observa commits reais, abre uma conversa nova com branch, HEAD confirmado e objetivo resumido, e continua sem repetir alterações. Para ao detectar PR, após seis ciclos ou ao pausar. Se a resposta terminar antes da escrita GitHub, aguarda por cinco minutos antes de sinalizar bloqueio.
 
+**Limite automático:** os seis ciclos contam turnos de trabalho com ao menos um commit confirmado, não cada commit individual. Vários commits feitos pelo GPT no mesmo turno usam um único checkpoint.
+
 **Conversa restaurada:** o aplicativo salva o endereço canônico do chat durante a navegação e reabre a conversa salva após reiniciar. Para uma missão interrompida, nunca usa a página inicial ou outro chat como prova de que o GPT terminou. Se o login expirar, fica bloqueado até uma sessão válida ser observada.
 
 **Reinício seguro:** o app só consome um checkpoint de continuação quando registra o novo turno. Antes disso, a tarefa permanece pendente; depois, um reinício reconcilia a execução anterior e não reenvia o mesmo prompt automaticamente.

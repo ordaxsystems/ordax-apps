@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {openProjectMemory,memoryFile,REPO} from '../project-memory.mjs';
+import {openProjectMemory,memoryFile,REPO ,nextAutonomousCheckpoint} from '../project-memory.mjs';
 
 test('uma única memória independente de conversas, com fatos versionados',()=>{
   const dir=mkdtempSync(path.join(os.tmpdir(),'forge-git-memory-'));
@@ -133,4 +133,31 @@ test('o começo do turno guarda HEAD antes da execução e suporta recuperação
     assert.notEqual(resumed.lastHead,resumed.turnStartHead);
     assert.equal(resumed.status,'awaiting-provider');
   }finally{rmSync(dir,{recursive:true,force:true});}
+});
+test('vários commits na mesma conversa consomem apenas um ciclo',()=>{
+  const dir=mkdtempSync(path.join(os.tmpdir(),'forge-git-rounds-'));
+  try{
+    const store=openProjectMemory(dir);
+    store.patch('agent-2',{autoContinue:true,autoPending:false,autoRounds:0,
+      lastHead:'a'.repeat(40)});
+    const first=nextAutonomousCheckpoint(store.agent('agent-2'),{limit:6});
+    assert.deepEqual(first,{autoContinue:true,autoPending:true,autoRounds:1});
+    store.patch('agent-2',first);
+    for(let i=0;i<5;i++){
+      store.patch('agent-2',{lastHead:String(i+1).repeat(40)});
+      assert.equal(nextAutonomousCheckpoint(store.agent('agent-2'),{limit:6}),null);
+    }
+    assert.equal(openProjectMemory(dir).agent('agent-2').autoRounds,1);
+    store.beginTurn('agent-2','Continue a missão.',{continuation:true,newSession:true});
+    const second=nextAutonomousCheckpoint(store.agent('agent-2'),{limit:6});
+    assert.deepEqual(second,{autoContinue:true,autoPending:true,autoRounds:2});
+    store.patch('agent-2',second);
+    assert.equal(nextAutonomousCheckpoint(store.agent('agent-2'),{limit:6}),null);
+  }finally{rmSync(dir,{recursive:true,force:true});}
+});
+test('limite de seis ciclos não depende do número de commits',()=>{
+ const last=nextAutonomousCheckpoint({autoContinue:true,autoPending:false,autoRounds:5},{limit:6});
+ assert.deepEqual(last,{autoRounds:6,autoContinue:false,autoPending:false});
+ assert.equal(nextAutonomousCheckpoint(last,{limit:6}),null);
+ assert.equal(nextAutonomousCheckpoint({autoContinue:false,autoPending:false,autoRounds:2}),null);
 });
