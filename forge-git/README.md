@@ -18,14 +18,14 @@ Ou execute `node --test forge-git/test/*.test.mjs` na raiz do repositório para 
 
 1. No Windows de desenvolvimento OrdaX, o Forge Git conecta automaticamente ao `gh` já autenticado como `ordaxos-admin`. Ele confirma permissão de escrita em `ordaxsystems/ordax-apps` antes de habilitar as tarefas. Para outro computador, é possível usar um token fine-grained restrito aos repositórios OrdaX desejados com **Contents** e **Pull requests** em leitura/escrita. O token fica somente na memória do processo, nunca no ChatGPT ou no disco pelo aplicativo.
 2. Fazer login no ChatGPT Web na área à direita, com a conta desejada.
-3. Escolher um repositório da organização `ordaxsystems` (padrão `ordaxsystems/ordax-apps`), um caminho específico (existente ou novo) e uma tarefa pequena.
+3. Escolher um repositório da organização `ordaxsystems` ou o sandbox `ordaxos-admin/TESTES-FORGE-GIT` (padrão neste ambiente de teste), um caminho específico (existente ou novo) e uma tarefa pequena.
 4. Clicar **Executar no GPT Web**. O GPT recebe o texto completo do arquivo e devolve uma proposta JSON, que é validada antes de qualquer escrita.
 5. Conferir a resposta visível do ChatGPT, clicar **Criar branch, commit e PR** e abrir a Pull Request criada.
 
 ## Limites explícitos deste MVP
 
 - Edição de **um arquivo por execução**; arquivo original até 48 KB e resultado até 80 KB.
-- Não depende de MCP, não usa API de modelos e não clona repositórios locais. O acesso remoto ao GitHub é restrito a `ordaxsystems` e é verificado novamente no momento de publicar.
+- Não depende de MCP, não usa API de modelos e não clona repositórios locais. O acesso remoto ao GitHub é restrito a `ordaxsystems` e ao sandbox exato `ordaxos-admin/TESTES-FORGE-GIT` e é verificado novamente no momento de publicar.
 - O navegador do ChatGPT precisa estar autenticado e disponível; qualquer falha de sessão, resposta ou transporte bloqueia o commit. Nunca reenvia uma chamada incerta automaticamente.
 - Não é agente autônomo 24h ainda: não há fila de missões, retentativas automáticas ou execução com a janela fechada.
 - Não faz merge, deploy nem execução arbitrária de código. CI do repositório continua no GitHub.
