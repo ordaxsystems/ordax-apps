@@ -14,6 +14,8 @@ GPT Web desenvolve no GitHub remoto; o aplicativo mantém estado, abas e continu
 
 **Sessão GPT Web:** a aba só fica pronta quando o editor e a sessão estão observados. Login ausente, autenticação em andamento e indisponibilidade aparecem no painel; o app não envia uma tarefa por presumir que a página carregou.
 
+**Forjador:** os avisos são enviados em resumo curto. Só os avisos efetivamente apresentados e com resposta confirmada são reconhecidos; avisos novos permanecem pendentes. O Forge MCP original não atualiza esta memória do Forge Git.
+
 **Memória:** persistida no `userData` em `forge-git-project.json`, atualizada pelo próprio aplicativo com revisões GitHub; o Forjador pode consultar avisos. O Forge MCP existente ainda não grava nessa memória diretamente.
 
 **Escopo de testes:** apenas `ordaxos-admin/TESTES-FORGE-GIT`, branches dos agentes, sem merge automático. Para iniciar: `OrdaX Forge Git (DEV)` no Windows.

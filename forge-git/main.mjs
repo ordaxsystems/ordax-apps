@@ -402,10 +402,17 @@ function events(){
     const inbox=store.snapshot().inbox;
     const unread=inbox.filter(e=>!e.delivered);
     if(!unread.length)return {message:'Nenhuma atualização pendente.'};
-    const acknowledgedThrough=inbox.length;
-    const message='Atualize o estado do projeto conferindo o GitHub. '+store.context();
+    // Only the latest per-agent alerts survive inbox compaction.
+    // The Forge MCP plugin is for the original Forge, not this GitHub app.
+    const summary=unread.map(item=>item.agent+': '+item.kind+
+      (item.sha?' @'+item.sha.slice(0,12):'')).join('; ');
+    const message='Revise os avisos confirmados do Forge Git: '+summary+
+      '. O estado já está registrado no Forge Git; não altere a memória do Forge local.';
     const result=await send({agentId:'forjador',text:message});
-    store.acknowledge(acknowledgedThrough);
+    if(result?.verified!==true){
+      return {message:'Resposta do Forjador não confirmada. Avisos permanecem pendentes.'};
+    }
+    store.acknowledge(unread);
     return result;
   });
   guarded('fg:open-url',async url=>{
