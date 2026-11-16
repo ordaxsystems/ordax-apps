@@ -1822,8 +1822,9 @@ function attachDefaultWorkspaceToProjectCreation(operation,output,{exposePath=fa
 const forgeRemoteMcp=createOrchestratorMcp({
   service:orchestratorService,getContext:()=>localOrchestratorContext,
   version:app.getVersion(),allowedOperations:FORGE_APP_MCP_OPERATIONS,
-  afterToolInvoke:({operation,output})=>{
-    try{observeMcpFileWrite({store,operation,output,ingress:'remote_gateway'});}catch{}
+  afterToolInvoke:({operation,output,transportReceipt})=>{
+    try{observeMcpFileWrite({store,operation,output,ingress:'remote_gateway',
+      transportReceipt});}catch{}
     return attachDefaultWorkspaceToProjectCreation(operation,output);
   },
   authorizeFileRead:requestedProjectId=>{
@@ -1843,19 +1844,20 @@ const forgeRemoteMcpReady=(async()=>{
   await forgeRemoteMcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
   return true;
 })();
-async function invokeForgeRemoteMcp(method,params={}){
+async function invokeForgeRemoteMcp(method,params={},transportReceipt=null){
   await forgeRemoteMcpReady;
   if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_mcp_app_untrusted');
   const response=await forgeRemoteMcp.handle({
     jsonrpc:'2.0',id:++forgeRemoteMcpSeq,method,params
-  });
+  },transportReceipt);
   if(!response||response.error)throw Error('forge_remote_local_mcp_error');
   return response;
 }
 const forgeRemoteGateway=new ForgeRemoteGatewayClient({
   store,session:forgeProductSession,appVersion:app.getVersion(),
   catalogProvider:async()=>(await invokeForgeRemoteMcp('tools/list',{})).result.tools,
-  toolInvoker:(name,args)=>invokeForgeRemoteMcp('tools/call',{name,arguments:args}),
+  toolInvoker:(name,args,gatewayStarted)=>invokeForgeRemoteMcp(
+    'tools/call',{name,arguments:args},gatewayStarted),
   bindOwnerIdentity:value=>forgeMcpTrusted.bindRemoteOwnerIdentity(value)
 });
 const forgeMcpResume=new ForgeMcpSecureResume({store,ownerTrust:forgeMcpTrusted,

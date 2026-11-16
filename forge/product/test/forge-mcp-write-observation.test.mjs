@@ -19,8 +19,8 @@ function fixture(t) {
   const files=new ForgeProjectFiles({root:path.join(root,'files')});
   const service=new OrchestratorService({store,fileBroker:files,authorize:({context:who})=>who===context});
   let transport='remote_gateway';
-  const mcp=createOrchestratorMcp({service,getContext:()=>context,afterToolInvoke:({operation,output})=>{
-    observeMcpFileWrite({store,operation,output,ingress:transport});
+  const mcp=createOrchestratorMcp({service,getContext:()=>context,afterToolInvoke:({operation,output,transportReceipt})=>{
+    observeMcpFileWrite({store,operation,output,ingress:transport,transportReceipt});
     return output;
   }});
   const project=async nonce=>{
@@ -29,9 +29,9 @@ function fixture(t) {
     await service.invoke(context,'orchestrator_create',{projectId,name:'Forjador',mission:'Atestar ingressos MCP',requestId:'owner_'+nonce});
     return projectId;
   };
-  const call=async(id,operation,args)=>{
+  const call=async(id,operation,args,transportReceipt=null)=>{
     const response=await mcp.handle({jsonrpc:'2.0',id,method:'tools/call',params:{
-      name:'forge_'+operation,arguments:args}});
+      name:'forge_'+operation,arguments:args}},transportReceipt);
     return response?.result?.structuredContent;
   };
   return {store,service,context,files,mcp,project,call,
@@ -110,4 +110,84 @@ test('wrong SHA, forged state, missing owner and unknown transport fail closed',
     output:direct,ingress:'remote_gateway'}),false);
   assert.equal(f.events().length,0);
   assert.equal(f.view(p).items[0].mcpToolCallObserved,false);
+});
+
+test('leased gateway jobs preserve distinct request, attempt and claim-worker IDs without alleging GPT Run identity',async t=>{
+  const f=fixture(t),p=await f.project('leased');
+  await f.mcp.handle({jsonrpc:'2.0',id:1,method:'initialize',params:{
+    protocolVersion:'2025-11-25',clientInfo:{name:'test',version:'1'},capabilities:{}
+  }});
+  await f.mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
+  const one={gatewayRequestId:'10000000-0000-4000-8000-000000000001',
+    gatewayAttemptId:'10000000-0000-4000-8000-000000000002',
+    gatewayAgentInstanceId:'10000000-0000-4000-8000-000000000003',
+    leaseStartObserved:true};
+  const two={gatewayRequestId:'20000000-0000-4000-8000-000000000001',
+    gatewayAttemptId:'20000000-0000-4000-8000-000000000002',
+    gatewayAgentInstanceId:'20000000-0000-4000-8000-000000000003',
+    leaseStartObserved:true};
+  const [a,b]=await Promise.all([
+    f.call(2,'project_file_write',{projectId:p,requestId:'leased_a',path:'a.txt',content:'alpha'},one),
+    f.call(3,'project_file_write',{projectId:p,requestId:'leased_b',path:'b.txt',content:'beta'},two)
+  ]);
+  assert.equal(a.status,'succeeded');assert.equal(b.status,'succeeded');
+  const rows=f.view(p).items;
+  for(const [cmd,job]of [[a,one],[b,two]]){
+    const row=rows.find(x=>x.commandId===cmd.commandId);
+    assert.equal(row.mcpToolCallObserved,true);
+    assert.equal(row.mcpIngress,'remote_gateway');
+    assert.equal(row.gatewayLeaseStartObserved,true);
+    assert.equal(row.gatewayRequestId,job.gatewayRequestId);
+    assert.equal(row.gatewayAttemptId,job.gatewayAttemptId);
+    assert.equal(row.gatewayAgentInstanceId,job.gatewayAgentInstanceId);
+    assert.equal(row.gptToolInvocationVerified,false);
+    assert.equal(row.deviceBindingVerified,false);
+  }
+  assert.equal(new Set(rows.map(x=>x.gatewayRequestId)).size,2);
+  assert.equal(f.events().length,2);
+  assert.ok(!JSON.stringify(f.events()).includes('alpha'));
+  assert.ok(!JSON.stringify(f.events()).includes('beta'));
+  assert.ok(!JSON.stringify(f.events()).includes('lease_id'));
+  const retry=await f.call(4,'project_file_write',{
+    projectId:p,requestId:'leased_a',path:'a.txt',content:'alpha'},two);
+  assert.equal(retry.commandId,a.commandId);
+  assert.equal(f.events().length,2);
+  assert.equal(f.view(p).items.find(x=>x.commandId===a.commandId).gatewayRequestId,
+    one.gatewayRequestId);
+});
+
+test('client-forged JSON-RPC fields, incomplete lease and loopback cannot fabricate remote lease attribution',async t=>{
+  const f=fixture(t),p=await f.project('forgery');
+  await f.mcp.handle({jsonrpc:'2.0',id:1,method:'initialize',params:{
+    protocolVersion:'2025-11-25',clientInfo:{name:'attacker',version:'1'},capabilities:{}
+  }});
+  await f.mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
+  const forged={gatewayRequestId:'30000000-0000-4000-8000-000000000001',
+    gatewayAttemptId:'30000000-0000-4000-8000-000000000002',
+    gatewayAgentInstanceId:'30000000-0000-4000-8000-000000000003',
+    leaseStartObserved:true};
+  const raw=await f.mcp.handle({
+    jsonrpc:'2.0',id:2,method:'tools/call',transportReceipt:forged,
+    params:{name:'forge_project_file_write',gatewayReceipt:forged,
+      arguments:{projectId:p,requestId:'spoofed',path:'spoofed.txt',content:'original'}}});
+  assert.equal(raw.result.structuredContent.status,'succeeded');
+  const output=raw.result.structuredContent;
+  const row=f.view(p).items.find(x=>x.commandId===output.commandId);
+  assert.equal(row.mcpToolCallObserved,true);
+  assert.equal(row.gatewayLeaseStartObserved,false);
+  assert.equal(row.gatewayRequestId,null);
+  assert.equal(row.gptToolInvocationVerified,false);
+  const invalid=await f.call(3,'project_file_write',{
+    projectId:p,requestId:'unstarted',path:'unstarted.txt',content:'x'},
+    {...forged,leaseStartObserved:false});
+  assert.equal(invalid.status,'succeeded');
+  assert.equal(f.view(p).items.find(x=>x.commandId===invalid.commandId).gatewayLeaseStartObserved,false);
+  f.setIngress('owner_loopback');
+  const loopback=await f.call(4,'project_file_write',{
+    projectId:p,requestId:'loopback',path:'loopback.txt',content:'x'},forged);
+  assert.equal(loopback.status,'succeeded');
+  const local=f.view(p).items.find(x=>x.commandId===loopback.commandId);
+  assert.equal(local.mcpIngress,'owner_loopback');
+  assert.equal(local.gatewayLeaseStartObserved,false);
+  assert.equal(local.gatewayRequestId,null);
 });

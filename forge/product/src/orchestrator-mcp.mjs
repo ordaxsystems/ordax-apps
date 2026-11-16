@@ -40,7 +40,7 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
   const error=(id,code,message)=>({jsonrpc:'2.0',id,error:{code,message}});
   const result=(id,value)=>({jsonrpc:'2.0',id,result:value});
   return Object.freeze({
-    async handle(message) {
+    async handle(message,transportReceipt=null) {
       if(!message || Array.isArray(message)||message.jsonrpc!=='2.0'||
         typeof message.method!=='string'||
         (Object.hasOwn(message,'id')&&!(typeof message.id==='string'||Number.isSafeInteger(message.id))))
@@ -131,7 +131,9 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
               throw Error('forge_mcp_file_workspace_not_authorized');
             const invoked=await service.invoke(context,tool.operation,args);
             const output=afterToolInvoke
-              ?await afterToolInvoke({operation:tool.operation,args,output:invoked})
+              ?await afterToolInvoke({operation:tool.operation,args,output:invoked,
+                // A private host argument, not JSON-RPC params or clientInfo.
+                transportReceipt})
               :invoked;
             if(output?.image?.mimeType==='image/jpeg'&&typeof output.image.data==='string'){
               const {data,mimeType,...imageMetadata}=output.image;
