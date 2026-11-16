@@ -73,6 +73,8 @@ export class OrchestratorService {
     if(!store?.db || typeof authorize!=='function')throw Error('orchestrator_ports_required');
     this.store=store; this.db=store.db; this.authorize=authorize;
     this.provider=provider;
+    // Optional native Forge MCP projection of the separately owned Forge Git checkpoint.
+    this.forgeGitMemoryPort=null;
     // Native renderer proof is an optional App-owned read-only port. It is
     // never used as project authorization or as evidence of publication.
     this.viewPort=null;
@@ -489,6 +491,13 @@ export class OrchestratorService {
       }
     }
     this.requireAccess(context,operation,input.projectId||null);
+    if(operation==='forge_git_memory'){
+      if(typeof this.forgeGitMemoryPort?.read!=='function')
+        throw Error('forge_git_memory_unavailable');
+      const view=await this.forgeGitMemoryPort.read();
+      this.requireAccess(context,operation);
+      return view;
+    }
     if(operation==='app_ui_inspect'){
       if(typeof this.viewPort?.ui!=='function')throw Error('forge_app_ui_unavailable');
       const result=await this.viewPort.ui(operation,input);

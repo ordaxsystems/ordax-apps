@@ -25,6 +25,7 @@ import {ForgeProjectFiles} from '../src/forge-project-files.mjs';
 import {ForgeLocalWorkspaces,resolveForgeWorkspaceDocumentsDirectory} from '../src/forge-local-workspaces.mjs';
 import {forgeFreshConversationContext} from '../src/forge-fresh-conversation-context.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
+import {readForgeGitMemory} from '../src/forge-git-memory-view.mjs';
 import {createForgeLoopbackMcp,FORGE_APP_MCP_SCOPE,FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
 import {ForgeProjectDevelopment} from '../src/forge-project-development.mjs';
 import {createForgeProductSession} from '../src/forge-product-session.mjs';
@@ -1541,6 +1542,10 @@ const orchestratorKernel=createOrchestratorKernel({
 });
 localOrchestratorContext=orchestratorKernel.context;
 const {service:orchestratorService,mcp:localOrchestratorMcp}=orchestratorKernel;
+// Read the exact Forge Git checkpoint; no second store or external writes.
+orchestratorService.forgeGitMemoryPort=Object.freeze({
+  read:()=>readForgeGitMemory(app.getPath('appData'))
+});
 // The sole app-shell automation port controls the ACTUAL Electron renderer.
 // Native WebContentsViews are occlusion masks, not alternate HTML clones.
 let appUiActionBusy=false;

@@ -6,6 +6,7 @@ const id = {...text(180),pattern:'^[A-Za-z0-9_-]+$'};
 const requestId = {...text(120),pattern:'^[A-Za-z0-9_-]+$'};
 const definitions = [
   ['status','Inspect local engine state and limitations.',{},[],true],
+  ['forge_git_memory','Read bounded persisted memory from the Forge Git application in the same authorized Windows profile. This is the Forge Git owner file, not Forge local project memory; no GPT send, file edit, grant or live GitHub request.',{},[],true],
   ['projects_list','List accessible Forge projects.',{},[],true],
   ['app_view_status','Inspect the real Forge window and preview state, including whether it is minimized. No screenshot, project creation or focus change.',{},[],true],
   ['app_view_capture','Capture only the Forge application renderer pixels, never the Windows desktop. Does not raise or focus the window; native overlay Views are excluded.',{},[],true],
