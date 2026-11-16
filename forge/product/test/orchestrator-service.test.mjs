@@ -1505,3 +1505,39 @@ test('work failover refuses running, interrupted and unresolved attempts while i
   assert.equal(sends,1);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
+
+
+test('work failover accepts only a latest succeeded Run with durable reconciliation evidence',async t=>{
+  const f=fixture(t,{provider:{send:async()=>{throw Error('must_not_send');}}});
+  const a=await project(f,'Failover reconciliado');
+  f.store.setChatUrl(a.w,'https://chatgpt.com/c/22222222-2222-4222-8222-222222222222');
+  const sourceRun=f.store.startRun(a.w,'worker_original');
+  f.store.finishRun(a.w,sourceRun);
+  await assert.rejects(
+    f.call('work_failover_prepare',{projectId:a.p,taskId:a.w}),
+    /failover_source_not_reconciled/
+  );
+  f.store.event(a.w,'provider.response.reconciled',{
+    run_id:'run_other',response_sha256:'a'.repeat(64)
+  });
+  await assert.rejects(
+    f.call('work_failover_prepare',{projectId:a.p,taskId:a.w}),
+    /failover_source_not_reconciled/
+  );
+  f.store.event(a.w,'provider.response.reconciled',{
+    run_id:sourceRun,response_sha256:'b'.repeat(64)
+  });
+  const result=await f.call('work_failover_prepare',{projectId:a.p,taskId:a.w});
+  assert.equal(result.status,'succeeded');
+  assert.equal(result.result.sourceRunId,sourceRun);
+  assert.equal(result.result.sourceReconciledResponse,true);
+  assert.equal(result.result.providerMessagesSent,0);
+  assert.equal(result.result.effectsReplayed,false);
+  const checkpoint=f.store.latestCheckpoint(a.w);
+  assert.equal(checkpoint.payload.source_reconciled_response,true);
+  assert.equal(checkpoint.payload.source_run_id,sourceRun);
+  assert.equal(f.store.getTask(a.w).chat_url,null);
+  const event=f.store.db.prepare("SELECT payload FROM events WHERE task_id=? AND kind='provider.failover.prepared' ORDER BY seq DESC LIMIT 1").get(a.w);
+  assert.equal(JSON.parse(event.payload).source_reconciled_response,true);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});

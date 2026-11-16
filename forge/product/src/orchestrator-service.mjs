@@ -1466,26 +1466,33 @@ export class OrchestratorService {
       if(!latest)throw Error('orchestrator_failover_source_missing');
       if(latest.status==='running')throw Error('orchestrator_failover_source_still_running');
       if(latest.status==='interrupted')throw Error('orchestrator_reconciliation_required');
-      if(latest.status!=='failed')throw Error('orchestrator_failover_source_not_failed');
+      const reconciledResponse=latest.status==='succeeded'&&Boolean(this.db.prepare(`SELECT 1 FROM events
+        WHERE task_id=? AND kind='provider.response.reconciled'
+          AND json_extract(payload,'$.run_id')=? LIMIT 1`).get(input.taskId,latest.id));
+      if(latest.status!=='failed'&&!reconciledResponse)
+        throw Error('orchestrator_failover_source_not_reconciled');
       const active=this.db.prepare(`SELECT id,sequence,chat_url FROM task_conversations
         WHERE task_id=? AND status='active' ORDER BY sequence DESC LIMIT 1`).get(input.taskId)||null;
       const generation=Number(this.db.prepare(`SELECT COUNT(*) n FROM events
         WHERE task_id=? AND kind='provider.failover.prepared'`).get(input.taskId)?.n||0)+1;
       this.store.rotateConversation(input.taskId,'orchestrator_failover');
       const checkpoint=this.store.checkpoint(input.taskId,
-        `Failover GPT preparado após falha confirmada do Run ${latest.id}; geração ${generation}.`,{
+        `Failover GPT preparado após ${reconciledResponse?'reconciliação confirmada':'falha pré-envio confirmada'} do Run ${latest.id}; geração ${generation}.`,{
           failover_generation:generation,source_run_id:latest.id,
           source_worker_id:latest.worker_id||null,source_error:latest.error||null,
+          source_reconciled_response:reconciledResponse,
           previous_conversation_id:active?.id||null,previous_conversation_sequence:active?.sequence||null,
           external_effect_replayed:false
         });
       this.store.event(input.taskId,'provider.failover.prepared',{
         generation,source_run_id:latest.id,source_status:latest.status,
+        source_reconciled_response:reconciledResponse,
         checkpoint_version:checkpoint.version,previous_conversation_id:active?.id||null,
         provider_messages_sent:0
       });
       return {taskId:input.taskId,sourceRunId:latest.id,failoverGeneration:generation,
         checkpointVersion:checkpoint.version,rotationPrepared:true,
+        sourceReconciledResponse:reconciledResponse,
         previousConversationId:active?.id||null,providerMessagesSent:0,
         effectsReplayed:false};
     }
