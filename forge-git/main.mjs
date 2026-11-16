@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -169,7 +169,6 @@ function bindActions() {
           title:'Forge Git: ' + approved.summary.slice(0, 100),
           body:'Alteração de um arquivo proposta pelo ChatGPT Web e aprovada no Forge Git.\n\n' +
             'Arquivo: ' + approved.path + '\n\n' +
-            'Conversa GPT: ' + (approved.chatUrl || 'não disponível') + '\n\n' +
             'A alteração não foi integrada automaticamente.',
           head:featureBranch, base:approved.branch, draft:true
         }
@@ -187,6 +186,14 @@ function bindActions() {
     } finally {
       busy = false;
     }
+  });
+
+  handle('forge-git:open-pr', async url => {
+    if (!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/[0-9]+$/.test(String(url))) {
+      throw new Error('URL de PR inválida.');
+    }
+    await shell.openExternal(url);
+    return { opened:true };
   });
 
   handle('forge-git:chat-status', async () => chat.status());
