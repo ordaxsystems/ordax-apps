@@ -24,6 +24,24 @@ export function providerComposeAvailability(status,{hostMode=false}={}) {
   return base;
 }
 
+// Read-only status for Forge MCP clients. A working App transport is not a
+// logged-in ChatGPT session. Never export cookies, account info or page text.
+export function providerSessionReport(health){
+  const availability=providerComposeAvailability(health);
+  const authState=['session_present','anonymous','authenticating'].includes(health?.auth_state)
+    ?health.auth_state:'unknown';
+  return Object.freeze({
+    schema:'ordax.forge.provider-session/1',
+    authState,
+    healthObserved:health?.health_observed===true,
+    composerReady:health?.composer_ready===true,
+    sendReady:availability.allowed===true,
+    reason:availability.reason,
+    loginRequired:availability.reason==='login_required',
+    identityVerified:false
+  });
+}
+
 export function canStartFreshProviderChat({task,status,availability,activeRun=false,hostMode=false}={}) {
   if(hostMode || activeRun || !task?.chat_url || !status || typeof status!=='object')return false;
   const sessionObserved=status.auth_state==='session_present'&&status.health_observed===true&&

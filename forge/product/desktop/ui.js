@@ -712,6 +712,18 @@ function syncComposerAvailability() {
   $('#composerConnection').dataset.state = composeAvailability.reason;
   $('#composerConnectionText').textContent =
     COMPOSE_STATUS_MESSAGES[composeAvailability.reason] || COMPOSE_STATUS_MESSAGES.unverified;
+  // The Forjador layout hides the small sidebar provider card. Surface the
+  // SAME canonical login/readiness gate at the top of every project screen.
+  const gate=$('#forgeProviderGate');
+  const reason=composeAvailability.reason;
+  gate.hidden=reason==='ready';
+  $('#forgeProviderGateText').textContent=reason==='login_required'
+    ?'GPT Web sem login nesta sessão do Forge. Envios de agentes bloqueados até entrar no ChatGPT.'
+    :reason==='authenticating'
+      ?'Login do GPT Web em andamento. Conclua a autenticação na página oficial.'
+      :(COMPOSE_STATUS_MESSAGES[reason]||COMPOSE_STATUS_MESSAGES.unverified);
+  $('#forgeProviderGateLogin').hidden=hostMode||
+    !['login_required','unverified'].includes(reason);
   $('#composerLogin').hidden = hostMode || composeAvailability.reason==='ready' || composeAvailability.reason==='busy' ||
     (composeAvailability.reason==='conversation_unavailable'&&lastProviderStatus?.auth_state==='session_present');
   const canStartFresh=canStartFreshProviderChat({task:currentTask,status:lastProviderStatus,
@@ -1520,6 +1532,7 @@ window.matchMedia('(min-width:1181px)').addEventListener('change', event => {
   if (event.matches) setContextOpen(false);
 });
 
+$('#forgeProviderGateLogin').addEventListener('click',()=>$('#login').click());
 $('#composerLogin').addEventListener('click', () => $('#login').click());
 $('#login').addEventListener('click', async () => {
   if (applyHostProviderLimit()) {

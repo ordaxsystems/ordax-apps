@@ -1420,6 +1420,12 @@ const orchestratorKernel=createOrchestratorKernel({
   }),
   provider:{
     capacity:()=>providerCapacity(),
+    sessionHealth:async()=>{
+      // Read the actual authenticated WebContents (not the MCP connection).
+      // All lanes busy => unverified, never a guessed logged-in session.
+      const candidate=providerWorkers.find(item=>item?.active!==true);
+      return candidate?await candidate.health():null;
+    },
     busy:()=>{
       const capacity=providerCapacity();
       return capacity.closed||capacity.availableSlots===0;
