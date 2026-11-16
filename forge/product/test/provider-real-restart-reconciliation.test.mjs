@@ -76,7 +76,7 @@ test('an acknowledged GPT submission survives a physical Store restart, then rea
   assert.equal(f.store.db.prepare("SELECT status FROM runs WHERE id=?").get(a.runId).status,'succeeded');
   assert.equal(f.store.db.prepare("SELECT status FROM runs WHERE id=?").get(b.runId).status,'interrupted');
   assert.deepEqual(await reconcileProviderLinkedReply({store:f.store,worker,taskId:a.task.id,
-    responseSha256:previewA.recoveryPreview.responseSha256}),{reconciled:false,reason:'already_reconciled'});
+    responseSha256:previewA.recoveryPreview.responseSha256}),{reconciled:false,reason:'already_reconciled',runId:a.runId});
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM messages WHERE task_id=? AND role='assistant'").get(a.task.id).n,1);
 
   const wrongDigest=await reconcileProviderLinkedReply({store:f.store,worker,taskId:b.task.id,
@@ -185,7 +185,7 @@ test('lost send acknowledgement auto-recovers one complete reply from a durable 
   const recovered=await recoverFailedProviderSubmission({
     store:f.store,worker,taskId:task.task.id,runId:task.runId
   });
-  assert.deepEqual(recovered,{reconciled:true,reason:'reconciled'});
+  assert.deepEqual(recovered,{reconciled:true,reason:'reconciled',runId:task.runId});
   assert.equal(reads,2,'the provider evidence is inspected and revalidated before commit');
   assert.equal(sends,0);
   assert.equal(f.store.db.prepare("SELECT content FROM messages WHERE task_id=? AND role='assistant'").get(task.task.id).content,
@@ -331,7 +331,7 @@ test('an uncertain first send links its fresh GPT conversation only after two ma
     return observation({providerPrompt,url:threadA},'First send response');
   },sendPrompt:async()=>{sends++;}};
   const recovered=await recoverFailedProviderSubmission({store:f.store,worker,taskId:task.id,runId});
-  assert.deepEqual(recovered,{reconciled:true,reason:'reconciled'});
+  assert.deepEqual(recovered,{reconciled:true,reason:'reconciled',runId});
   assert.equal(reads,2);
   assert.equal(sends,0);
   assert.equal(f.store.db.prepare('SELECT chat_url FROM tasks WHERE id=?').get(task.id).chat_url,threadA);

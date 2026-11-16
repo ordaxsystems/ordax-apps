@@ -131,7 +131,7 @@ const forgeLocalWorkspaces=new ForgeLocalWorkspaces({
     .filter(value=>typeof value==='string'&&path.isAbsolute(value))
 });
 const forgeProjectFiles=new ForgeProjectFiles({root:path.join(dataRoot,'project-files'),
-  workspaceLookup:projectId=>forgeLocalWorkspaces.rootForProject(projectId),
+  workspaceLookup:(projectId,taskId=null)=>forgeLocalWorkspaces.rootForProject(projectId,taskId),
   requireOwnerBinding:true});
 
 const stagedLab=process.argv.includes('--ordax-lab-staged-approved');
@@ -156,7 +156,10 @@ if(forgeDevAutonomyEnabled){
   writeForgeHeartbeat('starting');
   forgeHeartbeatTimer=setInterval(()=>writeForgeHeartbeat('alive'),5_000);
 }
-const backgroundSupported=process.platform==='win32'&&app.isPackaged&&!hostBrowserMode&&!stagedLab;
+const supervisedDevelopmentResident=forgeDevAutonomyEnabled&&
+  process.env.ORDAX_FORGE_SUPERVISOR_CHILD==='1';
+const backgroundSupported=process.platform==='win32'&&!hostBrowserMode&&!stagedLab&&
+  (app.isPackaged||supervisedDevelopmentResident);
 let backgroundOptedIn=backgroundSupported&&
   store.getWorkspaceSession()?.metadata?.keep_running_in_background===true;
 let backgroundTray=null,backgroundTrayPending=null,quittingIntentionally=false;
@@ -166,7 +169,18 @@ function showCanonicalWindow(){
   if(win.isMinimized())win.restore();
   win.show();win.focus();
 }
-const canonicalLoginItem=()=>({path:process.execPath,args:['--ordax-background-start']});
+function canonicalLoginItem(){
+  if(supervisedDevelopmentResident){
+    const nodePath=process.env.ORDAX_FORGE_SUPERVISOR_NODE;
+    const supervisorEntry=path.resolve(root,'..','scripts','dev-supervisor.mjs');
+    if(typeof nodePath!=='string'||!path.isAbsolute(nodePath)||
+       path.basename(nodePath).toLowerCase()!=='node.exe'||
+       !existsSync(nodePath)||!existsSync(supervisorEntry))
+      throw Error('forge_supervisor_login_identity_unavailable');
+    return {path:nodePath,args:[supervisorEntry,'--background-start']};
+  }
+  return {path:process.execPath,args:['--ordax-background-start']};
+}
 function updateLoginStartup(enabled) {
   if(!backgroundSupported)return false;
   try {
@@ -208,7 +222,8 @@ function backgroundState(){
   return {supported:backgroundSupported,optedIn:backgroundOptedIn,
     resident:backgroundResidencyAllowed({optedIn:backgroundOptedIn,
       hostMode:hostBrowserMode,trayReady:Boolean(backgroundTray),
-      quitting:quittingIntentionally,platform:process.platform,packaged:app.isPackaged}),
+      quitting:quittingIntentionally,platform:process.platform,packaged:app.isPackaged,
+      supervisedDevelopment:supervisedDevelopmentResident}),
     startupEnabled,requiresWindowsUserSession:true,unattended24hCertified:false};
 }
 
@@ -251,6 +266,8 @@ const MIME_EXT = new Map([
 ]);
 
 let win;
+let providerHostWindow=null;
+const providerViewParents=new Map();
 let worker; // Primary provider view exposed in the human UI.
 let providerWorkers=[];
 const providerWorkerCount=(()=>{
@@ -725,34 +742,49 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   }
 }
 
+function attachProviderView(candidate,targetWindow) {
+  if(!candidate?.view||!targetWindow||targetWindow.isDestroyed?.())return false;
+  const current=providerViewParents.get(candidate);
+  if(current===targetWindow)return true;
+  if(current&&!current.isDestroyed?.()){
+    try{current.contentView.removeChildView(candidate.view);}catch{}
+  }
+  targetWindow.contentView.addChildView(candidate.view);
+  providerViewParents.set(candidate,targetWindow);
+  return true;
+}
+
 function layoutViews() {
-  if (!win || !worker) return;
+  if (!win || !worker || !providerHostWindow || providerHostWindow.isDestroyed()) return;
   const [width,height]=win.getContentSize();
   const bounds=providerViewBounds?normalizeProviderViewBounds(providerViewBounds,{
     contentWidth:width,contentHeight:height,zoomFactor:win.webContents.getZoomFactor()
   }):null;
   const panelUsable=Boolean(chatVisible&&bounds&&bounds.width>=320&&bounds.height>=250);
-  const offscreenWidth=Math.max(900,width);
-  const offscreenHeight=Math.max(700,height);
-  providerWorkers.forEach((candidate,index)=>{
+  const [hostWidth,hostHeight]=providerHostWindow.getContentSize();
+  const workerWidth=Math.max(900,hostWidth);
+  const workerHeight=Math.max(700,hostHeight);
+  providerWorkers.forEach(candidate=>{
     if(!candidate?.view||candidate.view.webContents.isDestroyed?.())return;
     const isPrimary=candidate===worker;
     const executing=providerRunPresentationWorkers.has(candidate)||
       Boolean(providerViews.runForWorker(candidate));
     if(isPrimary&&panelUsable){
+      attachProviderView(candidate,win);
       candidate.view.setBounds(bounds);
       candidate.view.setVisible(true);
       return;
     }
+    // Provider automation must have a real viewport even when the Forge App
+    // window is closed/hidden. A dedicated hidden native host keeps each
+    // WebContentsView in-bounds without painting over or focusing user UI.
+    attachProviderView(candidate,providerHostWindow);
     if(executing){
-      candidate.view.setBounds({
-        x:Math.max(1,width)+64+(index*8),y:0,
-        width:offscreenWidth,height:offscreenHeight
-      });
+      candidate.view.setBounds({x:0,y:0,width:workerWidth,height:workerHeight});
       candidate.view.setVisible(true);
       return;
     }
-    candidate.view.setBounds({x:Math.max(1,width)+64+(index*8),y:0,width:1,height:1});
+    candidate.view.setBounds({x:0,y:0,width:1,height:1});
     candidate.view.setVisible(false);
   });
   interactiveHtmlPreview?.relayout();
@@ -779,7 +811,8 @@ async function createWindowOnce() {
     autoHideMenuBar: true,
     show:!hostBrowserMode&&!backgroundStartupAllowed({optedIn:backgroundOptedIn,
       hostMode:hostBrowserMode,trayReady:true,requestedHidden:backgroundStartupRequested,
-      platform:process.platform,packaged:app.isPackaged}),
+      platform:process.platform,packaged:app.isPackaged,
+      supervisedDevelopment:supervisedDevelopmentResident}),
     webPreferences: {
       backgroundThrottling:false,
       preload: path.join(here, 'preload.cjs'),
@@ -788,6 +821,14 @@ async function createWindowOnce() {
       nodeIntegration: false
     }
   });
+  providerHostWindow=new BrowserWindow({
+    width:1000,height:760,show:false,focusable:false,skipTaskbar:true,
+    frame:false,autoHideMenuBar:true,backgroundColor:'#0b0e13',
+    webPreferences:{backgroundThrottling:false,contextIsolation:true,sandbox:true,nodeIntegration:false}
+  });
+  providerHostWindow.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+  providerHostWindow.webContents.on('will-navigate',event=>event.preventDefault());
+  await providerHostWindow.loadURL('about:blank');
 
   // HTML previews are child frames of this privileged first-party renderer.
   // Even a scriptless sandbox may contain clickable external links. Deny
@@ -846,16 +887,20 @@ async function createWindowOnce() {
         runStartedAt:routed.startedAt,workerId:registeredWorker.id
       });
     });
-    // Native WebContentsView defaults to visible. Attach every lane once; the
-    // layout function keeps idle auxiliary views hidden and active ones
-    // off-canvas with a real viewport.
-    win.contentView.addChildView(registeredWorker.view);
+    // Provider lanes live in one hidden native host by default. The primary
+    // lane is re-parented into the App only while the user opens the Chat view.
+    attachProviderView(registeredWorker,providerHostWindow);
   }
   hostStartupLog('provider_worker_pool_constructed_'+String(providerWorkers.length));
   hostStartupLog('provider_views_attached');
   layoutViews();
   win.on('resize', layoutViews);
-  win.on('closed',()=>{interactiveHtmlPreview?.close();interactiveHtmlPreview=null;});
+  win.on('closed',()=>{
+    interactiveHtmlPreview?.close();interactiveHtmlPreview=null;
+    providerViewParents.clear();
+    if(providerHostWindow&&!providerHostWindow.isDestroyed())providerHostWindow.destroy();
+    providerHostWindow=null;
+  });
   win.on('maximize', layoutViews);
   win.on('unmaximize', layoutViews);
   // The user can close Electron while a provider request was accepted but
@@ -866,7 +911,8 @@ async function createWindowOnce() {
   win.on('close', event => {
     if(backgroundResidencyAllowed({optedIn:backgroundOptedIn,
       hostMode:hostBrowserMode,trayReady:Boolean(backgroundTray),
-      quitting:quittingIntentionally,platform:process.platform,packaged:app.isPackaged})) {
+      quitting:quittingIntentionally,platform:process.platform,packaged:app.isPackaged,
+      supervisedDevelopment:supervisedDevelopmentResident})) {
       event.preventDefault();
       win.hide();
       return;
@@ -992,10 +1038,19 @@ registerUiHandler('ordax:tasks:reconcile-linked-reply', async (event, payload={}
   const result=await reconcileProviderLinkedReply({
     store,worker,taskId:payload?.taskId,responseSha256:payload?.responseSha256
   });
+  let commandReceiptReconciliation=null;
+  if(result?.runId&&(result?.reconciled===true||result?.reason==='already_reconciled')) {
+    try {
+      commandReceiptReconciliation=orchestratorService.reconcileRecoveredWorkReceipt(
+        String(payload?.taskId||''),result.runId);
+    } catch {
+      commandReceiptReconciliation={reconciled:false,reason:'command_receipt_reconciliation_failed'};
+    }
+  }
   if(result?.reconciled===true)
     await finalizeReconciledSiteDelivery(String(payload?.taskId||''),{captureMissing:true})
       .catch(()=>{});
-  return result;
+  return {...result,commandReceiptReconciliation};
 });
 const htmlArtifactCaptureWorkers=new Set();
 // Canonical capture operation: both automatic post-Run completion and the
@@ -1653,9 +1708,29 @@ orchestratorService.viewPort=Object.freeze({
       externalDeploymentVerified:false,inspection,...(probe?{probe}:{}),image};
   }
 });
+const FORGE_PROJECT_CREATION_OPERATIONS=new Set([
+  'project_create','project_quick_create','mission_create'
+]);
+function attachDefaultWorkspaceToProjectCreation(operation,output,{exposePath=false}={}){
+  if(!FORGE_PROJECT_CREATION_OPERATIONS.has(operation)||output?.status!=='succeeded'||
+      typeof output?.result?.projectId!=='string')return output;
+  let workspaceSetup;
+  try{workspaceSetup=forgeLocalWorkspaces.createDefault(output.result.projectId);}
+  catch(error){workspaceSetup={configured:false,blocked:true,
+    reason:String(error?.message||'forge_workspace_creation_failed').slice(0,120)};}
+  const projected=exposePath?workspaceSetup:{
+    configured:workspaceSetup.configured===true,
+    ...(typeof workspaceSetup.kind==='string'?{kind:workspaceSetup.kind}:{}),
+    ...(typeof workspaceSetup.verified==='boolean'?{verified:workspaceSetup.verified}:{}),
+    ...(workspaceSetup.blocked===true?{blocked:true}:{}),
+    ...(typeof workspaceSetup.reason==='string'?{reason:workspaceSetup.reason}:{})
+  };
+  return {...output,result:{...output.result,workspaceSetup:projected}};
+}
 const forgeRemoteMcp=createOrchestratorMcp({
   service:orchestratorService,getContext:()=>localOrchestratorContext,
   version:app.getVersion(),allowedOperations:FORGE_APP_MCP_OPERATIONS,
+  afterToolInvoke:({operation,output})=>attachDefaultWorkspaceToProjectCreation(operation,output),
   authorizeFileRead:requestedProjectId=>{
     try{return forgeLocalWorkspaces.status(requestedProjectId).verified===true;}
     catch{return false;}
@@ -1695,6 +1770,7 @@ const forgeLocalMcp=createForgeLoopbackMcp({
   createMcp:({projectId,allowedOperations})=>createOrchestratorMcp({
     service:orchestratorService,getContext:()=>localOrchestratorContext,
     version:app.getVersion(),allowedProjectId:projectId,allowedOperations,
+    afterToolInvoke:({operation,output})=>attachDefaultWorkspaceToProjectCreation(operation,output),
     authorizeFileRead:requestedProjectId=>{
       try{return forgeLocalWorkspaces.status(requestedProjectId).verified===true;}
       catch{return false;}
@@ -1980,17 +2056,10 @@ registerUiHandler('ordax:orchestrator:invoke',async(event,payload)=>{
   if(payload?.operation==='project_file_write'&&receipt?.status==='succeeded'&&
       typeof payload?.input?.projectId==='string')
     emitRendererEvent('ordax:forge:project-file:changed',{projectId:payload.input.projectId});
-  // New projects receive a real workspace at the Windows Documents known
-  // folder. The DB project survives a filesystem failure, but the UI must
-  // report the failure, never claim a workspace that was not verified.
-  if(['project_create','project_quick_create','mission_create'].includes(payload?.operation)&&
-      receipt?.status==='succeeded'&&typeof receipt?.result?.projectId==='string'){
-    let workspaceSetup;
-    try{workspaceSetup=forgeLocalWorkspaces.createDefault(receipt.result.projectId);}
-    catch(error){workspaceSetup={configured:false,blocked:true,
-      reason:String(error?.message||'forge_workspace_creation_failed').slice(0,120)};}
-    result={...result,result:{...result.result,workspaceSetup}};
-  }
+  // Project creation through either the trusted UI or MCP uses the same
+  // owner-known Windows Documents root and the same SQLite binding logic.
+  // No client/model path can create or widen filesystem authority.
+  result=attachDefaultWorkspaceToProjectCreation(payload?.operation,result,{exposePath:true});
   if(ORCHESTRATOR_TOOLS.some(t=>t.operation===payload?.operation&&!t.readOnly)&&win&&!win.isDestroyed())
     emitRendererEvent('ordax:orchestrator:changed');
   return result;
@@ -2195,6 +2264,7 @@ app.whenReady().then(async () => {
         try {
           const recovery=await recoverVisibleLinkedProviderSubmission({store,worker});
           if(recovery?.state==='recovered') {
+            orchestratorService.reconcileRecoveredWorkReceipt(recovery.taskId,recovery.runId);
             emitRendererEvent('ordax:task:reconciled',{
               taskId:recovery.taskId,runId:recovery.runId
             });

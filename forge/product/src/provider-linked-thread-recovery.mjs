@@ -115,7 +115,7 @@ export async function reconcileProviderLinkedReply({store,worker,taskId,response
     const previous=run?.status==='succeeded'&&store.db.prepare(`SELECT 1 FROM events WHERE task_id=?
       AND kind='provider.response.reconciled' AND json_extract(payload,'$.run_id')=?
       AND json_extract(payload,'$.response_sha256')=? LIMIT 1`).get(String(taskId),provenance.runId,responseSha256);
-    if(previous)return {reconciled:false,reason:'already_reconciled'};
+    if(previous)return {reconciled:false,reason:'already_reconciled',runId:provenance.runId};
     return {reconciled:false,reason:inspection.inspectionReason||'provider_reply_not_recoverable'};
   }
   if(inspection.recoveryPreview.responseSha256!==responseSha256)
@@ -133,7 +133,7 @@ export async function reconcileProviderLinkedReply({store,worker,taskId,response
     chatUrl:row.chat_url,promptSha256:provenance.promptSha256,
     responseSha256,text:inspection.recoveryPreview.text
   });
-  return {reconciled:commit.reconciled,reason:commit.reason||'reconciled'};
+  return {reconciled:commit.reconciled,reason:commit.reason||'reconciled',runId:provenance.runId};
 }
 
 // Auto-reconcile only a lost-ack or app-restart interruption backed by durable
@@ -377,6 +377,6 @@ async function recoverFreshProviderSubmission({store,worker,taskId,runId,intent}
     promptSha256:intent.prompt_sha256,responseSha256:secondCandidate.responseSha256,
     text:secondCandidate.text
   });
-  return {reconciled:commit.reconciled,reason:commit.reason||'reconciled'};
+  return {reconciled:commit.reconciled,reason:commit.reason||'reconciled',runId};
 }
 

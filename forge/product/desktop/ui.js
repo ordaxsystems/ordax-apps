@@ -1196,7 +1196,7 @@ async function openTask(id) {
   document.body.classList.remove('orchestrator-rail-open');
   $('#contextRail').classList.remove('open');
   $('#orchestratorWorkRail').hidden=true;
-  if (id !== currentTaskId) flushDraft();
+  if (id !== currentTaskId) await flushDraft();
   const epoch = ++navigationEpoch;
   const task = await window.ordax.openTask(id);
   if (epoch !== navigationEpoch || !task) return;
@@ -1891,8 +1891,9 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
     document.body.classList.remove('forge-task-focus');
     setWorkspaceRoute('coordinator');
     $('#orchestratorWorkRail').hidden=false;
-    // The Forjador is the main chat; execution is the initial right tab.
-    flushDraft();await selectRightPane('execution');
+    // Persist the selected Task draft before leaving its scope. A delayed
+    // save must never race the next administrator/Task restoration.
+    await flushDraft();await selectRightPane('execution');
     // Responsive views must not open the operation rail over the admin chat.
     if(window.matchMedia('(max-width:1024px)').matches)
       $('#contextRail').classList.remove('open');

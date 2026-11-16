@@ -6,6 +6,9 @@ import path from 'node:path';
 import {moveForgeLegacyWorkspace} from './forge-legacy-workspace-migration.mjs';
 
 const PROJECT=/^project_[A-Za-z0-9-]{1,100}$/;
+const TASK=/^task_[A-Za-z0-9-]{1,120}$/;
+const BRANCH=/^[A-Za-z0-9][A-Za-z0-9._\/-]{0,139}$/;
+const SHA=/^[a-f0-9]{40}$/;
 const RESERVED=/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 const same=(a,b)=>process.platform==='win32'
   ?a.toLowerCase()===b.toLowerCase():a===b;
@@ -71,6 +74,19 @@ export class ForgeLocalWorkspaces {
       binding_kind TEXT NOT NULL CHECK(binding_kind IN ('default','selected')),
       created_at TEXT NOT NULL
     )`);
+    this.db.exec(`CREATE TABLE IF NOT EXISTS forge_task_worktrees(
+      task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+      project_id TEXT NOT NULL REFERENCES lab_projects(id) ON DELETE CASCADE,
+      workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
+      worktree_root TEXT NOT NULL COLLATE NOCASE UNIQUE,
+      physical_identity TEXT NOT NULL,
+      branch_name TEXT NOT NULL,
+      base_head_sha TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('active','integrated','blocked')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_forge_task_worktrees_project ON forge_task_worktrees(project_id,status)');
     this.initialized=true;
   }
   projectRow(projectId){
@@ -87,11 +103,77 @@ export class ForgeLocalWorkspaces {
     return this.db.prepare('SELECT canonical_root AS root,physical_identity AS identity,binding_kind AS kind FROM forge_local_project_roots WHERE project_id=?')
       .get(projectId)||null;
   }
-  rootForProject(projectId){
+  mainRootForProject(projectId){
     const binding=this.binding(projectId);
     if(!binding)return null;
     if(!this.status(projectId).verified)throw Error('forge_workspace_missing_or_moved');
     return binding.root;
+  }
+  taskRow(projectId,taskId){
+    this.projectRow(projectId);
+    if(typeof taskId!=='string'||!TASK.test(taskId))throw Error('forge_worktree_task_invalid');
+    const row=this.db.prepare(`SELECT b.task_id,b.kind FROM lab_task_bindings b
+      WHERE b.project_id=? AND b.task_id=?`).get(projectId,taskId);
+    if(!row||row.kind!=='work')throw Error('forge_worktree_task_unavailable');
+    return row;
+  }
+  expectedTaskWorktreeRoot(projectId,taskId){
+    this.taskRow(projectId,taskId);
+    const root=this.mainRootForProject(projectId);
+    if(!root)throw Error('forge_workspace_binding_required');
+    return path.join(root,'.forge-worktrees',taskId);
+  }
+  taskWorktree(projectId,taskId){
+    this.taskRow(projectId,taskId);
+    const row=this.db.prepare(`SELECT task_id AS taskId,project_id AS projectId,
+      worktree_root AS root,physical_identity AS identity,branch_name AS branchName,
+      base_head_sha AS baseHeadSha,status,created_at AS createdAt,updated_at AS updatedAt
+      FROM forge_task_worktrees WHERE project_id=? AND task_id=?`).get(projectId,taskId);
+    if(!row)return null;
+    const expected=this.expectedTaskWorktreeRoot(projectId,taskId);
+    if(!same(row.root,expected)||!BRANCH.test(row.branchName)||!SHA.test(row.baseHeadSha))
+      throw Error('forge_worktree_record_invalid');
+    if(row.status!=='active')return row;
+    const live=liveDirectory(row.root);
+    if(!same(live,row.root)||physicalIdentity(live)!==row.identity)
+      throw Error('forge_worktree_missing_or_moved');
+    const gitMarker=path.join(live,'.git');
+    const marker=fs.lstatSync(gitMarker);
+    if(marker.isSymbolicLink()||(!marker.isFile()&&!marker.isDirectory()))
+      throw Error('forge_worktree_git_marker_invalid');
+    return row;
+  }
+  rootForProject(projectId,taskId=null){
+    const root=this.mainRootForProject(projectId);
+    if(taskId===null||taskId===undefined)return root;
+    const worktree=this.taskWorktree(projectId,taskId);
+    if(!worktree||worktree.status!=='active')throw Error('forge_worktree_task_unprepared');
+    return worktree.root;
+  }
+  hasActiveTaskWorktrees(projectId){
+    this.projectRow(projectId);
+    return Boolean(this.db.prepare(`SELECT 1 FROM forge_task_worktrees
+      WHERE project_id=? AND status='active' LIMIT 1`).get(projectId));
+  }
+  recordTaskWorktree(projectId,taskId,{branchName,baseHeadSha}={}){
+    this.taskRow(projectId,taskId);
+    if(typeof branchName!=='string'||!BRANCH.test(branchName)||
+       branchName.includes('..')||branchName.startsWith('/')||branchName.endsWith('/')||
+       typeof baseHeadSha!=='string'||!SHA.test(baseHeadSha))
+      throw Error('forge_worktree_metadata_invalid');
+    const root=this.expectedTaskWorktreeRoot(projectId,taskId);
+    const live=liveDirectory(root);
+    if(!same(live,root))throw Error('forge_worktree_root_changed');
+    const identity=physicalIdentity(live),session=this.store.getWorkspaceSession();
+    const existing=this.db.prepare('SELECT task_id FROM forge_task_worktrees WHERE task_id=?').get(taskId);
+    if(existing)throw Error('forge_worktree_already_recorded');
+    const now=this.store.now();
+    this.db.prepare(`INSERT INTO forge_task_worktrees
+      (task_id,project_id,workspace_session_id,worktree_root,physical_identity,
+       branch_name,base_head_sha,status,created_at,updated_at)
+      VALUES(?,?,?,?,?,?,?,'active',?,?)`).run(taskId,projectId,session.id,
+        root,identity,branchName,baseHeadSha,now,now);
+    return this.taskWorktree(projectId,taskId);
   }
   legacyStatus(projectId){
     if(!this.legacyRoot)return {legacyMigrationRequired:false};

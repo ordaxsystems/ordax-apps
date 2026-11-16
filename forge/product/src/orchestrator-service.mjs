@@ -46,6 +46,10 @@ function appOwnedAnalysisSummary(context) {
       Number(planning.waitingCount||0)+' aguardando dependência, '+
       Number(planning.blockedCount||0)+' bloqueada(s), '+
       Number(planning.verificationRequiredCount||0)+' aguardando verificação.',
+    'Evidência local: '+Number(context?.evidence?.workspace?.entries?.length||0)+' entrada(s) de workspace, '+
+      Number(context?.evidence?.commands?.length||0)+' comando(s)/teste(s) recente(s), '+
+      Number(context?.evidence?.receipts?.uncertain||0)+' recibo(s) incerto(s); Git histórico '+
+      (context?.evidence?.repository?'disponível':'indisponível')+'.',
     'Nenhum modelo externo foi consultado e nenhuma mensagem GPT foi enviada.'].join(' ');
 }
 
@@ -307,6 +311,57 @@ export class OrchestratorService {
       WHERE status ${status} AND operation IN ('work_send','proposal_send')
       AND (task_id=? OR (project_id=? AND unknown_work_target=1)) LIMIT 1`)
       .get(taskId,projectId));
+  }
+
+  reconcileRecoveredWorkReceipt(taskId,runId,{alreadyInTransaction=false}={}) {
+    const apply=()=>{
+      const binding=this.db.prepare(`SELECT project_id,kind FROM lab_task_bindings
+        WHERE task_id=?`).get(taskId);
+      if(!binding||binding.kind!=='work')
+        return {reconciled:false,reason:'recovered_work_binding_unavailable'};
+      const run=this.db.prepare(`SELECT rowid,id,status,started_at FROM runs
+        WHERE id=? AND task_id=?`).get(runId,taskId);
+      const latest=this.db.prepare(`SELECT id FROM runs WHERE task_id=?
+        ORDER BY rowid DESC LIMIT 1`).get(taskId);
+      const evidence=this.db.prepare(`SELECT 1 FROM events WHERE task_id=?
+        AND kind='provider.response.reconciled'
+        AND json_extract(payload,'$.run_id')=? LIMIT 1`).get(taskId,runId);
+      if(!run||run.status!=='succeeded'||latest?.id!==runId||!evidence)
+        return {reconciled:false,reason:'recovered_work_run_unverified'};
+      const previous=this.db.prepare(`SELECT completed_at FROM runs
+        WHERE task_id=? AND rowid<? ORDER BY rowid DESC LIMIT 1`).get(taskId,run.rowid);
+      const receipts=this.db.prepare(`SELECT c.id,c.result,c.created_at
+        FROM lab_command_receipts c JOIN lab_command_receipt_scope s
+          ON s.receipt_rowid=c.rowid
+        WHERE s.project_id=? AND s.task_id=? AND s.operation='work_send'
+          AND s.status='uncertain' ORDER BY c.created_at,c.id`)
+        .all(binding.project_id,taskId);
+      if(receipts.length===0)return {reconciled:false,reason:'recovered_work_receipt_absent'};
+      if(receipts.length!==1)throw Error('orchestrator_recovered_work_receipt_ambiguous');
+      const receipt=receipts[0];
+      let prior=null;
+      try{prior=receipt.result?JSON.parse(receipt.result):null;}catch{}
+      const receiptAt=Date.parse(receipt.created_at),runAt=Date.parse(run.started_at);
+      const previousAt=previous?.completed_at?Date.parse(previous.completed_at):null;
+      if(!prior||prior.taskId!==taskId||
+         (prior.runId!==undefined&&prior.runId!==null&&prior.runId!==runId)||
+         !Number.isFinite(receiptAt)||!Number.isFinite(runAt)||receiptAt>runAt||
+         (previousAt!==null&&(!Number.isFinite(previousAt)||receiptAt<=previousAt)))
+        throw Error('orchestrator_recovered_work_receipt_mismatch');
+      const result={...prior,taskId,runId,responseObserved:true,effectVerified:false,
+        provider:'chatgpt_web',recovered:true,reconciled:true};
+      const changed=this.db.prepare(`UPDATE lab_command_receipts
+        SET status='succeeded',result=?,updated_at=?
+        WHERE id=? AND status='uncertain'`)
+        .run(JSON.stringify(result),this.store.now(),receipt.id).changes;
+      if(changed!==1)throw Error('orchestrator_recovered_work_receipt_state_changed');
+      this.store.event(taskId,'provider.command.reconciled',{
+        run_id:runId,command_id:receipt.id,operation:'work_send',
+        response_observed:true,effect_verified:false
+      });
+      return {reconciled:true,commandId:receipt.id,runId};
+    };
+    return alreadyInTransaction?apply():this.transaction(apply);
   }
 
   assertProviderTaskAvailable(taskId,{allowCoordinator=false}={}) {
@@ -581,7 +636,8 @@ export class OrchestratorService {
       return this.finish(reserved.commandId,result);
     });
     if(operation==='project_file_write')return this.writeProjectFile(context,input);
-    if(operation==='project_development_status')return this.development?.status(input.projectId)??{projectId:input.projectId,available:false,reason:'native_owner_port_unavailable'};
+    if(operation==='project_development_status')return this.development?.status(input.projectId,{taskId:input.taskId??null})??{projectId:input.projectId,available:false,reason:'native_owner_port_unavailable'};
+    if(operation==='project_worktree_prepare')return this.prepareProjectWorktree(context,input);
     if(operation==='project_command_run')return this.runProjectCommand(context,input);
     if(tool.readOnly)return this.read(context,operation,input);
     if(operation==='proposal_send')return this.confirmAndSendProposal(context,input);
@@ -601,9 +657,45 @@ export class OrchestratorService {
     });
   }
 
+  scopedTaskId(input){
+    if(input.taskId!==undefined&&input.taskId!==null){
+      this.task(input.projectId,input.taskId,'work');
+      return input.taskId;
+    }
+    if(this.development?.requiresTaskScope?.(input.projectId))
+      throw Error('forge_task_workspace_required');
+    return null;
+  }
+
+  async prepareProjectWorktree(context,input){
+    if(!this.development)throw Error('forge_development_unavailable');
+    this.task(input.projectId,input.taskId,'work');
+    const reserved=this.transaction(()=>this.reserve(context,'project_worktree_prepare',input));
+    if(reserved.existing)return reserved.existing;
+    try{
+      this.requireAccess(context,'project_worktree_prepare',input.projectId);
+      const result=await this.development.prepareWorktree(input.projectId,input.taskId);
+      return this.transaction(()=>this.finish(reserved.commandId,result));
+    }catch(error){
+      const deterministic=new Set(['forge_development_owner_approval_required',
+        'forge_workspace_binding_required','forge_workspace_missing_or_moved',
+        'forge_workspace_project_unavailable','forge_worktree_task_invalid',
+        'forge_worktree_task_unavailable','forge_worktree_main_dirty',
+        'forge_worktree_branch_exists','forge_worktree_repository_root_mismatch',
+        'forge_worktree_git_metadata_invalid','forge_worktree_state_invalid',
+        'forge_worktree_record_invalid','forge_worktree_metadata_invalid']);
+      try{this.transaction(()=>this.finish(reserved.commandId,{
+        taskId:input.taskId,reason:deterministic.has(error?.message)
+          ?error.message:'forge_worktree_effect_uncertain',verified:false},
+        deterministic.has(error?.message)?'failed':'uncertain'));}catch{}
+      throw error;
+    }
+  }
+
   // Never repeat an uncertain terminal command: it may already have changed files.
   async runProjectCommand(context,input) {
     if(!this.development)throw Error('forge_development_unavailable');
+    if(input.taskId!==undefined&&input.taskId!==null)this.task(input.projectId,input.taskId,'work');
     const reserved=this.transaction(()=>this.reserve(context,'project_command_run',input));
     if(reserved.existing)return reserved.existing;
     try {
@@ -613,7 +705,8 @@ export class OrchestratorService {
     }catch(error) {
       const deterministic=new Set(['forge_development_owner_approval_required',
         'forge_development_command_invalid','forge_development_directory_invalid',
-        'forge_workspace_missing_or_moved','forge_workspace_project_unavailable']);
+        'forge_workspace_missing_or_moved','forge_workspace_project_unavailable',
+        'forge_worktree_task_unprepared']);
       try{this.transaction(()=>this.finish(reserved.commandId,{
         reason:deterministic.has(error?.message)?error.message:'forge_development_command_outcome_uncertain',
         externalEffectsVerified:false},deterministic.has(error?.message)?'failed':'uncertain'));}
@@ -631,14 +724,17 @@ export class OrchestratorService {
     if(reserved.existing)return reserved.existing;
     try {
       this.requireAccess(context,'project_file_write',input.projectId);
+      const taskId=this.scopedTaskId(input);
       const proof=this.files.write(input.projectId,input.path,input.content,
-        input.expectedSha256??null);
+        input.expectedSha256??null,taskId);
       return this.transaction(()=>this.finish(reserved.commandId,proof));
     }catch(error){
       const deterministic=new Set(['forge_file_path_invalid','forge_file_content_invalid',
         'forge_file_size_limit','forge_file_expected_hash_invalid',
         'forge_file_version_conflict','forge_file_not_found','forge_file_reparse_denied',
-        'forge_workspace_binding_required']);
+        'forge_file_internal_path_denied','forge_workspace_binding_required',
+        'forge_worktree_task_unprepared','forge_task_workspace_required',
+        'orchestrator_task_unavailable']);
       const reason=deterministic.has(error?.message)?error.message:'forge_file_effect_uncertain';
       try{this.transaction(()=>this.finish(reserved.commandId,
         {reason,path:input.path,verified:false},
@@ -729,15 +825,20 @@ export class OrchestratorService {
     }
     if(operation==='project_memory')return forgeProjectMemoryView(this.store,input.projectId);
     if(operation==='project_administrator_snapshot')return forgeProjectAdministratorView(this.store,input.projectId);
-    if(operation==='project_files_status')return this.files?.status(input.projectId)||{
-      projectId:input.projectId,available:false,mode:'capability_unavailable'};
+    if(operation==='project_files_status'){
+      const taskId=this.scopedTaskId(input);
+      return this.files?.status(input.projectId,taskId)||{
+        projectId:input.projectId,available:false,mode:'capability_unavailable'};
+    }
     if(operation==='project_files_list'){
       if(!this.files)throw Error('forge_file_broker_unavailable');
-      return this.files.list(input.projectId,input.directory||'');
+      const taskId=this.scopedTaskId(input);
+      return this.files.list(input.projectId,input.directory||'',taskId);
     }
     if(operation==='project_file_read'){
       if(!this.files)throw Error('forge_file_broker_unavailable');
-      return this.files.read(input.projectId,input.path);
+      const taskId=this.scopedTaskId(input);
+      return this.files.read(input.projectId,input.path,taskId);
     }
     if(operation==='project_handoff')return forgeProjectHandoffView(this.store,input.projectId,{taskId:input.taskId||null});
     if(operation==='continuity_status') {
@@ -1029,7 +1130,7 @@ export class OrchestratorService {
 
   analysisContext(projectId,orchestratorId) {
     const owner=this.orchestrator(projectId,orchestratorId);
-    const project=this.db.prepare(`SELECT name,objective FROM lab_projects
+    const project=this.db.prepare(`SELECT name,objective,repository_url FROM lab_projects
       WHERE id=? AND workspace_session_id=?`).get(projectId,this.store.getWorkspaceSession().id);
     if(!project)throw Error('orchestrator_project_unavailable');
 
@@ -1091,6 +1192,41 @@ export class OrchestratorService {
     const ordered=[...overviewRows].sort((a,b)=>priority(a)-priority(b)||
       String(b.updated_at).localeCompare(String(a.updated_at))||a.id.localeCompare(b.id));
     const rows=ordered.slice(0,4);
+
+    // Coordinator evidence is read from the same bounded owner ports and
+    // canonical receipts. It contains hashes/statuses only, never arbitrary
+    // file contents, and cached Git metadata is explicitly historical.
+    let workspaceEvidence={available:false,entries:[],truncated:false};
+    if(this.files)try{
+      const root=this.files.list(projectId,'');
+      const entries=[];
+      for(const entry of (root.entries||[]).slice(0,32)){
+        if(entry.kind==='file'){
+          const proof=this.files.read(projectId,entry.name);
+          entries.push({path:entry.name,kind:'file',bytes:proof.bytes,sha256:proof.sha256});
+        }else entries.push({path:entry.name,kind:entry.kind});
+      }
+      workspaceEvidence={available:true,entries,truncated:root.truncated===true||
+        (root.entries||[]).length>entries.length};
+    }catch(error){
+      workspaceEvidence={available:false,entries:[],truncated:false,
+        reason:String(error?.message||'workspace_unavailable').slice(0,80)};
+    }
+    const commandEvidence=this.db.prepare(`SELECT operation,status,updated_at,
+      CASE WHEN json_valid(result) THEN json_extract(result,'$.exitCode') END exit_code,
+      CASE WHEN json_valid(result) THEN json_extract(result,'$.commandOutcome') END command_outcome
+      FROM lab_command_receipts
+      WHERE project_id=? AND operation='project_command_run'
+      ORDER BY rowid DESC LIMIT 12`).all(projectId);
+    const receiptSummary=this.db.prepare(`SELECT
+      COUNT(*) total,
+      COALESCE(SUM(CASE WHEN status='running' THEN 1 ELSE 0 END),0) running,
+      COALESCE(SUM(CASE WHEN status='uncertain' THEN 1 ELSE 0 END),0) uncertain,
+      COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),0) failed
+      FROM lab_command_receipts WHERE project_id=?`).get(projectId);
+    const repositoryEvidence=project.repository_url
+      ?this.historicalRepositoryHead(projectId,project.repository_url):null;
+    const rowsWithEvidence=rows;
     return {
       planning,
       project:{name:redactOrchestratorAnalysisText(project.name,160),objective:redactOrchestratorAnalysisText(project.objective,600)},
@@ -1103,7 +1239,15 @@ export class OrchestratorService {
         status:row.status,latestRunStatus:row.last_run_status,
         readiness:readiness(row.id),updatedAt:row.updated_at
       })),
-      works:rows.map(row=>{
+      evidence:{
+        workspace:workspaceEvidence,
+        commands:commandEvidence.map(row=>({operation:row.operation,status:row.status,
+          updatedAt:row.updated_at,exitCode:row.exit_code,commandOutcome:row.command_outcome})),
+        receipts:{total:Number(receiptSummary.total||0),running:Number(receiptSummary.running||0),
+          uncertain:Number(receiptSummary.uncertain||0),failed:Number(receiptSummary.failed||0)},
+        repository:repositoryEvidence
+      },
+      works:rowsWithEvidence.map(row=>{
         const runs=this.db.prepare(`SELECT status,started_at,completed_at,heartbeat_at
           FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 3`).all(row.id);
         const messages=this.store.messages(row.id,{limit:5}).map(message=>({
@@ -1236,7 +1380,9 @@ export class OrchestratorService {
     }
     if(operation==='continuity_set') {
       this.orchestrator(input.projectId,input.orchestratorId);
-      return this.continuation.configure(input.projectId,input.orchestratorId,input.enabled);
+      return this.continuation.configure(input.projectId,input.orchestratorId,input.enabled,{
+        reviewIntervalMinutes:input.reviewIntervalMinutes??null
+      });
     }
     if(operation==='continuity_followup_prepare') {
       const owner=this.orchestrator(input.projectId,input.orchestratorId);
@@ -1406,6 +1552,48 @@ export class OrchestratorService {
         throw Error('orchestrator_executor_busy');
       this.store.rotateConversation(input.taskId,'orchestrator_command');
       return {taskId:input.taskId,rotationPrepared:true,providerMessagesSent:0};
+    }
+    if(operation==='work_failover_prepare') {
+      this.task(input.projectId,input.taskId,'work');
+      const latest=this.db.prepare(`SELECT id,status,error,completed_at,worker_id
+        FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1`).get(input.taskId);
+      if(!latest)throw Error('orchestrator_failover_source_missing');
+      if(latest.status==='running')throw Error('orchestrator_failover_source_still_running');
+      if(latest.status==='interrupted')throw Error('orchestrator_reconciliation_required');
+      const reconciledResponse=latest.status==='succeeded'&&Boolean(this.db.prepare(`SELECT 1 FROM events
+        WHERE task_id=? AND kind='provider.response.reconciled'
+          AND json_extract(payload,'$.run_id')=? LIMIT 1`).get(input.taskId,latest.id));
+      if(latest.status!=='failed'&&!reconciledResponse)
+        throw Error('orchestrator_failover_source_not_reconciled');
+      if(reconciledResponse)
+        this.reconcileRecoveredWorkReceipt(input.taskId,latest.id,{alreadyInTransaction:true});
+      assertTaskHasNoUncertainTransport(this.store,input.taskId);
+      if(this.hasUnresolvedWorkReceipt(input.projectId,input.taskId,{includeRunning:true}))
+        throw Error('orchestrator_reconciliation_required');
+      const active=this.db.prepare(`SELECT id,sequence,chat_url FROM task_conversations
+        WHERE task_id=? AND status='active' ORDER BY sequence DESC LIMIT 1`).get(input.taskId)||null;
+      const generation=Number(this.db.prepare(`SELECT COUNT(*) n FROM events
+        WHERE task_id=? AND kind='provider.failover.prepared'`).get(input.taskId)?.n||0)+1;
+      this.store.rotateConversation(input.taskId,'orchestrator_failover');
+      const checkpoint=this.store.checkpoint(input.taskId,
+        `Failover GPT preparado após ${reconciledResponse?'reconciliação confirmada':'falha pré-envio confirmada'} do Run ${latest.id}; geração ${generation}.`,{
+          failover_generation:generation,source_run_id:latest.id,
+          source_worker_id:latest.worker_id||null,source_error:latest.error||null,
+          source_reconciled_response:reconciledResponse,
+          previous_conversation_id:active?.id||null,previous_conversation_sequence:active?.sequence||null,
+          external_effect_replayed:false
+        });
+      this.store.event(input.taskId,'provider.failover.prepared',{
+        generation,source_run_id:latest.id,source_status:latest.status,
+        source_reconciled_response:reconciledResponse,
+        checkpoint_version:checkpoint.version,previous_conversation_id:active?.id||null,
+        provider_messages_sent:0
+      });
+      return {taskId:input.taskId,sourceRunId:latest.id,failoverGeneration:generation,
+        checkpointVersion:checkpoint.version,rotationPrepared:true,
+        sourceReconciledResponse:reconciledResponse,
+        previousConversationId:active?.id||null,providerMessagesSent:0,
+        effectsReplayed:false};
     }
     throw Error('orchestrator_unknown_operation');
   }

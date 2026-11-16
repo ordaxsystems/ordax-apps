@@ -16,6 +16,7 @@ function components(value,{allowEmpty=false}={}) {
     throw Error('forge_file_path_invalid');
   if(value===''&&allowEmpty)return [];
   const parts=value.split('/');
+  if(parts[0]?.toLowerCase()==='.forge-worktrees')throw Error('forge_file_internal_path_denied');
   if(parts.length>12||parts.some(part=>!SEGMENT.test(part)||part==='.'||
     part==='..'||part.endsWith('.')||part.endsWith(' ')||RESERVED.test(part)))
     throw Error('forge_file_path_invalid');
@@ -42,9 +43,9 @@ export class ForgeProjectFiles {
     this.workspaceLookup=workspaceLookup;
     this.requireOwnerBinding=requireOwnerBinding===true;
   }
-  boundRoot(projectId) {
+  boundRoot(projectId,taskId=null) {
     if(!PROJECT.test(projectId))throw Error('forge_file_project_invalid');
-    const folder=this.workspaceLookup?.(projectId)||null;
+    const folder=this.workspaceLookup?.(projectId,taskId)||null;
     if(folder===null)return null;
     if(typeof folder!=='string'||!path.isAbsolute(folder))throw Error('forge_file_root_invalid');
     const resolved=path.resolve(folder);
@@ -53,9 +54,9 @@ export class ForgeProjectFiles {
     return resolved;
   }
   // App-owned, non-shared root; project IDs are opaque, never prompts-as-paths.
-  projectRoot(projectId,{create=false}={}) {
+  projectRoot(projectId,{create=false,taskId=null}={}) {
     if(!PROJECT.test(projectId))throw Error('forge_file_project_invalid');
-    const ownerBound=this.boundRoot(projectId);
+    const ownerBound=this.boundRoot(projectId,taskId);
     if(ownerBound)return ownerBound;
     if(create)fs.mkdirSync(this.root,{recursive:true});
     try{checkedDirectory(this.root);}catch(e){if(missing(e)&&!create)return null;throw e;}
@@ -68,9 +69,9 @@ export class ForgeProjectFiles {
     if(!compare(fs.realpathSync(root),root))throw Error('forge_file_reparse_denied');
     return root;
   }
-  resolve(projectId,relative,{createParents=false,allowEmpty=false}={}) {
+  resolve(projectId,relative,{createParents=false,allowEmpty=false,taskId=null}={}) {
     const parts=components(relative,{allowEmpty});
-    const root=this.projectRoot(projectId,{create:createParents});
+    const root=this.projectRoot(projectId,{create:createParents,taskId});
     if(!root)return {root:null,target:null,parts};
     let cursor=root;
     for(const part of parts.slice(0,-1)){
@@ -84,9 +85,9 @@ export class ForgeProjectFiles {
     const target=parts.length?path.join(cursor,parts.at(-1)):cursor;
     return {root,target,parts};
   }
-  status(projectId) {
+  status(projectId,taskId=null) {
     let configured;
-    try{configured=this.workspaceLookup?.(projectId)||null;}
+    try{configured=this.workspaceLookup?.(projectId,taskId)||null;}
     catch(error){
       if(error?.message!=='forge_workspace_missing_or_moved')throw error;
       return {projectId,mode:'forge_project_workspace',exists:false,
@@ -96,8 +97,8 @@ export class ForgeProjectFiles {
     }
     if(configured){
       try{
-        const root=this.boundRoot(projectId);
-        return {projectId,mode:'forge_project_workspace',exists:Boolean(root),
+        const root=this.boundRoot(projectId,taskId);
+        return {projectId,...(taskId?{taskId}:{}),mode:'forge_project_workspace',exists:Boolean(root),
           rootKind:'forge_owner_bound_folder',externalFolderAuthorized:true,
           verified:true,maxFileBytes:MAX_BYTES,readAvailable:true,writeAvailable:true};
       }catch{
@@ -114,10 +115,10 @@ export class ForgeProjectFiles {
       maxFileBytes:MAX_BYTES,readAvailable:this.requireOwnerBinding?Boolean(root):true,
       writeAvailable:!this.requireOwnerBinding};
   }
-  list(projectId,directory='') {
-    const empty=()=>({projectId,directory,exists:false,entries:[],truncated:false});
+  list(projectId,directory='',taskId=null) {
+    const empty=()=>({projectId,...(taskId?{taskId}:{}),directory,exists:false,entries:[],truncated:false});
     let checked;
-    try{checked=this.resolve(projectId,directory,{allowEmpty:true});}
+    try{checked=this.resolve(projectId,directory,{allowEmpty:true,taskId});}
     catch(e){if(missing(e))return empty();throw e;}
     if(!checked.root)return empty();
     const dir=checked.target;
@@ -132,9 +133,9 @@ export class ForgeProjectFiles {
     });
     return {projectId,directory,exists:true,entries,truncated:names.length>entries.length};
   }
-  read(projectId,relative) {
+  read(projectId,relative,taskId=null) {
     let target;
-    try{({target}=this.resolve(projectId,relative));}
+    try{({target}=this.resolve(projectId,relative,{taskId}));}
     catch(e){if(missing(e))throw Error('forge_file_not_found');throw e;}
     if(!target)throw Error('forge_file_not_found');
     try{existingFile(target);}catch(e){if(missing(e))throw Error('forge_file_not_found');throw e;}
@@ -147,12 +148,12 @@ export class ForgeProjectFiles {
       const bytes=fs.readFileSync(fd);
       if(bytes.length>MAX_BYTES)throw Error('forge_file_size_limit');
       const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);
-      return {projectId,path:relative,content:text,bytes:bytes.length,
+      return {projectId,...(taskId?{taskId}:{}),path:relative,content:text,bytes:bytes.length,
         sha256:sha256(bytes),verified:'local_readback',externalEffectVerified:false};
     }finally{fs.closeSync(fd);}
   }
-  write(projectId,relative,content,expectedSha256=null) {
-    if(this.requireOwnerBinding&&!this.boundRoot(projectId))
+  write(projectId,relative,content,expectedSha256=null,taskId=null) {
+    if(this.requireOwnerBinding&&!this.boundRoot(projectId,taskId))
       throw Error('forge_workspace_binding_required');
     if(typeof content!=='string'||content.includes(String.fromCharCode(0)))throw Error('forge_file_content_invalid');
     const bytes=Buffer.from(content,'utf8');
@@ -160,11 +161,11 @@ export class ForgeProjectFiles {
     if(expectedSha256!==null&&
       (typeof expectedSha256!=='string'||!/^[a-f0-9]{64}$/.test(expectedSha256)))
       throw Error('forge_file_expected_hash_invalid');
-    const {target,parts}=this.resolve(projectId,relative,{createParents:true});
+    const {target,parts}=this.resolve(projectId,relative,{createParents:true,taskId});
     if(!parts.length)throw Error('forge_file_path_invalid');
     let exists=false;
     try{
-      const previous=this.read(projectId,relative);
+      const previous=this.read(projectId,relative,taskId);
       exists=true;
       if(expectedSha256===null||previous.sha256!==expectedSha256)
         throw Error('forge_file_version_conflict');
@@ -176,19 +177,19 @@ export class ForgeProjectFiles {
       const fd=fs.openSync(temp,'wx',0o600);
       try{fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
       // Recheck parent/reparse and the target version before final rename.
-      const again=this.resolve(projectId,relative);
+      const again=this.resolve(projectId,relative,{taskId});
       if(again.target!==target)throw Error('forge_file_path_changed');
       const nowExists=fs.existsSync(target);
       if(nowExists!==exists)throw Error('forge_file_version_conflict');
-      if(exists&&this.read(projectId,relative).sha256!==expectedSha256)
+      if(exists&&this.read(projectId,relative,taskId).sha256!==expectedSha256)
         throw Error('forge_file_version_conflict');
       fs.renameSync(temp,target);
       created=true;
-      const proof=this.read(projectId,relative);
+      const proof=this.read(projectId,relative,taskId);
       if(proof.sha256!==sha256(bytes))throw Error('forge_file_readback_mismatch');
-      return {projectId,path:relative,bytes:proof.bytes,sha256:proof.sha256,
+      return {projectId,...(taskId?{taskId}:{}),path:relative,bytes:proof.bytes,sha256:proof.sha256,
         created:!exists,verified:true,verification:'sha256_readback',
-        source:this.boundRoot(projectId)?'forge_owner_bound_workspace':'forge_app_private_workspace'};
+        source:this.boundRoot(projectId,taskId)?(taskId?'forge_task_worktree':'forge_owner_bound_workspace'):'forge_app_private_workspace'};
     }finally{if(!created)try{fs.unlinkSync(temp);}catch{}}
   }
 }

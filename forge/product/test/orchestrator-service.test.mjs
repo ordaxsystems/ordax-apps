@@ -1131,7 +1131,14 @@ test('old unbound tasks remain intact and are not silently adopted into a projec
 
 test('MCP initialize/discovery/call use exactly the same App service and persisted state',async t=>{
   const f=fixture(t);
-  const mcp=createOrchestratorMcp({service:f.service,getContext:()=>f.context});
+  const postInvokes=[];
+  const mcp=createOrchestratorMcp({service:f.service,getContext:()=>f.context,
+    afterToolInvoke:({operation,args,output})=>{
+      postInvokes.push({operation,projectId:output?.result?.projectId||args?.projectId||null});
+      if(operation!=='project_create'||output?.status!=='succeeded')return output;
+      return {...output,result:{...output.result,
+        workspaceSetup:{configured:true,verified:true,kind:'default'}}};
+    }});
   const rpc=(method,params={},id=1)=>mcp.handle({jsonrpc:'2.0',id,method,params});
   assert.equal((await rpc('tools/list')).error.code,-32002);
   const init=await rpc('initialize',{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'fixture',version:'1'}});
@@ -1163,6 +1170,9 @@ test('MCP initialize/discovery/call use exactly the same App service and persist
   const created=await rpc('tools/call',{name:'forge_project_create',arguments:{requestId:'mcp-one',name:'MCP project'}});
   const receipt=created.result.structuredContent;
   assert.equal(receipt.status,'succeeded');
+  assert.deepEqual(receipt.result.workspaceSetup,{configured:true,verified:true,kind:'default'});
+  assert.equal(postInvokes.at(-1).operation,'project_create');
+  assert.equal(postInvokes.at(-1).projectId,receipt.result.projectId);
   assert.equal((await f.call('projects_list')).projects[0].id,receipt.result.projectId);
   const repeated=await rpc('tools/call',{name:'forge_project_create',arguments:{requestId:'mcp-one',name:'MCP project'}});
   assert.deepEqual(repeated.result.structuredContent,receipt);
@@ -1441,4 +1451,146 @@ test('real Electron app UI MCP action receipts are idempotent and unknown effect
   f.setAllowed(false);
   await assert.rejects(f.service.invoke(f.context,'app_ui_click',
     {...click,requestId:'app_ui_access_denied'}),/access_denied/);
+});
+
+
+test('work failover rotates only a terminal failed GPT attempt and records a fenced checkpoint without sending',async t=>{
+  let sends=0;
+  const f=fixture(t,{provider:{send:async()=>{sends++;throw Error('must_not_send');}}});
+  const a=await project(f,'Failover seguro');
+  f.store.setChatUrl(a.w,'https://chatgpt.com/c/11111111-1111-4111-8111-111111111111');
+  const sourceRun=f.store.startRun(a.w,'worker_original');
+  f.store.recordRunMetrics(a.w,sourceRun,'auto',{
+    failedStage:'health',providerDeliveryState:'not_submitted',runStartedAt:Date.now()
+  });
+  f.store.finishRun(a.w,sourceRun,'provider_session_failed');
+  const result=await f.call('work_failover_prepare',{projectId:a.p,taskId:a.w});
+  assert.equal(result.status,'succeeded');
+  assert.equal(result.result.sourceRunId,sourceRun);
+  assert.equal(result.result.failoverGeneration,1);
+  assert.equal(result.result.rotationPrepared,true);
+  assert.equal(result.result.providerMessagesSent,0);
+  assert.equal(result.result.effectsReplayed,false);
+  assert.equal(sends,0);
+  assert.equal(f.store.getTask(a.w).chat_url,null);
+  const conversations=f.store.listConversations(a.w);
+  assert.equal(conversations.length,1);
+  assert.equal(conversations[0].status,'archived');
+  const checkpoint=f.store.latestCheckpoint(a.w);
+  assert.equal(checkpoint.version,result.result.checkpointVersion);
+  assert.equal(checkpoint.payload.failover_generation,1);
+  assert.equal(checkpoint.payload.source_run_id,sourceRun);
+  assert.equal(checkpoint.payload.external_effect_replayed,false);
+  const event=f.store.db.prepare("SELECT payload FROM events WHERE task_id=? AND kind='provider.failover.prepared' ORDER BY seq DESC LIMIT 1").get(a.w);
+  assert.equal(JSON.parse(event.payload).generation,1);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('work failover refuses running, interrupted and unresolved attempts while independent work remains available',async t=>{
+  let sends=0;
+  const f=fixture(t,{provider:{send:async({taskId})=>{sends++;return executorReceipt(f.store,taskId);}}});
+  const a=await project(f,'Alvo'),b=await project(f,'Independente');
+  const running=f.store.startRun(a.w,'worker_stuck');
+  await assert.rejects(f.call('work_failover_prepare',{projectId:a.p,taskId:a.w}),/failover_source_still_running/);
+  f.store.finishRun(a.w,running,'provider_process_interrupted');
+  f.store.db.prepare("UPDATE runs SET status='interrupted',error='process_interrupted' WHERE id=?").run(running);
+  f.store.db.prepare("UPDATE tasks SET status='interrupted' WHERE id=?").run(a.w);
+  await assert.rejects(f.call('work_failover_prepare',{projectId:a.p,taskId:a.w}),/reconciliation_required/);
+  const reserved=f.service.transaction(()=>f.service.reserve(f.context,'work_send',{
+    requestId:'uncertain_failover_source',projectId:a.p,taskId:a.w,content:'efeito possivelmente enviado'}));
+  f.service.finish(reserved.commandId,{taskId:a.w,reason:'transport_unknown'},'uncertain');
+  await assert.rejects(f.call('work_failover_prepare',{projectId:a.p,taskId:a.w}),/reconciliation_required/);
+  const independent=await f.call('work_send',{projectId:b.p,taskId:b.w,content:'Continuar frente independente'});
+  assert.equal(independent.status,'succeeded');
+  assert.equal(sends,1);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+
+test('work failover accepts only a latest succeeded Run with durable reconciliation evidence',async t=>{
+  const f=fixture(t,{provider:{send:async()=>{throw Error('must_not_send');}}});
+  const a=await project(f,'Failover reconciliado');
+  f.store.setChatUrl(a.w,'https://chatgpt.com/c/22222222-2222-4222-8222-222222222222');
+  const sourceRun=f.store.startRun(a.w,'worker_original');
+  f.store.finishRun(a.w,sourceRun);
+  await assert.rejects(
+    f.call('work_failover_prepare',{projectId:a.p,taskId:a.w}),
+    /failover_source_not_reconciled/
+  );
+  f.store.event(a.w,'provider.response.reconciled',{
+    run_id:'run_other',response_sha256:'a'.repeat(64)
+  });
+  await assert.rejects(
+    f.call('work_failover_prepare',{projectId:a.p,taskId:a.w}),
+    /failover_source_not_reconciled/
+  );
+  f.store.event(a.w,'provider.response.reconciled',{
+    run_id:sourceRun,response_sha256:'b'.repeat(64)
+  });
+  const result=await f.call('work_failover_prepare',{projectId:a.p,taskId:a.w});
+  assert.equal(result.status,'succeeded');
+  assert.equal(result.result.sourceRunId,sourceRun);
+  assert.equal(result.result.sourceReconciledResponse,true);
+  assert.equal(result.result.providerMessagesSent,0);
+  assert.equal(result.result.effectsReplayed,false);
+  const checkpoint=f.store.latestCheckpoint(a.w);
+  assert.equal(checkpoint.payload.source_reconciled_response,true);
+  assert.equal(checkpoint.payload.source_run_id,sourceRun);
+  assert.equal(f.store.getTask(a.w).chat_url,null);
+  const event=f.store.db.prepare("SELECT payload FROM events WHERE task_id=? AND kind='provider.failover.prepared' ORDER BY seq DESC LIMIT 1").get(a.w);
+  assert.equal(JSON.parse(event.payload).source_reconciled_response,true);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+
+test('reconciled provider Run closes exactly one matching uncertain work_send receipt before failover',async t=>{
+  const f=fixture(t,{provider:{send:async()=>{throw Error('must_not_send');}}});
+  const a=await project(f,'Failover físico reconciliado');
+  f.store.setChatUrl(a.w,'https://chatgpt.com/c/33333333-3333-4333-8333-333333333333');
+  const reserved=f.service.transaction(()=>f.service.reserve(f.context,'work_send',{
+    requestId:'physical_recovered_send',projectId:a.p,taskId:a.w,content:'Resposta longa'
+  }));
+  const sourceRun=f.store.startRun(a.w,'worker_interrupted');
+  f.service.finish(reserved.commandId,{taskId:a.w},'uncertain');
+  f.store.finishRun(a.w,sourceRun);
+  f.store.event(a.w,'provider.response.reconciled',{
+    run_id:sourceRun,response_sha256:'c'.repeat(64)
+  });
+  const recovered=f.service.reconcileRecoveredWorkReceipt(a.w,sourceRun);
+  assert.equal(recovered.reconciled,true);
+  assert.equal(recovered.commandId,reserved.commandId);
+  const receipt=f.store.db.prepare('SELECT status,result FROM lab_command_receipts WHERE id=?').get(reserved.commandId);
+  assert.equal(receipt.status,'succeeded');
+  assert.deepEqual(JSON.parse(receipt.result),{
+    taskId:a.w,runId:sourceRun,responseObserved:true,effectVerified:false,
+    provider:'chatgpt_web',recovered:true,reconciled:true
+  });
+  assert.equal(f.service.hasUnresolvedWorkReceipt(a.p,a.w,{includeRunning:true}),false);
+  const failover=await f.call('work_failover_prepare',{projectId:a.p,taskId:a.w});
+  assert.equal(failover.status,'succeeded');
+  assert.equal(failover.result.sourceRunId,sourceRun);
+  assert.equal(failover.result.sourceReconciledResponse,true);
+  const event=f.store.db.prepare("SELECT payload FROM events WHERE task_id=? AND kind='provider.command.reconciled' ORDER BY seq DESC LIMIT 1").get(a.w);
+  assert.equal(JSON.parse(event.payload).command_id,reserved.commandId);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('recovered work receipt reconciliation fails closed when uncertain command attribution is ambiguous',async t=>{
+  const f=fixture(t);
+  const a=await project(f,'Failover ambíguo');
+  for(const requestId of ['ambiguous_send_a','ambiguous_send_b']){
+    const reserved=f.service.transaction(()=>f.service.reserve(f.context,'work_send',{
+      requestId,projectId:a.p,taskId:a.w,content:'Mesmo alvo'
+    }));
+    f.service.finish(reserved.commandId,{taskId:a.w},'uncertain');
+  }
+  const sourceRun=f.store.startRun(a.w,'worker_reconciled');
+  f.store.finishRun(a.w,sourceRun);
+  f.store.event(a.w,'provider.response.reconciled',{
+    run_id:sourceRun,response_sha256:'d'.repeat(64)
+  });
+  assert.throws(()=>f.service.reconcileRecoveredWorkReceipt(a.w,sourceRun),
+    /recovered_work_receipt_ambiguous/);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE status='uncertain'").get().n,2);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });

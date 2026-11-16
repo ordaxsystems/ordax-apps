@@ -24,7 +24,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import {HTML_ARTIFACT_LIMIT_BYTES,validateHtmlArtifactName} from '../src/provider-html-artifact.mjs';
-import {classifyProviderMcpSelection,requireSelectedMcpForPrompt,inspectProviderMcpComposerSelection,inspectProviderMcpAddContextTrigger,inspectProviderMcpPickerOption,isStandaloneMcpSelection,providerMcpAppSpec} from '../src/provider-mcp-selection.mjs';
+import {classifyProviderMcpSelection,requireSelectedMcpForPrompt,inspectProviderMcpComposerSelection,inspectProviderMcpAddContextTrigger,activateProviderMcpAddContextTrigger,prepareProviderMcpMentionSearch,inspectProviderMcpMentionOption,activateProviderMcpMentionOption,inspectProviderMcpPickerOption,activateProviderMcpPickerOption,placeProviderComposerCaretAtEnd,isStandaloneMcpSelection,providerMcpAppSpec} from '../src/provider-mcp-selection.mjs';
 import { fileURLToPath } from 'node:url';
 import { classifyProviderContextAttachmentObservation, selectProviderContextFileInput, PROVIDER_CONTEXT_FILE_INPUT_SELECTOR, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
 
@@ -637,6 +637,8 @@ export class EmbeddedChatWorker {
       try{if(!wc.debugger.isAttached())wc.debugger.attach('1.3');}
       catch{if(!wc.debugger.isAttached())throw Error('chromium_input_channel_unavailable');}
       let selected=readySelection;
+      let ownsMcpPreflightDraft=false,ownsMcpSearchQuery=false,mcpSearchQuery='';
+      try {
       if(!reusable){
         const triggerExpression='(()=>{const inspect='+inspectProviderMcpAddContextTrigger.toString()+
           ';return inspect(document,'+composerExpression()+')})()';
@@ -650,39 +652,86 @@ export class EmbeddedChatWorker {
           if(attempt<24)await sleep(120);
         }
         if(!trigger?.selectable)throw Error('provider_mcp_picker_unavailable');
-        const nativeClick=async target=>{
-          await wc.debugger.sendCommand('Input.dispatchMouseEvent',{
-            type:'mouseMoved',x:target.x,y:target.y
-          });
-          await wc.debugger.sendCommand('Input.dispatchMouseEvent',{
-            type:'mousePressed',x:target.x,y:target.y,button:'left',clickCount:1
-          });
-          await wc.debugger.sendCommand('Input.dispatchMouseEvent',{
-            type:'mouseReleased',x:target.x,y:target.y,button:'left',clickCount:1
-          });
-        };
-        if(!trigger.open)await nativeClick(trigger);
+        if(!trigger.open){
+          const activateExpression='(()=>{const activate='+activateProviderMcpAddContextTrigger.toString()+
+            ';return activate(document,'+composerExpression()+')})()';
+          const activated=await wc.executeJavaScript(activateExpression).catch(()=>null);
+          if(activated?.activated!==true&&activated?.open!==true)
+            throw Error('provider_mcp_picker_activation_failed');
+          let opened=null;
+          for(let i=0;i<8;i++){
+            opened=await wc.executeJavaScript(triggerExpression).catch(()=>null);
+            if(opened?.open===true)break;
+            if(i<7)await sleep(75);
+          }
+          if(opened?.open!==true)throw Error('provider_mcp_picker_did_not_open');
+        }
         const choiceExpression='(()=>{const inspect='+inspectProviderMcpPickerOption.toString()+
           ';return inspect(document,'+JSON.stringify(spec)+')})()';
-        let clicked=false;
+        const activateChoiceExpression='(()=>{const activate='+activateProviderMcpPickerOption.toString()+
+          ';return activate(document,'+JSON.stringify(spec)+')})()';
+        let clicked=false,lastChoice=null;
         selected=null;
-        for(let i=0;i<24;i++){
+        for(let i=0;i<6;i++){
           selected=await this.inspectMcpSelectionReadOnly({allowDuringRun:true,app:mcpApp});
           if(selected.selectionObserved===true)break;
           const choice=await wc.executeJavaScript(choiceExpression).catch(()=>null);
+          lastChoice=choice;
           if(choice?.optionCount>1)throw Error('provider_mcp_picker_ambiguous');
           if(!clicked&&choice?.selectable===true&&choice.optionCount===1){
-            // The provider's real app menu is the authority, not the app name
-            // typed as text or an injected/fabricated semantic mention.
-            await nativeClick(choice);
+            const activated=await wc.executeJavaScript(activateChoiceExpression).catch(()=>null);
+            if(activated?.activated!==true)throw Error('provider_mcp_option_unhittable');
             clicked=true;
           }
-          await sleep(150);
+          await sleep(120);
         }
-        if(selected?.selectionObserved!==true)throw Error('provider_mcp_selection_required');
+        if(selected?.selectionObserved!==true&&lastChoice?.optionCount===0){
+          const prepareSearchExpression='(()=>{const prepare='+prepareProviderMcpMentionSearch.toString()+
+            ';return prepare(document,'+composerExpression()+','+JSON.stringify(spec)+')})()';
+          const preparedSearch=await wc.executeJavaScript(prepareSearchExpression).catch(()=>null);
+          if(preparedSearch?.ready!==true||preparedSearch.query!==spec.mentionSearchQuery)
+            throw Error('provider_mcp_search_prepare_failed');
+          mcpSearchQuery=preparedSearch.query;
+          await wc.debugger.sendCommand('Input.insertText',{text:mcpSearchQuery});
+          ownsMcpSearchQuery=true;
+          const mentionChoiceExpression='(()=>{const inspect='+inspectProviderMcpMentionOption.toString()+
+            ';return inspect(document,'+JSON.stringify(spec)+')})()';
+          const activateMentionExpression='(()=>{const activate='+activateProviderMcpMentionOption.toString()+
+            ';return activate(document,'+JSON.stringify(spec)+')})()';
+          let mentionChoice=null;
+          for(let i=0;i<16;i++){
+            mentionChoice=await wc.executeJavaScript(mentionChoiceExpression).catch(()=>null);
+            if(mentionChoice?.optionCount>1)throw Error('provider_mcp_search_ambiguous');
+            if(mentionChoice?.optionCount===1&&mentionChoice?.selectable===true){
+              const activated=await wc.executeJavaScript(activateMentionExpression).catch(()=>null);
+              if(activated?.activated!==true)throw Error('provider_mcp_search_option_unhittable');
+              break;
+            }
+            if(i<15)await sleep(100);
+          }
+          for(let i=0;i<16;i++){
+            selected=await this.inspectMcpSelectionReadOnly({allowDuringRun:true,app:mcpApp});
+            if(selected.selectionObserved===true)break;
+            if(i<15)await sleep(100);
+          }
+          if(selected?.selectionObserved!==true)throw Error('provider_mcp_search_result_unavailable');
+          ownsMcpSearchQuery=false;
+          clicked=true;
+        }
+        if(selected?.selectionObserved!==true){
+          const finalTrigger=await wc.executeJavaScript(triggerExpression).catch(()=>null);
+          if(finalTrigger?.open!==true)throw Error('provider_mcp_picker_did_not_open');
+          if(lastChoice?.optionCount===0)throw Error('provider_mcp_app_unavailable');
+          if(lastChoice?.optionCount===1&&lastChoice?.selectable!==true)
+            throw Error('provider_mcp_option_unhittable');
+          throw Error('provider_mcp_selection_required');
+        }
+        ownsMcpPreflightDraft=true;
       }
-      if(!await wc.executeJavaScript(focusExpression).catch(()=>false))
-        throw Error('composer_focus_not_observed');
+      const appendFocusExpression='(()=>{const place='+placeProviderComposerCaretAtEnd.toString()+
+        ';return place(document,'+composerExpression()+')})()';
+      if(!await wc.executeJavaScript(appendFocusExpression).catch(()=>false))
+        throw Error('composer_end_focus_not_observed');
       await wc.debugger.sendCommand('Input.insertText',{text:'\n\n'+core});
       const observed=await this.#composerState();
       const value=normalizeComposerText(observed.text),expected=normalizeComposerText(core);
@@ -696,7 +745,58 @@ export class EmbeddedChatWorker {
       this.preparedMcpPrompt={providerPrompt:stagedText,sourcePrompt:prompt,
         chatUrl:wc.getURL(),startsFresh,mcpApp};
       return {providerPrompt:stagedText};
+      } catch(error) {
+        if(ownsMcpSearchQuery)
+          await this.#discardOwnedMcpSearchQuery(mcpSearchQuery).catch(()=>false);
+        if(ownsMcpPreflightDraft)
+          await this.#discardOwnedMcpPreflightDraft(core,spec).catch(()=>false);
+        throw error;
+      }
     });
+  }
+
+  async #discardOwnedMcpSearchQuery(query) {
+    const wc=this.view.webContents;
+    if(!wc||wc.isDestroyed?.())return false;
+    const safe=await wc.executeJavaScript(`(() => {
+      const composer=${composerExpression()};
+      if(!composer)return false;
+      const mentions=Array.from(composer.querySelectorAll?.('[app-mention-name]')||[]);
+      if(mentions.length!==0)return false;
+      const normalize=value=>String(value||'').replace(/\\u00a0/g,' ')
+        .replace(/\\s+/g,' ').trim();
+      const current=normalize('value' in composer?composer.value:(composer.innerText||composer.textContent||''));
+      return current===normalize(${JSON.stringify(String(query||''))});
+    })()`).catch(()=>false);
+    if(safe!==true)return false;
+    try{await this.#clearNewChatComposer();}catch{return false;}
+    return !(await this.#composerState()).text.trim();
+  }
+
+  async #discardOwnedMcpPreflightDraft(core,spec) {
+    const wc=this.view.webContents;
+    if(!wc||wc.isDestroyed?.())return false;
+    const safe=await wc.executeJavaScript(`(() => {
+      const composer=${composerExpression()};
+      if(!composer||typeof composer.cloneNode!=='function')return false;
+      const expectedPath='app://'+${JSON.stringify(String(spec?.providerAppId||''))};
+      const mentions=Array.from(composer.querySelectorAll?.('[app-mention-name]')||[]);
+      if(mentions.length!==1||mentions[0].getAttribute('app-mention-path')!==expectedPath||
+         mentions[0].getAttribute('data-prompt-link-href')!==expectedPath)return false;
+      const clone=composer.cloneNode(true);
+      const clonedMentions=Array.from(clone.querySelectorAll?.('[app-mention-name]')||[]);
+      if(clonedMentions.length!==1||
+         clonedMentions[0].getAttribute('app-mention-path')!==expectedPath)return false;
+      clonedMentions[0].remove();
+      const normalize=value=>String(value||'').replace(/\\u00a0/g,' ')
+        .replace(/\\s+/g,' ').trim();
+      const remaining=normalize('value' in clone?clone.value:(clone.innerText||clone.textContent||''));
+      const owned=normalize(${JSON.stringify(String(core||''))});
+      return remaining===''||remaining===owned;
+    })()`).catch(()=>false);
+    if(safe!==true)return false;
+    try{await this.#clearNewChatComposer();}catch{return false;}
+    return !(await this.#composerState()).text.trim();
   }
 
   // A failed SQLite begin must never leave a stale prepared Run. Clear only
@@ -711,22 +811,7 @@ export class EmbeddedChatWorker {
       const current=await this.#composerState().catch(()=>null);
       if(normalizeComposerText(current?.text)!==normalizeComposerText(providerPrompt))
         return false;
-      const focusExpression='(()=>{const e='+composerExpression()+
-        ';if(!e)return false;e.focus();return document.activeElement===e||e.contains(document.activeElement)})()';
-      if(!await wc.executeJavaScript(focusExpression).catch(()=>false))return false;
-      if(!wc.debugger.isAttached())return false;
-      await wc.debugger.sendCommand('Input.dispatchKeyEvent',{
-        type:'keyDown',key:'a',code:'KeyA',modifiers:2,windowsVirtualKeyCode:65
-      });
-      await wc.debugger.sendCommand('Input.dispatchKeyEvent',{
-        type:'keyUp',key:'a',code:'KeyA',modifiers:2,windowsVirtualKeyCode:65
-      });
-      await wc.debugger.sendCommand('Input.dispatchKeyEvent',{
-        type:'keyDown',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8
-      });
-      await wc.debugger.sendCommand('Input.dispatchKeyEvent',{
-        type:'keyUp',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8
-      });
+      try{await this.#clearNewChatComposer();}catch{return false;}
       return !(await this.#composerState()).text.trim();
     });
   }

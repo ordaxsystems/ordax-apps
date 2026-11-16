@@ -1,4 +1,9 @@
+import {createHash} from 'node:crypto';
 import {LabNextProposal} from './lab-next-proposal.mjs';
+
+const DEFAULT_PERIODIC_REVIEW_MINUTES=60;
+const MIN_PERIODIC_REVIEW_MINUTES=5;
+const MAX_PERIODIC_REVIEW_MINUTES=1440;
 
 // Durable, opt-in continuation of completed work into coordinator analysis.
 // No chat submission, provider retry, second queue service or implicit consent.
@@ -14,7 +19,10 @@ export class LabContinuation {
         project_id TEXT NOT NULL REFERENCES lab_projects(id),
         enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
         enabled_at TEXT NOT NULL,
-        start_run_rowid INTEGER NOT NULL
+        start_run_rowid INTEGER NOT NULL,
+        review_interval_minutes INTEGER NOT NULL DEFAULT 60 CHECK(review_interval_minutes BETWEEN 5 AND 1440),
+        last_periodic_review_at TEXT,
+        last_periodic_state_hash TEXT
       );
       CREATE TABLE IF NOT EXISTS lab_continuation_reviews (
         run_id TEXT PRIMARY KEY REFERENCES runs(id),
@@ -25,22 +33,95 @@ export class LabContinuation {
       );
       CREATE INDEX IF NOT EXISTS idx_lab_continuation_queue ON lab_continuation_reviews(state,updated_at);
     `);
+    const policyColumns=this.db.prepare('PRAGMA table_info(lab_continuation_policies)').all();
+    if(!policyColumns.some(column=>column.name==='review_interval_minutes'))
+      this.db.exec('ALTER TABLE lab_continuation_policies ADD COLUMN review_interval_minutes INTEGER NOT NULL DEFAULT 60 CHECK(review_interval_minutes BETWEEN 5 AND 1440)');
+    if(!policyColumns.some(column=>column.name==='last_periodic_review_at'))
+      this.db.exec('ALTER TABLE lab_continuation_policies ADD COLUMN last_periodic_review_at TEXT');
+    if(!policyColumns.some(column=>column.name==='last_periodic_state_hash'))
+      this.db.exec('ALTER TABLE lab_continuation_policies ADD COLUMN last_periodic_state_hash TEXT');
     this.nextProposal=new LabNextProposal({store,service});
     // Crash after reserving API review has an unknown outcome: NEVER replay.
     this.db.prepare("UPDATE lab_continuation_reviews SET state='reconciliation_required',reason='interrupted_review',updated_at=? WHERE state='analyzing'")
       .run(this.store.now());
   }
-  configure(projectId,orchestratorId,enabled) {
+  projectStateFingerprint(projectId,orchestratorId) {
+    const project=this.db.prepare(`SELECT name,objective,repository_url
+      FROM lab_projects WHERE id=?`).get(projectId)||null;
+    const works=this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,t.draft_revision,
+      (SELECT COUNT(*) FROM messages m WHERE m.task_id=t.id) message_count,
+      (SELECT r.id FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_run_id,
+      (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_run_status,
+      (SELECT r.heartbeat_at FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_heartbeat_at
+      FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
+      WHERE b.project_id=? AND b.orchestrator_id=? AND b.kind='work'
+      ORDER BY t.id LIMIT 256`).all(projectId,orchestratorId);
+    const receipts=this.db.prepare(`SELECT id,operation,status,updated_at,
+      CASE WHEN operation='project_file_write' AND json_valid(result)
+        THEN json_extract(result,'$.path') END artifact_path,
+      CASE WHEN operation='project_file_write' AND json_valid(result)
+        THEN json_extract(result,'$.sha256') END artifact_sha256,
+      CASE WHEN operation='project_command_run' AND json_valid(result)
+        THEN json_extract(result,'$.exitCode') END command_exit_code
+      FROM lab_command_receipts WHERE project_id=?
+        AND operation IN ('project_file_write','project_command_run','work_send',
+          'proposal_send','forjador_send','work_parallel_launch','repository_observe')
+      ORDER BY rowid DESC LIMIT 64`).all(projectId);
+    const repository=this.db.prepare(`SELECT repository_id,default_branch,head_sha,observed_at
+      FROM lab_repository_head_evidence WHERE project_id=? ORDER BY recorded_at DESC LIMIT 1`)
+      .get(projectId)||null;
+    let files={available:false,entries:[],truncated:false};
+    if(this.service.files)try{
+      const queue=[''],entries=[];let truncated=false;
+      while(queue.length&&entries.length<64){
+        const directory=queue.shift();
+        const page=this.service.files.list(projectId,directory);
+        for(const entry of page.entries||[]){
+          if(entries.length>=64){truncated=true;break;}
+          const relative=directory?directory+'/'+entry.name:entry.name;
+          if(entry.kind==='directory'){queue.push(relative);entries.push({path:relative,kind:'directory'});}
+          else if(entry.kind==='file'){
+            const proof=this.service.files.read(projectId,relative);
+            entries.push({path:relative,kind:'file',bytes:proof.bytes,sha256:proof.sha256});
+          } else entries.push({path:relative,kind:entry.kind});
+        }
+        truncated=truncated||page.truncated===true;
+      }
+      if(queue.length)truncated=true;
+      files={available:true,entries,truncated};
+    }catch(error){files={available:false,entries:[],truncated:false,
+      reason:String(error?.message||'workspace_unavailable').slice(0,80)};}
+    const payload={project,works,receipts,repository,files};
+    return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+  }
+  configure(projectId,orchestratorId,enabled,{reviewIntervalMinutes=null}={}) {
     if(typeof enabled!=='boolean')throw Error('continuation_invalid_setting');
+    if(reviewIntervalMinutes!==null&&(!Number.isSafeInteger(reviewIntervalMinutes)||
+      reviewIntervalMinutes<MIN_PERIODIC_REVIEW_MINUTES||
+      reviewIntervalMinutes>MAX_PERIODIC_REVIEW_MINUTES))
+      throw Error('continuation_review_interval_invalid');
     const now=this.store.now();
+    const current=this.db.prepare(`SELECT enabled,review_interval_minutes
+      FROM lab_continuation_policies WHERE project_id=? AND orchestrator_id=?`)
+      .get(projectId,orchestratorId);
+    const interval=reviewIntervalMinutes??current?.review_interval_minutes??DEFAULT_PERIODIC_REVIEW_MINUTES;
     const baseline=this.db.prepare('SELECT COALESCE(MAX(rowid),0) AS id FROM runs').get().id;
-    this.db.prepare(`INSERT INTO lab_continuation_policies (project_id,orchestrator_id,enabled,enabled_at,start_run_rowid)
-      VALUES(?,?,?,?,?) ON CONFLICT(orchestrator_id) DO UPDATE SET
-      enabled=excluded.enabled,enabled_at=CASE WHEN excluded.enabled=1 AND lab_continuation_policies.enabled=0
+    this.db.prepare(`INSERT INTO lab_continuation_policies
+      (project_id,orchestrator_id,enabled,enabled_at,start_run_rowid,review_interval_minutes)
+      VALUES(?,?,?,?,?,?) ON CONFLICT(orchestrator_id) DO UPDATE SET
+      enabled=excluded.enabled,review_interval_minutes=excluded.review_interval_minutes,
+      enabled_at=CASE WHEN excluded.enabled=1 AND lab_continuation_policies.enabled=0
         THEN excluded.enabled_at ELSE lab_continuation_policies.enabled_at END,
       start_run_rowid=CASE WHEN excluded.enabled=1 AND lab_continuation_policies.enabled=0
         THEN excluded.start_run_rowid ELSE lab_continuation_policies.start_run_rowid END`)
-      .run(projectId,orchestratorId,enabled?1:0,now,baseline);
+      .run(projectId,orchestratorId,enabled?1:0,now,baseline,interval);
+    if(enabled&&current?.enabled!==1){
+      const fingerprint=this.projectStateFingerprint(projectId,orchestratorId);
+      this.db.prepare(`UPDATE lab_continuation_policies
+        SET last_periodic_review_at=?,last_periodic_state_hash=?
+        WHERE project_id=? AND orchestrator_id=?`)
+        .run(now,fingerprint,projectId,orchestratorId);
+    }
     if(!enabled) {
       // Persist the stop decision before any in-flight analysis completes.
       // Its external outcome is not retried or promoted to a confirmed review.
@@ -64,7 +145,8 @@ export class LabContinuation {
     this.nextProposal.quarantineInFlight(projectId,orchestratorId,reason);
   }
   status(projectId,orchestratorId) {
-    const policy=this.db.prepare(`SELECT enabled,start_run_rowid FROM lab_continuation_policies
+    const policy=this.db.prepare(`SELECT enabled,start_run_rowid,review_interval_minutes,
+      last_periodic_review_at,last_periodic_state_hash FROM lab_continuation_policies
       WHERE project_id=? AND orchestrator_id=?`).get(projectId,orchestratorId);
     // Status is scoped to the current opt-in activation. Historical queued,
     // analyzed or quarantined reviews remain durable, never active again.
@@ -91,8 +173,16 @@ export class LabContinuation {
       WHERE kind='orchestrator.followup.prepared'
         AND json_extract(payload,'$.source_run_id')=? LIMIT 1`).get(latest.run_id));
     const enabled=policy?.enabled===1;
+    const interval=policy?.review_interval_minutes??DEFAULT_PERIODIC_REVIEW_MINUTES;
+    const lastMs=Date.parse(policy?.last_periodic_review_at||'');
+    const nextDueAt=enabled&&Number.isFinite(lastMs)
+      ?new Date(lastMs+interval*60_000).toISOString():null;
+    const periodicReview={intervalMinutes:interval,lastCheckedAt:policy?.last_periodic_review_at||null,
+      nextDueAt,state:!enabled?'disabled':!nextDueAt||Date.parse(nextDueAt)<=Date.now()?'due':'scheduled',
+      stateFingerprintRecorded:typeof policy?.last_periodic_state_hash==='string'&&
+        /^[a-f0-9]{64}$/.test(policy.last_periodic_state_hash)};
     return {enabled,mode:'automatic_analysis_and_optional_proposals',automaticGPTSends:false,
-      nextProposals:this.nextProposal.status(projectId,orchestratorId),
+      nextProposals:this.nextProposal.status(projectId,orchestratorId),periodicReview,
       state:!enabled?'disabled':counts.reconciliation_required?'reconciliation_required':
         counts.queued||counts.analyzing?'pending':'observing',
       counts,latest:latest?{...latest,reviewDecision,followupPrepared}:null};
@@ -128,6 +218,53 @@ export class LabContinuation {
       ORDER BY r.completed_at,r.id LIMIT 100`).run(now,session.id,session.id);
     return result.changes;
   }
+  async tickPeriodic(context) {
+    const session=this.store.getWorkspaceSession();
+    if(session?.status!=='active'||context?.workspaceSessionId!==session.id)
+      return {state:'blocked_workspace'};
+    const policies=this.db.prepare(`SELECT p.project_id,p.orchestrator_id,
+      p.review_interval_minutes,p.last_periodic_review_at,p.last_periodic_state_hash
+      FROM lab_continuation_policies p
+      JOIN lab_orchestrators o ON o.id=p.orchestrator_id AND o.project_id=p.project_id
+      JOIN lab_projects project ON project.id=p.project_id AND project.workspace_session_id=?
+      WHERE p.enabled=1 AND o.status='ready'
+      ORDER BY COALESCE(p.last_periodic_review_at,'') ASC,p.orchestrator_id LIMIT 64`)
+      .all(session.id);
+    const nowMs=Date.now();
+    const policy=policies.find(row=>{
+      const last=Date.parse(row.last_periodic_review_at||'');
+      return !Number.isFinite(last)||last+row.review_interval_minutes*60_000<=nowMs;
+    });
+    if(!policy)return {state:'idle'};
+    const fingerprint=this.projectStateFingerprint(policy.project_id,policy.orchestrator_id);
+    const now=this.store.now();
+    if(fingerprint===policy.last_periodic_state_hash){
+      this.db.prepare(`UPDATE lab_continuation_policies SET last_periodic_review_at=?
+        WHERE project_id=? AND orchestrator_id=? AND enabled=1`)
+        .run(now,policy.project_id,policy.orchestrator_id);
+      return {state:'periodic_unchanged',projectId:policy.project_id,
+        orchestratorId:policy.orchestrator_id};
+    }
+    const requestId='periodic_'+createHash('sha256')
+      .update(policy.project_id+'\0'+policy.orchestrator_id+'\0'+fingerprint)
+      .digest('hex').slice(0,48);
+    let receipt=null;
+    try{
+      receipt=await this.service.invoke(context,'orchestrator_analyze',{
+        projectId:policy.project_id,orchestratorId:policy.orchestrator_id,requestId});
+    }catch{}
+    // The fingerprint is consumed even when local analysis fails: retrying the
+    // same state blindly would violate Forge's no-uncertain-replay rule.
+    this.db.prepare(`UPDATE lab_continuation_policies
+      SET last_periodic_review_at=?,last_periodic_state_hash=?
+      WHERE project_id=? AND orchestrator_id=? AND enabled=1`)
+      .run(now,fingerprint,policy.project_id,policy.orchestrator_id);
+    this.notify();
+    const confirmed=receipt?.status==='succeeded'&&receipt?.result?.analysisObserved===true;
+    return {state:confirmed?'periodic_analyzed':'reconciliation_required',
+      projectId:policy.project_id,orchestratorId:policy.orchestrator_id,
+      commandId:receipt?.commandId||null};
+  }
   async tick(context=this.context) {
     if(!context)throw Error('continuation_context_required');
     const session=this.store.getWorkspaceSession();
@@ -156,7 +293,11 @@ export class LabContinuation {
         // independent project's already analyzed, reviewable next proposal.
         // A blocked analysis stays queued; proposal policy/receipt gates apply.
         const next=await this.nextProposal.tick(context);
-        return next.state==='idle'?{state:choice.state}:next;
+        if(next.state!=='idle')return next;
+        // Periodic review reuses this same continuation tick/Store. It is a
+        // local state review, never another scheduler, provider send or retry.
+        const periodic=await this.tickPeriodic(context);
+        return periodic.state==='idle'?{state:choice.state}:periodic;
       }
       const row=choice.row;
       if(row.transport_uncertain)return {state:'reconciliation_required'};

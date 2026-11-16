@@ -55,19 +55,25 @@ export class ForgeProjectDevelopment {
       'workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),'+
       'scope_hash TEXT NOT NULL,approved_at TEXT NOT NULL)');
   }
-  status(projectId){
+  status(projectId,{taskId=null}={}){
     const scope=this.workspaces.status(projectId);
     const bound=scope.configured===true&&scope.verified===true;
     const session=this.store.getWorkspaceSession();
     const approved=bound&&this.ownerTrust.isAppTrusted()&&Boolean(
       this.db.prepare('SELECT 1 FROM forge_project_development_approvals WHERE project_id=? AND workspace_session_id=? AND scope_hash=?')
         .get(projectId,session.id,this.ownerTrust.scopeHash(projectId)));
-
+    let worktree=null;
+    if(taskId!==null)worktree=this.workspaces.taskWorktree(projectId,taskId);
     return {schema:'ordax.forge.project-development/1',projectId,
+      ...(taskId?{taskId}:{}),
       available:approved,ownerBoundWorkspace:bound,
       ownerApproved:approved,permission:approved?'full_windows_user':'not_authorized',
       nativeProcessExecution:approved,workspaceIsSandbox:false,
       effectReceipts:'canonical_app_sqlite',rootPathExposed:false,
+      taskWorkspace:taskId?worktree?.status==='active'
+        ?{active:true,kind:'git_worktree',branchName:worktree.branchName,
+          baseHeadSha:worktree.baseHeadSha,rootPathExposed:false}
+        :{active:false,kind:'project_root'}:null,
       reason:!bound?'owner_workspace_not_verified':!approved?'owner_development_approval_required':null};
   }
   approve(projectId,{expectedScopeHash=null}={}){
@@ -89,14 +95,93 @@ export class ForgeProjectDevelopment {
       .run(projectId,this.store.getWorkspaceSession().id);
     return this.status(projectId);
   }
-  async run({projectId,command,workingDirectory:relative='',timeoutMs=DEFAULT_TIMEOUT_MS}={}){
+  requiresTaskScope(projectId){
+    return this.workspaces.hasActiveTaskWorktrees(projectId);
+  }
+  async prepareWorktree(projectId,taskId){
+    if(!this.status(projectId,{taskId}).available)
+      throw Error('forge_development_owner_approval_required');
+    const existing=this.workspaces.taskWorktree(projectId,taskId);
+    if(existing?.status==='active')return {
+      projectId,taskId,status:'active',branchName:existing.branchName,
+      baseHeadSha:existing.baseHeadSha,workspaceScope:'task_worktree',
+      rootPathExposed:false,alreadyPrepared:true
+    };
+    if(existing)throw Error('forge_worktree_state_invalid');
+    const root=this.workspaces.mainRootForProject(projectId);
+    if(!root)throw Error('forge_workspace_binding_required');
+    const git=async command=>{
+      const result=await this.run({projectId,command,timeoutMs:30000});
+      if(result.exitCode!==0)throw Error('forge_worktree_git_command_failed');
+      return result.stdout.trim();
+    };
+    const top=path.resolve(await git('git rev-parse --show-toplevel'));
+    if((process.platform==='win32'?top.toLowerCase():top)!==
+       (process.platform==='win32'?path.resolve(root).toLowerCase():path.resolve(root)))
+      throw Error('forge_worktree_repository_root_mismatch');
+    const commonRaw=await git('git rev-parse --git-common-dir');
+    const common=path.resolve(root,commonRaw),expectedCommon=path.join(path.resolve(root),'.git');
+    const sameCommon=process.platform==='win32'
+      ?common.toLowerCase()===expectedCommon.toLowerCase():common===expectedCommon;
+    if(!sameCommon)throw Error('forge_worktree_git_metadata_invalid');
+    const commonInfo=fs.lstatSync(common);
+    if(!commonInfo.isDirectory()||commonInfo.isSymbolicLink())
+      throw Error('forge_worktree_git_metadata_invalid');
+    const dirty=await git('git status --porcelain=v1 --untracked-files=all');
+    if(dirty)throw Error('forge_worktree_main_dirty');
+    const baseHeadSha=await git('git rev-parse HEAD');
+    if(!/^[a-f0-9]{40}$/.test(baseHeadSha))throw Error('forge_worktree_head_invalid');
+    const branchName='forge/'+taskId;
+    const branchProbe=await this.run({projectId,
+      command:'git show-ref --verify --quiet refs/heads/'+branchName,timeoutMs:15000});
+    if(branchProbe.exitCode===0)throw Error('forge_worktree_branch_exists');
+    if(branchProbe.exitCode!==1)throw Error('forge_worktree_git_command_failed');
+    const info=path.join(common,'info');fs.mkdirSync(info,{recursive:true});
+    const exclude=path.join(info,'exclude');
+    let excludeText='';
+    try{excludeText=fs.readFileSync(exclude,'utf8');}catch(error){
+      if(error?.code!=='ENOENT')throw error;
+    }
+    if(!excludeText.split(/\r?\n/).map(line=>line.trim()).includes('.forge-worktrees/'))
+      fs.appendFileSync(exclude,(excludeText&&!excludeText.endsWith('\n')?'\n':'')+'.forge-worktrees/\n','utf8');
+    const relative='.forge-worktrees/'+taskId;
+    let physicalCreated=false;
+    try {
+      const created=await this.run({projectId,
+        command:'git worktree add -b '+branchName+' '+relative+' HEAD',timeoutMs:60000});
+      if(created.exitCode!==0)throw Error('forge_worktree_create_failed');
+      physicalCreated=true;
+      const childTop=path.resolve(await git('git -C '+relative+' rev-parse --show-toplevel'));
+      const expected=path.resolve(this.workspaces.expectedTaskWorktreeRoot(projectId,taskId));
+      if((process.platform==='win32'?childTop.toLowerCase():childTop)!==
+         (process.platform==='win32'?expected.toLowerCase():expected))
+        throw Error('forge_worktree_verification_failed');
+      const childBranch=await git('git -C '+relative+' branch --show-current');
+      const childHead=await git('git -C '+relative+' rev-parse HEAD');
+      if(childBranch!==branchName||childHead!==baseHeadSha)
+        throw Error('forge_worktree_verification_failed');
+      const recorded=this.workspaces.recordTaskWorktree(projectId,taskId,{branchName,baseHeadSha});
+      return {projectId,taskId,status:'active',branchName:recorded.branchName,
+        baseHeadSha:recorded.baseHeadSha,workspaceScope:'task_worktree',
+        rootPathExposed:false,alreadyPrepared:false};
+    } catch(error) {
+      if(physicalCreated){
+        try{await this.run({projectId,command:'git worktree remove --force '+relative,timeoutMs:30000});}catch{}
+        try{await this.run({projectId,command:'git branch -D '+branchName,timeoutMs:30000});}catch{}
+      }
+      throw error;
+    }
+  }
+  async run({projectId,taskId=null,command,workingDirectory:relative='',timeoutMs=DEFAULT_TIMEOUT_MS}={}){
     if(typeof command!=='string'||!command.trim()||command.length>8000||command.includes('\0')||
        !Number.isSafeInteger(timeoutMs)||timeoutMs<1000||timeoutMs>MAX_TIMEOUT_MS)
       throw Error('forge_development_command_invalid');
-    if(!this.status(projectId).available)
+    if(!this.status(projectId,{taskId}).available)
       throw Error('forge_development_owner_approval_required');
     const original=this.workspaces.status(projectId);
-    const cwd=checkedDirectory(original.path,relative);
+    const executionRoot=this.workspaces.rootForProject(projectId,taskId);
+    if(!executionRoot)throw Error('forge_workspace_binding_required');
+    const cwd=checkedDirectory(executionRoot,relative);
     const windows=process.platform==='win32';
     const executable=windows?(process.env.ComSpec||'cmd.exe'):'/bin/sh';
     const args=windows?['/d','/s','/c',command]:['-c',command];
@@ -119,8 +204,9 @@ export class ForgeProjectDevelopment {
       // Revocation is effective during a command, not only on the next call.
       const monitor=setInterval(()=>{
         try {
-          if(!this.status(projectId).available||
-             this.workspaces.status(projectId).path!==original.path){
+          if(!this.status(projectId,{taskId}).available||
+             this.workspaces.status(projectId).path!==original.path||
+             this.workspaces.rootForProject(projectId,taskId)!==executionRoot){
             scopeRevoked=true;terminate();
           }
         }catch{scopeRevoked=true;terminate();}
@@ -140,14 +226,17 @@ export class ForgeProjectDevelopment {
         if(error)return reject(error);
         if(timedOut)return reject(Error('forge_development_command_outcome_uncertain'));
         const after=this.workspaces.status(projectId);
-        if(!this.status(projectId).available||after.path!==original.path)
+        if(!this.status(projectId,{taskId}).available||after.path!==original.path||
+           this.workspaces.rootForProject(projectId,taskId)!==executionRoot)
           return reject(Error('forge_development_scope_changed'));
-        resolve({projectId,exitCode:code,signal:signal??null,
+        resolve({projectId,...(taskId?{taskId}:{}),exitCode:code,signal:signal??null,
           stdout:stdout.toString('utf8'),stderr:stderr.toString('utf8'),
           stdoutTruncated:outTruncated,stderrTruncated:errTruncated,
           completed:true,commandOutcome:code===0?'exit_zero':'nonzero_exit',
-          workingDirectory:relative||'.',workspaceIsSandbox:false,
-          externalEffectsVerified:false});
+          workingDirectory:relative||'.',
+          workspaceScope:taskId&&this.workspaces.taskWorktree(projectId,taskId)?.status==='active'
+            ?'task_worktree':'project_root',
+          workspaceIsSandbox:false,externalEffectsVerified:false});
       };
       child.once('error',error=>finish(error,null,null));
       child.once('close',(code,signal)=>finish(null,code,signal));
