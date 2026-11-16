@@ -10,6 +10,8 @@ GPT Web desenvolve no GitHub remoto; o aplicativo mantém estado, abas e continu
 
 **Conversa restaurada:** o aplicativo salva o endereço canônico do chat durante a navegação e reabre a conversa salva após reiniciar. Para uma missão interrompida, nunca usa a página inicial ou outro chat como prova de que o GPT terminou. Se o login expirar, fica bloqueado até uma sessão válida ser observada.
 
+**Instância única:** o aplicativo bloqueia uma segunda instância sobre o mesmo perfil e sua memória. Abrir novamente o atalho restaura a janela existente, sem criar outro executor ou repetir a missão.
+
 **Reinício seguro:** o app só consome um checkpoint de continuação quando registra o novo turno. Antes disso, a tarefa permanece pendente; depois, um reinício reconcilia a execução anterior e não reenvia o mesmo prompt automaticamente.
 
 **Timeout recuperável:** o Forge Git tenta restaurar a conversa salva após `provider_navigation_timeout` sem enviar novas mensagens, com intervalo mínimo de 3 minutos. Somente a conversa exata, um GPT autenticado e comprovadamente ocioso e um HEAD remoto confirmado permitem limpar o bloqueio.

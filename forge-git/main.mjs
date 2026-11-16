@@ -478,10 +478,22 @@ function events(){
     await shell.openExternal(url);return true;
   });
 }
+// The checkpoint has one process owner. Without this lock, two Electron
+// launches could each write the same JSON and repeat a GPT mission.
+const profile=path.join(app.getPath('appData'),'OrdaX','ForgeGit');
+mkdirSync(profile,{recursive:true});
+app.setPath('userData',profile);
+const ownsProfile=app.requestSingleInstanceLock();
+if(!ownsProfile)app.exit(0);
+else{
+  app.on('second-instance',()=>{
+    if(!win||win.isDestroyed())return;
+    if(win.isMinimized())win.restore();
+    if(!win.isVisible())win.show();
+    win.focus();
+  });
 app.whenReady().then(async()=>{
-  const dir=path.join(app.getPath('appData'),'OrdaX','ForgeGit');
-  mkdirSync(dir,{recursive:true});app.setPath('userData',dir);
-  store=openProjectMemory(dir);
+  store=openProjectMemory(profile);
   win=new BrowserWindow({
     width:1480,height:920,minWidth:1100,minHeight:680,
     backgroundColor:'#17191c',title:'OrdaX Forge Git',
@@ -537,4 +549,5 @@ app.whenReady().then(async()=>{
     });
   }
 }).catch(error=>{console.error(error);app.quit();});
+}
 app.on('window-all-closed',()=>app.quit());
