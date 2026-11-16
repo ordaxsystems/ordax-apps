@@ -127,6 +127,11 @@ Código de partida: forge/product/src/orchestrator-kernel.mjs, orchestrator-serv
 - Teste físico Electron/Chromium com `test/forge-live-view-dom-smoke.mjs` no Windows: recibo em `%TEMP%/forge-live-view-dom-smoke-p4-20261116.json` com `ok=true`, `minimized=true`, `focused=false`, `navigation.inDocument=true`, `navigation.titleUpdated=true`, `clicked.observableDomChanged=true`, `fill.valueLeaked=false` e recusa de controles encobertos/stale; processo de teste encerrou com exit code 0. A navegação foi executada sem mostrar ou focar a janela.
 - **Pendente:** essa é uma prova do View HTML **isolado**, não de navegação em site remoto ou aceite integral da pizzaria. A missão ainda precisa de arquivos completos gerados por agentes GPT, testes reais de carrinho/mobile, revisão Git/Integrador e critérios fechados. Preservar o reparo de sessão/login em andamento em outro checkout; não alegar GPT→MCP nesse teste de View.
 
+### P4 — diagnóstico responsivo da View ativa (16/11/2026)
+
+- Branch `feat/forge-p4-live-view-responsive-diagnostics-20261116`: o inspetor DOM canônico fornece largura/altura do documento e flags de overflow a partir da mesma View original, sem valores privados, foco, novo renderer ou ferramenta MCP. Teste de contrato cobre overflow horizontal/vertical e smoke físico Chromium passa a exigir métricas estruturadas.
+- **Não concluído:** prova física desse head e validação JavaScript do carrinho/mobile por agente GPT. A captura script-free da pizzaria não é um teste funcional do carrinho.
+
 ### P4 — pixels da View ativa, sem foco e sem recriar estado (16/11/2026)
 
 - PR #559 foi integrada à `main` em `9093a8d67396de51faa002a11750e438839476b4`, com seis gates aprovados. A evolução seguinte usa a mesma worktree isolada e base da main atual, preservando o checkout principal que possui reparos de login/dispatch em andamento.
