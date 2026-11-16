@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {routeForConversation,providerMessage,chatSessionReadiness} from '../provider-routing.mjs';
+import {routeForConversation,providerMessage,chatSessionReadiness,matchesStoredConversation} from '../provider-routing.mjs';
 
 const repo='ordaxos-admin/TESTES-FORGE-GIT';
 const branch='forge-git/agent-2-2b64f1cd';
@@ -49,4 +49,13 @@ test('sessão ChatGPT só aparece pronta com composer e autenticação observado
   assert.equal(chatSessionReadiness({...healthy,health_observed:false}),'unavailable');
   assert.equal(chatSessionReadiness({...healthy,verification_required:true}),'unavailable');
   assert.equal(chatSessionReadiness(null),'unavailable');
+});
+test('reconciliação exige a conversa salva, não a home nem outra conversa',()=>{
+ const url='https://chatgpt.com/c/6afad00d-a524-83e8-9108-3a09dd560d3f';
+ assert.equal(matchesStoredConversation(url,url),true);
+ assert.equal(matchesStoredConversation(url,url+'?utm=anything'),true);
+ assert.equal(matchesStoredConversation(url,'https://chatgpt.com/'),false);
+ assert.equal(matchesStoredConversation(null,url),false);
+ assert.equal(matchesStoredConversation(url,'https://chatgpt.com/c/other'),false);
+ assert.equal(matchesStoredConversation(url,'https://example.com/c/other'),false);
 });

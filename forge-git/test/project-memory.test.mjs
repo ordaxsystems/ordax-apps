@@ -104,3 +104,16 @@ test('inbox mantém um estado recente por agente e preserva todo o histórico',(
     assert.equal(restored.inbox.find(x=>!x.delivered).kind,'github_revision');
   }finally{rmSync(dir,{recursive:true,force:true});}
 });
+test('nova conversa zera URL antiga antes de qualquer envio GPT',()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'forge-git-new-thread-'));
+ try{
+   const memory=openProjectMemory(dir);
+   memory.patch('agent-2',{autoContinue:true,autoPending:true,
+     chatUrl:'https://chatgpt.com/c/prior'});
+   memory.beginTurn('agent-2','Continue a missão.',{continuation:true,newSession:true});
+   const result=openProjectMemory(dir).agent('agent-2');
+   assert.equal(result.chatUrl,null);
+   assert.equal(result.status,'running');
+   assert.equal(result.autoPending,false);
+ }finally{rmSync(dir,{force:true,recursive:true});}
+});

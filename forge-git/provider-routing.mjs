@@ -1,3 +1,4 @@
+import {canonicalProviderChatUrl} from '../forge/product/src/conversation-policy.mjs';
 export function routeForConversation(agentId) {
   if (agentId === 'forjador')
     return Object.freeze({requiresMcp:true,mcpApp:'forge-mcp',purpose:'coordination'});
@@ -30,4 +31,8 @@ export function chatSessionReadiness(health) {
      health.composer_ready===true && health.verification_required!==true &&
      !health.provider_access_problem) return 'ready';
   return 'unavailable';
+}
+export function matchesStoredConversation(saved,observed){
+  const expected=canonicalProviderChatUrl(saved);
+  return Boolean(expected && expected===canonicalProviderChatUrl(observed));
 }

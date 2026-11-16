@@ -63,7 +63,7 @@ export function openProjectMemory(dir){
      persist();
      return {...agent};
    },
-   beginTurn:(id,task,{continuation=false}={})=>{
+   beginTurn:(id,task,{continuation=false,newSession=false}={})=>{
      const agent=state.agents.find(a=>a.id===id);
      if(!agent)throw Error('agente_desconhecido');
      if(continuation&&(!agent.autoContinue||!agent.autoPending))
@@ -71,6 +71,7 @@ export function openProjectMemory(dir){
      agent.status='running';
      agent.lastError=null;
      agent.task=task;
+     if(newSession)agent.chatUrl=null;
      if(continuation)agent.autoPending=false;
      persist();
      return {...agent};
