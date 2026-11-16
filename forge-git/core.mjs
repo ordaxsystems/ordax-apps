@@ -9,6 +9,16 @@ export function repositoryName(value) {
   return name;
 }
 
+export function ordaxRepository(value) {
+  const raw = String(value ?? '').trim();
+  const full = repositoryName(raw.includes('/') ? raw : 'ordaxsystems/' + raw);
+  const [owner, name] = full.split('/');
+  if (owner.toLowerCase() !== 'ordaxsystems') {
+    throw new Error('Este protótipo só trabalha em repositórios da organização ordaxsystems.');
+  }
+  return 'ordaxsystems/' + name;
+}
+
 export function filePath(value) {
   const name = String(value ?? '').trim();
   if (!name || name.length > 240 || name.startsWith('/') || name.includes('\\') ||
