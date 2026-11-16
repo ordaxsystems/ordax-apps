@@ -1,0 +1,11 @@
+{
+  "name": "ordax-forge-git-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "main.mjs",
+  "description": "Protótipo GPT Web → GitHub, isolado do Forge MCP",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}
