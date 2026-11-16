@@ -1,102 +1,82 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline';">
-  <title>OrdaX Forge Git</title>
-  <style>
-    :root { color-scheme:dark; font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; }
-    * { box-sizing:border-box; }
-    body { margin:0; background:#17191c; color:#edecea; }
-    aside { width:430px; height:100vh; overflow:auto; padding:22px 24px 28px; border-right:1px solid #303337; }
-    h1 { font-size:24px; letter-spacing:-.7px; margin:0; }
-    h2 { font-size:13px; color:#c7b9aa; font-weight:650; margin:0 0 14px; letter-spacing:.3px; }
-    p { margin:6px 0 0; color:#aaabb0; font-size:12px; }
-    header { display:flex; justify-content:space-between; align-items:start; margin-bottom:24px; }
-    .mark { background:#b86e5c; color:#17191c; border-radius:10px; font-weight:800; padding:8px 10px; font-size:14px; }
-    section { padding:18px; margin:0 0 14px; border:1px solid #33363b; border-radius:14px; background:#202226; }
-    label { display:block; color:#d2d1d0; font-size:12px; font-weight:600; margin:13px 0 6px; }
-    input,textarea { width:100%; background:#17191c; color:#f2f1ef; border:1px solid #48494c; border-radius:8px; padding:10px 11px; font:inherit; outline:none; }
-    textarea { min-height:108px; resize:vertical; }
-    input:focus,textarea:focus { border-color:#c98269; }
-    input::placeholder,textarea::placeholder { color:#74787f; }
-    button { appearance:none; cursor:pointer; border-radius:9px; padding:10px 12px; border:1px solid #666; background:#303236; color:#f3f3f3; font:600 13px system-ui; }
-    button.primary { background:#c27c65; color:#1b1715; border:1px solid #c27c65; }
-    button:disabled { opacity:.38; cursor:not-allowed; }
-    .line { display:flex; gap:8px; align-items:center; }
-    .line input { min-width:0; flex:1; }
-    .line button { flex:0 0 auto; }
-    .fill { width:100%; margin-top:12px; }
-    .muted { font-size:12px; line-height:1.5; color:#999ca2; }
-    .status { padding:10px 12px; margin-top:12px; background:#17191c; border:1px solid #37393c; border-radius:9px; color:#c9c7c5; word-break:break-word; }
-    .status strong { color:#e9c1a5; }
-    .connected { color:#86c8a2; margin-top:8px; font-size:12px; }
-    #proposal { display:none; }
-    #proposal.visible { display:block; }
-    #result { overflow-wrap:anywhere; }
-    .small { font-size:11px; color:#8f9399; margin-top:14px; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'">
+<title>OrdaX Forge Git</title>
+<style>
+:root{color-scheme:dark;font:14px/1.5 system-ui,"Segoe UI",sans-serif;background:#17191c;color:#edeae6}
+*{box-sizing:border-box}body{margin:0;background:#17191c}
+aside{position:absolute;left:0;top:0;width:430px;height:100vh;overflow:auto;padding:22px;border-right:1px solid #34363b}
+h1{font-size:23px;letter-spacing:-.7px;margin:0}
+h2{font-size:13px;color:#d8a990;margin:0 0 10px}
+p{margin:7px 0 10px;color:#a4a5a9;font-size:12px}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.brand{border-radius:10px;background:#bd7d66;color:#161515;font-weight:800;padding:8px 10px}
+section{padding:17px;border:1px solid #3a3b3f;border-radius:13px;margin:0 0 12px;background:#222427}
+label{display:block;margin:11px 0 6px;color:#d2c9c3;font-size:12px;font-weight:600}
+textarea,input{width:100%;min-width:0;background:#181a1d;color:#f4f1ed;border:1px solid #4d4d51;border-radius:8px;padding:10px;font:inherit}
+textarea{min-height:115px;resize:vertical}
+button{cursor:pointer;background:#323336;border:1px solid #58595c;color:#f4f0eb;padding:10px 12px;border-radius:8px;font:600 13px system-ui}
+button.primary{background:#c58268;color:#201714;border-color:#c58268}
+button:disabled{opacity:.4;cursor:not-allowed}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #e0a07f;outline-offset:2px}
+.full{width:100%;margin-top:10px}.grid{display:flex;gap:8px}.grid button{flex:1}
+.meta{font-size:12px;color:#aeaaab;overflow-wrap:anywhere;white-space:pre-wrap}
+.status{padding:9px 11px;background:#17191c;border:1px solid #3c3d43;border-radius:8px;overflow-wrap:anywhere;white-space:pre-wrap;font-size:12px}
+#login-state{color:#93c9a5;margin-top:8px}
+#history{max-height:180px;overflow:auto;font-size:11px;color:#b7b9bc}
+.event{padding:7px 0;border-bottom:1px solid #36383b}
+#tabbar{position:absolute;left:430px;right:0;top:0;height:46px;background:#202225;border-bottom:1px solid #444347;display:flex;align-items:stretch;gap:3px;padding:4px 10px}
+#tabbar button{border:0;border-radius:7px 7px 0 0;background:#2a2a2e;color:#aba7a5;min-width:125px}
+#tabbar button.active{background:#39373a;color:#f4e5d8;border-bottom:2px solid #df9471}
+#tabbar .hint{align-self:center;margin-left:auto;font-size:11px;color:#96999e}
+#role{font-weight:700;color:#dfad94}
+</style>
 </head>
 <body>
-  <aside>
-    <header>
-      <div><h1>Forge Git</h1><p>GPT Web + desenvolvimento remoto</p></div>
-      <div class="mark">FG</div>
-    </header>
-    <section>
-      <h2>01 / GitHub • OrdaX</h2>
-      <button id="connect-local" class="primary fill" type="button">Conectar GitHub OrdaX do Windows</button>
-      <div id="account" class="connected" role="status">Verificando a sessão GitHub existente…</div>
-      <details style="margin-top:12px">
-        <summary class="muted" style="cursor:pointer">Conexão manual (outro computador)</summary>
-        <label for="token">Token GitHub com acesso à OrdaX</label>
-        <div class="line">
-          <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_...">
-          <button id="connect" type="button">Usar token</button>
-        </div>
-      </details>
-      <div class="muted" style="margin-top:9px">A autenticação existente do GitHub CLI será reutilizada. Nenhum token é enviado ao GPT Web nem gravado pelo aplicativo.</div>
-    </section>
-    <section>
-      <h2>02 / Missão contínua — teste real</h2>
-      <p>Descreva sua missão normalmente. O GPT escolhe os arquivos, e o aplicativo registra as alterações no GitHub.</p>
-      <label for="mission-repo">Repositório autorizado</label>
-      <input id="mission-repo" type="text" readonly value="ordaxos-admin/TESTES-FORGE-GIT">
-      <label for="mission-objective">O que você quer desenvolver?</label>
-      <textarea id="mission-objective" rows="7" placeholder="Ex.: Crie um site funcional para uma pizzaria com cardápio, carrinho, adaptação mobile e instruções de uso. Teste e corrija conforme necessário. Não publique na internet."></textarea>
-      <button id="mission-start" class="primary fill" type="button">Iniciar missão e continuar automaticamente</button>
-      <div class="line" style="margin-top:9px">
-        <button id="mission-pause" type="button" style="flex:1">Pausar após etapa</button>
-        <button id="mission-resume" type="button" style="flex:1">Retomar missão</button>
-      </div>
-      <div id="mission-progress" class="status" role="status">Nenhuma missão iniciada.</div>
-      <p>Os commits são publicados na mesma branch de teste. A PR só é aberta ao concluir todas as etapas. Nenhum merge automático.</p>
-    </section>
-    <section>
-      <h2>03 / Edição pontual (um arquivo)</h2>
-      <label for="repo">Repositório</label>
-      <input id="repo" type="text" spellcheck="false" value="ordaxos-admin/TESTES-FORGE-GIT" placeholder="ordaxsystems/repositório">
-      <label for="filename">Arquivo que o GPT pode editar</label>
-      <input id="filename" type="text" spellcheck="false" placeholder="README.md">
-      <button id="inspect" class="fill" type="button">Conferir arquivo remoto</button>
-      <label for="instruction">O que o GPT deve fazer?</label>
-      <textarea id="instruction" placeholder="Ex.: Melhore as instruções de instalação do README, mantendo o restante."></textarea>
-      <button id="run" class="primary fill" type="button">Executar no GPT Web</button>
-      <p>O GPT recebe o conteúdo real do arquivo. Nenhuma gravação acontece antes da aprovação.</p>
-    </section>
-    <section>
-      <h2>04 / Resultado pontual</h2>
-      <div class="status" id="status" role="status"><strong>Pronto.</strong> Conecte o GitHub e entre no ChatGPT Web à direita.</div>
-      <div id="proposal">
-        <p id="summary"></p>
-        <button id="publish" class="primary fill" type="button">Criar branch, commit e PR</button>
-      </div>
-      <div id="result"></div>
-      <button id="login" class="fill" type="button">Abrir login ChatGPT</button>
-    </section>
-    <p class="small">Missão contínua disponível apenas no repositório de testes. Para outros repositórios, a edição pontual continua exigindo aprovação. Não há merge automático nem garantia 24h após erros incertos.</p>
-  </aside>
-  <script type="module" src="./renderer.mjs"></script>
+<aside>
+<header><div><h1>Forge Git</h1><p>GPT Web · MCP · GitHub remoto</p></div><div class="brand">FG</div></header>
+<section>
+<h2>Projeto GitHub</h2>
+<div class="status">ordaxos-admin/TESTES-FORGE-GIT</div>
+<button id="connect" class="primary full" type="button">Conectar GitHub do Windows</button>
+<div id="login-state" class="meta">Verificando autenticação…</div>
+<button id="refresh" class="full" type="button">Atualizar memória pelo GitHub</button>
+<div id="revision" class="meta" style="margin-top:10px">Nenhuma revisão confirmada</div>
+</section>
+<section>
+<h2>Conversa ativa: <span id="role">Forjador</span></h2>
+<p>Escreva o objetivo normalmente. O GPT escolhe os passos e utiliza as ferramentas que estiverem realmente disponíveis.</p>
+<label for="instruction">Missão ou mensagem</label>
+<textarea id="instruction" placeholder="Crie um site de pizzaria neste repositório, teste e corrija até ficar pronto."></textarea>
+<button id="send" class="primary full" type="button">Enviar ao GPT Web com MCP</button>
+<div class="grid" style="margin-top:9px">
+<button id="new-chat" type="button">Nova conversa</button>
+<button id="check-agent" type="button">Verificar GitHub</button>
+</div>
+<div id="agent-status" class="status" style="margin-top:11px">Nenhuma conversa iniciada</div>
+</section>
+<section>
+<h2>Continuidade do projeto</h2>
+<p>O aplicativo guarda a revisão verificada, as conversas e os avisos dos agentes; nenhum chat é fonte exclusiva de memória.</p>
+<div id="inbox" class="meta">Sem avisos.</div>
+<button id="notify-forjador" class="full" type="button">Informar o Forjador dos resultados</button>
+</section>
+<section>
+<h2>Atividade verificada</h2>
+<div id="history">Sem alterações confirmadas.</div>
+<div id="status" class="status" style="margin-top:10px">Pronto para conectar.</div>
+</section>
+<p>Protótipo em sandbox. GPT só poderá alterar o GitHub por ferramentas autorizadas; uma resposta não é prova de commit. Não há merge automático.</p>
+</aside>
+<nav id="tabbar" aria-label="Conversas GPT Web">
+<button id="tab-forjador" type="button">Forjador</button>
+<button id="tab-agent-1" type="button">Agente 1</button>
+<button id="tab-agent-2" type="button">Agente 2</button>
+<span class="hint">Abas independentes · memória compartilhada</span>
+</nav>
+<script type="module" src="./renderer.mjs"></script>
 </body>
 </html>

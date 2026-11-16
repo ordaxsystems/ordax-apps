@@ -1,293 +1,265 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
-import { mkdirSync } from 'node:fs';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import {app,BrowserWindow,ipcMain,shell} from 'electron';
+import {mkdirSync} from 'node:fs';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {randomBytes} from 'node:crypto';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { EmbeddedChatWorker } from '../forge/product/desktop/embedded-worker.mjs';
-import { ordaxRepository, filePath, parseProposal, makePrompt, branchName } from './core.mjs';
-import { createMissionRunner } from './mission-runner.mjs';
+import {fileURLToPath} from 'node:url';
+import {EmbeddedChatWorker} from '../forge/product/desktop/embedded-worker.mjs';
+import {REPO,ROLES,openProjectMemory} from './project-memory.mjs';
+import {routeForConversation,providerMessage} from './provider-routing.mjs';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const SIDE_WIDTH = 430;
-const execFileAsync = promisify(execFile);
-const ORG_REPO = 'ordaxsystems/ordax-apps';
-let win;
-let chat;
-let githubToken = '';
-let authenticatedUser = '';
-let busy = false;
-let proposal = null;
-let missionRunner = null;
+const here=path.dirname(fileURLToPath(import.meta.url));
+const cli=promisify(execFile);
+const SIDE=430,TOP=46;
+let win,store,token='',login='',active='forjador';
+const workers=new Map(),busy=new Set(),ready=new Set();
 
-function notify(stage, message, extra = {}) {
-  if (win && !win.isDestroyed()) win.webContents.send('forge-git:status', { stage, message, ...extra });
+function emit(message){
+  if(win&&!win.isDestroyed())win.webContents.send('forge-git:event',{
+    message,snapshot:store.snapshot(),active,ready:[...ready],busy:[...busy]
+  });
 }
-
-async function github(endpoint, { method = 'GET', body, token = githubToken, allow404 = false } = {}) {
-  if (!token) throw new Error('Conecte sua conta GitHub primeiro.');
-  const response = await fetch('https://api.github.com' + endpoint, {
-    method,
-    headers: {
-      Authorization: 'Bearer ' + token,
-      Accept: 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
+function guarded(channel,fn){
+  ipcMain.handle(channel,async(_event,...args)=>{
+    try{return await fn(...args);}
+    catch(e){const message=String(e?.message||e);emit(message);throw Error(message);}
+  });
+}
+async function gh(endpoint,{method='GET',body,allow404=false,credential=token}={}){
+  if(!credential)throw Error('Conecte o GitHub no Windows.');
+  const response=await fetch('https://api.github.com'+endpoint,{
+    method,headers:{
+      Authorization:'Bearer '+credential,
+      Accept:'application/vnd.github+json',
+      'X-GitHub-Api-Version':'2022-11-28',
+      ...(body?{'Content-Type':'application/json'}:{})
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(30000)
+    body:body?JSON.stringify(body):undefined,
+    signal:AbortSignal.timeout(30_000)
   });
-  if (allow404 && response.status === 404) return null;
-  const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
-  if (!response.ok) {
-    const message = String(data?.message || response.statusText || 'Erro do GitHub').slice(0, 250);
-    throw new Error('GitHub HTTP ' + response.status + ': ' + message);
-  }
-  return data;
+  if(response.status===404&&allow404)return null;
+  const payload=await response.text();
+  let result={};
+  try{result=payload?JSON.parse(payload):{};}
+  catch{throw Error('Resposta inválida do GitHub');}
+  if(!response.ok)throw Error('GitHub '+response.status+': '+String(result?.message||response.statusText).slice(0,180));
+  return result;
 }
-
-async function remoteFile(repo, filename, ref) {
-  const encoded = filename.split('/').map(encodeURIComponent).join('/');
-  const data = await github('/repos/' + repo + '/contents/' + encoded + '?ref=' + encodeURIComponent(ref), { allow404:true });
-  if (!data) return { exists:false, sha:null, content:'' };
-  if (data.type !== 'file' || data.encoding !== 'base64' || typeof data.content !== 'string' ||
-      data.size > 48_000) {
-    throw new Error('Escolha um arquivo de texto com no máximo 48 KB.');
-  }
-  const buffer = Buffer.from(data.content.replace(/\s/g, ''), 'base64');
-  const content = buffer.toString('utf8');
-  if (Buffer.byteLength(content, 'utf8') !== buffer.length || content.includes('\0')) {
-    throw new Error('O arquivo remoto precisa ser texto UTF-8.');
-  }
-  return { exists:true, sha:data.sha, content };
+const repoPath='/repos/'+REPO;
+function branchEndpoint(branch){
+  return repoPath+'/git/ref/heads/'+branch.split('/').map(encodeURIComponent).join('/');
 }
-
-function sizeChat() {
-  if (!win || win.isDestroyed() || !chat) return;
-  const [width, height] = win.getContentSize();
-  chat.view.setBounds({ x:SIDE_WIDTH, y:0, width:Math.max(0, width - SIDE_WIDTH), height:Math.max(0, height) });
-}
-
-function handle(channel, task) {
-  ipcMain.handle(channel, async (_event, ...args) => {
-    try { return await task(...args); }
-    catch (error) {
-      const message = String(error?.message || error);
-      notify('error', message);
-      throw new Error(message);
-    }
-  });
-}
-
-async function authorizeGithub(candidate, { requireOrdaxAdmin = false } = {}) {
-  const token = String(candidate ?? '').trim();
-  if (!token || token.length > 300) throw new Error('Credencial GitHub ausente ou inválida.');
-  const user = await github('/user', { token });
-  if (!user?.login) throw new Error('A conta GitHub não pôde ser verificada.');
-  if (requireOrdaxAdmin && user.login.toLowerCase() !== 'ordaxos-admin') {
-    throw new Error('GitHub CLI está usando ' + user.login + ', mas o Forge Git exige ordaxos-admin neste computador.');
+async function head(branch){const v=await gh(branchEndpoint(branch),{allow404:true});return v?.object?.sha||null;}
+function layout(){
+  if(!win||win.isDestroyed())return;
+  const [width,height]=win.getContentSize();
+  const viewWidth=Math.max(620,width-SIDE), viewHeight=Math.max(250,height-TOP);
+  for(const [id,worker] of workers){
+    // Physical viewport is retained for background workers; the active view is foremost.
+    worker.view.setBounds({
+      x:id===active?SIDE:width+200,
+      y:TOP,width:viewWidth,height:viewHeight
+    });
   }
-  const access = await github('/repos/' + ORG_REPO, { token });
-  if (access?.permissions?.push !== true) {
-    throw new Error('A conta atual não possui acesso de escrita em ordaxsystems/ordax-apps.');
-  }
-  githubToken = token;
-  authenticatedUser = user.login;
-  proposal = null;
-  missionRunner?.autoResume();
-  notify('ready', 'GitHub OrdaX conectado: ' + authenticatedUser);
-  return { login:authenticatedUser, organization:'ordaxsystems' };
 }
-
-function bindActions() {
-  handle('forge-git:connect-local', async () => {
-    if (busy) throw new Error('Conclua a operação atual antes de trocar de conta.');
-    let stdout;
-    try {
-      ({ stdout } = await execFileAsync('gh', ['auth','token','--hostname','github.com'], {
-        windowsHide:true, timeout:10000, maxBuffer:12000
-      }));
-    } catch {
-      throw new Error('GitHub CLI não está autenticado neste computador. Execute gh auth login no terminal.');
-    }
-    return authorizeGithub(stdout, { requireOrdaxAdmin:true });
-  });
-
-  handle('forge-git:connect', async rawToken => {
-    if (busy) throw new Error('Conclua a operação atual antes de trocar de conta.');
-    return authorizeGithub(rawToken);
-  });
-
-  handle('forge-git:inspect', async ({ repo, filename }) => {
-    if (busy || missionRunner?.isActive()) throw new Error('Já existe uma operação em execução.');
-    const name = ordaxRepository(repo), target = filePath(filename);
-    const info = await github('/repos/' + name);
-    if (info?.permissions?.push !== true) throw new Error('Sem permissão de escrita neste repositório da OrdaX.');
-    const source = await remoteFile(name, target, info.default_branch);
-    return {
-      repo:name, branch:info.default_branch, path:target, exists:source.exists,
-      bytes:Buffer.byteLength(source.content, 'utf8')
-    };
-  });
-
-  handle('forge-git:run', async ({ repo, filename, instruction }) => {
-    if (busy || missionRunner?.isActive()) throw new Error('Já existe uma operação em execução.');
-    if (!githubToken) throw new Error('Conecte o GitHub antes de executar.');
-    busy = true;
-    proposal = null;
-    try {
-      const name = ordaxRepository(repo), target = filePath(filename);
-      notify('reading', 'Lendo o arquivo no GitHub…');
-      const info = await github('/repos/' + name);
-      if (info?.permissions?.push !== true) throw new Error('Sem permissão de escrita neste repositório da OrdaX.');
-      const base = info.default_branch;
-      if (!base || info.archived || info.disabled) throw new Error('Repositório indisponível para edição.');
-      const source = await remoteFile(name, target, base);
-      const prompt = makePrompt({ repo:name, path:target, instruction, content:source.content, exists:source.exists });
-      notify('gpt', 'Enviando o pedido ao ChatGPT Web…');
-      const response = await chat.sendPrompt({
-        prompt, newSession:true, requiresMcp:false,
-        onDeliveryObserved: () => notify('gpt', 'Mensagem enviada; aguardando a resposta do GPT…')
-      });
-      notify('parsing', 'Conferindo a resposta do GPT…');
-      const change = parseProposal(response.text, target);
-      if (change.content === source.content) throw new Error('O GPT não produziu alterações para o arquivo.');
-      proposal = {
-        repo:name, branch:base, path:target, originalSha:source.sha,
-        content:change.content, summary:change.summary, chatUrl:response.chatUrl
-      };
-      notify('proposal', 'Proposta pronta. Confira a resposta e clique em Criar PR.', {
-        summary:change.summary, path:target
-      });
-      return { summary:change.summary, path:target, bytes:Buffer.byteLength(change.content, 'utf8') };
-    } finally {
-      busy = false;
-    }
-  });
-
-  handle('forge-git:publish', async () => {
-    if (busy || missionRunner?.isActive()) throw new Error('Já existe uma operação em execução.');
-    if (!proposal || !githubToken) throw new Error('Não há uma proposta aprovada para publicar.');
-    busy = true;
-    const approved = proposal;
-    ordaxRepository(approved.repo);
-    let createdBranch = null;
-    try {
-      notify('publishing', 'Verificando se o arquivo remoto não mudou…');
-      const info = await github('/repos/' + approved.repo);
-      if (info?.permissions?.push !== true) throw new Error('Permissão GitHub revogada.');
-      if (info.default_branch !== approved.branch) throw new Error('A branch principal mudou. Gere uma nova proposta.');
-      const current = await remoteFile(approved.repo, approved.path, approved.branch);
-      if (current.sha !== approved.originalSha) throw new Error('O arquivo foi alterado por outro agente. Gere uma nova proposta.');
-      const ref = await github('/repos/' + approved.repo + '/git/ref/heads/' +
-        approved.branch.split('/').map(encodeURIComponent).join('/'));
-      if (!ref?.object?.sha) throw new Error('Não foi possível conferir o commit da branch principal.');
-      const featureBranch = branchName();
-      await github('/repos/' + approved.repo + '/git/refs', {
-        method:'POST', body:{ ref:'refs/heads/' + featureBranch, sha:ref.object.sha }
-      });
-      createdBranch = featureBranch;
-      notify('publishing', 'Branch criada. Gravando a alteração…');
-      await github('/repos/' + approved.repo + '/contents/' +
-        approved.path.split('/').map(encodeURIComponent).join('/'), {
-        method:'PUT', body:{
-          message:'feat(forge-git): ' + approved.summary.slice(0, 65),
-          content:Buffer.from(approved.content, 'utf8').toString('base64'),
-          ...(approved.originalSha ? { sha:approved.originalSha } : {}),
-          branch:featureBranch
+async function refresh({agentId=null,notifyCoordinator=false}={}){
+  if(!token)throw Error('Conecte a conta GitHub.');
+  const repository=await gh(repoPath);
+  if(repository?.permissions?.push!==true)throw Error('Sem permissão GitHub neste repositório.');
+  const base=repository.default_branch;
+  const sha=await head(base);
+  if(!sha)throw Error('GitHub não confirmou a branch principal.');
+  store.observe({base,sha,at:new Date().toISOString()});
+  let note='GitHub verificado: '+base+'@'+sha.slice(0,10);
+  let changed=false;
+  if(agentId&&agentId!=='forjador'){
+    const agent=store.agent(agentId);
+    if(agent.branch){
+      const current=await head(agent.branch);
+      if(!current)throw Error('Branch do agente ausente no GitHub.');
+      if(agent.lastHead!==current){
+        if(agent.lastHead&&agent.lastHead!==current){
+          changed=true;
+          note='Alterações remotas confirmadas em '+agent.branch+' @ '+current.slice(0,10);
+          store.event({kind:'github_revision',agent:agentId,sha:current,detail:note,forCoordinator:notifyCoordinator});
         }
-      });
-      notify('publishing', 'Commit gravado. Abrindo Pull Request…');
-      const pr = await github('/repos/' + approved.repo + '/pulls', {
-        method:'POST', body:{
-          title:'Forge Git: ' + approved.summary.slice(0, 100),
-          body:'Alteração de um arquivo proposta pelo ChatGPT Web e aprovada no Forge Git.\n\n' +
-            'Arquivo: ' + approved.path + '\n\n' +
-            'A alteração não foi integrada automaticamente.',
-          head:featureBranch, base:approved.branch, draft:true
-        }
-      });
-      proposal = null;
-      notify('done', 'PR criada: ' + pr.html_url, { url:pr.html_url });
-      return { url:pr.html_url, number:pr.number, branch:featureBranch };
-    } catch (error) {
-      if (createdBranch) {
-        proposal = null; // ambiguous transport: never create a second branch automatically
-        throw new Error(String(error?.message || error) +
-          ' A branch ' + createdBranch + ' pode conter um commit. Verifique o GitHub antes de tentar de novo.');
+        store.patch(agentId,{lastHead:current});
+      } else {
+        note='Sem novo commit remoto confirmado em '+agent.branch;
       }
-      throw error;
-    } finally {
-      busy = false;
+      const prs=await gh(repoPath+'/pulls?state=all&head='+encodeURIComponent('ordaxos-admin:'+agent.branch)+'&per_page=5');
+      if(Array.isArray(prs)&&prs.length){
+        note+='; PR '+prs[0].html_url;
+      }
     }
-  });
-
-  handle('forge-git:mission-state', () => missionRunner.snapshot());
-  handle('forge-git:mission-start', input => {
-    if (busy || missionRunner.isActive()) throw new Error('Conclua a operação atual.');
-    proposal = null;
-    return missionRunner.start(input);
-  });
-  handle('forge-git:mission-pause', () => missionRunner.pause());
-  handle('forge-git:mission-resume', () => missionRunner.resume());
-
-  handle('forge-git:open-pr', async url => {
-    if (!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/[0-9]+$/.test(String(url))) {
-      throw new Error('URL de PR inválida.');
+  }
+  emit(note);
+  return {note,changed,snapshot:store.snapshot()};
+}
+async function ensureBranch(agentId){
+  let agent=store.agent(agentId);
+  if(agent.branch)return agent.branch;
+  const repo=await gh(repoPath);
+  if(!repo.default_branch)throw Error('Branch principal indefinida.');
+  const baseSha=await head(repo.default_branch);
+  if(!baseSha)throw Error('Branch principal não confirmada.');
+  const branch='forge-git/'+agentId+'-'+randomBytes(4).toString('hex');
+  await gh(repoPath+'/git/refs',{method:'POST',body:{ref:'refs/heads/'+branch,sha:baseSha}});
+  const verified=await head(branch);
+  if(verified!==baseSha)throw Error('Branch criada mas não confirmada; conferir GitHub.');
+  store.patch(agentId,{branch,lastHead:verified});
+  store.event({kind:'branch_created',agent:agentId,sha:verified,detail:branch,forCoordinator:true});
+  return branch;
+}
+function contextFor(agentId){
+  return store.context()+'\n'+
+    'Perfil desta conversa: '+ROLES.find(x=>x.id===agentId)?.name+'.';
+}
+async function send({agentId,text,newSession=false}){
+  if(!ROLES.some(r=>r.id===agentId))throw Error('Conversa desconhecida.');
+  if(!token)throw Error('Conecte o GitHub antes de enviar.');
+  if(busy.has(agentId))throw Error('Esta conversa já está ocupada.');
+  if(!ready.has(agentId))throw Error('A guia do ChatGPT ainda não carregou.');
+  const task=String(text??'').trim();
+  if(task.length<4||task.length>3500)throw Error('Descreva a tarefa em até 3500 caracteres.');
+  busy.add(agentId);
+  store.patch(agentId,{status:'running',lastError:null,task});
+  emit('GPT Web: '+agentId+' iniciou uma conversa.');
+  try{
+    const worker=workers.get(agentId);
+    let branch=null;
+    if(agentId!=='forjador')branch=await ensureBranch(agentId);
+    const old=store.agent(agentId);
+    const fresh=newSession||!old.chatUrl;
+    const route=routeForConversation(agentId);
+    const prompt=providerMessage({
+      agentId,task,repo:REPO,branch,context:contextFor(agentId),fresh
+    });
+    // The Forge MCP manages the existing Forge app; only the coordinator selects it.
+    // The GPT executor may use its own authorized GitHub tools in this session.
+    let submittedPrompt=prompt;
+    if(route.requiresMcp){
+      const prepared=await worker.prepareMcpPrompt({
+        prompt,chatUrl:fresh?null:old.chatUrl,newSession:fresh,mcpApp:route.mcpApp
+      });
+      submittedPrompt=prepared.providerPrompt;
     }
-    await shell.openExternal(url);
-    return { opened:true };
+    const answer=await worker.sendPrompt({
+      prompt:submittedPrompt,chatUrl:fresh?null:old.chatUrl,newSession:fresh,
+      requiresMcp:route.requiresMcp,mcpApp:route.mcpApp??'forge-mcp'
+    });
+    store.patch(agentId,{
+      chatUrl:answer.chatUrl||old.chatUrl,
+      status:'verifying',
+      lastResponse:String(answer.text||'').slice(0,320),
+      lastError:null
+    });
+    let observation;
+    try {
+      observation=await refresh({agentId,notifyCoordinator:true});
+    } catch(error) {
+      const reason='Falha ao verificar GitHub: '+String(error?.message||error).slice(0,160);
+      store.patch(agentId,{status:'blocked',lastError:reason});
+      store.event({kind:'repository_verification_failed',agent:agentId,detail:reason,forCoordinator:true});
+      emit(reason);
+      return {chatUrl:answer.chatUrl||old.chatUrl,note:reason};
+    }
+    // A completed GPT reply is not evidence of completed remote work.
+    const proved=agentId==='forjador'||observation.changed===true;
+    store.patch(agentId,{
+      status:proved?'idle':'unverified',
+      lastError:proved?null:'Nenhum novo commit confirmado na branch deste agente.'
+    });
+    store.event({
+      kind:proved?'conversation_checked':'github_change_unverified',
+      agent:agentId,
+      detail:proved?agentId+' respondeu, com verificação GitHub registrada.':
+        agentId+' respondeu sem mudança GitHub comprovada na branch.',
+      forCoordinator:agentId!=='forjador'
+    });
+    emit(proved?'Resposta recebida e GitHub conferido.':'O GPT respondeu, mas não houve commit confirmado.');
+    return {chatUrl:answer.chatUrl||old.chatUrl,note:observation.note,verified:proved};
+  }catch(e){
+    store.patch(agentId,{status:'blocked',lastError:String(e?.message||e).slice(0,240)});
+    emit(agentId+' bloqueado: '+String(e?.message||e));
+    throw e;
+  }finally{busy.delete(agentId);}
+}
+function events(){
+  guarded('fg:state',()=>({snapshot:store.snapshot(),active,ready:[...ready],busy:[...busy]}));
+  guarded('fg:connect',async()=>{
+    const {stdout}=await cli('gh',['auth','token','--hostname','github.com'],{
+      timeout:10_000,windowsHide:true,maxBuffer:16_000
+    });
+    const candidate=stdout.trim();
+    const who=await gh('/user',{credential:candidate});
+    if(who?.login!=='ordaxos-admin')throw Error('É necessária a conta ordaxos-admin.');
+    const repository=await gh(repoPath,{credential:candidate});
+    if(repository?.permissions?.push!==true)throw Error('GitHub sem acesso de escrita ao sandbox.');
+    token=candidate;login=who.login;
+    await refresh();
+    emit('GitHub conectado: '+login);
+    return {login,repo:REPO};
   });
-
-  handle('forge-git:chat-status', async () => chat.status());
-  handle('forge-git:chat-login', async () => {
-    if (busy) throw new Error('Aguarde a operação atual.');
-    return chat.login();
+  guarded('fg:tab',async id=>{
+    if(!workers.has(id))throw Error('Guia desconhecida.');
+    active=id;layout();emit('Aba selecionada: '+id);return {active};
+  });
+  guarded('fg:send',send);
+  guarded('fg:refresh',()=>refresh());
+  guarded('fg:agent-refresh',agentId=>refresh({agentId,notifyCoordinator:true}));
+  guarded('fg:new-chat',id=>{
+    if(busy.has(id))throw Error('Aguarde a resposta atual.');
+    store.patch(id,{chatUrl:null,status:'idle',lastError:null});
+    emit('Nova conversa preparada para '+id+'. A memória do projeto foi mantida.');
+    return store.snapshot();
+  });
+  guarded('fg:inbox',()=>store.snapshot().inbox.filter(e=>!e.delivered));
+  guarded('fg:notify-forjador',async()=>{
+    if(busy.has('forjador'))throw Error('Forjador ocupado; eventos permanecem na memória.');
+    const unread=store.snapshot().inbox.filter(e=>!e.delivered);
+    if(!unread.length)return {message:'Nenhuma atualização pendente.'};
+    const message='Atualize a memória do projeto com os fatos confirmados no GitHub. '+
+      unread.map(e=>e.detail+(e.sha?' ('+e.sha.slice(0,12)+')':'')).join('; ');
+    const result=await send({agentId:'forjador',text:message});
+    store.acknowledge(store.snapshot().inbox.length);
+    return result;
+  });
+  guarded('fg:open-url',async url=>{
+    if(typeof url!=='string'||!/^https:\/\/github\.com\/ordaxos-admin\/TESTES-FORGE-GIT(?:\/[A-Za-z0-9/_#.-]*)?$/.test(url))
+      throw Error('URL externa não autorizada.');
+    await shell.openExternal(url);return true;
   });
 }
-
-app.whenReady().then(async () => {
-  // Dedicated browser profile: no overlap with the physical MCP Forge session.
-  const userData = path.join(app.getPath('appData'), 'OrdaX', 'ForgeGit');
-  mkdirSync(userData, { recursive:true });
-  app.setPath('userData', userData);
-
-  win = new BrowserWindow({
-    width:1440, height:900, minWidth:1000, minHeight:650,
-    backgroundColor:'#17191c', title:'OrdaX Forge Git',
-    webPreferences:{
-      preload:path.join(here, 'preload.cjs'),
-      sandbox:true, contextIsolation:true, nodeIntegration:false
-    }
+app.whenReady().then(async()=>{
+  const dir=path.join(app.getPath('appData'),'OrdaX','ForgeGit');
+  mkdirSync(dir,{recursive:true});app.setPath('userData',dir);
+  store=openProjectMemory(dir);
+  win=new BrowserWindow({
+    width:1480,height:920,minWidth:1100,minHeight:680,
+    backgroundColor:'#17191c',title:'OrdaX Forge Git',
+    webPreferences:{preload:path.join(here,'preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false}
   });
-  win.webContents.setWindowOpenHandler(() => ({ action:'deny' }));
-  win.webContents.on('will-navigate', event => event.preventDefault());
-  chat = new EmbeddedChatWorker({ id:'forge-git', partition:'persist:ordax-forge-git-chatgpt' });
-  win.contentView.addChildView(chat.view);
-  win.on('resize', sizeChat);
-  win.on('maximize', sizeChat);
-  win.on('restore', sizeChat);
-  win.on('closed', () => { win = null; });
-  missionRunner = createMissionRunner({
-    directory:userData, github, remoteFile, chat,
-    accessAllowed:() => Boolean(githubToken && authenticatedUser === 'ordaxos-admin'),
-    notify: ({message,mission}) => {
-      if (win && !win.isDestroyed()) win.webContents.send('forge-git:mission', {message,mission});
-    }
-  });
-  missionRunner.recoverState();
-  bindActions();
-  await win.loadFile(path.join(here, 'index.html'));
-  sizeChat();
-  chat.setStageSink(({ stage }) => {
-    if (busy) notify('gpt', 'ChatGPT Web: ' + stage);
-  });
-  chat.load().then(() => {
-    missionRunner.setChatReady(true);
-    notify('ready', 'ChatGPT Web carregado. Faça login se necessário.');
-  })
-    .catch(error => notify('error', 'ChatGPT Web não carregou: ' + String(error?.message || error)));
-}).catch(error => { console.error(error); app.quit(); });
-
-app.on('window-all-closed', () => app.quit());
+  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+  win.webContents.on('will-navigate',e=>e.preventDefault());
+  for(const role of ROLES){
+    const worker=new EmbeddedChatWorker({id:'fg-'+role.id,partition:'persist:ordax-forge-git-chatgpt'});
+    workers.set(role.id,worker);
+    win.contentView.addChildView(worker.view);
+  }
+  for(const kind of ['resize','maximize','restore'])win.on(kind,layout);
+  win.on('closed',()=>{win=null;});
+  events();
+  await win.loadFile(path.join(here,'index.html'));
+  layout();
+  for(const [id,worker] of workers){
+    worker.load().then(()=>{
+      ready.add(id);emit(id+' disponível no GPT Web.');
+    }).catch(e=>{
+      store.patch(id,{status:'blocked',lastError:String(e?.message||e).slice(0,200)});
+      emit(id+' indisponível: '+String(e?.message||e));
+    });
+  }
+}).catch(error=>{console.error(error);app.quit();});
+app.on('window-all-closed',()=>app.quit());
