@@ -728,7 +728,7 @@ function layoutViews() {
   const bounds=providerViewBounds?normalizeProviderViewBounds(providerViewBounds,{
     contentWidth:width,contentHeight:height,zoomFactor:win.webContents.getZoomFactor()
   }):null;
-  const panelUsable=Boolean(chatVisible&&bounds&&bounds.width>=400&&bounds.height>=250);
+  const panelUsable=Boolean(chatVisible&&bounds&&bounds.width>=320&&bounds.height>=250);
   const offscreenWidth=Math.max(900,width);
   const offscreenHeight=Math.max(700,height);
   providerWorkers.forEach((candidate,index)=>{
