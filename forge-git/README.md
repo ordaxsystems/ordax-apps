@@ -16,7 +16,7 @@ GPT Web desenvolve no GitHub remoto; o aplicativo mantém estado, abas e continu
 
 **Forjador:** os avisos são enviados em resumo curto. Só os avisos efetivamente apresentados e com resposta confirmada são reconhecidos; avisos novos permanecem pendentes. O Forge MCP original não atualiza esta memória do Forge Git.
 
-**Forge MCP:** a ferramenta `forge_git_memory` lê o checkpoint persistido do Forge Git no mesmo perfil Windows, sem gravar nem importar dados para o SQLite do Forge. A gravação e a verificação GitHub continuam sob responsabilidade do Forge Git; a ferramenta só aparece quando o Forge MCP nativo atualizado oferece esse acesso.
+**Forge MCP:** a ferramenta existente `forge_project_memory` com `projectId=forge_git` lê o checkpoint persistido do Forge Git no mesmo perfil Windows, sem gravar nem importar dados para o SQLite do Forge. A gravação e a verificação GitHub continuam sob responsabilidade do Forge Git; a ferramenta só aparece quando o Forge MCP nativo atualizado oferece esse acesso.
 
 **Memória:** persistida no `userData` em `forge-git-project.json`, atualizada pelo próprio aplicativo com revisões GitHub; o Forjador pode consultar avisos. O Forge MCP existente ainda não grava nessa memória diretamente.
 

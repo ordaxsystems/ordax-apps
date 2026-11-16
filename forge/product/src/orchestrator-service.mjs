@@ -490,14 +490,18 @@ export class OrchestratorService {
         return this.receipt(prior);
       }
     }
-    this.requireAccess(context,operation,input.projectId||null);
-    if(operation==='forge_git_memory'){
-      if(typeof this.forgeGitMemoryPort?.read!=='function')
-        throw Error('forge_git_memory_unavailable');
-      const view=await this.forgeGitMemoryPort.read();
+    if(operation==='project_memory'&&input.projectId==='forge_git'){
+      // Reserved owner-only resource, not a Forge SQLite project or grant.
+      const port=this.forgeGitMemoryPort;
+      if(port?.isOwnerContext?.(context)!==true||typeof port.read!=='function')
+        throw Error('forge_git_owner_required');
       this.requireAccess(context,operation);
+      const view=await port.read();
+      this.requireAccess(context,operation);
+      if(port.isOwnerContext(context)!==true)throw Error('forge_git_owner_required');
       return view;
     }
+    this.requireAccess(context,operation,input.projectId||null);
     if(operation==='app_ui_inspect'){
       if(typeof this.viewPort?.ui!=='function')throw Error('forge_app_ui_unavailable');
       const result=await this.viewPort.ui(operation,input);

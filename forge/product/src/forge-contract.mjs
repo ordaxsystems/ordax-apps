@@ -6,7 +6,6 @@ const id = {...text(180),pattern:'^[A-Za-z0-9_-]+$'};
 const requestId = {...text(120),pattern:'^[A-Za-z0-9_-]+$'};
 const definitions = [
   ['status','Inspect local engine state and limitations.',{},[],true],
-  ['forge_git_memory','Read bounded persisted memory from the Forge Git application in the same authorized Windows profile. This is the Forge Git owner file, not Forge local project memory; no GPT send, file edit, grant or live GitHub request.',{},[],true],
   ['projects_list','List accessible Forge projects.',{},[],true],
   ['app_view_status','Inspect the real Forge window and preview state, including whether it is minimized. No screenshot, project creation or focus change.',{},[],true],
   ['app_view_capture','Capture only the Forge application renderer pixels, never the Windows desktop. Does not raise or focus the window; native overlay Views are excluded.',{},[],true],
@@ -23,7 +22,7 @@ const definitions = [
   ['project_preflight','Inspect project-scoped local evidence and external capability blockers without a provider request, GitHub read, grant or GPT send.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
   ['forge_discover','Read the actual Forge app capabilities and authorized current project. Start here to avoid assuming folder access, completed operations, or deployment.',{projectId:id},['projectId'],true],
   ['project_context','Discover the canonical Forge execution protocol, selected project identity, workspace grant state and work availability. Does not read or create files, grant access or send GPT.',{projectId:id},['projectId'],true],
-  ['project_memory','Read bounded canonical memory and pending suggestions across all project conversations. Every item retains its source; provider replies are never proof of filesystem effects. No model call.',{projectId:id},['projectId'],true],
+  ['project_memory','Read canonical memory of a Forge project. To read the separate Forge Git App checkpoint in this authorized Windows profile, use projectId forge_git; this is App owner-only, not local Forge SQLite memory. Data only; no GPT send, file edit or live GitHub request.',{projectId:id},['projectId'],true],
   ['project_memory_propose','Stage a GPT Administrator note for human review, citing an exact excerpt from an already persisted assistant message of this project. Never updates canon or certifies files. No GPT send.',{projectId:id,taskId:id,sourceMessageId:id,category:{...text(20),pattern:'^(goal|constraint|decision|entity|structure|fact|open_loop|reference)$'},key:text(160),content:text(8000),evidence:text(600)},['projectId','taskId','sourceMessageId','category','key','content','evidence'],false],
   ['project_administrator_snapshot','Read a bounded project-wide evidence snapshot of works, GPT Runs, unresolved commands, accepted notes and pending suggestions. Not a semantic model review or proof of file changes.',{projectId:id},['projectId'],true],
   ['project_handoff','Read a bounded project handoff from canonical SQLite: tasks, message excerpts, accepted decisions, pending receipts and an optional selected task. No GPT send, session rotation, model summary or filesystem proof.',{projectId:id,taskId:id},['projectId'],true],

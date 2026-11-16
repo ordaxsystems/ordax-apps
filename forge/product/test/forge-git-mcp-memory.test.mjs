@@ -51,7 +51,7 @@ test('MCP projection fails closed on unavailable or invalid memory',t=>{
  writeFileSync(canonicalFile,JSON.stringify(invalid));
  assert.throws(()=>readForgeGitMemory(ownedProfile),/forge_git_memory_invalid/);
 });
-test('Native owner MCP publishes one scoped Forge Git memory tool and can read it',async t=>{
+test('Native owner MCP reuses forge_project_memory without expanding the 64-tool catalog',async t=>{
  const {appDataRoot,canonical}=fixture(t);
  canonical.observe({base:'main',sha:'f'.repeat(40),at:'2026-11-16T19:30:00Z'});
  const store=new Store(':memory:');
@@ -60,23 +60,34 @@ test('Native owner MCP publishes one scoped Forge Git memory tool and can read i
    workspaceSessionId:store.getWorkspaceSession().id};
  const service=new OrchestratorService({store,authorize:({context:who})=>who===context});
  const mcp=createOrchestratorMcp({service,getContext:()=>context,
-   allowedOperations:['forge_git_memory']});
- // Not installed in a headless/remote owner without the native app projection.
+   allowedOperations:['project_memory']});
  const init={jsonrpc:'2.0',id:1,method:'initialize',
    params:{protocolVersion:'2025-11-25',capabilities:{},
      clientInfo:{name:'test',version:'1'}}};
  await mcp.handle(init);
  await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
- const empty=await mcp.handle({jsonrpc:'2.0',id:2,method:'tools/list',params:{}});
- assert.ok(!empty.result.tools.some(x=>x.name==='forge_git_memory'));
- service.forgeGitMemoryPort={read:()=>readForgeGitMemory(appDataRoot)};
- const list=await mcp.handle({jsonrpc:'2.0',id:3,method:'tools/list',params:{}});
- assert.deepEqual(list.result.tools.map(x=>x.name),['forge_git_memory']);
+ const listing=await mcp.handle({jsonrpc:'2.0',id:2,method:'tools/list',params:{}});
+ assert.deepEqual(listing.result.tools.map(x=>x.name),['forge_project_memory']);
+ const withoutPort=await mcp.handle({jsonrpc:'2.0',id:3,method:'tools/call',
+   params:{name:'forge_project_memory',arguments:{projectId:'forge_git'}}});
+ assert.equal(withoutPort.result.isError,true);
+ service.forgeGitMemoryPort={
+   isOwnerContext:who=>who===context,
+   read:()=>readForgeGitMemory(appDataRoot)
+ };
  const response=await mcp.handle({jsonrpc:'2.0',id:4,method:'tools/call',
-   params:{name:'forge_git_memory',arguments:{}}});
+   params:{name:'forge_project_memory',arguments:{projectId:'forge_git'}}});
  assert.equal(response.result.structuredContent.observed.head,'f'.repeat(40));
  assert.equal(response.result.structuredContent.available,true);
  const bad=await mcp.handle({jsonrpc:'2.0',id:5,method:'tools/call',
-   params:{name:'forge_git_memory',arguments:{projectId:'other'}}});
+   params:{name:'forge_project_memory',arguments:{projectId:'other'}}});
  assert.equal(bad.result.isError,true);
+ const noAuth={...context,actorId:'foreign'};
+ const unauthorized=createOrchestratorMcp({service,getContext:()=>noAuth,
+   allowedOperations:['project_memory']});
+ await unauthorized.handle(init);
+ await unauthorized.handle({jsonrpc:'2.0',method:'notifications/initialized'});
+ const blocked=await unauthorized.handle({jsonrpc:'2.0',id:6,method:'tools/call',
+   params:{name:'forge_project_memory',arguments:{projectId:'forge_git'}}});
+ assert.ok(blocked.error||blocked.result?.isError===true);
 });

@@ -1544,6 +1544,7 @@ localOrchestratorContext=orchestratorKernel.context;
 const {service:orchestratorService,mcp:localOrchestratorMcp}=orchestratorKernel;
 // Read the exact Forge Git checkpoint; no second store or external writes.
 orchestratorService.forgeGitMemoryPort=Object.freeze({
+  isOwnerContext:context=>context===localOrchestratorContext,
   read:()=>readForgeGitMemory(app.getPath('appData'))
 });
 // The sole app-shell automation port controls the ACTUAL Electron renderer.
