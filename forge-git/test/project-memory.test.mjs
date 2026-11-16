@@ -56,5 +56,6 @@ test('inbox não duplica avisos idênticos',()=>{
     detail:'Commit confirmado',forCoordinator:true};
   mem.event(receipt);mem.event(receipt);
   assert.equal(mem.snapshot().inbox.filter(x=>!x.delivered).length,1);
+  assert.equal(mem.snapshot().events.filter(x=>x.kind==='github_revision').length,1);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });

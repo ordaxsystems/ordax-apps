@@ -170,7 +170,11 @@ async function send({agentId,text,newSession=false,autoContinue=null,continuatio
   if(!ROLES.some(r=>r.id===agentId))throw Error('Conversa desconhecida.');
   if(!token)throw Error('Conecte o GitHub antes de enviar.');
   if(busy.has(agentId))throw Error('Esta conversa já está ocupada.');
-  if(store.agent(agentId).status==='awaiting-github')throw Error('A escrita da conversa anterior ainda está em verificação no GitHub.');
+  const currentAgent=store.agent(agentId);
+  if(['awaiting-github','awaiting-provider','verifying'].includes(currentAgent.status))
+    throw Error('A conversa anterior ainda está sendo verificada; não enviarei uma segunda tarefa.');
+  if(currentAgent.autoContinue && autoContinue!==true && !continuation)
+    throw Error('Pause a missão contínua antes de enviar outra tarefa.');
   if(!ready.has(agentId))throw Error('A guia do ChatGPT ainda não carregou.');
   const task=String(text??'').trim();
   if(task.length<4||task.length>3500)throw Error('Descreva a tarefa em até 3500 caracteres.');
@@ -332,6 +336,11 @@ function events(){
   guarded('fg:agent-refresh',agentId=>refresh({agentId,notifyCoordinator:true}));
   guarded('fg:new-chat',id=>{
     if(busy.has(id))throw Error('Aguarde a resposta atual.');
+    const agent=store.agent(id);
+    if(['awaiting-github','awaiting-provider','verifying'].includes(agent.status))
+      throw Error('Verificação pendente: a conversa anterior pode estar trabalhando.');
+    if(agent.autoContinue)
+      throw Error('Pause a missão contínua antes de abrir outra conversa.');
     store.patch(id,{chatUrl:null,status:'idle',lastError:null});
     emit('Nova conversa preparada para '+id+'. A memória do projeto foi mantida.');
     return store.snapshot();
@@ -339,11 +348,13 @@ function events(){
   guarded('fg:inbox',()=>store.snapshot().inbox.filter(e=>!e.delivered));
   guarded('fg:notify-forjador',async()=>{
     if(busy.has('forjador'))throw Error('Forjador ocupado; eventos permanecem na memória.');
-    const unread=store.snapshot().inbox.filter(e=>!e.delivered);
+    const inbox=store.snapshot().inbox;
+    const unread=inbox.filter(e=>!e.delivered);
     if(!unread.length)return {message:'Nenhuma atualização pendente.'};
+    const acknowledgedThrough=inbox.length;
     const message='Atualize o estado do projeto conferindo o GitHub. '+store.context();
     const result=await send({agentId:'forjador',text:message});
-    store.acknowledge(store.snapshot().inbox.length);
+    store.acknowledge(acknowledgedThrough);
     return result;
   });
   guarded('fg:open-url',async url=>{

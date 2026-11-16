@@ -58,6 +58,9 @@ export function openProjectMemory(dir){
    event:(entry)=>{
      if(typeof entry?.kind!=='string')throw Error('evento_invalido');
      const item={kind:entry.kind,agent:entry.agent??null,sha:entry.sha??null,detail:String(entry.detail??'').slice(0,240),at:new Date().toISOString()};
+     const repeated=state.events.find(e=>e.agent===item.agent&&e.kind===item.kind&&
+       e.sha===item.sha&&e.detail===item.detail);
+     if(repeated)return repeated;
      state.events.push(item);
      state.events=state.events.slice(-80);
      if(entry.forCoordinator===true){
