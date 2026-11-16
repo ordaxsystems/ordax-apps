@@ -1,17 +1,18 @@
-const { contextBridge, ipcRenderer } = require('electron');
-
-contextBridge.exposeInMainWorld('forgeGit', Object.freeze({
-  connect: token => ipcRenderer.invoke('forge-git:connect', token),
-  connectLocal: () => ipcRenderer.invoke('forge-git:connect-local'),
-  inspect: args => ipcRenderer.invoke('forge-git:inspect', args),
-  run: args => ipcRenderer.invoke('forge-git:run', args),
-  publish: () => ipcRenderer.invoke('forge-git:publish'),
-  chatStatus: () => ipcRenderer.invoke('forge-git:chat-status'),
-  chatLogin: () => ipcRenderer.invoke('forge-git:chat-login'),
-  openPr: url => ipcRenderer.invoke('forge-git:open-pr', url),
-  onStatus: callback => {
-    const listener = (_event, data) => callback(data);
-    ipcRenderer.on('forge-git:status', listener);
-    return () => ipcRenderer.removeListener('forge-git:status', listener);
+const {contextBridge,ipcRenderer}=require('electron');
+contextBridge.exposeInMainWorld('forgeGit',{
+  state:()=>ipcRenderer.invoke('fg:state'),
+  connect:()=>ipcRenderer.invoke('fg:connect'),
+  select:id=>ipcRenderer.invoke('fg:tab',id),
+  send:args=>ipcRenderer.invoke('fg:send',args),
+  pauseAuto:id=>ipcRenderer.invoke('fg:auto-pause',id),
+  refresh:()=>ipcRenderer.invoke('fg:refresh'),
+  agentRefresh:id=>ipcRenderer.invoke('fg:agent-refresh',id),
+  newChat:id=>ipcRenderer.invoke('fg:new-chat',id),
+  notifyForjador:()=>ipcRenderer.invoke('fg:notify-forjador'),
+  openUrl:url=>ipcRenderer.invoke('fg:open-url',url),
+  onEvent:listener=>{
+    const handler=(_event,data)=>listener(data);
+    ipcRenderer.on('forge-git:event',handler);
+    return ()=>ipcRenderer.removeListener('forge-git:event',handler);
   }
-}));
+});

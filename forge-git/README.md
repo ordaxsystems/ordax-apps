@@ -1,35 +1,29 @@
-# Forge Git — MVP GPT Web + GitHub
+# Forge Git — GPT Web, MCP e GitHub remoto
 
-Aplicativo Windows pequeno e isolado do Forge MCP. Usa o mesmo `EmbeddedChatWorker` do Forge, mas em uma sessão Chromium separada, para propor a edição **de um único arquivo remoto**. O aplicativo lê o arquivo pela API oficial do GitHub e, somente após o usuário aprovar, cria branch, commit e **Pull Request em rascunho**. Não altera a branch principal.
+Protótipo Windows isolado em forge-git/, no repositório canônico ordaxsystems/ordax-apps.
 
-## Iniciar no checkout de desenvolvimento
+## Uso
 
-Requer Node 22+ e dependências Electron já instaladas em `forge/product`.
+1. Abra OrdaX Forge Git (DEV) no Menu Iniciar.
+2. Conecte o GitHub já autorizado como ordaxos-admin.
+3. Selecione Forjador, Agente 1 ou Agente 2 nas abas.
+4. Escreva uma missão natural, como: Crie um site de pizzaria no repositório de testes.
+5. O Forjador seleciona o Forge MCP para coordenação. Os agentes recebem a missão no GPT Web sem Forge MCP obrigatório e usam as ferramentas GitHub que estiverem autorizadas na própria conversa.
+6. A resposta não precisa conter JSON. O app consulta o GitHub para verificar alterações e atualizar a memória. Resposta do GPT sem novo commit permanece como não verificada.
+7. Qualquer conversa nova recebe o estado verificado. Use Atualizar memória pelo GitHub ou Informar o Forjador.
+8. Para testar a continuidade, clique Missão contínua no agente. Após cada commit confirmado, o app envia a próxima instrução curta ao GPT até uma PR ou o limite de 6 ciclos. O botão Pausar interrompe novas mensagens sem cancelar a operação atual.
 
-```powershell
-cd forge/product
-npm run build:worker-preload
-./node_modules/.bin/electron.cmd ../../forge-git
-```
+## Segurança e limites
 
-Ou execute `node --test forge-git/test/*.test.mjs` na raiz do repositório para os testes do contrato.
+- Sandbox remoto: somente ordaxos-admin/TESTES-FORGE-GIT.
+- Token do GitHub CLI fica no processo principal, não é enviado ao GPT nem armazenado na memória.
+- O Forge MCP existente pertence ao Forge convencional; por enquanto, não escreve automaticamente na memória do Forge Git. No protótipo, a memória GitHub é atualizada pelo aplicativo, a partir de revisões confirmadas. A ligação MCP específica de memória ainda precisa de implementação e autorização.
+- O GPT pode trabalhar no GitHub com as ferramentas de escrita autorizadas em sua sessão. A conexão GitHub padrão pode ter acesso somente leitura e o sandbox pode estar fora da instalação autorizada; o erro 403 precisa ser resolvido no acesso GitHub do GPT, não com JSON em mensagens.
+- Memória própria do protótipo: forge-git-project.json no userData do aplicativo; registros de HEADs verificados, eventos, abas e conversas.
+- Um Forjador e dois agentes, branches isoladas, inbox sem loops e sem merge automático.
+- Respostas GPT sem commit imediato entram em verificação pendente; o monitor consulta o GitHub e retoma apenas após prova. Após 5 minutos sem commit, para com evidência de bloqueio. O limite é de 6 ciclos confirmados.
+- Execução 24h contínua ainda não homologada. Login, ferramenta remota e disponibilidade podem bloquear.
 
-## Fluxo
+## Testes
 
-1. No Windows de desenvolvimento OrdaX, o Forge Git conecta automaticamente ao `gh` já autenticado como `ordaxos-admin`. Ele confirma permissão de escrita em `ordaxsystems/ordax-apps` antes de habilitar as tarefas. Para outro computador, é possível usar um token fine-grained restrito aos repositórios OrdaX desejados com **Contents** e **Pull requests** em leitura/escrita. O token fica somente na memória do processo, nunca no ChatGPT ou no disco pelo aplicativo.
-2. Fazer login no ChatGPT Web na área à direita, com a conta desejada.
-3. Escolher um repositório da organização `ordaxsystems` ou o sandbox `ordaxos-admin/TESTES-FORGE-GIT` (padrão neste ambiente de teste), um caminho específico (existente ou novo) e uma tarefa pequena.
-4. Clicar **Executar no GPT Web**. O GPT recebe o texto completo do arquivo e devolve uma proposta JSON, que é validada antes de qualquer escrita.
-5. Conferir a resposta visível do ChatGPT, clicar **Criar branch, commit e PR** e abrir a Pull Request criada.
-
-## Limites explícitos deste MVP
-
-- Edição de **um arquivo por execução**; arquivo original até 48 KB e resultado até 80 KB.
-- Não depende de MCP, não usa API de modelos e não clona repositórios locais. O acesso remoto ao GitHub é restrito a `ordaxsystems` e ao sandbox exato `ordaxos-admin/TESTES-FORGE-GIT` e é verificado novamente no momento de publicar.
-- O navegador do ChatGPT precisa estar autenticado e disponível; qualquer falha de sessão, resposta ou transporte bloqueia o commit. Nunca reenvia uma chamada incerta automaticamente.
-- Não é agente autônomo 24h ainda: não há fila de missões, retentativas automáticas ou execução com a janela fechada.
-- Não faz merge, deploy nem execução arbitrária de código. CI do repositório continua no GitHub.
-- Uma proposta não é persistida em caso de fechamento do aplicativo; gere outra antes de publicar.
-- As funções de automação da página ChatGPT podem depender de alterações de UI. É necessária uma prova física de envio/retorno antes de considerar homologado.
-
-O diretório `forge-git/` é um protótipo separado; o Forge MCP canônico em `forge/` não é modificado.
+Execute cd forge-git && npm test. Testes automatizados não substituem prova física com GPT Web e GitHub.
