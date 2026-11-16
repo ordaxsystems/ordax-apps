@@ -50,6 +50,18 @@ export function openProjectMemory(dir){
      persist();
      return {...agent};
    },
+   beginTurn:(id,task,{continuation=false}={})=>{
+     const agent=state.agents.find(a=>a.id===id);
+     if(!agent)throw Error('agente_desconhecido');
+     if(continuation&&(!agent.autoContinue||!agent.autoPending))
+       throw Error('continuacao_nao_autorizada');
+     agent.status='running';
+     agent.lastError=null;
+     agent.task=task;
+     if(continuation)agent.autoPending=false;
+     persist();
+     return {...agent};
+   },
    observe:({base,sha,at})=>{
      if(typeof base!=='string'||!sha||!/^[0-9a-f]{40}$/i.test(sha))throw Error('github_revision_invalida');
      state.observed={base,sha,at};
