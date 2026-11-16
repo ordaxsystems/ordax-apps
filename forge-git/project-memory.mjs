@@ -61,7 +61,9 @@ export function openProjectMemory(dir){
      state.events.push(item);
      state.events=state.events.slice(-80);
      if(entry.forCoordinator===true){
-       state.inbox.push({...item,delivered:false});
+       const exists=state.inbox.some(e=>!e.delivered&&e.agent===item.agent&&
+         e.kind===item.kind&&e.sha===item.sha&&e.detail===item.detail);
+       if(!exists)state.inbox.push({...item,delivered:false});
        state.inbox=state.inbox.slice(-40);
      }
      persist();
@@ -73,16 +75,10 @@ export function openProjectMemory(dir){
      persist();
    },
    context:()=>{
-     const o=state.observed;
-     const facts=state.events.slice(-10).map(e=>e.at+' '+e.kind+' '+(e.sha||'')+' '+e.detail);
-     const agents=state.agents.map(a=>a.name+': '+a.status+(a.branch?' / '+a.branch:''));
-     return [
-       'Projeto: https://github.com/'+REPO,
-       'GitHub verificado: '+(o.base||'sem base')+' '+(o.sha||'sem revisão')+' '+(o.at||''),
-       'Agentes: '+agents.join(' | '),
-       'Eventos confirmados: '+(facts.join('\n')||'nenhum'),
-       'Avisos pendentes para o Forjador: '+state.inbox.filter(e=>!e.delivered).map(e=>e.detail).join(' | ')
-     ].join('\n');
+     const branches=state.agents.filter(a=>a.branch).map(a=>a.name+': '+a.branch+
+       (a.lastHead?' @'+a.lastHead.slice(0,12):''));
+     return 'GitHub: https://github.com/'+REPO+
+       (branches.length?' | '+branches.join(' | '):'');
    }
  };
 }

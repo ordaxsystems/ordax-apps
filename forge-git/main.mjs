@@ -76,8 +76,7 @@ function scheduleAuto(agentId){
     if(!win||!current.autoContinue||!current.autoPending||busy.has(agentId)||current.status!=='idle')return;
     store.patch(agentId,{autoPending:false});
     emit('Continuação automática autorizada: '+agentId+' (ciclo '+(Number(current.autoRounds)+1)+').');
-    void send({agentId,text:'Continue a missão '+current.autoGoal+
-      '. Revise o que falta, corrija os problemas e, quando estiver pronta, abra uma PR em rascunho.'})
+    void send({agentId,text:'Continue a missão.',newSession:true,continuation:true})
       .catch(error=>emit('Continuação interrompida: '+String(error?.message||error)));
   },1200);
   timeout.unref();
@@ -167,11 +166,7 @@ async function ensureBranch(agentId){
   store.event({kind:'branch_created',agent:agentId,sha:verified,detail:branch,forCoordinator:true});
   return branch;
 }
-function contextFor(agentId){
-  return store.context()+'\n'+
-    'Perfil desta conversa: '+ROLES.find(x=>x.id===agentId)?.name+'.';
-}
-async function send({agentId,text,newSession=false,autoContinue=null}){
+async function send({agentId,text,newSession=false,autoContinue=null,continuation=false}){
   if(!ROLES.some(r=>r.id===agentId))throw Error('Conversa desconhecida.');
   if(!token)throw Error('Conecte o GitHub antes de enviar.');
   if(busy.has(agentId))throw Error('Esta conversa já está ocupada.');
@@ -197,7 +192,8 @@ async function send({agentId,text,newSession=false,autoContinue=null}){
     const fresh=newSession||!old.chatUrl;
     const route=routeForConversation(agentId);
     const prompt=providerMessage({
-      agentId,task,repo:REPO,branch,context:contextFor(agentId),fresh
+      agentId,task,repo:REPO,branch,continuation,
+      headSha:startedHead,goal:old.autoGoal
     });
     // The Forge MCP manages the existing Forge app; only the coordinator selects it.
     // The GPT executor may use its own authorized GitHub tools in this session.
@@ -237,19 +233,28 @@ async function send({agentId,text,newSession=false,autoContinue=null}){
       lastError:null,
       awaitingSince:proved?null:new Date().toISOString()
     });
-    store.event({
-      kind:proved?'conversation_checked':'github_verification_pending',
-      agent:agentId,
-      detail:proved?agentId+' respondeu, com verificação GitHub registrada.':
-        agentId+' respondeu; aguardando confirmação do commit remoto.',
-      forCoordinator:agentId!=='forjador'
-    });
+    // Routine chat responses are not project facts; do not spam the coordinator.
+    if(!proved && agentId!=='forjador')
+      store.event({kind:'github_verification_pending',agent:agentId,
+        detail:'Resposta recebida; aguardando commit remoto.'});
     emit(proved?'Resposta recebida e GitHub conferido.':'Resposta recebida; aguardando confirmação do GitHub.');
     return {chatUrl:answer.chatUrl||old.chatUrl,note:observation.note,verified:proved};
   }catch(e){
-    store.patch(agentId,{status:'blocked',lastError:String(e?.message||e).slice(0,240),
+    const reason=String(e?.message||e).slice(0,240);
+    // GPT may publish GitHub commits yet its Web reply may not be observable.
+    // Reconcile external proof without treating the uncertain reply as completed.
+    if(agentId!=='forjador'&&store.agent(agentId).autoContinue&&
+       /response_not_observed|response_observation_timeout/.test(reason)){
+      store.patch(agentId,{status:'awaiting-provider',awaitingSince:new Date().toISOString(),
+        lastError:'Aguardando término do GPT e confirmação do GitHub.'});
+      try{await refresh({agentId,notifyCoordinator:true});}
+      catch(error){emit('Verificação GitHub pendente: '+String(error?.message||error));}
+      emit('Resposta não observada; continuidade preservada para reconciliação.');
+      return {pending:true,note:'Aguardando prova do GitHub e término do GPT.'};
+    }
+    store.patch(agentId,{status:'blocked',lastError:reason,
       autoContinue:false,autoPending:false});
-    emit(agentId+' bloqueado: '+String(e?.message||e));
+    emit(agentId+' bloqueado: '+reason);
     throw e;
   }finally{
     busy.delete(agentId);
@@ -260,8 +265,36 @@ async function syncAgents(){
   if(!token)return;
   for(const role of ROLES.filter(item=>item.role==='executor')){
     if(busy.has(role.id)||!store.agent(role.id).branch)continue;
+    // A previous process may have terminated during GPT execution.
+    // Do not blindly resend; reconcile GitHub before attempting a new turn.
+    const previous=store.agent(role.id);
+    if(previous.status==='running'||previous.status==='verifying')
+      store.patch(role.id,{status:previous.autoContinue?'awaiting-provider':'awaiting-github',
+        awaitingSince:previous.awaitingSince||new Date().toISOString()});
     try{await refresh({agentId:role.id,notifyCoordinator:true});}
-    catch(error){emit('Não foi possível verificar '+role.name+': '+String(error?.message||error));}
+    catch(error){emit('Não foi possível verificar '+role.name+': '+String(error?.message||error));continue;}
+    const after=store.agent(role.id);
+    if(after.status!=='awaiting-provider')continue;
+    const since=Date.parse(after.awaitingSince||'');
+    if(Number.isFinite(since)&&Date.now()-since>10*60_000){
+      store.patch(role.id,{status:'unverified',autoContinue:false,autoPending:false,
+        lastError:'Confirmação do GPT indisponível após 10 minutos.',awaitingSince:null});
+      emit('Continuidade pausada: GPT não confirmou estado ocioso.');continue;
+    }
+    // Two independent read-only observations prevent overlapping GPT sessions.
+    const worker=workers.get(role.id);
+    const first=await worker.health().catch(()=>null);
+    if(first?.health_observed!==true||first.composer_ready!==true||
+       first.response_generation_active!==false)continue;
+    await new Promise(resolve=>setTimeout(resolve,750));
+    const second=await worker.health().catch(()=>null);
+    if(second?.health_observed===true&&second.composer_ready===true&&
+       second.response_generation_active===false){
+      if(after.autoPending||!after.autoContinue){
+        store.patch(role.id,{status:'idle',lastError:null,awaitingSince:null});
+        scheduleAuto(role.id);
+      }
+    }
   }
 }
 function events(){
@@ -308,8 +341,7 @@ function events(){
     if(busy.has('forjador'))throw Error('Forjador ocupado; eventos permanecem na memória.');
     const unread=store.snapshot().inbox.filter(e=>!e.delivered);
     if(!unread.length)return {message:'Nenhuma atualização pendente.'};
-    const message='Atualize a memória do projeto com os fatos confirmados no GitHub. '+
-      unread.map(e=>e.detail+(e.sha?' ('+e.sha.slice(0,12)+')':'')).join('; ');
+    const message='Atualize o estado do projeto conferindo o GitHub. '+store.context();
     const result=await send({agentId:'forjador',text:message});
     store.acknowledge(store.snapshot().inbox.length);
     return result;
