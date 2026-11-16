@@ -15,6 +15,10 @@ test('one canonical tool catalog publishes bounded app and scoped preview views'
     assert.equal(FORGE_APP_MCP_OPERATIONS.includes(name.slice(6)),true);
   }
   assert.deepEqual(tools.get('forge_project_view_capture').inputSchema.required,['projectId','target']);
+  assert.match(tools.get('forge_project_view_capture').inputSchema.properties.target.pattern,
+    /active_task_view/);
+  assert.doesNotMatch(tools.get('forge_project_view_probe').inputSchema.properties.target.pattern,
+    /active_task_view/);
   assert.deepEqual(tools.get('forge_project_view_probe').inputSchema.required,
     ['projectId','target','expectedSha256','controlIndex','expectedLabel']);
   const live=tools.get('forge_project_view_live_click');
@@ -82,6 +86,14 @@ test('Forge MCP returns real image content once, without duplicating base64 in s
   assert.equal(preview.result.content[0].type,'image');
   assert.equal(calls.at(-1).operation,'project_view_probe');
   assert.equal(calls.at(-1).args.projectId,project);
+  const active=await mcp.handle({jsonrpc:'2.0',id:7,method:'tools/call',params:{
+    name:'forge_project_view_capture',arguments:{target:'active_task_view',
+      taskId:'task_visual',assetId:'asset_visual'}
+  }});
+  assert.equal(active.result.content[0].type,'image');
+  assert.equal(active.result.structuredContent.image.data,undefined);
+  assert.equal(calls.at(-1).args.taskId,'task_visual');
+  assert.equal(calls.at(-1).args.assetId,'asset_visual');
   const deniedProbe=await mcp.handle({jsonrpc:'2.0',id:6,method:'tools/call',params:{
     name:'forge_project_view_probe',arguments:{projectId:'project_Another',
       target:'project_index',expectedSha256:'a'.repeat(64),controlIndex:0,expectedLabel:'Publicar'}

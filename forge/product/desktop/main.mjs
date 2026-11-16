@@ -1664,6 +1664,35 @@ orchestratorService.viewPort=Object.freeze({
     if(!['project_view_capture','project_view_probe'].includes(operation))
       throw Error('forge_view_operation_invalid');
     const projectId=input.projectId;
+    if(operation==='project_view_capture'&&input.target==='active_task_view'){
+      if(!input.taskId||!input.assetId)
+        throw Error('forge_view_artifact_identity_required');
+      orchestratorService.requireAccess(localOrchestratorContext,operation,projectId);
+      orchestratorService.task(projectId,input.taskId);
+      const proof=readVerifiedHtmlPreview({taskId:input.taskId,assetId:input.assetId});
+      const identity={taskId:input.taskId,assetId:input.assetId,sha256:proof.sha256};
+      const active=interactiveHtmlPreview?.snapshot();
+      if(!active?.active||active.taskId!==identity.taskId||
+         active.assetId!==identity.assetId||active.sha256!==identity.sha256)
+        throw Error('forge_view_live_unavailable');
+      const image=boundedForgeViewImage(
+        await interactiveHtmlPreview.captureLive(identity));
+      // Reauthorize and reread the same source after pixels were captured.
+      // Never return a screenshot for a deleted/rebound Task or changed HTML.
+      orchestratorService.requireAccess(localOrchestratorContext,operation,projectId);
+      orchestratorService.task(projectId,input.taskId);
+      if(readVerifiedHtmlPreview({taskId:input.taskId,assetId:input.assetId}).sha256!==
+         identity.sha256||interactiveHtmlPreview?.snapshot().taskId!==identity.taskId||
+         interactiveHtmlPreview?.snapshot().assetId!==identity.assetId||
+         interactiveHtmlPreview?.snapshot().sha256!==identity.sha256)
+        throw Error('forge_view_source_changed');
+      return {schema:'ordax.forge.view-capture/1',
+        source:'active_native_view',target:input.target,
+        identity:{projectId,...identity},
+        rendering:'existing_isolated_native_view',focusChanged:false,
+        liveViewStatePreserved:true,nativeRendererPixels:true,
+        websitePublished:false,externalDeploymentVerified:false,image};
+    }
     let html,sourceSha256,sourceIdentity,interactive=false;
     if(input.target==='project_index'){
       if(input.taskId||input.assetId)throw Error('forge_view_scope_invalid');

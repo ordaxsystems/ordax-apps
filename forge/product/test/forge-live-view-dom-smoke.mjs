@@ -27,7 +27,11 @@ app.whenReady().then(async()=>{
     win.showInactive();
     win.minimize();
     result.minimized=win.isMinimized();
+    try{await preview.captureLive({...identity,sha256:'b'.repeat(64)});}
+    catch(error){result.wrongIdentityError=String(error?.message||error);}
     const before=await preview.inspectLive(identity);
+    const sameView=preview.view,sameSession=preview.session;
+    const pixelBefore=(await preview.captureLive(identity)).toPNG();
     const button=before.inspection.controls.find(c=>c.label==='Mudar');
     result.before={revision:before.revision,headings:before.inspection.headings,
       buttons:before.inspection.controls.length,inputValuesIncluded:before.inspection.inputValuesIncluded};
@@ -35,6 +39,10 @@ app.whenReady().then(async()=>{
       controlIndex:button?.index,expectedLabel:'Mudar'});
     result.clicked=clicked;
     const after=await preview.inspectLive(identity);
+    const pixelAfter=(await preview.captureLive(identity)).toPNG();
+    result.pixels={beforeBytes:pixelBefore.length,afterBytes:pixelAfter.length,
+      changed:!pixelBefore.equals(pixelAfter),sameView:preview.view===sameView,
+      sameSession:preview.session===sameSession};
     result.after={revision:after.revision,headings:after.inspection.headings};
     let staleError;
     try{await preview.clickLive(identity,{expectedRevision:before.revision,
@@ -87,6 +95,9 @@ app.whenReady().then(async()=>{
       result.fill.verified===true&&result.fill.hasValue===true&&
       result.fill.valueLeaked===false&&
       result.navigation.inDocument===true&&result.navigation.titleUpdated===true&&
+      result.pixels.beforeBytes>100&&result.pixels.afterBytes>100&&
+      result.pixels.changed&&result.pixels.sameView&&result.pixels.sameSession&&
+      result.wrongIdentityError==='forge_view_live_unavailable'&&
       staleError==='forge_view_live_stale'&&
       result.obstruction.obscured===true&&
       result.obstruction.interactable===false&&
