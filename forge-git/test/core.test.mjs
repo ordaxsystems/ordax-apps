@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { repositoryName, filePath, parseProposal, makePrompt, branchName } from '../core.mjs';
+import { repositoryName, ordaxRepository, filePath, parseProposal, makePrompt, branchName } from '../core.mjs';
 
 test('repo e caminho aceitam somente alvos bem formados', () => {
   assert.equal(repositoryName('ordaxsystems/ordax-apps'), 'ordaxsystems/ordax-apps');
@@ -30,4 +30,13 @@ test('prompt inclui conteúdo real e exige resultado completo sem ferramentas', 
   assert.match(prompt,/EXCLUSIVAMENTE/);
   assert.throws(()=>makePrompt({repo:'a/b',path:'a',instruction:'x',content:'',exists:false}));
   assert.match(branchName(),/^forge-git\/[0-9]{14}-[a-f0-9]{6}$/);
+});
+
+test('Forge Git usa apenas repositorios da organizacao OrdaX', () => {
+  assert.equal(ordaxRepository('ordaxsystems/ordax-apps'), 'ordaxsystems/ordax-apps');
+  assert.equal(ordaxRepository('ordax-site'), 'ordaxsystems/ordax-site');
+  assert.equal(ordaxRepository('ORDAXSYSTEMS/ordax-os'), 'ordaxsystems/ordax-os');
+  for (const invalid of ['other/project', 'some/other', '../ordax-apps', 'ordaxsystems/../x', '']) {
+    assert.throws(() => ordaxRepository(invalid));
+  }
 });
