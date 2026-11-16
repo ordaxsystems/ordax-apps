@@ -2,7 +2,7 @@
 // This is NOT a sandbox: commands inherit the logged-in Windows user's power.
 import fs from 'node:fs';
 import path from 'node:path';
-import {spawn} from 'node:child_process';
+import {spawn,execFileSync} from 'node:child_process';
 
 const DEFAULT_TIMEOUT_MS=120_000;
 const MAX_TIMEOUT_MS=1_800_000;
@@ -172,6 +172,130 @@ export class ForgeProjectDevelopment {
       throw error;
     }
   }
+  async reviewWorktree(projectId,taskId){
+    if(!this.status(projectId,{taskId}).available)
+      throw Error('forge_development_owner_approval_required');
+    const worktree=this.workspaces.taskWorktree(projectId,taskId);
+    if(!worktree||worktree.status!=='active')throw Error('forge_worktree_task_unprepared');
+    const main=async command=>await this.run({projectId,command,timeoutMs:30000});
+    const task=async command=>await this.run({projectId,taskId,command,timeoutMs:30000});
+    const [mainStatus,taskStatus,mainHeadResult,branchHeadResult,branchResult]=await Promise.all([
+      main('git status --porcelain=v1 --untracked-files=all'),
+      task('git status --porcelain=v1 --untracked-files=all'),
+      main('git rev-parse HEAD'),task('git rev-parse HEAD'),task('git branch --show-current')
+    ]);
+    if([mainStatus,taskStatus,mainHeadResult,branchHeadResult,branchResult]
+      .some(result=>result.exitCode!==0))throw Error('forge_worktree_git_command_failed');
+    const mainHeadSha=mainHeadResult.stdout.trim(),branchHeadSha=branchHeadResult.stdout.trim();
+    const branchName=branchResult.stdout.trim();
+    if(!/^[a-f0-9]{40}$/.test(mainHeadSha)||!/^[a-f0-9]{40}$/.test(branchHeadSha)||
+       branchName!==worktree.branchName)throw Error('forge_worktree_verification_failed');
+    const baseInBranch=await main('git merge-base --is-ancestor '+worktree.baseHeadSha+' '+branchHeadSha);
+    const baseInMain=await main('git merge-base --is-ancestor '+worktree.baseHeadSha+' '+mainHeadSha);
+    if(baseInBranch.exitCode!==0||baseInMain.exitCode!==0)
+      throw Error('forge_worktree_history_diverged');
+    const countsResult=await main('git rev-list --left-right --count '+mainHeadSha+'...'+branchHeadSha);
+    const filesResult=await main('git diff --name-status '+mainHeadSha+'...'+branchHeadSha);
+    if(countsResult.exitCode!==0||filesResult.exitCode!==0)
+      throw Error('forge_worktree_git_command_failed');
+    const counts=countsResult.stdout.trim().split(/\s+/).map(Number);
+    if(counts.length!==2||counts.some(value=>!Number.isSafeInteger(value)||value<0))
+      throw Error('forge_worktree_review_invalid');
+    const changedFiles=filesResult.stdout.split(/\r?\n/).filter(Boolean).slice(0,200)
+      .map(line=>{
+        const parts=line.split('\t');
+        return {status:String(parts.shift()||'').slice(0,8),
+          paths:parts.slice(0,2).map(value=>String(value).slice(0,500))};
+      });
+    const mainClean=!mainStatus.stdout.trim(),worktreeClean=!taskStatus.stdout.trim();
+    return {projectId,taskId,branchName,baseHeadSha:worktree.baseHeadSha,
+      mainHeadSha,branchHeadSha,mainClean,worktreeClean,
+      behindCount:counts[0],aheadCount:counts[1],changedFiles,
+      changedFilesTruncated:filesResult.stdout.split(/\r?\n/).filter(Boolean).length>200,
+      integratable:mainClean&&worktreeClean&&counts[1]>0,
+      workspaceScope:'task_worktree',rootPathExposed:false};
+  }
+  async verifyWorktree(projectId,taskId,{command,timeoutMs=DEFAULT_TIMEOUT_MS}={}){
+    const before=await this.reviewWorktree(projectId,taskId);
+    if(!before.mainClean)throw Error('forge_worktree_main_dirty');
+    if(!before.worktreeClean)throw Error('forge_worktree_task_dirty');
+    if(before.aheadCount<1)throw Error('forge_worktree_no_changes');
+    const commandResult=await this.run({projectId,taskId,command,timeoutMs});
+    const after=await this.reviewWorktree(projectId,taskId);
+    let reason=null;
+    if(commandResult.exitCode!==0)reason='forge_worktree_verification_command_failed';
+    else if(after.mainHeadSha!==before.mainHeadSha)reason='forge_worktree_main_changed';
+    else if(after.branchHeadSha!==before.branchHeadSha)reason='forge_worktree_branch_changed';
+    else if(!after.mainClean)reason='forge_worktree_main_dirty';
+    else if(!after.worktreeClean)reason='forge_worktree_task_dirty';
+    const verified=reason===null;
+    return {...commandResult,verified,verificationReason:reason,
+      reviewedMainHeadSha:before.mainHeadSha,
+      reviewedBranchHeadSha:before.branchHeadSha,
+      ...(verified?{verifiedBranchHeadSha:before.branchHeadSha}:{})};
+  }
+  async integrateWorktree(projectId,taskId,{expectedBranchHeadSha,expectedMainHeadSha}={}){
+    if(!/^[a-f0-9]{40}$/.test(String(expectedBranchHeadSha||''))||
+       !/^[a-f0-9]{40}$/.test(String(expectedMainHeadSha||'')))
+      throw Error('forge_worktree_expected_head_invalid');
+    const reviewed=await this.reviewWorktree(projectId,taskId);
+    if(reviewed.branchHeadSha!==expectedBranchHeadSha)
+      throw Error('forge_worktree_branch_changed');
+    if(reviewed.mainHeadSha!==expectedMainHeadSha)
+      throw Error('forge_worktree_main_changed');
+    if(!reviewed.mainClean)throw Error('forge_worktree_main_dirty');
+    if(!reviewed.worktreeClean)throw Error('forge_worktree_task_dirty');
+    if(reviewed.aheadCount<1)throw Error('forge_worktree_no_changes');
+    const worktree=this.workspaces.taskWorktree(projectId,taskId);
+    const merge=await this.run({projectId,
+      command:'git merge --no-ff --no-edit '+worktree.branchName,timeoutMs:120000});
+    if(merge.exitCode!==0){
+      const mergeHead=await this.run({projectId,
+        command:'git rev-parse -q --verify MERGE_HEAD',timeoutMs:15000});
+      if(mergeHead.exitCode===0){
+        const aborted=await this.run({projectId,command:'git merge --abort',timeoutMs:30000});
+        const restoredHead=await this.run({projectId,command:'git rev-parse HEAD',timeoutMs:15000});
+        const restoredStatus=await this.run({projectId,
+          command:'git status --porcelain=v1 --untracked-files=all',timeoutMs:15000});
+        if(aborted.exitCode===0&&restoredHead.exitCode===0&&restoredStatus.exitCode===0&&
+           restoredHead.stdout.trim()===expectedMainHeadSha&&!restoredStatus.stdout.trim())
+          throw Error('forge_worktree_merge_conflict');
+        throw Error('forge_worktree_integration_uncertain');
+      }
+      const unchangedHead=await this.run({projectId,command:'git rev-parse HEAD',timeoutMs:15000});
+      const unchangedStatus=await this.run({projectId,
+        command:'git status --porcelain=v1 --untracked-files=all',timeoutMs:15000});
+      if(unchangedHead.exitCode===0&&unchangedStatus.exitCode===0&&
+         unchangedHead.stdout.trim()===expectedMainHeadSha&&!unchangedStatus.stdout.trim())
+        throw Error('forge_worktree_merge_failed');
+      throw Error('forge_worktree_integration_uncertain');
+    }
+    const [integratedHead,integratedStatus,ancestor]=await Promise.all([
+      this.run({projectId,command:'git rev-parse HEAD',timeoutMs:15000}),
+      this.run({projectId,command:'git status --porcelain=v1 --untracked-files=all',timeoutMs:15000}),
+      this.run({projectId,command:'git merge-base --is-ancestor '+expectedBranchHeadSha+' HEAD',timeoutMs:15000})
+    ]);
+    const integratedHeadSha=integratedHead.stdout.trim();
+    if(integratedHead.exitCode!==0||integratedStatus.exitCode!==0||ancestor.exitCode!==0||
+       !/^[a-f0-9]{40}$/.test(integratedHeadSha)||integratedHeadSha===expectedMainHeadSha||
+       integratedStatus.stdout.trim())throw Error('forge_worktree_integration_uncertain');
+    this.workspaces.markTaskWorktreeIntegrated(projectId,taskId,{integratedHeadSha});
+    const relative='.forge-worktrees/'+taskId;
+    let cleanupPending=false;
+    const removed=await this.run({projectId,
+      command:'git worktree remove '+relative,timeoutMs:30000}).catch(()=>null);
+    if(!removed||removed.exitCode!==0)cleanupPending=true;
+    if(!cleanupPending){
+      const deleted=await this.run({projectId,
+        command:'git branch -d '+worktree.branchName,timeoutMs:15000}).catch(()=>null);
+      if(!deleted||deleted.exitCode!==0)cleanupPending=true;
+    }
+    return {projectId,taskId,status:'integrated',branchName:worktree.branchName,
+      baseHeadSha:worktree.baseHeadSha,branchHeadSha:expectedBranchHeadSha,
+      previousMainHeadSha:expectedMainHeadSha,integratedHeadSha,
+      verificationRequired:true,cleanupPending,workspaceScope:'project_root',
+      rootPathExposed:false};
+  }
   async run({projectId,taskId=null,command,workingDirectory:relative='',timeoutMs=DEFAULT_TIMEOUT_MS}={}){
     if(typeof command!=='string'||!command.trim()||command.length>8000||command.includes('\0')||
        !Number.isSafeInteger(timeoutMs)||timeoutMs<1000||timeoutMs>MAX_TIMEOUT_MS)
@@ -229,6 +353,15 @@ export class ForgeProjectDevelopment {
         if(!this.status(projectId,{taskId}).available||after.path!==original.path||
            this.workspaces.rootForProject(projectId,taskId)!==executionRoot)
           return reject(Error('forge_development_scope_changed'));
+        let gitHeadSha=null;
+        if(taskId&&code===0){
+          try{
+            const observed=execFileSync('git',['rev-parse','HEAD'],{
+              cwd,encoding:'utf8',windowsHide:true,env:childEnvironment(),timeout:10000
+            }).trim();
+            if(/^[a-f0-9]{40}$/.test(observed))gitHeadSha=observed;
+          }catch{}
+        }
         resolve({projectId,...(taskId?{taskId}:{}),exitCode:code,signal:signal??null,
           stdout:stdout.toString('utf8'),stderr:stderr.toString('utf8'),
           stdoutTruncated:outTruncated,stderrTruncated:errTruncated,
@@ -236,6 +369,7 @@ export class ForgeProjectDevelopment {
           workingDirectory:relative||'.',
           workspaceScope:taskId&&this.workspaces.taskWorktree(projectId,taskId)?.status==='active'
             ?'task_worktree':'project_root',
+          ...(gitHeadSha?{gitHeadSha}:{}),
           workspaceIsSandbox:false,externalEffectsVerified:false});
       };
       child.once('error',error=>finish(error,null,null));

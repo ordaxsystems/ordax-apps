@@ -16,7 +16,8 @@ import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 test('full Forge MCP catalog reuses app operations while preventing recursive GPT dispatch',()=>{
   assert.ok(FORGE_APP_MCP_OPERATIONS.length>40);
   for(const name of ['project_rename','project_delete','project_repository_set',
-    'project_development_status','project_worktree_prepare','project_command_run','workspace_bind',
+    'project_development_status','project_worktree_prepare','project_worktree_review',
+    'project_worktree_verify','project_worktree_integrate','project_command_run','workspace_bind',
     'project_file_write','project_context','command_get'])
     assert.ok(FORGE_APP_MCP_OPERATIONS.includes(name),'tool missing '+name);
   for(const name of ['work_send','forjador_send','proposal_send','autonomous_dialogue_continue'])
@@ -196,4 +197,201 @@ test('Task worktrees isolate parallel agents while main remains the single clean
   assert.equal(execFileSync('git',['status','--porcelain=v1','--untracked-files=all'],{
     cwd:folder,encoding:'utf8'}).trim(),'');
   assert.equal(store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+
+async function integrationFixture(t,prefix){
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),prefix));
+  const folder=path.join(dir,'project');fs.mkdirSync(folder);
+  execFileSync('git',['init','-b','main'],{cwd:folder,stdio:'ignore'});
+  execFileSync('git',['config','user.email','forge-test@ordax.local'],{cwd:folder});
+  execFileSync('git',['config','user.name','Forge Test'],{cwd:folder});
+  execFileSync('git',['config','core.autocrlf','false'],{cwd:folder});
+  fs.writeFileSync(path.join(folder,'README.md'),'base\n','utf8');
+  fs.writeFileSync(path.join(folder,'shared.txt'),'base\n','utf8');
+  execFileSync('git',['add','README.md','shared.txt'],{cwd:folder});
+  execFileSync('git',['commit','-m','base'],{cwd:folder,stdio:'ignore'});
+  const store=new Store(':memory:');
+  t.after(()=>{store.close();fs.rmSync(dir,{force:true,recursive:true})});
+  const context={actorId:'owner',clientId:'desktop',workspaceSessionId:store.getWorkspaceSession().id};
+  const workspaces=new ForgeLocalWorkspaces({store,documentsDirectory:dir});
+  const trust=new ForgeMcpOwnerTrust({store,appIdentity:dir,
+    scopeSignature:id=>{
+      const bind=workspaces.binding(id);
+      return bind?'owner-bound:'+bind.root+':'+bind.identity:'app-private:'+id;
+    }});
+  const development=new ForgeProjectDevelopment({store,workspaces,ownerTrust:trust});
+  const files=new ForgeProjectFiles({root:path.join(dir,'private-files'),
+    workspaceLookup:(projectId,taskId=null)=>workspaces.rootForProject(projectId,taskId),
+    requireOwnerBinding:true});
+  const svc=new OrchestratorService({store,development,fileBroker:files,
+    authorize:({context:who})=>who===context});
+  const projectId=(await svc.invoke(context,'project_create',{
+    name:'Integrator E2E',requestId:prefix+'project'})).result.projectId;
+  workspaces.bindSelected(projectId,folder);
+  trust.trustApp();trust.trust(projectId);
+  development.approve(projectId,{expectedScopeHash:trust.scopeHash(projectId)});
+  const orchestratorId=(await svc.invoke(context,'orchestrator_create',{
+    projectId,name:'Integrator',mission:'Validar e integrar branches verificadas',
+    requestId:prefix+'orchestrator'})).result.orchestratorId;
+  return {dir,folder,store,context,workspaces,development,svc,projectId,orchestratorId};
+}
+
+test('Integrator merges only a reviewed Task head with successful verification receipts',async t=>{
+  const f=await integrationFixture(t,'forge-integrator-success-');
+  const taskId=(await f.svc.invoke(f.context,'work_create',{
+    projectId:f.projectId,orchestratorId:f.orchestratorId,title:'Feature agent',
+    requestId:'integrator_success_task'})).result.taskId;
+  const prepared=await f.svc.invoke(f.context,'project_worktree_prepare',{
+    projectId:f.projectId,taskId,requestId:'integrator_success_prepare'});
+  const write=await f.svc.invoke(f.context,'project_file_write',{
+    projectId:f.projectId,taskId,path:'feature.txt',content:'verified feature\n',
+    requestId:'integrator_success_write'});
+  assert.equal(write.status,'succeeded');
+  const commit=await f.svc.invoke(f.context,'project_command_run',{
+    projectId:f.projectId,taskId,
+    command:'git add feature.txt && git commit -m agent-feature',
+    requestId:'integrator_success_commit',timeoutMs:30000});
+  assert.equal(commit.status,'succeeded');
+  assert.equal(commit.result.exitCode,0,JSON.stringify(commit.result));
+  assert.match(commit.result.gitHeadSha,/^[a-f0-9]{40}$/);
+
+  let review=await f.svc.invoke(f.context,'project_worktree_review',{
+    projectId:f.projectId,taskId});
+  assert.equal(review.integratable,true);
+  assert.equal(review.mainClean,true);
+  assert.equal(review.worktreeClean,true);
+  assert.equal(review.aheadCount,1);
+  assert.equal(review.branchHeadSha,commit.result.gitHeadSha);
+  assert.equal(review.mainHeadSha,prepared.result.baseHeadSha);
+  assert.deepEqual(review.changedFiles,[{status:'A',paths:['feature.txt']}]);
+
+  const staleBranchHead=review.branchHeadSha;
+  const mutatingVerify=await f.svc.invoke(f.context,'project_worktree_verify',{
+    projectId:f.projectId,taskId,command:'git commit --allow-empty -m verify-mutated',
+    requestId:'integrator_mutating_verify',timeoutMs:30000});
+  assert.equal(mutatingVerify.status,'failed');
+  assert.equal(mutatingVerify.result.verified,false);
+  assert.equal(mutatingVerify.result.verificationReason,'forge_worktree_branch_changed');
+  assert.equal(mutatingVerify.result.reviewedBranchHeadSha,staleBranchHead);
+  assert.equal(Object.hasOwn(mutatingVerify.result,'verifiedBranchHeadSha'),false);
+  review=await f.svc.invoke(f.context,'project_worktree_review',{
+    projectId:f.projectId,taskId});
+  assert.notEqual(review.branchHeadSha,staleBranchHead);
+  assert.equal(review.mainHeadSha,prepared.result.baseHeadSha);
+  assert.equal(review.aheadCount,2);
+
+  const verify=await f.svc.invoke(f.context,'project_worktree_verify',{
+    projectId:f.projectId,taskId,command:'git diff --check',
+    requestId:'integrator_success_verify',timeoutMs:30000});
+  assert.equal(verify.status,'succeeded');
+  assert.equal(verify.result.verified,true);
+  assert.equal(verify.result.verifiedBranchHeadSha,review.branchHeadSha);
+
+  await assert.rejects(f.svc.invoke(f.context,'project_worktree_integrate',{
+    projectId:f.projectId,taskId,expectedBranchHeadSha:review.branchHeadSha,
+    expectedMainHeadSha:review.mainHeadSha,verificationReceiptIds:[commit.commandId],
+    requestId:'integrator_wrong_receipt'}),/forge_worktree_verification_receipt_invalid/);
+  const wrong=f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE request_id=?')
+    .get('integrator_wrong_receipt');
+  assert.equal(wrong.status,'failed');
+
+  const integrated=await f.svc.invoke(f.context,'project_worktree_integrate',{
+    projectId:f.projectId,taskId,expectedBranchHeadSha:review.branchHeadSha,
+    expectedMainHeadSha:review.mainHeadSha,verificationReceiptIds:[verify.commandId],
+    requestId:'integrator_success_merge'});
+  assert.equal(integrated.status,'succeeded');
+  assert.equal(integrated.result.status,'integrated');
+  assert.equal(integrated.result.cleanupPending,false);
+  assert.deepEqual(integrated.result.verificationReceiptIds,[verify.commandId]);
+  assert.match(integrated.result.integratedHeadSha,/^[a-f0-9]{40}$/);
+  assert.notEqual(integrated.result.integratedHeadSha,review.mainHeadSha);
+  assert.equal(fs.readFileSync(path.join(f.folder,'feature.txt'),'utf8'),'verified feature\n');
+  assert.equal(execFileSync('git',['rev-parse','HEAD'],{cwd:f.folder,encoding:'utf8'}).trim(),
+    integrated.result.integratedHeadSha);
+  assert.equal(execFileSync('git',['status','--porcelain=v1','--untracked-files=all'],{
+    cwd:f.folder,encoding:'utf8'}).trim(),'');
+  const row=f.workspaces.taskWorktree(f.projectId,taskId);
+  assert.equal(row.status,'integrated');
+  assert.equal(row.integratedHeadSha,integrated.result.integratedHeadSha);
+  assert.equal(fs.existsSync(path.join(f.folder,'.forge-worktrees',taskId)),false);
+  assert.equal(execFileSync('git',['branch','--list',prepared.result.branchName],{
+    cwd:f.folder,encoding:'utf8'}).trim(),'');
+  await assert.rejects(f.svc.invoke(f.context,'project_worktree_review',{
+    projectId:f.projectId,taskId}),/forge_worktree_task_unprepared/);
+  const replay=await f.svc.invoke(f.context,'project_worktree_integrate',{
+    projectId:f.projectId,taskId,expectedBranchHeadSha:review.branchHeadSha,
+    expectedMainHeadSha:review.mainHeadSha,verificationReceiptIds:[verify.commandId],
+    requestId:'integrator_success_merge'});
+  assert.equal(replay.commandId,integrated.commandId);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('Integrator aborts a conflicting Task merge and restores main without auto-resolution',async t=>{
+  const f=await integrationFixture(t,'forge-integrator-conflict-');
+  const taskA=(await f.svc.invoke(f.context,'work_create',{
+    projectId:f.projectId,orchestratorId:f.orchestratorId,title:'Conflict A',
+    requestId:'integrator_conflict_task_a'})).result.taskId;
+  const taskB=(await f.svc.invoke(f.context,'work_create',{
+    projectId:f.projectId,orchestratorId:f.orchestratorId,title:'Conflict B',
+    requestId:'integrator_conflict_task_b'})).result.taskId;
+  await f.svc.invoke(f.context,'project_worktree_prepare',{
+    projectId:f.projectId,taskId:taskA,requestId:'integrator_conflict_prepare_a'});
+  await f.svc.invoke(f.context,'project_worktree_prepare',{
+    projectId:f.projectId,taskId:taskB,requestId:'integrator_conflict_prepare_b'});
+
+  const originalA=await f.svc.invoke(f.context,'project_file_read',{
+    projectId:f.projectId,taskId:taskA,path:'shared.txt'});
+  const originalB=await f.svc.invoke(f.context,'project_file_read',{
+    projectId:f.projectId,taskId:taskB,path:'shared.txt'});
+  await f.svc.invoke(f.context,'project_file_write',{
+    projectId:f.projectId,taskId:taskA,path:'shared.txt',content:'A wins first\n',
+    expectedSha256:originalA.sha256,requestId:'integrator_conflict_write_a'});
+  await f.svc.invoke(f.context,'project_file_write',{
+    projectId:f.projectId,taskId:taskB,path:'shared.txt',content:'B conflicts\n',
+    expectedSha256:originalB.sha256,requestId:'integrator_conflict_write_b'});
+  const commitA=await f.svc.invoke(f.context,'project_command_run',{
+    projectId:f.projectId,taskId:taskA,command:'git add shared.txt && git commit -m change-A',
+    requestId:'integrator_conflict_commit_a',timeoutMs:30000});
+  const commitB=await f.svc.invoke(f.context,'project_command_run',{
+    projectId:f.projectId,taskId:taskB,command:'git add shared.txt && git commit -m change-B',
+    requestId:'integrator_conflict_commit_b',timeoutMs:30000});
+  assert.equal(commitA.result.exitCode,0,JSON.stringify(commitA.result));
+  assert.equal(commitB.result.exitCode,0,JSON.stringify(commitB.result));
+
+  const reviewA=await f.svc.invoke(f.context,'project_worktree_review',{
+    projectId:f.projectId,taskId:taskA});
+  const verifyA=await f.svc.invoke(f.context,'project_worktree_verify',{
+    projectId:f.projectId,taskId:taskA,command:'git diff --check',
+    requestId:'integrator_conflict_verify_a',timeoutMs:30000});
+  const mergeA=await f.svc.invoke(f.context,'project_worktree_integrate',{
+    projectId:f.projectId,taskId:taskA,expectedBranchHeadSha:reviewA.branchHeadSha,
+    expectedMainHeadSha:reviewA.mainHeadSha,verificationReceiptIds:[verifyA.commandId],
+    requestId:'integrator_conflict_merge_a'});
+  assert.equal(mergeA.status,'succeeded');
+  const mainAfterA=mergeA.result.integratedHeadSha;
+  assert.equal(fs.readFileSync(path.join(f.folder,'shared.txt'),'utf8'),'A wins first\n');
+
+  const reviewB=await f.svc.invoke(f.context,'project_worktree_review',{
+    projectId:f.projectId,taskId:taskB});
+  assert.equal(reviewB.mainHeadSha,mainAfterA);
+  assert.equal(reviewB.behindCount>=1,true);
+  const verifyB=await f.svc.invoke(f.context,'project_worktree_verify',{
+    projectId:f.projectId,taskId:taskB,command:'git diff --check',
+    requestId:'integrator_conflict_verify_b',timeoutMs:30000});
+  assert.equal(verifyB.status,'succeeded');
+  await assert.rejects(f.svc.invoke(f.context,'project_worktree_integrate',{
+    projectId:f.projectId,taskId:taskB,expectedBranchHeadSha:reviewB.branchHeadSha,
+    expectedMainHeadSha:reviewB.mainHeadSha,verificationReceiptIds:[verifyB.commandId],
+    requestId:'integrator_conflict_merge_b'}),/forge_worktree_merge_conflict/);
+  const failed=f.store.db.prepare('SELECT status,result FROM lab_command_receipts WHERE request_id=?')
+    .get('integrator_conflict_merge_b');
+  assert.equal(failed.status,'failed');
+  assert.equal(JSON.parse(failed.result).reason,'forge_worktree_merge_conflict');
+  assert.equal(execFileSync('git',['rev-parse','HEAD'],{cwd:f.folder,encoding:'utf8'}).trim(),mainAfterA);
+  assert.equal(execFileSync('git',['status','--porcelain=v1','--untracked-files=all'],{
+    cwd:f.folder,encoding:'utf8'}).trim(),'');
+  assert.equal(fs.readFileSync(path.join(f.folder,'shared.txt'),'utf8'),'A wins first\n');
+  assert.equal(f.workspaces.taskWorktree(f.projectId,taskB).status,'active');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });

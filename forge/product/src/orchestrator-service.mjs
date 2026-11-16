@@ -638,6 +638,9 @@ export class OrchestratorService {
     if(operation==='project_file_write')return this.writeProjectFile(context,input);
     if(operation==='project_development_status')return this.development?.status(input.projectId,{taskId:input.taskId??null})??{projectId:input.projectId,available:false,reason:'native_owner_port_unavailable'};
     if(operation==='project_worktree_prepare')return this.prepareProjectWorktree(context,input);
+    if(operation==='project_worktree_review')return this.reviewProjectWorktree(context,input);
+    if(operation==='project_worktree_verify')return this.verifyProjectWorktree(context,input);
+    if(operation==='project_worktree_integrate')return this.integrateProjectWorktree(context,input);
     if(operation==='project_command_run')return this.runProjectCommand(context,input);
     if(tool.readOnly)return this.read(context,operation,input);
     if(operation==='proposal_send')return this.confirmAndSendProposal(context,input);
@@ -688,6 +691,101 @@ export class OrchestratorService {
         taskId:input.taskId,reason:deterministic.has(error?.message)
           ?error.message:'forge_worktree_effect_uncertain',verified:false},
         deterministic.has(error?.message)?'failed':'uncertain'));}catch{}
+      throw error;
+    }
+  }
+
+
+  async reviewProjectWorktree(context,input){
+    if(!this.development)throw Error('forge_development_unavailable');
+    this.task(input.projectId,input.taskId,'work');
+    this.requireAccess(context,'project_worktree_review',input.projectId);
+    return await this.development.reviewWorktree(input.projectId,input.taskId);
+  }
+
+
+  async verifyProjectWorktree(context,input){
+    if(!this.development)throw Error('forge_development_unavailable');
+    this.task(input.projectId,input.taskId,'work');
+    const reserved=this.transaction(()=>this.reserve(context,'project_worktree_verify',input));
+    if(reserved.existing)return reserved.existing;
+    try{
+      this.requireAccess(context,'project_worktree_verify',input.projectId);
+      const result=await this.development.verifyWorktree(input.projectId,input.taskId,{
+        command:input.command,timeoutMs:input.timeoutMs
+      });
+      return this.transaction(()=>this.finish(reserved.commandId,result,
+        result.verified===true?'succeeded':'failed'));
+    }catch(error){
+      const deterministic=new Set([
+        'forge_development_owner_approval_required','forge_development_command_invalid',
+        'forge_workspace_binding_required','forge_workspace_missing_or_moved',
+        'forge_workspace_project_unavailable','forge_worktree_task_invalid',
+        'forge_worktree_task_unavailable','forge_worktree_task_unprepared',
+        'forge_worktree_record_invalid','forge_worktree_main_dirty',
+        'forge_worktree_task_dirty','forge_worktree_no_changes',
+        'forge_worktree_history_diverged'
+      ]);
+      const definitive=deterministic.has(error?.message);
+      try{this.transaction(()=>this.finish(reserved.commandId,{
+        taskId:input.taskId,reason:definitive?error.message:'forge_worktree_verification_uncertain',
+        verified:false,externalEffectsVerified:false
+      },definitive?'failed':'uncertain'));}catch{}
+      throw error;
+    }
+  }
+
+  verificationReceiptsForIntegration(context,input){
+    const ids=input.verificationReceiptIds||[];
+    if(new Set(ids).size!==ids.length)throw Error('forge_worktree_verification_receipt_invalid');
+    return ids.map(commandId=>{
+      const row=this.db.prepare(`SELECT * FROM lab_command_receipts WHERE id=? AND
+        workspace_session_id=? AND actor_id=? AND client_id=? AND project_id=? AND
+        operation='project_worktree_verify' AND status='succeeded'`)
+        .get(commandId,context.workspaceSessionId,context.actorId,context.clientId,input.projectId);
+      if(!row)throw Error('forge_worktree_verification_receipt_invalid');
+      const receipt=this.receipt(row),result=receipt.result;
+      if(!result||result.taskId!==input.taskId||result.exitCode!==0||
+         result.completed!==true||result.verified!==true||
+         result.workspaceScope!=='task_worktree'||
+         result.verifiedBranchHeadSha!==input.expectedBranchHeadSha)
+        throw Error('forge_worktree_verification_receipt_invalid');
+      return {commandId,verifiedBranchHeadSha:result.verifiedBranchHeadSha,updatedAt:receipt.updatedAt};
+    });
+  }
+
+  async integrateProjectWorktree(context,input){
+    if(!this.development)throw Error('forge_development_unavailable');
+    this.task(input.projectId,input.taskId,'work');
+    const reserved=this.transaction(()=>this.reserve(context,'project_worktree_integrate',input));
+    if(reserved.existing)return reserved.existing;
+    try{
+      this.requireAccess(context,'project_worktree_integrate',input.projectId);
+      const verifications=this.verificationReceiptsForIntegration(context,input);
+      const result=await this.development.integrateWorktree(input.projectId,input.taskId,{
+        expectedBranchHeadSha:input.expectedBranchHeadSha,
+        expectedMainHeadSha:input.expectedMainHeadSha
+      });
+      return this.transaction(()=>this.finish(reserved.commandId,{
+        ...result,verificationReceiptIds:verifications.map(item=>item.commandId)
+      }));
+    }catch(error){
+      const deterministic=new Set([
+        'forge_development_owner_approval_required','forge_workspace_binding_required',
+        'forge_workspace_missing_or_moved','forge_workspace_project_unavailable',
+        'forge_worktree_task_invalid','forge_worktree_task_unavailable',
+        'forge_worktree_task_unprepared','forge_worktree_record_invalid',
+        'forge_worktree_expected_head_invalid','forge_worktree_branch_changed',
+        'forge_worktree_main_changed','forge_worktree_main_dirty',
+        'forge_worktree_task_dirty','forge_worktree_no_changes',
+        'forge_worktree_history_diverged','forge_worktree_merge_conflict',
+        'forge_worktree_merge_failed','forge_worktree_verification_receipt_invalid'
+      ]);
+      const definitive=deterministic.has(error?.message);
+      try{this.transaction(()=>this.finish(reserved.commandId,{
+        taskId:input.taskId,reason:definitive?error.message:'forge_worktree_integration_uncertain',
+        integrated:false,externalEffectsVerified:false
+      },definitive?'failed':'uncertain'));}catch{}
       throw error;
     }
   }
