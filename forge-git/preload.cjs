@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('forgeGit', Object.freeze({
   connect: token => ipcRenderer.invoke('forge-git:connect', token),
+  connectLocal: () => ipcRenderer.invoke('forge-git:connect-local'),
   inspect: args => ipcRenderer.invoke('forge-git:inspect', args),
   run: args => ipcRenderer.invoke('forge-git:run', args),
   publish: () => ipcRenderer.invoke('forge-git:publish'),
