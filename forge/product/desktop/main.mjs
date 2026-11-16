@@ -1038,10 +1038,19 @@ registerUiHandler('ordax:tasks:reconcile-linked-reply', async (event, payload={}
   const result=await reconcileProviderLinkedReply({
     store,worker,taskId:payload?.taskId,responseSha256:payload?.responseSha256
   });
+  let commandReceiptReconciliation=null;
+  if(result?.runId&&(result?.reconciled===true||result?.reason==='already_reconciled')) {
+    try {
+      commandReceiptReconciliation=orchestratorService.reconcileRecoveredWorkReceipt(
+        String(payload?.taskId||''),result.runId);
+    } catch {
+      commandReceiptReconciliation={reconciled:false,reason:'command_receipt_reconciliation_failed'};
+    }
+  }
   if(result?.reconciled===true)
     await finalizeReconciledSiteDelivery(String(payload?.taskId||''),{captureMissing:true})
       .catch(()=>{});
-  return result;
+  return {...result,commandReceiptReconciliation};
 });
 const htmlArtifactCaptureWorkers=new Set();
 // Canonical capture operation: both automatic post-Run completion and the
@@ -2255,6 +2264,7 @@ app.whenReady().then(async () => {
         try {
           const recovery=await recoverVisibleLinkedProviderSubmission({store,worker});
           if(recovery?.state==='recovered') {
+            orchestratorService.reconcileRecoveredWorkReceipt(recovery.taskId,recovery.runId);
             emitRendererEvent('ordax:task:reconciled',{
               taskId:recovery.taskId,runId:recovery.runId
             });

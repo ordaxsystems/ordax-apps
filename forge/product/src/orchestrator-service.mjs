@@ -313,6 +313,57 @@ export class OrchestratorService {
       .get(taskId,projectId));
   }
 
+  reconcileRecoveredWorkReceipt(taskId,runId,{alreadyInTransaction=false}={}) {
+    const apply=()=>{
+      const binding=this.db.prepare(`SELECT project_id,kind FROM lab_task_bindings
+        WHERE task_id=?`).get(taskId);
+      if(!binding||binding.kind!=='work')
+        return {reconciled:false,reason:'recovered_work_binding_unavailable'};
+      const run=this.db.prepare(`SELECT rowid,id,status,started_at FROM runs
+        WHERE id=? AND task_id=?`).get(runId,taskId);
+      const latest=this.db.prepare(`SELECT id FROM runs WHERE task_id=?
+        ORDER BY rowid DESC LIMIT 1`).get(taskId);
+      const evidence=this.db.prepare(`SELECT 1 FROM events WHERE task_id=?
+        AND kind='provider.response.reconciled'
+        AND json_extract(payload,'$.run_id')=? LIMIT 1`).get(taskId,runId);
+      if(!run||run.status!=='succeeded'||latest?.id!==runId||!evidence)
+        return {reconciled:false,reason:'recovered_work_run_unverified'};
+      const previous=this.db.prepare(`SELECT completed_at FROM runs
+        WHERE task_id=? AND rowid<? ORDER BY rowid DESC LIMIT 1`).get(taskId,run.rowid);
+      const receipts=this.db.prepare(`SELECT c.id,c.result,c.created_at
+        FROM lab_command_receipts c JOIN lab_command_receipt_scope s
+          ON s.receipt_rowid=c.rowid
+        WHERE s.project_id=? AND s.task_id=? AND s.operation='work_send'
+          AND s.status='uncertain' ORDER BY c.created_at,c.id`)
+        .all(binding.project_id,taskId);
+      if(receipts.length===0)return {reconciled:false,reason:'recovered_work_receipt_absent'};
+      if(receipts.length!==1)throw Error('orchestrator_recovered_work_receipt_ambiguous');
+      const receipt=receipts[0];
+      let prior=null;
+      try{prior=receipt.result?JSON.parse(receipt.result):null;}catch{}
+      const receiptAt=Date.parse(receipt.created_at),runAt=Date.parse(run.started_at);
+      const previousAt=previous?.completed_at?Date.parse(previous.completed_at):null;
+      if(!prior||prior.taskId!==taskId||
+         (prior.runId!==undefined&&prior.runId!==null&&prior.runId!==runId)||
+         !Number.isFinite(receiptAt)||!Number.isFinite(runAt)||receiptAt>runAt||
+         (previousAt!==null&&(!Number.isFinite(previousAt)||receiptAt<=previousAt)))
+        throw Error('orchestrator_recovered_work_receipt_mismatch');
+      const result={...prior,taskId,runId,responseObserved:true,effectVerified:false,
+        provider:'chatgpt_web',recovered:true,reconciled:true};
+      const changed=this.db.prepare(`UPDATE lab_command_receipts
+        SET status='succeeded',result=?,updated_at=?
+        WHERE id=? AND status='uncertain'`)
+        .run(JSON.stringify(result),this.store.now(),receipt.id).changes;
+      if(changed!==1)throw Error('orchestrator_recovered_work_receipt_state_changed');
+      this.store.event(taskId,'provider.command.reconciled',{
+        run_id:runId,command_id:receipt.id,operation:'work_send',
+        response_observed:true,effect_verified:false
+      });
+      return {reconciled:true,commandId:receipt.id,runId};
+    };
+    return alreadyInTransaction?apply():this.transaction(apply);
+  }
+
   assertProviderTaskAvailable(taskId,{allowCoordinator=false}={}) {
     const binding=this.db.prepare(`SELECT b.kind,b.project_id,o.status FROM lab_task_bindings b
       JOIN lab_orchestrators o ON o.id=b.orchestrator_id WHERE b.task_id=?`).get(taskId);
@@ -1458,9 +1509,6 @@ export class OrchestratorService {
     }
     if(operation==='work_failover_prepare') {
       this.task(input.projectId,input.taskId,'work');
-      assertTaskHasNoUncertainTransport(this.store,input.taskId);
-      if(this.hasUnresolvedWorkReceipt(input.projectId,input.taskId,{includeRunning:true}))
-        throw Error('orchestrator_reconciliation_required');
       const latest=this.db.prepare(`SELECT id,status,error,completed_at,worker_id
         FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1`).get(input.taskId);
       if(!latest)throw Error('orchestrator_failover_source_missing');
@@ -1471,6 +1519,11 @@ export class OrchestratorService {
           AND json_extract(payload,'$.run_id')=? LIMIT 1`).get(input.taskId,latest.id));
       if(latest.status!=='failed'&&!reconciledResponse)
         throw Error('orchestrator_failover_source_not_reconciled');
+      if(reconciledResponse)
+        this.reconcileRecoveredWorkReceipt(input.taskId,latest.id,{alreadyInTransaction:true});
+      assertTaskHasNoUncertainTransport(this.store,input.taskId);
+      if(this.hasUnresolvedWorkReceipt(input.projectId,input.taskId,{includeRunning:true}))
+        throw Error('orchestrator_reconciliation_required');
       const active=this.db.prepare(`SELECT id,sequence,chat_url FROM task_conversations
         WHERE task_id=? AND status='active' ORDER BY sequence DESC LIMIT 1`).get(input.taskId)||null;
       const generation=Number(this.db.prepare(`SELECT COUNT(*) n FROM events

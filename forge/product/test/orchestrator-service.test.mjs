@@ -1541,3 +1541,56 @@ test('work failover accepts only a latest succeeded Run with durable reconciliat
   assert.equal(JSON.parse(event.payload).source_reconciled_response,true);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
+
+
+test('reconciled provider Run closes exactly one matching uncertain work_send receipt before failover',async t=>{
+  const f=fixture(t,{provider:{send:async()=>{throw Error('must_not_send');}}});
+  const a=await project(f,'Failover físico reconciliado');
+  f.store.setChatUrl(a.w,'https://chatgpt.com/c/33333333-3333-4333-8333-333333333333');
+  const reserved=f.service.transaction(()=>f.service.reserve(f.context,'work_send',{
+    requestId:'physical_recovered_send',projectId:a.p,taskId:a.w,content:'Resposta longa'
+  }));
+  const sourceRun=f.store.startRun(a.w,'worker_interrupted');
+  f.service.finish(reserved.commandId,{taskId:a.w},'uncertain');
+  f.store.finishRun(a.w,sourceRun);
+  f.store.event(a.w,'provider.response.reconciled',{
+    run_id:sourceRun,response_sha256:'c'.repeat(64)
+  });
+  const recovered=f.service.reconcileRecoveredWorkReceipt(a.w,sourceRun);
+  assert.equal(recovered.reconciled,true);
+  assert.equal(recovered.commandId,reserved.commandId);
+  const receipt=f.store.db.prepare('SELECT status,result FROM lab_command_receipts WHERE id=?').get(reserved.commandId);
+  assert.equal(receipt.status,'succeeded');
+  assert.deepEqual(JSON.parse(receipt.result),{
+    taskId:a.w,runId:sourceRun,responseObserved:true,effectVerified:false,
+    provider:'chatgpt_web',recovered:true,reconciled:true
+  });
+  assert.equal(f.service.hasUnresolvedWorkReceipt(a.p,a.w,{includeRunning:true}),false);
+  const failover=await f.call('work_failover_prepare',{projectId:a.p,taskId:a.w});
+  assert.equal(failover.status,'succeeded');
+  assert.equal(failover.result.sourceRunId,sourceRun);
+  assert.equal(failover.result.sourceReconciledResponse,true);
+  const event=f.store.db.prepare("SELECT payload FROM events WHERE task_id=? AND kind='provider.command.reconciled' ORDER BY seq DESC LIMIT 1").get(a.w);
+  assert.equal(JSON.parse(event.payload).command_id,reserved.commandId);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('recovered work receipt reconciliation fails closed when uncertain command attribution is ambiguous',async t=>{
+  const f=fixture(t);
+  const a=await project(f,'Failover ambíguo');
+  for(const requestId of ['ambiguous_send_a','ambiguous_send_b']){
+    const reserved=f.service.transaction(()=>f.service.reserve(f.context,'work_send',{
+      requestId,projectId:a.p,taskId:a.w,content:'Mesmo alvo'
+    }));
+    f.service.finish(reserved.commandId,{taskId:a.w},'uncertain');
+  }
+  const sourceRun=f.store.startRun(a.w,'worker_reconciled');
+  f.store.finishRun(a.w,sourceRun);
+  f.store.event(a.w,'provider.response.reconciled',{
+    run_id:sourceRun,response_sha256:'d'.repeat(64)
+  });
+  assert.throws(()=>f.service.reconcileRecoveredWorkReceipt(a.w,sourceRun),
+    /recovered_work_receipt_ambiguous/);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE status='uncertain'").get().n,2);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
