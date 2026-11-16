@@ -7,7 +7,8 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EmbeddedChatWorker} from '../forge/product/desktop/embedded-worker.mjs';
 import {REPO,ROLES,openProjectMemory} from './project-memory.mjs';
-import {routeForConversation,providerMessage,chatSessionReadiness} from './provider-routing.mjs';
+import {routeForConversation,providerMessage,chatSessionReadiness,matchesStoredConversation} from './provider-routing.mjs';
+import {canonicalProviderChatUrl} from '../forge/product/src/conversation-policy.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const cli=promisify(execFile);
@@ -211,7 +212,7 @@ async function send({agentId,text,newSession=false,autoContinue=null,continuatio
   }
   // One durable transition claims the next turn before contacting GPT Web.
   // An interrupted in-flight turn is reconciled, never blindly resent.
-  store.beginTurn(agentId,task,{continuation});
+  store.beginTurn(agentId,task,{continuation,newSession});
   busy.add(agentId);
   emit('GPT Web: '+agentId+' iniciou uma conversa.');
   try{
@@ -314,13 +315,18 @@ async function syncAgents(){
     }
     // Two independent read-only observations prevent overlapping GPT sessions.
     const worker=workers.get(role.id);
+    // A homepage is NOT the unfinished conversation. Do not start another
+    // GPT turn unless this exact thread was restored after the crash.
+    if(!matchesStoredConversation(after.chatUrl,worker.status().url))continue;
     const first=await worker.health().catch(()=>null);
     if(first?.health_observed!==true||first.composer_ready!==true||
        first.response_generation_active!==false)continue;
     await new Promise(resolve=>setTimeout(resolve,750));
     const second=await worker.health().catch(()=>null);
     if(second?.health_observed===true&&second.composer_ready===true&&
-       second.response_generation_active===false){
+       second.auth_state==='session_present'&&
+       second.response_generation_active===false&&
+       matchesStoredConversation(after.chatUrl,worker.status().url)){
       if(after.autoPending||!after.autoContinue){
         store.patch(role.id,{status:'idle',lastError:null,awaitingSince:null});
         scheduleAuto(role.id);
@@ -404,6 +410,17 @@ app.whenReady().then(async()=>{
   for(const role of ROLES){
     const worker=new EmbeddedChatWorker({id:'fg-'+role.id,partition:'persist:ordax-forge-git-chatgpt'});
     workers.set(role.id,worker);
+    // Capture the actual ChatGPT thread as soon as navigation establishes it.
+    // If the app is killed mid-response, the next process can restore it.
+    const saveChatUrl=(_event,url)=>{
+      const observed=canonicalProviderChatUrl(
+        typeof url==='string'?url:worker.view.webContents.getURL()
+      );
+      if(observed&&store.agent(role.id).chatUrl!==observed)
+        store.patch(role.id,{chatUrl:observed});
+    };
+    worker.view.webContents.on('did-navigate',saveChatUrl);
+    worker.view.webContents.on('did-navigate-in-page',saveChatUrl);
     win.contentView.addChildView(worker.view);
   }
   for(const kind of ['resize','maximize','restore'])win.on(kind,layout);
@@ -424,7 +441,11 @@ app.whenReady().then(async()=>{
   },45_000);
   watcher.unref();
   for(const [id,worker] of workers){
-    worker.load().then(async()=>{
+    // Restore the persisted conversation, not the ChatGPT homepage.
+    // The provider may still be working; restoration is read-only.
+    const saved=store.agent(id).chatUrl;
+    const restoreUrl=canonicalProviderChatUrl(saved)||'https://chatgpt.com/';
+    worker.load(restoreUrl).then(async()=>{
       const health=await worker.health().catch(()=>null);
       recordSessionReadiness(id,health);
     }).catch(e=>{
