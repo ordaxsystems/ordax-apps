@@ -6,7 +6,7 @@ import {randomBytes} from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EmbeddedChatWorker} from '../forge/product/desktop/embedded-worker.mjs';
-import {REPO,ROLES,openProjectMemory} from './project-memory.mjs';
+import {REPO,ROLES,openProjectMemory,nextAutonomousCheckpoint} from './project-memory.mjs';
 import {routeForConversation,providerMessage,chatSessionReadiness,matchesStoredConversation,providerIsSettled} from './provider-routing.mjs';
 import {canonicalProviderChatUrl} from '../forge/product/src/conversation-policy.mjs';
 
@@ -161,16 +161,19 @@ async function refresh({agentId=null,notifyCoordinator=false}={}){
           store.event({kind:'autonomous_mission_finished',agent:agentId,
             detail:'PR remota confirmada: '+prs[0].html_url,forCoordinator:true});
         }
-      }else if(changed && store.agent(agentId).autoContinue){
-        const prior=store.agent(agentId);
-        const rounds=Number(prior.autoRounds||0)+1;
-        if(rounds>=AUTO_MAX_ROUNDS){
-          store.patch(agentId,{autoRounds:rounds,autoContinue:false,autoPending:false});
-          store.event({kind:'autonomous_limit_reached',agent:agentId,
-            detail:'Limite de '+AUTO_MAX_ROUNDS+' commits alcançado. Aguarda revisão do usuário.',
-            forCoordinator:true});
-        }else{
-          store.patch(agentId,{autoRounds:rounds,autoPending:true});
+      }else if(changed){
+        // One successful GPT turn may write many commits. Count it only
+        // once until the checkpoint is consumed by the next conversation.
+        const progress=nextAutonomousCheckpoint(store.agent(agentId),{
+          limit:AUTO_MAX_ROUNDS
+        });
+        if(progress){
+          store.patch(agentId,progress);
+          if(!progress.autoContinue){
+            store.event({kind:'autonomous_limit_reached',agent:agentId,
+              detail:'Limite de '+AUTO_MAX_ROUNDS+' ciclos de entrega alcançado. Aguarda revisão do usuário.',
+              forCoordinator:true});
+          }
         }
       }
     }

@@ -25,6 +25,12 @@ function compactInbox(items){
   return items.filter((item,index)=>item.delivered||
     newest.get(item.agent??'project')===index).slice(-40);
 }
+export function nextAutonomousCheckpoint(agent,{limit=6}={}){
+ if(!agent?.autoContinue||agent.autoPending)return null;
+ const rounds=Math.max(0,Math.floor(Number(agent.autoRounds)||0))+1;
+ const continueAllowed=rounds<limit;
+ return {autoRounds:rounds,autoContinue:continueAllowed,autoPending:continueAllowed};
+}
 export function memoryFile(dir){return path.join(dir,'forge-git-project.json')}
 export function openProjectMemory(dir){
  mkdirSync(dir,{recursive:true});
