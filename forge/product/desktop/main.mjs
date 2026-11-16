@@ -27,6 +27,7 @@ import {forgeFreshConversationContext} from '../src/forge-fresh-conversation-con
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {readForgeGitMemory} from '../src/forge-git-memory-view.mjs';
 import {createForgeLoopbackMcp,FORGE_APP_MCP_SCOPE,FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
+import {observeMcpFileWrite} from '../src/forge-mcp-write-observation.mjs';
 import {ForgeProjectDevelopment} from '../src/forge-project-development.mjs';
 import {createForgeProductSession} from '../src/forge-product-session.mjs';
 import {ForgeRemoteGatewayClient} from '../src/forge-remote-gateway-client.mjs';
@@ -1821,7 +1822,10 @@ function attachDefaultWorkspaceToProjectCreation(operation,output,{exposePath=fa
 const forgeRemoteMcp=createOrchestratorMcp({
   service:orchestratorService,getContext:()=>localOrchestratorContext,
   version:app.getVersion(),allowedOperations:FORGE_APP_MCP_OPERATIONS,
-  afterToolInvoke:({operation,output})=>attachDefaultWorkspaceToProjectCreation(operation,output),
+  afterToolInvoke:({operation,output})=>{
+    try{observeMcpFileWrite({store,operation,output,ingress:'remote_gateway'});}catch{}
+    return attachDefaultWorkspaceToProjectCreation(operation,output);
+  },
   authorizeFileRead:requestedProjectId=>{
     try{return forgeLocalWorkspaces.status(requestedProjectId).verified===true;}
     catch{return false;}
@@ -1861,7 +1865,10 @@ const forgeLocalMcp=createForgeLoopbackMcp({
   createMcp:({projectId,allowedOperations})=>createOrchestratorMcp({
     service:orchestratorService,getContext:()=>localOrchestratorContext,
     version:app.getVersion(),allowedProjectId:projectId,allowedOperations,
-    afterToolInvoke:({operation,output})=>attachDefaultWorkspaceToProjectCreation(operation,output),
+    afterToolInvoke:({operation,output})=>{
+      try{observeMcpFileWrite({store,operation,output,ingress:'owner_loopback'});}catch{}
+      return attachDefaultWorkspaceToProjectCreation(operation,output);
+    },
     authorizeFileRead:requestedProjectId=>{
       try{return forgeLocalWorkspaces.status(requestedProjectId).verified===true;}
       catch{return false;}
