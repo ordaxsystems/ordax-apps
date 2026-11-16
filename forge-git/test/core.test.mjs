@@ -36,7 +36,9 @@ test('Forge Git usa apenas repositorios da organizacao OrdaX', () => {
   assert.equal(ordaxRepository('ordaxsystems/ordax-apps'), 'ordaxsystems/ordax-apps');
   assert.equal(ordaxRepository('ordax-site'), 'ordaxsystems/ordax-site');
   assert.equal(ordaxRepository('ORDAXSYSTEMS/ordax-os'), 'ordaxsystems/ordax-os');
-  for (const invalid of ['other/project', 'some/other', '../ordax-apps', 'ordaxsystems/../x', '']) {
+  assert.equal(ordaxRepository('ordaxos-admin/TESTES-FORGE-GIT'), 'ordaxos-admin/TESTES-FORGE-GIT');
+  assert.equal(ordaxRepository('ordaxos-admin/testes-forge-git'), 'ordaxos-admin/TESTES-FORGE-GIT');
+  for (const invalid of ['other/project', 'some/other', 'ordaxos-admin/another-repo', '../ordax-apps', 'ordaxsystems/../x', '']) {
     assert.throws(() => ordaxRepository(invalid));
   }
 });
