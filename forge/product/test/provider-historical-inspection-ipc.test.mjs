@@ -44,7 +44,7 @@ test('linked-thread inspection IPC is trusted, read-only, and refuses active run
 
 test('reply reconciliation IPC requires trusted renderer and refuses active runs before storage',async()=>{
   const app=mount(reconcileHandler);
-  assert.deepEqual(await app.invoke({taskId:'task-2',responseSha256:'a'.repeat(64)}),{reconciled:true,reason:'reconciled'});
+  assert.equal(JSON.stringify(await app.invoke({taskId:'task-2',responseSha256:'a'.repeat(64)})),JSON.stringify({reconciled:true,reason:'reconciled',commandReceiptReconciliation:null}));
   assert.equal(app.trusted(),1);
   assert.equal(app.finalizations(),1,'confirmed recovery finalizes the same Run without another send');
   assert.equal(JSON.stringify(app.received()),JSON.stringify({store:{},worker:{active:false},taskId:'task-2',responseSha256:'a'.repeat(64)}));

@@ -48,11 +48,11 @@ test('a complete unique provider reply is previewed but not written before expli
 });
 
 test('explicit recovery rechecks provider evidence, commits reply/checkpoint once, and never resends',async()=>{
-  await fixture(async({store,task,worker,answer,sends})=>{
+  await fixture(async({store,task,worker,answer,sends,runId})=>{
     const preview=await inspectProviderLinkedThread({store,worker,taskId:task.id});
     const committed=await reconcileProviderLinkedReply({store,worker,taskId:task.id,
       responseSha256:preview.recoveryPreview.responseSha256});
-    assert.deepEqual(committed,{reconciled:true,reason:'reconciled'});
+    assert.deepEqual(committed,{reconciled:true,reason:'reconciled',runId});
     assert.equal(store.db.prepare("SELECT content FROM messages WHERE task_id=? AND role='assistant'").get(task.id).content,answer);
     assert.equal(store.db.prepare("SELECT status FROM runs WHERE task_id=?").get(task.id).status,'succeeded');
     assert.equal(store.db.prepare("SELECT status FROM tasks WHERE id=?").get(task.id).status,'ready');
@@ -60,7 +60,7 @@ test('explicit recovery rechecks provider evidence, commits reply/checkpoint onc
     assert.equal(store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='provider.response.reconciled'").get(task.id).n,1);
     assert.equal(store.db.prepare("SELECT COUNT(*) n FROM conversation_completed_runs WHERE task_id=?").get(task.id).n,1);
     assert.deepEqual(await reconcileProviderLinkedReply({store,worker,taskId:task.id,
-      responseSha256:preview.recoveryPreview.responseSha256}),{reconciled:false,reason:'already_reconciled'});
+      responseSha256:preview.recoveryPreview.responseSha256}),{reconciled:false,reason:'already_reconciled',runId});
     assert.equal(store.db.prepare("SELECT COUNT(*) n FROM messages WHERE task_id=? AND role='assistant'").get(task.id).n,1);
     assert.equal(sends(),0);
   });
