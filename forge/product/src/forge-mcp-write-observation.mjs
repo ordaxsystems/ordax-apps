@@ -4,9 +4,10 @@
 // Reuse existing SQLite events and command receipts; never store tool args,
 // prompts, response text, bearer tokens or a new authority.
 const SHA=/^[a-f0-9]{64}$/;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const INGRESS=new Set(['remote_gateway','owner_loopback']);
 
-export function observeMcpFileWrite({store,operation,output,ingress}={}) {
+export function observeMcpFileWrite({store,operation,output,ingress,transportReceipt=null}={}) {
   if(operation!=='project_file_write'||!INGRESS.has(ingress)||
      output?.status!=='succeeded'||typeof output.commandId!=='string')
     return false;
@@ -32,9 +33,23 @@ export function observeMcpFileWrite({store,operation,output,ingress}={}) {
     AND json_extract(payload,'$.command_id')=? LIMIT 1`)
     .get(owner.taskId,receipt.id);
   if(seen)return true;
+  // This receipt is produced by the local gateway client only after an
+  // authenticated lease /start succeeds. JSON-RPC arguments cannot provide it.
+  // Agent instance is a GATEWAY claim worker, never a GPT Web agent identity.
+  const gateway=ingress==='remote_gateway'&&
+    transportReceipt?.leaseStartObserved===true&&
+    UUID.test(transportReceipt.gatewayRequestId||'')&&
+    UUID.test(transportReceipt.gatewayAttemptId||'')&&
+    UUID.test(transportReceipt.gatewayAgentInstanceId||'')
+    ?transportReceipt:null;
   store.event(owner.taskId,'forge.mcp.file_write_observed',{
     command_id:receipt.id,project_id:receipt.project_id,
     receipt_sha256:proof.sha256,ingress,
+    ...(gateway?{
+      gateway_request_id:gateway.gatewayRequestId.toLowerCase(),
+      gateway_attempt_id:gateway.gatewayAttemptId.toLowerCase(),
+      gateway_agent_instance_id:gateway.gatewayAgentInstanceId.toLowerCase()
+    }:{}),
     // Never infer a GPT Run from time, worker count or model text.
     gpt_run_identity_verified:false
   });

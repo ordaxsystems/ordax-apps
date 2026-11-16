@@ -188,7 +188,15 @@ export class ForgeRemoteGatewayClient {
     },10_000);
     let succeeded=false,result=null,errorCode=null;
     try{
-      const response=await this.toolInvoker(job.tool_name,job.arguments);
+      // This metadata comes from the gateway-issued, lease-started job, never
+      // from model-supplied tool arguments. Do not pass lease_id or credentials.
+      const gatewayStarted=Object.freeze({
+        gatewayRequestId:envelope.request_id,
+        gatewayAttemptId:envelope.attempt_id,
+        gatewayAgentInstanceId:envelope.agent_instance_id,
+        leaseStartObserved:true
+      });
+      const response=await this.toolInvoker(job.tool_name,job.arguments,gatewayStarted);
       if(response?.error)throw Error('forge_remote_local_mcp_error');
       const localResult=response?.result??null;
       succeeded=Boolean(localResult&&localResult.isError!==true);

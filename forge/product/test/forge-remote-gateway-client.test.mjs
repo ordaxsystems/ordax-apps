@@ -109,7 +109,7 @@ test('remote gateway uses one catalog digest and one leased local MCP execution'
   const catalog=[{name:'forge_projects_list',description:'List projects',
     inputSchema:{type:'object',properties:{},required:[],additionalProperties:false},
     annotations:{readOnlyHint:true}}];
-  const requests=[];let invokes=0,bound=null;
+  const requests=[],gatewayReceipts=[];let invokes=0,bound=null;
   const fetchImpl=async(url,options)=>{
     const body=JSON.parse(options.body);requests.push({url:String(url),body});
     if(String(url).endsWith('/register'))return response(200,{ok:true,last_seen_at:'2026-11-14T00:00:00.000Z'});
@@ -121,7 +121,7 @@ test('remote gateway uses one catalog digest and one leased local MCP execution'
   const session={status:()=>({connected:true,subjectId:subject,issuer:'https://jhfphsjptrpmtnzkpwud.supabase.co/auth/v1'}),
     accessToken:async()=>jwt()};
   const client=new ForgeRemoteGatewayClient({store,session,catalogProvider:async()=>catalog,
-    toolInvoker:async(name,args)=>{invokes++;return {result:{content:[{type:'text',text:'ok'}],
+    toolInvoker:async(name,args,receipt)=>{invokes++;gatewayReceipts.push(receipt);return {result:{content:[{type:'text',text:'ok'}],
       structuredContent:{name,args}}};},
     bindOwnerIdentity:value=>{bound=value;},fetchImpl});
   await client.register();
@@ -136,6 +136,13 @@ test('remote gateway uses one catalog digest and one leased local MCP execution'
   const result=await client.executeJob(job);
   assert.equal(result.status,'succeeded');
   assert.equal(invokes,1);
+  assert.deepEqual(gatewayReceipts,[{
+    gatewayRequestId:job.request_id,
+    gatewayAttemptId:job.attempt_id,
+    gatewayAgentInstanceId:client.agentInstanceId,
+    leaseStartObserved:true
+  }]);
+  assert.ok(!JSON.stringify(gatewayReceipts).includes(job.lease_id));
   const report=requests.find(r=>r.url.endsWith('/report'));
   assert.equal(report.body.succeeded,true);
   assert.equal(report.body.result.structuredContent.name,'forge_projects_list');
@@ -227,13 +234,16 @@ test('independent remote claims execute concurrently with distinct leased agent 
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'forge-remote-parallel-'));
   const store=new Store(path.join(dir,'x.sqlite'));
   t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true});});
-  const calls=[],resolvers=new Map();
+  const calls=[],resolvers=new Map(),gatewayReceipts=new Map();
   const client=new ForgeRemoteGatewayClient({
     store,maxConcurrent:4,
     session:{status:()=>({connected:true,subjectId:subject,issuer:'https://jhfphsjptrpmtnzkpwud.supabase.co/auth/v1'}),
       accessToken:async()=>jwt()},
     catalogProvider:async()=>[],
-    toolInvoker:(name,args)=>new Promise(resolve=>resolvers.set(args.id,resolve)),
+    toolInvoker:(name,args,receipt)=>{
+      gatewayReceipts.set(args.id,receipt);
+      return new Promise(resolve=>resolvers.set(args.id,resolve));
+    },
     bindOwnerIdentity:()=>{},
     fetchImpl:async(url,options)=>{
       const req={path:String(url),body:JSON.parse(options.body)};
@@ -256,6 +266,11 @@ test('independent remote claims execute concurrently with distinct leased agent 
   for(let i=0;i<20&&resolvers.size<2;i++)await new Promise(r=>setTimeout(r,10));
   assert.equal(resolvers.size,2);
   assert.equal(client.status().activeRequestIds.length,2);
+  assert.equal(gatewayReceipts.get(1)?.gatewayRequestId,job(1).request_id);
+  assert.equal(gatewayReceipts.get(2)?.gatewayRequestId,job(2).request_id);
+  assert.equal(gatewayReceipts.get(1)?.gatewayAgentInstanceId,client.agentInstanceIds[0]);
+  assert.equal(gatewayReceipts.get(2)?.gatewayAgentInstanceId,client.agentInstanceIds[1]);
+  assert.notEqual(gatewayReceipts.get(1)?.gatewayAttemptId,gatewayReceipts.get(2)?.gatewayAttemptId);
   resolvers.get(2)({result:{content:[],structuredContent:{id:2}}});
   resolvers.get(1)({result:{content:[],structuredContent:{id:1}}});
   await Promise.all([a,b]);

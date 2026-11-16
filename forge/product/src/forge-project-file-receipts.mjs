@@ -4,6 +4,7 @@
 // remain unchanged. Never copy command contents or secret-bearing fields.
 const PROJECT=/^project_[A-Za-z0-9-]{1,100}$/;
 const SHA=/^[a-f0-9]{64}$/;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function safeReceiptProof(row){
   if(row.status!=='succeeded'||typeof row.result!=='string'||row.result.length>4096)
     return null;
@@ -28,7 +29,10 @@ export function forgeProjectFileReceiptView(store,projectId,{limit=12}={}){
   // Transport evidence is an independent canonical event written ONLY after
   // an actual MCP tools/call returned a verified command. It does not identify
   // the GPT sender or Run. A direct service write has no such event.
-  const ingress=store.db.prepare(`SELECT json_extract(e.payload,'$.ingress') AS ingress
+  const ingress=store.db.prepare(`SELECT json_extract(e.payload,'$.ingress') AS ingress,
+      json_extract(e.payload,'$.gateway_request_id') AS gatewayRequestId,
+      json_extract(e.payload,'$.gateway_attempt_id') AS gatewayAttemptId,
+      json_extract(e.payload,'$.gateway_agent_instance_id') AS gatewayAgentInstanceId
     FROM events e JOIN lab_orchestrators o ON o.chat_task_id=e.task_id
     WHERE o.project_id=? AND e.kind='forge.mcp.file_write_observed'
       AND json_extract(e.payload,'$.project_id')=?
@@ -38,14 +42,23 @@ export function forgeProjectFileReceiptView(store,projectId,{limit=12}={}){
   return Object.freeze({
     items:Object.freeze(rows.slice(0,limit).map(({result,...row})=>{
       const artifact=safeReceiptProof({result,status:row.status});
-      const observed=artifact&&ingress.get(projectId,projectId,row.commandId,artifact.sha256)?.ingress;
-      const mcpIngress=['remote_gateway','owner_loopback'].includes(observed)?observed:null;
+      const observed=artifact?ingress.get(projectId,projectId,row.commandId,artifact.sha256):null;
+      const mcpIngress=['remote_gateway','owner_loopback'].includes(observed?.ingress)?observed.ingress:null;
+      const gatewayStarted=mcpIngress==='remote_gateway'&&
+        UUID.test(observed?.gatewayRequestId||'')&&
+        UUID.test(observed?.gatewayAttemptId||'')&&
+        UUID.test(observed?.gatewayAgentInstanceId||'');
       return Object.freeze({
         ...row,operation:'project_file_write',
         historicalReadbackVerified:artifact!==null,
         currentFileReverified:false,
         mcpToolCallObserved:mcpIngress!==null,
         mcpIngress,
+        gatewayLeaseStartObserved:gatewayStarted,
+        gatewayRequestId:gatewayStarted?observed.gatewayRequestId:null,
+        gatewayAttemptId:gatewayStarted?observed.gatewayAttemptId:null,
+        gatewayAgentInstanceId:gatewayStarted?observed.gatewayAgentInstanceId:null,
+        // This claim worker is not an authenticated GPT conversation or Run.
         gptToolInvocationVerified:false,
         deviceBindingVerified:false,
         ...artifact?{artifact:Object.freeze(artifact)}:{}
