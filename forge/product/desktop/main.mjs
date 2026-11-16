@@ -370,7 +370,7 @@ function persistImages(taskId, messageId, images = [], writtenPaths = null) {
   return out;
 }
 
-async function runTask(taskId, prompt, { newSession = false, draftRevision = null, allowCoordinatorTask = false, authorSource='human' } = {}, runWorker) {
+async function runTask(taskId, prompt, { newSession = false, draftRevision = null, allowCoordinatorTask = false, authorSource='human', mcpRequest = null } = {}, runWorker) {
   // An execution is always owned by the physical worker selected by the
   // canonical scheduler, never by whichever view happens to be visible.
   if(!runWorker||providerViews.resolve(runWorker?.view?.webContents)!==runWorker)
@@ -444,9 +444,12 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   // Existing project continuations stay tool-dependent even for short prompts.
   const projectContinuation=task.has_messages&&Boolean(store.db.prepare(
     'SELECT 1 FROM lab_task_bindings WHERE task_id=? LIMIT 1').get(taskId));
-  const mcpWorkRequired=allowCoordinatorTask||
-    requiresMcpForProjectPrompt(prompt,{projectContinuation})||
-    mentionWasRequested(providerPrompt,mcpApp);
+  // A Forjador conversation is not automatically a tool execution. Greetings,
+  // explanations and other text-only turns must reach GPT without opening
+  // ChatGPT's app picker. Actual project effects still require the real MCP.
+  const userRequest=typeof mcpRequest==='string'?mcpRequest:prompt;
+  const mcpWorkRequired=requiresMcpForProjectPrompt(userRequest,{projectContinuation})||
+    mentionWasRequested(userRequest,mcpApp);
   // The provider is a native WebContentsView. Every selected lane gets a
   // real off-canvas viewport before health/app-selection/submit. Scheduler +
   // providerViews already prevent worker or Task reuse; independent Works do
@@ -728,7 +731,7 @@ function layoutViews() {
   const bounds=providerViewBounds?normalizeProviderViewBounds(providerViewBounds,{
     contentWidth:width,contentHeight:height,zoomFactor:win.webContents.getZoomFactor()
   }):null;
-  const panelUsable=Boolean(chatVisible&&bounds&&bounds.width>=400&&bounds.height>=250);
+  const panelUsable=Boolean(chatVisible&&bounds&&bounds.width>=320&&bounds.height>=250);
   const offscreenWidth=Math.max(900,width);
   const offscreenHeight=Math.max(700,height);
   providerWorkers.forEach((candidate,index)=>{
@@ -1380,7 +1383,8 @@ const orchestratorKernel=createOrchestratorKernel({
         execution=await enqueueExecution(taskId,runWorker=>{
           executionWorker=runWorker;
           return runTask(taskId,content,{
-            newSession:false,draftRevision,allowCoordinatorTask:taskKind==='orchestrator',authorSource
+            newSession:false,draftRevision,allowCoordinatorTask:taskKind==='orchestrator',
+            authorSource,mcpRequest:content
           },runWorker);
         });
       }catch(error){

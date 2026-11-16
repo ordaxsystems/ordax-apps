@@ -64,7 +64,10 @@ test('natural project building requests require MCP even without a mention',()=>
     'Quanto é 2 + 2?',
     'Escreva uma mensagem de agradecimento.',
     'Resuma o objetivo do projeto.',
-    'Faça uma poesia.'
+    'Faça uma poesia.',
+    'oi?',
+    'Olá, o que você consegue fazer?',
+    'Explique o funcionamento do Forge.'
   ]) assert.equal(requiresMcpForProjectPrompt(request),false,request);
   assert.equal(requireSelectedMcpForPrompt('Crie um site para minha cafeteria',
     classifyProviderMcpSelection({composerPresent:true,exactSelectedControl:true}),
@@ -178,7 +181,7 @@ test('project continuation preserves MCP preflight without gating standalone tex
   }
   const main=fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../desktop/main.mjs'),'utf8');
   assert.match(main,/projectContinuation=task\.has_messages&&Boolean\(store\.db\.prepare\(/);
-  assert.match(main,/requiresMcpForProjectPrompt\(prompt,\{projectContinuation\}\)/);
+  assert.match(main,/requiresMcpForProjectPrompt\(userRequest,\{projectContinuation\}\)/);
 });
 
 test('Forge displays explicit MCP state in Forjador and connections, without silent grant',()=>{
@@ -199,7 +202,12 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   assert.match(main,/const currentRequest=withForjadorMcpMention\(String\(prompt\|\|''\),\{authorSource,app:mcpApp\}\)/);
   assert.match(main,/continuationPacket\?\.prompt \|\| currentRequest/);
   assert.doesNotMatch(main,/withForjadorMcpMention\(\s*\(projectContext/);
-  assert.match(main,/requiresMcpForProjectPrompt\(prompt,\{projectContinuation\}\)/);
+  assert.match(main,/requiresMcpForProjectPrompt\(userRequest,\{projectContinuation\}\)/);
+  assert.doesNotMatch(main,/const mcpWorkRequired\s*=\s*allowCoordinatorTask\s*\|\|/,
+    'Forjador text-only messages must never open the MCP picker');
+  assert.match(main,/const userRequest=typeof mcpRequest==='string'\?mcpRequest:prompt/);
+  assert.match(main,/mentionWasRequested\(userRequest,mcpApp\)/);
+  assert.match(main,/authorSource,mcpRequest:content/);
   assert.match(main,/providerRunPresentationWorkers\.add\(runWorker\)/);
   assert.match(main,/providerRunPresentationWorkers\.delete\(runWorker\)/);
   assert.match(main,/candidate\.view\.setVisible\(true\)/);
