@@ -3,6 +3,7 @@ let connected = false;
 let running = false;
 let hasProposal = false;
 let prUrl = '';
+let mission = null;
 
 function status(message, stage = 'ready') {
   $('status').replaceChildren();
@@ -14,8 +15,12 @@ function status(message, stage = 'ready') {
 function buttons() {
   $('connect').disabled = running;
   $('connect-local').disabled = running;
-  $('inspect').disabled = running || !connected;
-  $('run').disabled = running || !connected;
+  const missionActive = mission?.status === 'running';
+  $('inspect').disabled = running || !connected || missionActive;
+  $('run').disabled = running || !connected || missionActive;
+  $('mission-start').disabled = running || !connected || missionActive || mission?.status === 'paused';
+  $('mission-pause').disabled = !connected || !missionActive || mission?.pauseRequested;
+  $('mission-resume').disabled = running || !connected || mission?.status !== 'paused';
   $('publish').disabled = running || !hasProposal;
   $('login').disabled = running;
 }
@@ -35,6 +40,7 @@ function connectedAs(user) {
   $('proposal').classList.remove('visible');
   $('account').textContent = 'GitHub: ' + user.login + ' • OrdaX + sandbox';
   status('GitHub conectado. Sandbox de testes selecionado.');
+  void refreshMission();
 }
 
 function args() {
@@ -44,6 +50,66 @@ function args() {
     instruction:$('instruction').value.trim()
   };
 }
+
+function updateMission(next) {
+  mission = next;
+  const panel = $('mission-progress');
+  panel.replaceChildren();
+  if(!next) { panel.textContent='Nenhuma missão iniciada.'; buttons(); return; }
+  const title=document.createElement('strong');
+  const counts=(next.index || 0)+' arquivo(s) produzido(s)';
+  title.textContent='Missão: '+next.status+' • '+counts;
+  panel.append(title);
+  if(next.phase) panel.append(document.createTextNode(' — '+next.phase));
+  for (const record of next.completed || []) {
+    const line=document.createElement('div');
+    line.style.marginTop='7px';
+    line.textContent='✓ '+record.path;
+    panel.append(line);
+  }
+  if(next.lastError) {
+    const error=document.createElement('div');
+    error.style.marginTop='9px';
+    error.textContent=next.lastError;
+    panel.append(error);
+  }
+  if(next.prUrl) {
+    const open=document.createElement('button');
+    open.textContent='Abrir PR da missão';
+    open.className='fill';
+    open.onclick=()=>window.forgeGit.openPr(next.prUrl).catch(e=>status(String(e.message||e),'error'));
+    panel.append(open);
+  }
+  buttons();
+}
+
+async function refreshMission() {
+  try { updateMission(await window.forgeGit.missionState()); }
+  catch (error) { status(String(error.message||error),'error'); }
+}
+
+$('mission-start').addEventListener('click',()=>perform(async()=>{
+  const objective=$('mission-objective').value.trim();
+  if(!confirm('Autorizar o GPT a criar e editar automaticamente vários arquivos SOMENTE em ordaxos-admin/TESTES-FORGE-GIT, com commits em branch isolada e PR em rascunho?'))return;
+  const result=await window.forgeGit.missionStart({repo:$('mission-repo').value,objective});
+  updateMission(result);
+  status('Missão iniciada. O GPT continuará de uma etapa para outra sozinho.');
+}));
+
+$('mission-pause').addEventListener('click',()=>perform(async()=>{
+  updateMission(await window.forgeGit.missionPause());
+  status('Pausa solicitada; concluirá apenas a operação atual antes de pausar.');
+}));
+
+$('mission-resume').addEventListener('click',()=>perform(async()=>{
+  updateMission(await window.forgeGit.missionResume());
+  status('Missão retomada do último checkpoint registrado.');
+}));
+
+window.forgeGit.onMission(({message,mission:next})=>{
+  updateMission(next);
+  if(message) status(message);
+});
 
 $('connect-local').addEventListener('click', () => perform(async () => {
   const user = await window.forgeGit.connectLocal();
@@ -102,6 +168,7 @@ window.forgeGit.onStatus(event => {
 });
 
 buttons();
+void refreshMission();
 perform(async () => {
   try {
     const user = await window.forgeGit.connectLocal();

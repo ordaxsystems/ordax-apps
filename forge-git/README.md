@@ -33,3 +33,7 @@ Ou execute `node --test forge-git/test/*.test.mjs` na raiz do repositório para 
 - As funções de automação da página ChatGPT podem depender de alterações de UI. É necessária uma prova física de envio/retorno antes de considerar homologado.
 
 O diretório `forge-git/` é um protótipo separado; o Forge MCP canônico em `forge/` não é modificado.
+
+## Missão contínua experimental (sandbox)
+
+No painel **Missão contínua**, escreva somente o objetivo em linguagem natural (ex.: crie um site de pizzaria completo). O GPT escolhe os arquivos; o aplicativo publica apenas arquivos em demo/ de ordaxos-admin/TESTES-FORGE-GIT, salva checkpoints, envia Continue após cada commit e abre uma PR em rascunho ao concluir. A única exigência de resposta para gravação é um contrato técnico JSON curto, enviado ao GPT sem roteiro de implementação. Se o retorno ou a publicação ficar incerto, a missão bloqueia em vez de repetir um efeito não confirmado.

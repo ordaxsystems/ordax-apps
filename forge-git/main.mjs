@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EmbeddedChatWorker } from '../forge/product/desktop/embedded-worker.mjs';
 import { ordaxRepository, filePath, parseProposal, makePrompt, branchName } from './core.mjs';
+import { createMissionRunner } from './mission-runner.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SIDE_WIDTH = 430;
@@ -17,6 +18,7 @@ let githubToken = '';
 let authenticatedUser = '';
 let busy = false;
 let proposal = null;
+let missionRunner = null;
 
 function notify(stage, message, extra = {}) {
   if (win && !win.isDestroyed()) win.webContents.send('forge-git:status', { stage, message, ...extra });
@@ -93,6 +95,7 @@ async function authorizeGithub(candidate, { requireOrdaxAdmin = false } = {}) {
   githubToken = token;
   authenticatedUser = user.login;
   proposal = null;
+  missionRunner?.autoResume();
   notify('ready', 'GitHub OrdaX conectado: ' + authenticatedUser);
   return { login:authenticatedUser, organization:'ordaxsystems' };
 }
@@ -117,7 +120,7 @@ function bindActions() {
   });
 
   handle('forge-git:inspect', async ({ repo, filename }) => {
-    if (busy) throw new Error('Já existe uma operação em execução.');
+    if (busy || missionRunner?.isActive()) throw new Error('Já existe uma operação em execução.');
     const name = ordaxRepository(repo), target = filePath(filename);
     const info = await github('/repos/' + name);
     if (info?.permissions?.push !== true) throw new Error('Sem permissão de escrita neste repositório da OrdaX.');
@@ -129,7 +132,7 @@ function bindActions() {
   });
 
   handle('forge-git:run', async ({ repo, filename, instruction }) => {
-    if (busy) throw new Error('Já existe uma operação em execução.');
+    if (busy || missionRunner?.isActive()) throw new Error('Já existe uma operação em execução.');
     if (!githubToken) throw new Error('Conecte o GitHub antes de executar.');
     busy = true;
     proposal = null;
@@ -164,7 +167,7 @@ function bindActions() {
   });
 
   handle('forge-git:publish', async () => {
-    if (busy) throw new Error('Já existe uma operação em execução.');
+    if (busy || missionRunner?.isActive()) throw new Error('Já existe uma operação em execução.');
     if (!proposal || !githubToken) throw new Error('Não há uma proposta aprovada para publicar.');
     busy = true;
     const approved = proposal;
@@ -220,6 +223,15 @@ function bindActions() {
     }
   });
 
+  handle('forge-git:mission-state', () => missionRunner.snapshot());
+  handle('forge-git:mission-start', input => {
+    if (busy || missionRunner.isActive()) throw new Error('Conclua a operação atual.');
+    proposal = null;
+    return missionRunner.start(input);
+  });
+  handle('forge-git:mission-pause', () => missionRunner.pause());
+  handle('forge-git:mission-resume', () => missionRunner.resume());
+
   handle('forge-git:open-pr', async url => {
     if (!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/[0-9]+$/.test(String(url))) {
       throw new Error('URL de PR inválida.');
@@ -257,13 +269,24 @@ app.whenReady().then(async () => {
   win.on('maximize', sizeChat);
   win.on('restore', sizeChat);
   win.on('closed', () => { win = null; });
+  missionRunner = createMissionRunner({
+    directory:userData, github, remoteFile, chat,
+    accessAllowed:() => Boolean(githubToken && authenticatedUser === 'ordaxos-admin'),
+    notify: ({message,mission}) => {
+      if (win && !win.isDestroyed()) win.webContents.send('forge-git:mission', {message,mission});
+    }
+  });
+  missionRunner.recoverState();
   bindActions();
   await win.loadFile(path.join(here, 'index.html'));
   sizeChat();
   chat.setStageSink(({ stage }) => {
     if (busy) notify('gpt', 'ChatGPT Web: ' + stage);
   });
-  chat.load().then(() => notify('ready', 'ChatGPT Web carregado. Faça login se necessário.'))
+  chat.load().then(() => {
+    missionRunner.setChatReady(true);
+    notify('ready', 'ChatGPT Web carregado. Faça login se necessário.');
+  })
     .catch(error => notify('error', 'ChatGPT Web não carregou: ' + String(error?.message || error)));
 }).catch(error => { console.error(error); app.quit(); });
 

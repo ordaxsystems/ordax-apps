@@ -59,7 +59,22 @@
       <div class="muted" style="margin-top:9px">A autenticação existente do GitHub CLI será reutilizada. Nenhum token é enviado ao GPT Web nem gravado pelo aplicativo.</div>
     </section>
     <section>
-      <h2>02 / Tarefa remota</h2>
+      <h2>02 / Missão contínua — teste real</h2>
+      <p>Descreva sua missão normalmente. O GPT escolhe os arquivos, e o aplicativo registra as alterações no GitHub.</p>
+      <label for="mission-repo">Repositório autorizado</label>
+      <input id="mission-repo" type="text" readonly value="ordaxos-admin/TESTES-FORGE-GIT">
+      <label for="mission-objective">O que você quer desenvolver?</label>
+      <textarea id="mission-objective" rows="7" placeholder="Ex.: Crie um site funcional para uma pizzaria com cardápio, carrinho, adaptação mobile e instruções de uso. Teste e corrija conforme necessário. Não publique na internet."></textarea>
+      <button id="mission-start" class="primary fill" type="button">Iniciar missão e continuar automaticamente</button>
+      <div class="line" style="margin-top:9px">
+        <button id="mission-pause" type="button" style="flex:1">Pausar após etapa</button>
+        <button id="mission-resume" type="button" style="flex:1">Retomar missão</button>
+      </div>
+      <div id="mission-progress" class="status" role="status">Nenhuma missão iniciada.</div>
+      <p>Os commits são publicados na mesma branch de teste. A PR só é aberta ao concluir todas as etapas. Nenhum merge automático.</p>
+    </section>
+    <section>
+      <h2>03 / Edição pontual (um arquivo)</h2>
       <label for="repo">Repositório</label>
       <input id="repo" type="text" spellcheck="false" value="ordaxos-admin/TESTES-FORGE-GIT" placeholder="ordaxsystems/repositório">
       <label for="filename">Arquivo que o GPT pode editar</label>
@@ -71,7 +86,7 @@
       <p>O GPT recebe o conteúdo real do arquivo. Nenhuma gravação acontece antes da aprovação.</p>
     </section>
     <section>
-      <h2>03 / Resultado</h2>
+      <h2>04 / Resultado pontual</h2>
       <div class="status" id="status" role="status"><strong>Pronto.</strong> Conecte o GitHub e entre no ChatGPT Web à direita.</div>
       <div id="proposal">
         <p id="summary"></p>
@@ -80,7 +95,7 @@
       <div id="result"></div>
       <button id="login" class="fill" type="button">Abrir login ChatGPT</button>
     </section>
-    <p class="small">MVP: uma alteração por vez, PR em rascunho, sem merge automático. Esta versão não executa missões em segundo plano.</p>
+    <p class="small">Missão contínua disponível apenas no repositório de testes. Para outros repositórios, a edição pontual continua exigindo aprovação. Não há merge automático nem garantia 24h após erros incertos.</p>
   </aside>
   <script type="module" src="./renderer.mjs"></script>
 </body>
