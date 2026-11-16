@@ -12,6 +12,8 @@ GPT Web desenvolve no GitHub remoto; o aplicativo mantém estado, abas e continu
 
 **Reinício seguro:** o app só consome um checkpoint de continuação quando registra o novo turno. Antes disso, a tarefa permanece pendente; depois, um reinício reconcilia a execução anterior e não reenvia o mesmo prompt automaticamente.
 
+**Timeout recuperável:** o Forge Git tenta restaurar a conversa salva após `provider_navigation_timeout` sem enviar novas mensagens, com intervalo mínimo de 3 minutos. Somente a conversa exata, um GPT autenticado e comprovadamente ocioso e um HEAD remoto confirmado permitem limpar o bloqueio.
+
 **Sessão GPT Web:** a aba só fica pronta quando o editor e a sessão estão observados. Login ausente, autenticação em andamento e indisponibilidade aparecem no painel; o app não envia uma tarefa por presumir que a página carregou.
 
 **Forjador:** os avisos são enviados em resumo curto. Só os avisos efetivamente apresentados e com resposta confirmada são reconhecidos; avisos novos permanecem pendentes. O Forge MCP original não atualiza esta memória do Forge Git.
