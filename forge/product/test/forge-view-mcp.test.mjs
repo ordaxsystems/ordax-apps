@@ -141,7 +141,7 @@ test('live View does not click controls covered by a modal or pointer intercepti
   let topmost=button;
   const doc={
     title:'Teste visual',querySelectorAll:selector=>
-      selector==='button,[role="button"],input,textarea'?[button]:[],
+      selector==='button,[role="button"],a[href],input,textarea'?[button]:[],
     elementFromPoint:()=>topmost
   };
   const globals={document:doc,location:{origin:'null'},
@@ -198,7 +198,7 @@ test('live text fill keeps exact spacing, hides field values and rejects sensiti
     getAttribute:key=>key==='type'?'password':key==='aria-label'?'Senha':null};
   const globals={
     document:{title:'Teste de campo',querySelectorAll:selector=>
-      selector==='button,[role="button"],input,textarea'?[input,password]:[],
+      selector==='button,[role="button"],a[href],input,textarea'?[input,password]:[],
       elementFromPoint:()=>input},
     location:{origin:'null'},
     getComputedStyle:()=>({display:'block',visibility:'visible',opacity:'1'}),
@@ -244,4 +244,55 @@ test('live text fill keeps exact spacing, hides field values and rejects sensiti
     requestId:'fill_2',projectId:'project_A',taskId:'task_A',assetId:'asset_A',
     expectedRevision:'a'.repeat(64),controlIndex:0,expectedLabel:'Busca',
     value:'x'.repeat(501)}),/orchestrator_invalid_input/);
+});
+
+
+test('live View navigates only within the verified document and rejects hidden or external links',()=>{
+  const rect={x:12,y:18,left:12,top:18,right:150,bottom:58,width:138,height:40};
+  let navigations=0;
+  function anchor(href,label,hidden=false){
+    const element={tagName:'A',innerText:label,textContent:label,disabled:false,
+      getBoundingClientRect:()=>rect,
+      getAttribute:key=>key==='href'?href:key==='aria-label'?label:null,
+      closest:selector=>hidden&&selector.includes('aria-hidden')?{}:null,
+      matches:()=>false,
+      click:()=>{navigations++}};
+    element.contains=hit=>hit===element;
+    return element;
+  }
+  const local=anchor('#cardapio','Cardápio');
+  const external=anchor('https://example.com','Externo');
+  const malformed=anchor('#%GG','Malformado');
+  const missing=anchor('#nao-existe','Ausente');
+  const hidden=anchor('#cardapio','Oculto',true);
+  const globals={document:{
+    title:'Pizzaria de teste',
+    querySelectorAll:selector=>selector==='button,[role="button"],a[href],input,textarea'?
+      [local,external,malformed,missing,hidden]:[],
+    getElementById:id=>id==='cardapio'?{}:null,
+    elementFromPoint:()=>local
+  },location:{origin:'null'},getComputedStyle:()=>({
+    display:'block',visibility:'visible',opacity:'1'
+  }),innerWidth:600,innerHeight:400};
+  const original=Object.fromEntries(Object.keys(globals).map(key=>
+    [key,Object.getOwnPropertyDescriptor(globalThis,key)]));
+  try{
+    for(const [key,value] of Object.entries(globals))
+      Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});
+    const before=inspectForgeLiveViewDom();
+    assert.deepEqual(before.state.controls.map(x=>x.label),['Cardápio','Oculto']);
+    assert.equal(before.state.controls[0].interactable,true);
+    assert.equal(before.state.controls[1].interactable,false);
+    assert.equal(inspectForgeLiveViewDom({mode:'click',index:0,
+      expectedLabel:'Cardápio',expectedState:before.state}).applied,true);
+    assert.equal(navigations,1);
+    assert.equal(inspectForgeLiveViewDom({mode:'click',index:1,
+      expectedLabel:'Oculto',expectedState:before.state}).applied,false);
+    assert.equal(navigations,1);
+  }finally{
+    for(const [key,descriptor] of Object.entries(original)){
+      if(descriptor)Object.defineProperty(globalThis,key,descriptor);
+      else delete globalThis[key];
+    }
+  }
 });

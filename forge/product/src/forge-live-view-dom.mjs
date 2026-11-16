@@ -29,9 +29,20 @@ export function inspectForgeLiveViewDom(command={mode:'inspect'}){
       .join(' ').toLowerCase();
     return !/(?:password|senha|secret|segredo|one-time-code|otp|token|cc-|cvv|cvc|2fa)/.test(hint);
   };
+  // Permit navigation only inside the verified, network-denied HTML document.
+  // External links, javascript: URLs and missing fragments never become actions.
+  const localAnchor=element=>{
+    if(element.tagName!=='A')return false;
+    const href=element.getAttribute('href');
+    if(typeof href!=='string'||!href.startsWith('#')||href.length<2)return false;
+    let id;
+    try{id=decodeURIComponent(href.slice(1));}catch{return false;}
+    return Boolean(id&&document.getElementById(id));
+  };
   if(location.origin!=='null')return {available:false,reason:'forge_live_view_origin_invalid'};
-  const nodes=Array.from(document.querySelectorAll('button,[role="button"],input,textarea'))
+  const nodes=Array.from(document.querySelectorAll('button,[role="button"],a[href],input,textarea'))
     .filter(element=>visible(element)&&
+      (element.tagName!=='A'||localAnchor(element))&&
       (element.tagName!=='INPUT'&&element.tagName!=='TEXTAREA'||editableField(element)))
     .slice(0,40);
   const controls=nodes.map((element,index)=>{
@@ -43,7 +54,7 @@ export function inspectForgeLiveViewDom(command={mode:'inspect'}){
     const disabled=element.disabled===true||
       element.matches?.(':disabled')===true||
       element.getAttribute('aria-disabled')==='true'||
-      Boolean(element.closest('[inert],[aria-disabled="true"]'));
+      Boolean(element.closest('[inert],[hidden],[aria-disabled="true"],[aria-hidden="true"]'));
     const readOnly=editable&&(element.readOnly===true||
       element.getAttribute('aria-readonly')==='true');
     const obscured=!hitTest(element);

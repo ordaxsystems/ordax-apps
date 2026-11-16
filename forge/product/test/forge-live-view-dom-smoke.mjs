@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {IsolatedInteractiveHtmlPreview} from '../desktop/isolated-interactive-preview.mjs';
 
-const receipt=join(tmpdir(),'forge-live-view-dom-smoke.json');
+const receipt=join(tmpdir(),'forge-live-view-dom-smoke-p4-20261116.json');
 app.on('window-all-closed',()=>{});
 app.whenReady().then(async()=>{
   const result={ok:false};
@@ -18,6 +18,8 @@ app.whenReady().then(async()=>{
     const html='<!doctype html><html><head><title>Teste real</title></head><body>'+
       '<h1>Antes</h1><button type="button" aria-label="Mudar" '+
       'onclick="document.querySelector(\'h1\').textContent=\'Depois\'">Mudar</button>'+
+      '<a href="#menu" aria-label="Ir ao menu" onclick="document.title=&#39;Menu aberto&#39;">Menu</a>'+
+      '<section id="menu">Menu</section>'+
       '<input type="password" value="segredo_nao_expor_123">'+
       '<input type="text" aria-label="Busca" value=""></body></html>';
     await preview.open({...identity,html});
@@ -48,6 +50,14 @@ app.whenReady().then(async()=>{
       hasValue:filledField?.hasValue,
       valueLeaked:JSON.stringify(filledState).includes('termo de busca')||
         JSON.stringify(filled).includes('termo de busca')};
+    // A same-document anchor is navigable in the actual hidden Chromium View.
+    const navBefore=await preview.inspectLive(identity);
+    const anchor=navBefore.inspection.controls.find(c=>c.label==='Ir ao menu');
+    const navigated=await preview.clickLive(identity,{expectedRevision:navBefore.revision,
+      controlIndex:anchor?.index,expectedLabel:'Ir ao menu'});
+    const navAfter=await preview.inspectLive(identity);
+    result.navigation={inDocument:navigated?.statePersistedInLiveView===true,
+      titleUpdated:navAfter.inspection.title==='Menu aberto'};
     // A real overlay should make a visible button non-interactable.
     await preview.view.webContents.executeJavaScriptInIsolatedWorld(1001,[{
       code:"(()=>{const modal=document.createElement('div');modal.id='blocking-modal';"+
@@ -76,6 +86,7 @@ app.whenReady().then(async()=>{
       clicked?.observableDomChanged===true&&
       result.fill.verified===true&&result.fill.hasValue===true&&
       result.fill.valueLeaked===false&&
+      result.navigation.inDocument===true&&result.navigation.titleUpdated===true&&
       staleError==='forge_view_live_stale'&&
       result.obstruction.obscured===true&&
       result.obstruction.interactable===false&&
