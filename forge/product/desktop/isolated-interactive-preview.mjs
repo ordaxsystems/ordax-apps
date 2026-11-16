@@ -1,4 +1,4 @@
-import {WebContentsView,session} from 'electron';
+import {BrowserWindow,WebContentsView,session,nativeImage} from 'electron';
 import {randomUUID,createHash} from 'node:crypto';
 import {buildInteractiveHtmlDocument,isPreviewNetworkRequestAllowed} from '../src/interactive-html-preview-policy.mjs';
 import {normalizeProviderViewBounds} from '../src/provider-view-bounds.mjs';
@@ -128,6 +128,82 @@ export class IsolatedInteractiveHtmlPreview {
       taskId:owner.taskId,assetId:owner.assetId,sha256:owner.sha256,
       revision,inspection:observation.state,windowFocusNotRequired:true,
       pixelCaptureClaimed:false};
+  }
+  // Capture the *same* stateful native View used for live click/fill. This
+  // never reloads HTML or opens a second browser/session. The caller bounds
+  // pixels and rechecks the project/source identity before returning them.
+  async captureLive(identity){
+    if(this.liveActionBusy)throw Error('forge_view_live_busy');
+    this.liveActionBusy=true;
+    let captureHost=null,reparented=false,attached=false,timer;
+    let view,owner,nonce,mainWindow,bounds;
+    try{
+      ({view,owner,nonce}=this.assertLiveOwner(identity));
+      mainWindow=this.getWindow();
+      bounds=view.getBounds();
+      if(!this.requestedBounds||bounds.width<200||bounds.height<160||
+         !mainWindow||mainWindow.isDestroyed())
+        throw Error('forge_view_live_pixels_unavailable');
+      // A minimized BrowserWindow does not paint WebContentsView pixels.
+      // Temporarily host the SAME View in a non-focusable offscreen native
+      // window. Its partition, content and JS state are never recreated.
+      if(mainWindow.isMinimized()||!mainWindow.isVisible()){
+        captureHost=new BrowserWindow({x:-20000,y:-20000,
+          width:bounds.width,height:bounds.height,show:false,
+          focusable:false,skipTaskbar:true,frame:false,
+          webPreferences:{sandbox:true,contextIsolation:true,
+            nodeIntegration:false,backgroundThrottling:false}});
+        await captureHost.loadURL('about:blank');
+        mainWindow.contentView.removeChildView(view);
+        reparented=true;
+        captureHost.contentView.addChildView(view);
+        view.setBounds({x:0,y:0,width:bounds.width,height:bounds.height});
+        view.setVisible(true);
+        captureHost.showInactive();
+        await new Promise(resolve=>setTimeout(resolve,150));
+        if(captureHost.isFocused())throw Error('forge_view_live_focus_unexpected');
+      }
+      // CDP captures actual renderer pixels, not an HTML clone.
+      const port=view.webContents.debugger;
+      if(port.isAttached())throw Error('forge_view_live_debugger_busy');
+      port.attach('1.3');attached=true;
+      await port.sendCommand('Page.enable');
+      const shot=await Promise.race([
+        port.sendCommand('Page.captureScreenshot',{
+          format:'jpeg',quality:75,captureBeyondViewport:false
+        }),
+        new Promise((_,reject)=>{timer=setTimeout(
+          ()=>reject(Error('forge_view_live_pixels_timeout')),7000);})
+      ]);
+      if(typeof shot?.data!=='string'||!shot.data)
+        throw Error('forge_view_live_pixels_unavailable');
+      const pixels=nativeImage.createFromBuffer(Buffer.from(shot.data,'base64'));
+      if(this.view!==view||this.owner!==owner||this.liveViewNonce!==nonce||
+         !this.loaded||view.webContents.isDestroyed()||pixels.isEmpty())
+        throw Error('forge_view_live_stale');
+      return pixels;
+    }finally{
+      clearTimeout(timer);
+      if(attached&&view&&!view.webContents.isDestroyed()&&
+         view.webContents.debugger.isAttached())
+        view.webContents.debugger.detach();
+      if(reparented){
+        try{captureHost?.contentView.removeChildView(view);}catch{}
+        if(!mainWindow.isDestroyed()&&this.view===view){
+          try{
+            mainWindow.contentView.addChildView(view);
+            // Minimized windows may report a 0x0 content area; preserve
+            // the original View viewport for subsequent autonomous actions.
+            if(mainWindow.isMinimized()||!mainWindow.isVisible()){
+              view.setBounds(bounds);
+              view.setVisible(true);
+            }else this.relayout();
+          }catch{}
+        }
+      }
+      if(captureHost&&!captureHost.isDestroyed())captureHost.destroy();
+      this.liveActionBusy=false;
+    }
   }
   async actLive(identity,{action='click',expectedRevision,controlIndex,
     expectedLabel,value}={}){
