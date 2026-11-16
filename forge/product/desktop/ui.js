@@ -1,6 +1,6 @@
 import { renderLiveStage } from './ui-stage.mjs';
 import { PRODUCT_NAME, PRODUCT_SHORT_NAME } from '../src/product-brand.mjs';
-import { providerComposeAvailability, canStartFreshProviderChat, COMPOSE_STATUS_MESSAGES } from '../src/provider-compose-availability.mjs';
+import { providerComposeAvailability, providerSessionReport, canStartFreshProviderChat, COMPOSE_STATUS_MESSAGES } from '../src/provider-compose-availability.mjs';
 import { resolveProviderLoginAction } from '../src/provider-login-action.mjs';
 import { taskListStatusLabel, taskNavigationStatus } from '../src/task-navigation-status.mjs';
 import { SUPERVISOR_ROLES, supervisorRole } from '../src/supervisor-role-presets.mjs';
@@ -701,6 +701,7 @@ let orchestrationUi = null;
 let providerRefreshPending = false;
 let composeAvailability = { allowed:false, reason:'unverified' };
 let lastProviderStatus = null;
+let lastProviderPoolSession = null;
 function syncComposerAvailability() {
   // Editor stays enabled: local draft text is NOT a ChatGPT submission.
   const allowed = composeAvailability.allowed===true && Boolean(currentTaskId) && !submittingTaskId;
@@ -715,13 +716,20 @@ function syncComposerAvailability() {
   // The Forjador layout hides the small sidebar provider card. Surface the
   // SAME canonical login/readiness gate at the top of every project screen.
   const gate=$('#forgeProviderGate');
-  const reason=composeAvailability.reason;
+  const pool=lastProviderPoolSession;
+  const poolBlocked=pool?.sendReady===false&&pool.totalWorkers>0;
+  const reason=poolBlocked?pool.reason:composeAvailability.reason;
   gate.hidden=reason==='ready';
-  $('#forgeProviderGateText').textContent=reason==='login_required'
-    ?'GPT Web sem login nesta sessão do Forge. Envios de agentes bloqueados até entrar no ChatGPT.'
-    :reason==='authenticating'
-      ?'Login do GPT Web em andamento. Conclua a autenticação na página oficial.'
-      :(COMPOSE_STATUS_MESSAGES[reason]||COMPOSE_STATUS_MESSAGES.unverified);
+  $('#forgeProviderGateText').textContent=poolBlocked
+    ?('GPT Web: '+pool.readyWorkers+'/'+pool.totalWorkers+
+      ' workers com sessão observada. '+
+      (pool.loginRequired?'Há workers pedindo login; execução paralela não está pronta.'
+        :'Ainda não foi possível confirmar a sessão de todos os workers.'))
+    :reason==='login_required'
+      ?'GPT Web sem login nesta sessão do Forge. Envios de agentes bloqueados até entrar no ChatGPT.'
+      :reason==='authenticating'
+        ?'Login do GPT Web em andamento. Conclua a autenticação na página oficial.'
+        :(COMPOSE_STATUS_MESSAGES[reason]||COMPOSE_STATUS_MESSAGES.unverified);
   $('#forgeProviderGateLogin').hidden=hostMode||
     !['login_required','unverified'].includes(reason);
   $('#composerLogin').hidden = hostMode || composeAvailability.reason==='ready' || composeAvailability.reason==='busy' ||
@@ -1413,6 +1421,7 @@ async function refreshProvider() {
   try {
     const status = await window.ordax.providerStatus();
     lastProviderStatus=status;
+    lastProviderPoolSession=Array.isArray(status.worker_pool)?providerSessionReport(status.worker_pool):null;
     syncProviderLoginAction(status);
     composeAvailability = providerComposeAvailability(status,{hostMode:window.ordaxHost?.hostMode===true});
     // Share the single observed GPT health with the Forjador chat. A ready
@@ -1459,6 +1468,7 @@ async function refreshProvider() {
     $('#observerHint').textContent = observerMode === 'beta' ? 'Beta observa a interface.' : observerMode === 'fast' ? `Fast${status.fast_observer_ready ? ' • rede observada' : ' • Beta de segurança'}` : `Automático${status.fast_observer_ready ? ' • Fast + Beta' : ' • Beta ativo'}`;
   } catch (error) {
     lastProviderStatus=null;
+    lastProviderPoolSession=null;
     syncProviderLoginAction(null);
     composeAvailability = providerComposeAvailability(null,{hostMode:window.ordaxHost?.hostMode===true});
     syncComposerAvailability();

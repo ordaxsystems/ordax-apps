@@ -66,7 +66,9 @@ test('global banner uses same fail-closed status including the Forjador layout',
   assert.match(script,/forgeProviderGateLogin'\)\.addEventListener\('click',\(\)=>\$\('#login'\)\.click\(\)\)/);
   assert.match(css,/\.forge-provider-gate:not\(\[hidden\]\)/);
   assert.match(main,/sessionHealth:async\(\)=>\{/);
-  assert.match(main,/const candidate=providerWorkers\.find\(item=>item\?\.active!==true\)/);
+  assert.match(main,/const expected=providerWorkers.slice\(\)/);
+  assert.match(main,/sessionHealth:async\(\)=>\{[\s\S]*?return currentProviderPoolHealth\(\)/);
+  assert.match(script,/lastProviderPoolSession=Array.isArray\(status.worker_pool\)/);
   assert.doesNotMatch(main,/savePassword|setCookie\(/);
 });
 
@@ -86,7 +88,7 @@ test('actual Forjador renderer gate visibly reports logout and blocks sending',(
     $,window:{ordaxHost:{hostMode:false}},
     composeAvailability:{allowed:false,reason:'login_required'},
     currentTaskId:'task_example',currentTask:{chat_url:null},
-    submittingTaskId:null,lastProviderStatus:{auth_state:'anonymous'},
+    submittingTaskId:null,lastProviderStatus:{auth_state:'anonymous'},lastProviderPoolSession:null,
     COMPOSE_STATUS_MESSAGES:{login_required:'Entre no ChatGPT.',ready:'Sessão observada.',
       unverified:'Sessão não confirmada.',host_auth_unavailable:'Host sem GPT.'},
     canStartFreshProviderChat:()=>false
@@ -100,11 +102,44 @@ test('actual Forjador renderer gate visibly reports logout and blocks sending',(
   vm.runInContext("composeAvailability={allowed:false,reason:'unverified'};syncComposerAvailability();",context);
   assert.equal($('#forgeProviderGate').hidden,false);
   assert.equal($('#send').disabled,true);
-  vm.runInContext("composeAvailability={allowed:true,reason:'ready'};syncComposerAvailability();",context);
+  vm.runInContext("composeAvailability={allowed:true,reason:'ready'};lastProviderPoolSession={sendReady:false,totalWorkers:4,readyWorkers:1,loginRequired:true,reason:'login_required'};syncComposerAvailability();",context);
+  assert.equal($('#forgeProviderGate').hidden,false);
+  assert.match($('#forgeProviderGateText').textContent,/1\/4/);
+  assert.match($('#forgeProviderGateText').textContent,/workers pedindo login/);
+  vm.runInContext("lastProviderPoolSession={sendReady:true,totalWorkers:4,readyWorkers:4,loginRequired:false,reason:'ready'};syncComposerAvailability();",context);
   assert.equal($('#forgeProviderGate').hidden,true);
   assert.equal($('#send').disabled,false);
   vm.runInContext("window.ordaxHost.hostMode=true;composeAvailability={allowed:false,reason:'host_auth_unavailable'};syncComposerAvailability();",context);
   assert.equal($('#forgeProviderGate').hidden,false);
   assert.equal($('#forgeProviderGateLogin').hidden,true);
   assert.equal($('#send').disabled,true);
+});
+
+test('parallel GPT readiness checks every physical worker, not just the primary',()=>{
+  const all=providerSessionReport([
+    {id:'primary',...ready},{id:'agent-2',...ready},
+    {id:'agent-3',auth_state:'anonymous',composer_ready:false,health_observed:true},
+    {id:'agent-4',auth_state:'anonymous',composer_ready:false,health_observed:true}
+  ]);
+  assert.equal(all.totalWorkers,4);
+  assert.equal(all.readyWorkers,2);
+  assert.equal(all.sendReady,false);
+  assert.equal(all.authState,'mixed');
+  assert.equal(all.loginRequired,true);
+  assert.equal(all.reason,'login_required');
+  assert.equal(all.identityVerified,false);
+  assert.deepEqual(all.workers.map(w=>[w.id,w.sendReady]),[
+    ['primary',true],['agent-2',true],['agent-3',false],['agent-4',false]
+  ]);
+  assert.equal(all.workers.some(w=>Object.hasOwn(w,'account')||Object.hasOwn(w,'cookie')),false);
+  assert.equal(providerSessionReport([]).sendReady,false);
+  assert.equal(providerSessionReport([{id:'primary',...ready},{id:'agent-2',...ready}]).sendReady,true);
+});
+test('an idle worker without fresh observable DOM never counts toward the pool',()=>{
+  const report=providerSessionReport([{id:'primary',...ready},
+    {id:'agent-2',auth_state:'unknown',health_observed:false,composer_ready:false}]);
+  assert.equal(report.totalWorkers,2);
+  assert.equal(report.readyWorkers,1);
+  assert.equal(report.reason,'unverified');
+  assert.equal(report.sendReady,false);
 });
