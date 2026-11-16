@@ -19,7 +19,8 @@ test('uma única memória independente de conversas, com fatos versionados',()=>
     assert.equal(second.snapshot().observed.sha,'a'.repeat(40));
     assert.equal(second.agent('agent-1').chatUrl,'https://chatgpt.com/c/example');
     assert.equal(second.snapshot().inbox.filter(x=>!x.delivered).length,1);
-    assert.match(second.context(),/Commit confirmado/);
+    assert.match(second.context(),/GitHub:/);
+    assert.doesNotMatch(second.context(),/Commit confirmado|Avisos pendentes|Eventos confirmados/);
     second.acknowledge(1);
     assert.equal(openProjectMemory(dir).snapshot().inbox.filter(x=>!x.delivered).length,0);
     assert.ok(!readFileSync(memoryFile(dir),'utf8').includes('github_pat_'));
@@ -46,4 +47,15 @@ test('continuidade autorizada persiste entre reinicializações sem guardar segr
     assert.match(restored.autoGoal,/pizzaria/);
     assert.equal(restored.token,undefined);
   }finally{rmSync(dir,{force:true,recursive:true});}
+});
+test('inbox não duplica avisos idênticos',()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'forge-git-dedup-'));
+ try{
+  const mem=openProjectMemory(dir);
+  const receipt={kind:'github_revision',agent:'agent-2',sha:'c'.repeat(40),
+    detail:'Commit confirmado',forCoordinator:true};
+  mem.event(receipt);mem.event(receipt);
+  assert.equal(mem.snapshot().inbox.filter(x=>!x.delivered).length,1);
+  assert.equal(mem.snapshot().events.filter(x=>x.kind==='github_revision').length,1);
+ }finally{rmSync(dir,{recursive:true,force:true});}
 });

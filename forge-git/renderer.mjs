@@ -16,11 +16,11 @@ function render(){
   $('autonomy-controls').hidden=active==='forjador';
   $('autonomy-help').hidden=active==='forjador';
   const doing=busy.includes(active)||agent.status==='running';
-  const awaiting=agent.status==='awaiting-github';
-  $('send').disabled=operation||!connected||doing||awaiting||!ready.includes(active);
-  $('auto-start').disabled=operation||!connected||doing||awaiting||!ready.includes(active);
+  const awaiting=['awaiting-github','awaiting-provider','verifying'].includes(agent.status);
+  $('send').disabled=operation||!connected||doing||awaiting||agent.autoContinue||!ready.includes(active);
+  $('auto-start').disabled=operation||!connected||doing||awaiting||agent.autoContinue||!ready.includes(active);
   $('auto-pause').disabled=!connected||!agent.autoContinue;
-  $('new-chat').disabled=operation||doing;
+  $('new-chat').disabled=operation||doing||awaiting||agent.autoContinue;
   $('check-agent').disabled=operation||!connected;
   $('refresh').disabled=operation||!connected;
   $('connect').disabled=operation;

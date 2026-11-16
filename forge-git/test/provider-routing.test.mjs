@@ -2,23 +2,37 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {routeForConversation,providerMessage} from '../provider-routing.mjs';
 
-test('Forjador seleciona Forge MCP apenas para coordenação',()=>{
- assert.deepEqual(routeForConversation('forjador'),{requiresMcp:true,mcpApp:'forge-mcp',purpose:'coordination'});
+const repo='ordaxos-admin/TESTES-FORGE-GIT';
+const branch='forge-git/agent-2-2b64f1cd';
+const sha='a'.repeat(40);
+
+test('missão simples sem histórico, avisos, JSON ou instruções duplicadas',()=>{
+ const actual=providerMessage({
+   agentId:'agent-2',repo,branch,task:'Crie um site funcional.',
+   fresh:true,context:'EVENTOS / AVISOS / duplicação'
+ });
+ assert.equal(actual,'Trabalhe no repositório https://github.com/'+repo+
+   ' na branch '+branch+'. Crie um site funcional.');
+ assert.doesNotMatch(actual,/EVENTOS|AVISOS|JSON|Perfil desta conversa/);
 });
-test('Agentes usam GPT Web com ferramentas do próprio chat, sem seleção forçada',()=>{
- for(const id of ['agent-1','agent-2']){
-   assert.deepEqual(routeForConversation(id),{requiresMcp:false,purpose:'github-work'});
-   const prompt=providerMessage({
-     agentId:id,task:'Crie um site de pizzaria funcional.',
-     repo:'ordaxos-admin/TESTES-FORGE-GIT',branch:'forge-git/'+id+'-f77c7f9f',
-     context:'GitHub verificado: main abc',fresh:true
-   });
-   assert.match(prompt,/Trabalhe no repositório https:\/\/github.com\/ordaxos-admin\/TESTES-FORGE-GIT/);
-   assert.match(prompt,/Crie um site de pizzaria funcional/);
-   assert.doesNotMatch(prompt,/(JSON|\{"path"|ETAPA ATUAL|Forge MCP)/);
- }
+test('continuação em nova conversa usa um único checkpoint GitHub',()=>{
+ const actual=providerMessage({
+   agentId:'agent-2',repo,branch,task:'Continue a missão.',
+   continuation:true,headSha:sha,goal:'Crie um site funcional.',
+   context:'LIXO DO HISTÓRICO'
+ });
+ assert.equal(actual,'Continue no repositório https://github.com/'+repo+
+   ' na branch '+branch+', a partir do commit '+sha.slice(0,12)+
+   '. Objetivo: Crie um site funcional. Confira o que já foi feito no GitHub e prossiga sem repetir trabalho.');
+ assert.doesNotMatch(actual,/LIXO|JSON|Agentes:|Avisos/);
 });
-test('Agente não envia missão sem branch autorizada',()=>{
- assert.throws(()=>providerMessage({agentId:'agent-1',task:'Crie teste.',repo:'ordaxos-admin/TESTES-FORGE-GIT',branch:'main',context:'',fresh:true}));
- assert.throws(()=>routeForConversation('agent-root'));
+test('Forjador mantém MCP próprio sem log anexado',()=>{
+ assert.equal(routeForConversation('forjador').mcpApp,'forge-mcp');
+ assert.equal(routeForConversation('agent-2').requiresMcp,false);
+ assert.equal(providerMessage({agentId:'forjador',task:'Atualize a memória.',context:'HISTÓRICO'}),'Atualize a memória.');
+});
+test('continuação sem checkpoint é bloqueada',()=>{
+ assert.throws(()=>providerMessage({agentId:'agent-2',repo,branch,task:'Continue.',continuation:true,headSha:null,goal:'Site'}));
+ assert.throws(()=>providerMessage({agentId:'agent-2',repo,branch:'main',task:'Faça algo.'}));
+ assert.throws(()=>routeForConversation('desconhecido'));
 });
