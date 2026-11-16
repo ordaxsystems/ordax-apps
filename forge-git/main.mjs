@@ -1,12 +1,16 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { mkdirSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EmbeddedChatWorker } from '../forge/product/desktop/embedded-worker.mjs';
-import { repositoryName, filePath, parseProposal, makePrompt, branchName } from './core.mjs';
+import { ordaxRepository, filePath, parseProposal, makePrompt, branchName } from './core.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SIDE_WIDTH = 430;
+const execFileAsync = promisify(execFile);
+const ORG_REPO = 'ordaxsystems/ordax-apps';
 let win;
 let chat;
 let githubToken = '';
@@ -74,24 +78,49 @@ function handle(channel, task) {
   });
 }
 
+async function authorizeGithub(candidate, { requireOrdaxAdmin = false } = {}) {
+  const token = String(candidate ?? '').trim();
+  if (!token || token.length > 300) throw new Error('Credencial GitHub ausente ou inválida.');
+  const user = await github('/user', { token });
+  if (!user?.login) throw new Error('A conta GitHub não pôde ser verificada.');
+  if (requireOrdaxAdmin && user.login.toLowerCase() !== 'ordaxos-admin') {
+    throw new Error('GitHub CLI está usando ' + user.login + ', mas o Forge Git exige ordaxos-admin neste computador.');
+  }
+  const access = await github('/repos/' + ORG_REPO, { token });
+  if (access?.permissions?.push !== true) {
+    throw new Error('A conta atual não possui acesso de escrita em ordaxsystems/ordax-apps.');
+  }
+  githubToken = token;
+  authenticatedUser = user.login;
+  proposal = null;
+  notify('ready', 'GitHub OrdaX conectado: ' + authenticatedUser);
+  return { login:authenticatedUser, organization:'ordaxsystems' };
+}
+
 function bindActions() {
+  handle('forge-git:connect-local', async () => {
+    if (busy) throw new Error('Conclua a operação atual antes de trocar de conta.');
+    let stdout;
+    try {
+      ({ stdout } = await execFileAsync('gh', ['auth','token','--hostname','github.com'], {
+        windowsHide:true, timeout:10000, maxBuffer:12000
+      }));
+    } catch {
+      throw new Error('GitHub CLI não está autenticado neste computador. Execute gh auth login no terminal.');
+    }
+    return authorizeGithub(stdout, { requireOrdaxAdmin:true });
+  });
+
   handle('forge-git:connect', async rawToken => {
     if (busy) throw new Error('Conclua a operação atual antes de trocar de conta.');
-    const candidate = String(rawToken ?? '').trim();
-    if (!candidate || candidate.length > 300) throw new Error('Informe um token GitHub válido.');
-    const user = await github('/user', { token:candidate });
-    if (!user?.login) throw new Error('Não foi possível autenticar no GitHub.');
-    githubToken = candidate;
-    authenticatedUser = user.login;
-    proposal = null;
-    notify('ready', 'GitHub conectado: ' + authenticatedUser);
-    return { login:authenticatedUser };
+    return authorizeGithub(rawToken);
   });
 
   handle('forge-git:inspect', async ({ repo, filename }) => {
     if (busy) throw new Error('Já existe uma operação em execução.');
-    const name = repositoryName(repo), target = filePath(filename);
+    const name = ordaxRepository(repo), target = filePath(filename);
     const info = await github('/repos/' + name);
+    if (info?.permissions?.push !== true) throw new Error('Sem permissão de escrita neste repositório da OrdaX.');
     const source = await remoteFile(name, target, info.default_branch);
     return {
       repo:name, branch:info.default_branch, path:target, exists:source.exists,
@@ -105,9 +134,10 @@ function bindActions() {
     busy = true;
     proposal = null;
     try {
-      const name = repositoryName(repo), target = filePath(filename);
+      const name = ordaxRepository(repo), target = filePath(filename);
       notify('reading', 'Lendo o arquivo no GitHub…');
       const info = await github('/repos/' + name);
+      if (info?.permissions?.push !== true) throw new Error('Sem permissão de escrita neste repositório da OrdaX.');
       const base = info.default_branch;
       if (!base || info.archived || info.disabled) throw new Error('Repositório indisponível para edição.');
       const source = await remoteFile(name, target, base);
@@ -138,10 +168,12 @@ function bindActions() {
     if (!proposal || !githubToken) throw new Error('Não há uma proposta aprovada para publicar.');
     busy = true;
     const approved = proposal;
+    ordaxRepository(approved.repo);
     let createdBranch = null;
     try {
       notify('publishing', 'Verificando se o arquivo remoto não mudou…');
       const info = await github('/repos/' + approved.repo);
+      if (info?.permissions?.push !== true) throw new Error('Permissão GitHub revogada.');
       if (info.default_branch !== approved.branch) throw new Error('A branch principal mudou. Gere uma nova proposta.');
       const current = await remoteFile(approved.repo, approved.path, approved.branch);
       if (current.sha !== approved.originalSha) throw new Error('O arquivo foi alterado por outro agente. Gere uma nova proposta.');
