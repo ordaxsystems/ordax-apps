@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {routeForConversation,providerMessage,chatSessionReadiness,matchesStoredConversation,providerIsSettled,navigationTimeoutRecovered} from '../provider-routing.mjs';
+import {routeForConversation,providerMessage,chatSessionReadiness,matchesStoredConversation,providerIsSettled,navigationTimeoutRecovered,coordinatorMemoryPrompt} from '../provider-routing.mjs';
 
 const repo='ordaxos-admin/TESTES-FORGE-GIT';
 const branch='forge-git/agent-2-2b64f1cd';
@@ -90,4 +90,12 @@ test('navegação recuperada libera apenas chat exato e trabalho confirmado',()=
  assert.equal(navigationTimeoutRecovered({...agent,lastHead:null},idle,url),false);
  assert.equal(navigationTimeoutRecovered({...agent,lastError:'other'},idle,url),false);
  assert.equal(navigationTimeoutRecovered(agent,{...idle,auth_state:'anonymous'},url),false);
+});
+test('Forjador é enviado ao recurso MCP correto, sem depender da lista do Forge local',()=>{
+ const prompt=coordinatorMemoryPrompt('agent-2: github_revision @8bdec2d892e3');
+ assert.match(prompt,/forge_project_memory/);
+ assert.match(prompt,/projectId "forge_git"/);
+ assert.match(prompt,/8bdec2d892e3/);
+ assert.doesNotMatch(prompt,/JSON|projetos registrados|forge_projects_list/);
+ assert.throws(()=>coordinatorMemoryPrompt(' '),/resumo_forjador_invalido/);
 });

@@ -1889,7 +1889,45 @@ const forgeLocalMcp=createForgeLoopbackMcp({
   // Reapproving a changed folder can never revive an old bearer/session.
   projectScope:projectId=>projectId===FORGE_APP_MCP_SCOPE
     ?forgeMcpTrusted.appScopeHash():forgeMcpTrusted.scopeHash(projectId),
-  onProjectFileChanged:projectId=>emitRendererEvent('ordax:forge:project-file:changed',{projectId})
+  onProjectFileChanged:projectId=>emitRendererEvent('ordax:forge:project-file:changed',{projectId}),
+  // Same Core, provider and SQLite as the native UI. This privileged route
+  // is never an MCP tool and cannot be called with a project-only grant.
+  ownerDispatch:async({projectId,taskId,content,draftRevision,requestId},{isAuthorized})=>{
+    const requireFreshDraft=()=>{
+      if(isAuthorized()!==true)throw Error('forge_owner_dispatch_revoked');
+      const task=orchestratorService.task(projectId,taskId,'work');
+      if(!task||task.status==='archived')throw Error('forge_owner_dispatch_task_unavailable');
+      const draft=store.getTaskDraft(taskId);
+      if(draft.draft_revision!==draftRevision||draft.draft!==content)
+        throw Error('task_draft_revision_conflict');
+      // Forge Git may start only an explicitly prepared, *unstarted* Work.
+      // Subsequent messages and failover remain native Core operations.
+      if(store.db.prepare('SELECT 1 FROM runs WHERE task_id=? LIMIT 1').get(taskId)||
+         store.db.prepare('SELECT 1 FROM messages WHERE task_id=? LIMIT 1').get(taskId)||
+         orchestratorService.hasUnresolvedWorkReceipt(projectId,taskId,{includeRunning:true}))
+        throw Error('forge_owner_dispatch_work_already_started');
+      orchestratorService.requireAccess(localOrchestratorContext,'work_send',projectId);
+      return task;
+    };
+    const task=requireFreshDraft();
+    const approval=await confirmInActiveUi({
+      title:'Forge Core — autorizar execução',
+      message:'Enviar a Task canônica ao GPT Web?',
+      detail:'Projeto: '+projectId+'\nTask: '+taskId+
+        '\nRevisão do rascunho: '+draftRevision+
+        '\nTítulo: '+String(task.title||'')+
+        '\n\nConteúdo exato:\n'+content+
+        '\n\nO Core criará o Run/recibo. Um envio incerto NÃO será repetido.',
+      approveLabel:'Autorizar envio único',cancelLabel:'Cancelar'
+    });
+    if(approval!==true)throw Error('forge_owner_dispatch_not_approved');
+    // Recheck grants, project and same revision after the asynchronous dialog
+    // and immediately before the existing executor admission.
+    requireFreshDraft();
+    return orchestratorService.invoke(localOrchestratorContext,'work_send',{
+      projectId,taskId,content,draftRevision,requestId
+    });
+  }
 });
 orchestratorService.autonomous.setNotifier(()=>notifyOrchestratorChanged());
 orchestratorService.recoverInterruptedCommands();

@@ -16,12 +16,12 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
 .brand{border-radius:10px;background:#bd7d66;color:#161515;font-weight:800;padding:8px 10px}
 section{padding:17px;border:1px solid #3a3b3f;border-radius:13px;margin:0 0 12px;background:#222427}
 label{display:block;margin:11px 0 6px;color:#d2c9c3;font-size:12px;font-weight:600}
-textarea,input{width:100%;min-width:0;background:#181a1d;color:#f4f1ed;border:1px solid #4d4d51;border-radius:8px;padding:10px;font:inherit}
+textarea,input,select{width:100%;min-width:0;background:#181a1d;color:#f4f1ed;border:1px solid #4d4d51;border-radius:8px;padding:10px;font:inherit}
 textarea{min-height:115px;resize:vertical}
 button{cursor:pointer;background:#323336;border:1px solid #58595c;color:#f4f0eb;padding:10px 12px;border-radius:8px;font:600 13px system-ui}
 button.primary{background:#c58268;color:#201714;border-color:#c58268}
 button:disabled{opacity:.4;cursor:not-allowed}
-button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #e0a07f;outline-offset:2px}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid #e0a07f;outline-offset:2px}
 .full{width:100%;margin-top:10px}.grid{display:flex;gap:8px}.grid button{flex:1}
 .meta{font-size:12px;color:#aeaaab;overflow-wrap:anywhere;white-space:pre-wrap}
 .status{padding:9px 11px;background:#17191c;border:1px solid #3c3d43;border-radius:8px;overflow-wrap:anywhere;white-space:pre-wrap;font-size:12px}
@@ -37,50 +37,73 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 </head>
 <body>
 <aside>
-<header><div><h1>Forge Git</h1><p>GPT Web · MCP · GitHub remoto</p></div><div class="brand">FG</div></header>
+<header><div><h1>Forge Git</h1><p>GPT Web · transporte do Forge MCP</p></div><div class="brand">FG</div></header>
 <section>
-<h2>Projeto GitHub</h2>
+<h2>Forge MCP · estado canônico</h2>
+<p>Conecte o MCP local já autorizado no aplicativo Forge. O endereço e a credencial são utilizados apenas nesta execução; nenhum token será salvo.</p>
+<label for="core-endpoint">Endpoint local do Forge</label>
+<input id="core-endpoint" type="url" placeholder="http://127.0.0.1:PORTA/mcp" autocomplete="off" spellcheck="false">
+<label for="core-token">Token de acesso autorizado</label>
+<input id="core-token" type="password" placeholder="Token exibido pelo Forge" autocomplete="off" spellcheck="false">
+<div class="grid" style="margin-top:9px">
+<button id="core-connect" class="primary" type="button">Conectar MCP</button>
+<button id="core-disconnect" type="button">Desconectar</button>
+</div>
+<div id="core-connection" class="status" style="margin-top:10px">MCP desconectado — sem autoridade de projeto.</div>
+<label for="core-project">Projeto autorizado</label>
+<select id="core-project" disabled aria-label="Projeto canônico"><option value="">Conecte o Forge MCP</option></select>
+<button id="core-refresh" class="full" type="button" disabled>Atualizar estado do Core</button>
+<div id="core-summary" class="meta" style="margin-top:10px">Nenhuma leitura canônica confirmada.</div>
+<label for="core-task">Task do Core (identidade persistente)</label>
+<select id="core-task" disabled aria-label="Task canônica"><option value="">Selecione uma Task</option></select>
+<button id="save-draft" class="full primary" type="button" disabled>Salvar rascunho da Task no Core (sem enviar GPT)</button>
+<button id="core-dispatch" class="full primary" type="button" disabled>Executar Task via Forge Core (confirmação nativa)</button>
+<div id="draft-confirmation" class="meta" style="margin-top:8px">Nenhum rascunho enviado ao Core.</div>
+<div id="core-tasks" class="status" style="margin-top:9px">Tarefas e bloqueios disponíveis após conexão.</div>
+</section>
+<section>
+<h2>Referência histórica GitHub</h2>
 <div class="status">ordaxos-admin/TESTES-FORGE-GIT</div>
 <button id="connect" class="primary full" type="button">Conectar GitHub do Windows</button>
 <div id="login-state" class="meta">Verificando autenticação…</div>
-<button id="refresh" class="full" type="button">Atualizar memória pelo GitHub</button>
+<button id="refresh" class="full" type="button" hidden>Observação antiga desativada</button>
 <div id="revision" class="meta" style="margin-top:10px">Nenhuma revisão confirmada</div>
 </section>
 <section>
 <h2>Conversa ativa: <span id="role">Forjador</span></h2>
-<p>Escreva o objetivo normalmente. O GPT escolhe os passos e utiliza as ferramentas que estiverem realmente disponíveis.</p>
+<p>Visualização GPT Web. O envio direto foi bloqueado porque não cria Run no Core. Prepare uma Task no painel e autorize a execução pelo Forge Core nativo; a confirmação ocorrerá na janela do Forge, usando o mesmo Run e recibo canônicos. Nunca repita um envio incerto. Mensagens digitadas manualmente no navegador não são Runs canônicos.</p>
 <label for="instruction">Missão ou mensagem</label>
-<textarea id="instruction" placeholder="Crie um site de pizzaria neste repositório, teste e corrija até ficar pronto."></textarea>
-<button id="send" class="primary full" type="button">Enviar ao GPT Web com MCP</button>
-<div class="grid" id="autonomy-controls" style="margin-top:9px">
+<textarea id="instruction" placeholder="Continue trabalhando no projeto autorizado pelo Forge MCP."></textarea>
+<button id="send" class="full" type="button" disabled>Envio direto bloqueado — use Forge Core</button>
+<div class="grid" id="autonomy-controls" hidden style="margin-top:9px">
   <button id="auto-start" type="button">Missão contínua</button>
   <button id="auto-pause" type="button">Pausar</button>
 </div>
-<p id="autonomy-help">Continua após commits confirmados, até 6 ciclos ou PR. Informa o Forjador ao confirmar o resultado. Sem merge automático.</p>
+<p id="autonomy-help" hidden>Autonomia e continuação foram transferidas ao Forge Core.</p>
 <div class="grid" style="margin-top:9px">
 <button id="new-chat" type="button">Nova conversa</button>
-<button id="check-agent" type="button">Verificar GitHub</button>
+<button id="check-agent" type="button" hidden>Verificar GitHub</button>
 </div>
 <div id="agent-status" class="status" style="margin-top:11px">Nenhuma conversa iniciada</div>
 </section>
 <section>
 <h2>Continuidade do projeto</h2>
-<p>O aplicativo guarda a revisão verificada, as conversas e os avisos dos agentes; nenhum chat é fonte exclusiva de memória.</p>
+<p>Memória e plano canônicos são consultados pelo Forge MCP. Informações locais anteriores são exibidas somente como histórico, nunca como autorização de trabalho.</p>
 <div id="inbox" class="meta">Sem avisos.</div>
-<button id="notify-forjador" class="full" type="button">Informar o Forjador dos resultados</button>
+<button id="notify-forjador" class="full" type="button" hidden>Notificação legada desativada</button>
 </section>
 <section>
-<h2>Atividade verificada</h2>
+<h2>Histórico local (não é prova MCP)</h2>
 <div id="history">Sem alterações confirmadas.</div>
 <div id="status" class="status" style="margin-top:10px">Pronto para conectar.</div>
 </section>
-<p>Protótipo em sandbox. GPT só poderá alterar o GitHub por ferramentas autorizadas; uma resposta não é prova de commit. Não há merge automático.</p>
+<p>A interface não conclui tarefas nem integra PRs. Um texto GPT não é recibo MCP/GitHub. Verifique os bloqueios e evidências no Forge Core.</p>
 </aside>
 <nav id="tabbar" aria-label="Conversas GPT Web">
 <button id="tab-forjador" type="button">Forjador</button>
 <button id="tab-agent-1" type="button">Agente 1</button>
 <button id="tab-agent-2" type="button">Agente 2</button>
-<span class="hint">Abas independentes · memória compartilhada</span>
+<span class="hint">Agentes antigos: somente leitura · Forge MCP decide</span>
 </nav>
 <script type="module" src="./renderer.mjs"></script>
 </body>

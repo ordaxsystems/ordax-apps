@@ -28,6 +28,21 @@ export function forgeProjectHandoffView(store,projectId,{taskId=null}={}) {
     FROM lab_task_bindings b JOIN tasks t ON t.id=b.task_id
     WHERE b.project_id=? AND t.workspace_session_id=?
     ORDER BY t.updated_at DESC,t.rowid DESC LIMIT 24`).all(projectId,session);
+  // The existing Forge worktree table is the only persisted source of
+  // Task -> branch ownership. Historical metadata, never a live Git HEAD,
+  // GitHub permission, PR or verification of task completion.
+  const worktreeTable=db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='forge_task_worktrees'").get();
+  const worktreeRows=worktreeTable?db.prepare(`SELECT task_id AS taskId,
+    branch_name AS branchName,base_head_sha AS baseHeadSha,
+    status,updated_at AS recordedAt
+    FROM forge_task_worktrees WHERE project_id=? AND workspace_session_id=?
+    ORDER BY updated_at DESC,task_id LIMIT 256`).all(projectId,session):[];
+  const branches=new Map(worktreeRows.map(row=>[row.taskId,{
+    branchName:row.branchName,baseHeadSha:row.baseHeadSha,
+    worktreeStatus:row.status,recordedAt:row.recordedAt,
+    provenance:'forge_task_worktrees_sqlite',
+    currentHeadVerified:false,pullRequestVerified:false
+  }]));
   const messageRows=db.prepare(`SELECT m.id AS messageId,m.task_id AS taskId,m.role,
     m.content,m.sequence,m.created_at AS createdAt
     FROM messages m JOIN lab_task_bindings b ON b.task_id=m.task_id
@@ -68,8 +83,8 @@ export function forgeProjectHandoffView(store,projectId,{taskId=null}={}) {
       providerMessagesAreNotArtifactProof:true,physicalFilesInspected:false,
       acceptanceCriteriaVerified:false,semanticReviewPerformed:false},
     counts,
-    tasks:tasks.map(row=>({...row,physicalArtifactVerified:false,
-      completionVerified:false})),
+    tasks:tasks.map(row=>({...row,branchEvidence:branches.get(row.taskId)||null,
+      physicalArtifactVerified:false,completionVerified:false})),
     recentMessages:messageRows.map(({content,...row})=>({...row,...excerpt(content)})),
     acceptedMemory:memories.map(({content,...row})=>({...row,...excerpt(content,1800),
       editorialNoteOnly:true,externalEffectVerified:false})),
