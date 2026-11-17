@@ -83,6 +83,12 @@ test('renderer never presents legacy JSON as canonical project state and masks t
     project:{id:'project_A'},
     selectedTask:{taskId:'task_A',kind:'work',draftRevision:2},
     continuation:{taskId:'task_A',blockedReasons:[],taskLeaseGranted:false},
+    taskDetail:{taskId:'task_A',taskStatus:'blocked',
+      runs:[{id:'run_A',status:'uncertain'}],
+      recentRunsRead:1,recentConversationsRead:2,pendingApprovals:0,
+      latestRunReviewRecorded:false,
+      messages:[{id:'message_A',role:'user',content:'Pendente revisar o menu'}],
+      taskLeaseGranted:false},
     recentMessages:[]
   };
   observer({
@@ -100,6 +106,9 @@ test('renderer never presents legacy JSON as canonical project state and masks t
   });
   assert.equal(el('save-draft').disabled,false,
     'selected Core Task enables preparation, not GPT dispatch');
+  assert.match(el('core-tasks').textContent,/run_A \[uncertain\]/);
+  assert.match(el('core-tasks').textContent,/Pendente revisar o menu/);
+  assert.match(el('core-tasks').textContent,/não reenviar Run incerto/);
   assert.equal(el('send').disabled,true);
   const saved=[];
   window.forgeGit.coreSaveDraft=async receipt=>{

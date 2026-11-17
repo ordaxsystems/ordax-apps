@@ -9,7 +9,8 @@ const PROJECT=/^project_[A-Za-z0-9-]{1,100}$/;
 const TASK=/^task_[A-Za-z0-9-]{1,120}$/;
 const READ_TOOLS=Object.freeze([
   'forge_projects_list','forge_project_handoff',
-  'forge_work_list','forge_orchestrators_list'
+  'forge_work_list','forge_orchestrators_list',
+  'forge_work_get','forge_work_messages'
 ]);
 const DRAFT_TOOL='forge_work_draft_set';
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -123,14 +124,44 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
     return status();
   }
   async function readScoped(projectId,taskId){
-    const result=await call('forge_project_handoff',{projectId,taskId});
+    const [result,work,history]=await Promise.all([
+      call('forge_project_handoff',{projectId,taskId}),
+      call('forge_work_get',{projectId,taskId}),
+      call('forge_work_messages',{projectId,taskId,limit:8})
+    ]);
     if(result?.schema!=='ordax.forge.project-handoff/1'||
        result.project?.id!==projectId||result.provenance?.source!=='canonical_app_sqlite'||
        result.selectedTask?.taskId!==taskId||result.selectedTask?.kind!=='work'||
        result.continuation?.taskId!==taskId||
-       !Number.isSafeInteger(result.selectedTask.draftRevision))
+       !Number.isSafeInteger(result.selectedTask.draftRevision)||
+       work?.id!==taskId||!Array.isArray(work.runs)||
+       !Array.isArray(work.conversations)||!Array.isArray(history?.messages)||
+       history.messages.some(message=>typeof message.role!=='string'||
+         message.role.length>40))
       throw Error('forge_mcp_scoped_task_invalid');
-    return result;
+    const detail={
+      taskId,taskStatus:work.status||'unknown',recentRunsRead:work.runs.length,
+      runs:work.runs.slice(0,10).map(run=>({
+        id:run.id,status:run.status,
+        startedAt:run.started_at,completedAt:run.completed_at,
+        heartbeatAt:run.heartbeat_at
+      })),
+      latestRunReviewRecorded:work.latestRunReview!==null&&
+        work.latestRunReview!==undefined,
+      monitor:work.monitor||null,
+      pendingApprovals:Array.isArray(work.pendingApprovals)?work.pendingApprovals.length:0,
+      recentConversationsRead:work.conversations.length,
+      messages:history.messages.slice(-8).map(message=>({
+        id:message.id,role:message.role,createdAt:message.created_at,
+        // Bounded owner-visible text, never a summary invented by Forge Git.
+        content:String(message.content||'').slice(0,450),
+        authorSource:message.author_source||null
+      })),
+      // Read-only evidence, not permission to send or automatically rotate.
+      providerMessagesSent:0,taskLeaseGranted:false,
+      liveGithubChecked:false
+    };
+    return {...result,taskDetail:detail};
   }
   async function refresh(projectId=null){
     if(!connected())throw Error('forge_mcp_connection_required');

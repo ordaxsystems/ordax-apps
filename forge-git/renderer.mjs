@@ -73,14 +73,24 @@ function renderCore(){
   const scoped=coreProjection?.selectedHandoff;
   const selectedInfo=scoped?.selectedTask;
   const selectedBlockers=scoped?.continuation?.blockedReasons||[];
-  const lastMessages=(scoped?.recentMessages||[]).slice(-3).map(m=>
-    String(m.role||'?')+': '+String(m.excerpt||m.text||'mensagem registrada').slice(0,130));
+  const detail=scoped?.taskDetail;
+  const recentRuns=Array.isArray(detail?.runs)?detail.runs:[];
+  const currentRun=recentRuns[0];
+  const lastMessages=Array.isArray(detail?.messages)?detail.messages:[];
+  const readback=lastMessages.slice(-5).map(m=>
+    String(m.role||'?')+': '+String(m.content||'').slice(0,180));
   const selectedReport=selectedInfo
     ?'\nTask escolhida: '+selectedInfo.taskId+
       '\nRascunho revisionado: '+selectedInfo.draftRevision+
       '\nBloqueios desta Task: '+(selectedBlockers.length?selectedBlockers.join(', '):'nenhum encontrado (não concede lease)')+
-      '\nMensagens recentes: '+(lastMessages.length?lastMessages.join(' | '):'sem mensagens registradas')
-    :'\nSelecione uma Task para consultar o handoff exato e preparar um rascunho.';
+      '\nRun mais recente: '+(currentRun?currentRun.id+' ['+currentRun.status+']':'não registrado')+
+      '\nRuns recentes consultados: '+recentRuns.length+
+      '\nConversas recentes consultadas: '+(detail?.recentConversationsRead??'?')+
+      '\nAprovações pendentes: '+(detail?.pendingApprovals??'?')+
+      '\nRevisão do Run registrada: '+(detail?.latestRunReviewRecorded===true?'sim, avaliar no Core':'não verificada')+
+      '\nHistórico recente (Core): '+(readback.length?readback.join(' | '):'sem mensagens registradas')+
+      '\nContinuação: usar a mesma Task e o envio nativo do Forge Core; não reenviar Run incerto.'
+    :'\nSelecione uma Task para consultar histórico, Run e bloqueios canônicos.';
   const blockers=Array.isArray(admission.blockedReasons)?admission.blockedReasons:[];
   $('core-tasks').textContent=
     'Estado do plano: '+(plan.basis||plan.reason||'não disponível')+

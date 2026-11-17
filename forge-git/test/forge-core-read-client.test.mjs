@@ -205,3 +205,42 @@ test('started Work refuses draft mutation without any direct provider send',asyn
   }),/forge_mcp_operation_unavailable/);
   assert.equal(Object.hasOwn(client,'send'),false);
 });
+
+test('successor Task reads the exact persisted Run and bounded messages from Core',async t=>{
+  const f=fixture(t);
+  const a=(await f.service.invoke(f.context,'mission_create',{
+    name:'Pizzaria sucessora',mission:'Retomar cardápio.',
+    requestId:'core_ui_successor_1'
+  })).result;
+  const b=(await f.service.invoke(f.context,'mission_create',{
+    name:'Projeto isolado',mission:'Informação de outro projeto.',
+    requestId:'core_ui_successor_2'
+  })).result;
+  const marker='HISTORICO_EXCLUSIVO_TASK_A';
+  f.store.appendMessage(a.taskId,'user',marker,{authorSource:'human'});
+  f.store.appendMessage(b.taskId,'user','NAO_DEVE_VAZAR_PROJETO_B',
+    {authorSource:'human'});
+  const runId=f.store.startRun(a.taskId);
+  f.store.finishRun(a.taskId,runId);
+  const started=await f.transport.start(FORGE_APP_MCP_SCOPE);
+  const client=createForgeCoreReadClient();
+  t.after(()=>client.disconnect());
+  await client.connect({endpoint:started.endpoint,token:started.token});
+  await client.refresh(a.projectId);
+  const selected=await client.selectTask(a.taskId);
+  const detail=selected.selectedHandoff.taskDetail;
+  assert.equal(detail.taskId,a.taskId);
+  assert.equal(detail.runs[0].id,runId);
+  assert.equal(detail.runs[0].status,'succeeded');
+  assert.equal(detail.taskLeaseGranted,false);
+  assert.equal(detail.providerMessagesSent,0);
+  assert.equal(detail.liveGithubChecked,false);
+  assert.ok(detail.messages.some(m=>m.content===marker));
+  assert.doesNotMatch(JSON.stringify(selected),/NAO_DEVE_VAZAR_PROJETO_B/);
+  await client.refresh(a.projectId);
+  assert.equal(client.projection().selectedHandoff.taskDetail.runs[0].id,runId);
+  const switched=await client.refresh(b.projectId);
+  assert.equal(switched.selectedTaskId,null);
+  assert.equal(switched.selectedHandoff,null);
+  await assert.rejects(client.selectTask(a.taskId),/forge_mcp_task_not_authorized/);
+});
