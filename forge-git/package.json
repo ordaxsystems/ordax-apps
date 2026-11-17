@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "main.mjs",
+  "main": "bootstrap.mjs",
   "description": "Transporte GPT Web e interface local, sem autoridade de tarefas ou GitHub",
   "scripts": {
     "test": "node --test test/*.test.mjs",
