@@ -4,7 +4,7 @@
 
 ## Decisão transversal de produto — 2026-10-10
 
-A experiência de IA discutida para o Studio agora é **OrdaX Intelligence compartilhado por OS, Web, Studio e aplicativos**, não um provedor/roteador possuído pelo Studio. [Handoff raiz OS](https://github.com/ordaxsystems/ordax-os/blob/main/INTELLIGENCE-HANDOFF.md) e [contrato Intelligence canônico](https://github.com/ordaxsystems/ordax-os/blob/main/docs/INTELLIGENCE.md).
+A experiência de IA discutida para o Studio agora é **OrdaX Intelligence compartilhado por OS, Web, Studio e aplicativos**, não um provedor/roteador possuído pelo Studio. [`docs/CURRENT-STATE.md` do OS](https://github.com/ordaxsystems/ordax-os/blob/main/docs/CURRENT-STATE.md) e [contrato Intelligence canônico](https://github.com/ordaxsystems/ordax-os/blob/main/docs/INTELLIGENCE.md).
 
 **Preservar três superfícies abaixo, porém com estes limites:**
 - Studio: **consumidor da interface/ports**; não criar outro backend de IA, banco global de chats, modelo, catálogo de ações ou plugin.
