@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {classifyProviderMcpSelection,requireSelectedMcpForPrompt,requiresMcpForProjectPrompt,inspectProviderMcpComposerSelection,inspectProviderMcpAddContextTrigger,activateProviderMcpAddContextTrigger,prepareProviderMcpMentionSearch,inspectProviderMcpMentionOption,activateProviderMcpMentionOption,inspectProviderMcpPickerOption,activateProviderMcpPickerOption,placeProviderComposerCaretAtEnd,isStandaloneMcpSelection,providerMcpAppSpec} from '../src/provider-mcp-selection.mjs';
+import {classifyProviderMcpSelection,requireSelectedMcpForPrompt,requiresMcpForProjectPrompt,inspectProviderMcpComposerSelection,inspectProviderMcpAddContextTrigger,activateProviderMcpAddContextTrigger,prepareProviderMcpMentionSearch,inspectProviderMcpMentionOption,activateProviderMcpMentionOption,inspectProviderMcpPickerOption,activateProviderMcpPickerOption,placeProviderComposerCaretAtEnd,isStandaloneMcpSelection,providerMcpAppSpec,PROVIDER_MCP_OPTION_OBSERVATION,PROVIDER_MCP_TOKEN_CONFIRMATION,classifyProviderMcpMentionFailure} from '../src/provider-mcp-selection.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -98,6 +98,36 @@ test('only the exact installed Forge MCP app identity attests selection',()=>{
     'app-mention-display-name':'Ordax mcp'})]).selectionObserved,false);
   assert.equal(selection([mention(),mention()]).selectionObserved,false);
   assert.equal(inspectProviderMcpComposerSelection(null,spec).composerPresent,false);
+});
+
+test('exact-ID provider app search waits boundedly without authorizing an unverified token',()=>{
+  assert.deepEqual(PROVIDER_MCP_OPTION_OBSERVATION,{attempts:40,delayMs:150});
+  assert.deepEqual(PROVIDER_MCP_TOKEN_CONFIRMATION,{attempts:50,delayMs:160});
+  assert.ok(PROVIDER_MCP_OPTION_OBSERVATION.attempts*PROVIDER_MCP_OPTION_OBSERVATION.delayMs<10_000);
+  assert.ok(PROVIDER_MCP_TOKEN_CONFIRMATION.attempts*PROVIDER_MCP_TOKEN_CONFIRMATION.delayMs<10_000);
+  assert.equal(classifyProviderMcpMentionFailure({optionCount:0,optionActivated:false}),
+    'provider_mcp_app_unavailable');
+  assert.equal(classifyProviderMcpMentionFailure({optionCount:1,optionActivated:false}),
+    'provider_mcp_search_option_unhittable');
+  assert.equal(classifyProviderMcpMentionFailure({optionCount:1,optionActivated:true}),
+    'provider_mcp_search_result_unavailable');
+  assert.equal(classifyProviderMcpMentionFailure({optionCount:1,optionActivated:true,
+    selectionState:'name_visible_unverified'}),'provider_mcp_token_unverified');
+  assert.throws(()=>requireSelectedMcpForPrompt('Crie um site',
+    classifyProviderMcpSelection({composerPresent:true,exactNamedControl:true}),{requiresMcp:true}),
+    /provider_mcp_selection_required/);
+  const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+  const worker=fs.readFileSync(path.join(root,'desktop/embedded-worker.mjs'),'utf8');
+  const ui=fs.readFileSync(path.join(root,'desktop/ui.js'),'utf8');
+  assert.match(worker,/for\(let i=0;i<PROVIDER_MCP_OPTION_OBSERVATION\.attempts;i\+\+\)/);
+  assert.match(worker,/for\(let i=0;i<PROVIDER_MCP_TOKEN_CONFIRMATION\.attempts;i\+\+\)/);
+  assert.match(worker,/if\(selected\.selectionObserved===true\)break/);
+  assert.match(worker,/classifyProviderMcpMentionFailure\(/);
+  assert.match(worker,/requireSelectedMcpForPrompt\(observed\.text,/);
+  for(const key of ['provider_mcp_app_unavailable','provider_mcp_search_result_unavailable',
+    'provider_mcp_token_unverified','provider_mcp_search_option_unhittable',
+    'provider_mcp_selection_required','provider_navigation_timeout'])
+    assert.match(ui,new RegExp('\\b'+key+':'));
 });
 
 test('real app token alone is reusable on a clean composer, not a user draft',()=>{
