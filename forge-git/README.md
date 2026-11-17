@@ -11,9 +11,18 @@ O Forge MCP/Core existente em `../forge/` é a autoridade sobre projetos, missõ
 - Uma resposta GPT retorna `providerReplyObserved`, nunca `mcpReceiptVerified` ou `verified`. Não há confirmação fictícia da ferramenta MCP.
 - A abertura de nova conversa não reenvia mensagens automaticamente. Uma falha ou resultado incerto bloqueia novos efeitos até reconciliação canônica.
 
+## Leitura canônica autorizada
+
+Na interface nativa do Forge, habilite o **MCP local** com o consentimento do Owner. Copie o endpoint do listener `http://127.0.0.1:PORTA/mcp` e o token exibido na ativação para os campos **Forge MCP · estado canônico** do Forge Git. Essa ligação é restrita ao próprio computador: endereço remoto, `localhost`, alias DNS ou escopo MCP apenas de um projeto não são aceitos. Um novo consentimento ou nova credencial deve ser fornecido após revogação.
+
+- `forge-git/forge-core-read-client.mjs` consulta pelo protocolo MCP existente **somente** `forge_projects_list`, `forge_project_handoff`, `forge_work_list` e `forge_orchestrators_list`; não possui ferramenta de escrita ou endpoint novo.
+- Projetos, missões, tarefas, Runs, bloqueios, dependências e branches locais registradas vêm do Core/SQLite. Branch/HEAD persistidos são **históricos**, não verificações atuais do GitHub, PRs ou critérios de aceite.
+- O token fica apenas em RAM durante a conexão, é removido do campo após a tentativa e nunca é enviado para o JSON de histórico ou incluído no estado projetado à UI.
+- A conexão e a seleção de um projeto autorizado, bem como a sessão GPT e a seleção efetiva do aplicativo MCP no executor, são requisitos para permitir **novas** mensagens do Forjador. Ausência de prova mantém o envio bloqueado; não há replay automático.
+
 ## Limite de migração
 
-O arquivo anterior `forge-git-project.json` é preservado para URLs de conversas, sessões e registros antigos, **não** para selecionar Tasks, renovar leases ou decidir continuidade. A projeção em tempo real de projetos, Tasks, branches e PRs do SQLite/Core ainda precisa substituir a vista histórica; não equiparar os registros antigos ao estado canônico. Não eliminar esse arquivo antes de conciliar conversas e efeitos preexistentes.
+O arquivo anterior `forge-git-project.json` é preservado para URLs de conversas, sessões e registros antigos, **não** para selecionar Tasks, renovar leases ou decidir continuidade. O painel de leitura canônica já substitui a antiga apresentação como fonte de verdade de projetos/tarefas. A ligação de cada mensagem e tentativa GPT ao mesmo Task/Run canônico, a projeção de PRs ao vivo e a homologação de substituição de conversas ainda não estão concluídas; não equiparar transporte a execução certificada. Não eliminar esse arquivo antes de conciliar conversas e efeitos preexistentes.
 
 O fluxo físico completo GPT Web → MCP → GitHub → handoff → nova conversa permanece dependente dos gates reais de sessão, permissões e recibos.
 

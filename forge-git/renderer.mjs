@@ -1,8 +1,70 @@
 const $=id=>document.getElementById(id);
 const IDS=['forjador','agent-1','agent-2'];
 let state=null,active='forjador',connected=false,ready=[],busy=[],operation=false,sessions=new Map();
+let coreStatus={connected:false},coreProjection=null;
 const nameOf=id=>({forjador:'Forjador','agent-1':'Agente 1','agent-2':'Agente 2'})[id]||id;
 function message(text){$('status').textContent=String(text||'');}
+function renderCore(){
+  const activeCore=coreStatus?.connected===true;
+  $('core-connect').disabled=operation;
+  $('core-disconnect').disabled=operation||!activeCore;
+  $('core-refresh').disabled=operation||!activeCore;
+  $('core-connection').textContent=activeCore
+    ?'Forge MCP conectado · leitura somente · token não persistido'
+    :'Forge MCP desconectado: selecione e autorize a conexão local.';
+  const selector=$('core-project');
+  selector.replaceChildren();
+  const projects=activeCore?(coreProjection?.projects||[]):[];
+  if(!projects.length){
+    const option=document.createElement('option');
+    option.value='';option.textContent=activeCore?'Nenhum projeto autorizado':'Conecte o Forge MCP';
+    selector.append(option);
+  }else for(const project of projects){
+    const option=document.createElement('option');
+    option.value=project.id;
+    option.textContent=project.name||project.id;
+    selector.append(option);
+  }
+  selector.value=coreProjection?.selectedProjectId||'';
+  selector.disabled=operation||!activeCore||!projects.length;
+  const handoff=coreProjection?.handoff;
+  if(!activeCore||!handoff){
+    $('core-summary').textContent='Nenhuma leitura canônica confirmada.';
+    $('core-tasks').textContent='Tarefas e bloqueios disponíveis após conexão.';
+    return;
+  }
+  const project=projects.find(p=>p.id===coreProjection.selectedProjectId);
+  const agents=coreProjection.orchestrators||[];
+  const work=coreProjection.works||[];
+  const plan=handoff.workPlan||{};
+  const admission=handoff.continuation||{};
+  $('core-summary').textContent=
+    'Projeto: '+(project?.name||handoff.project?.name||'?')+
+    '\nAutoridade: Forge Core / SQLite'+
+    '\nLeitura: '+(coreProjection.observedAt||'não verificada')+
+    '\nAgentes coordenadores: '+agents.length+
+    '\nTarefas registradas: '+work.length+
+    '\nRepositório cadastrado: '+(handoff.project?.repositoryUrl||'não informado')+
+    '\nGitHub ao vivo: NÃO verificado nesta projeção.';
+  const rows=work.slice(0,20).map(w=>{
+    const worker=Array.isArray(plan.workers)?plan.workers.find(x=>x.taskId===w.id):null;
+    const branch=Array.isArray(handoff.tasks)?handoff.tasks.find(x=>x.taskId===w.id)?.branchEvidence:null;
+    return '• '+(w.title||w.id)+' ['+(worker?.state||w.status||'desconhecido')+']'+
+      (w.latestRunStatus?' · Run: '+w.latestRunStatus:'')+
+      (w.runningRuns?' · '+w.runningRuns+' execução(ões) ativa(s)':'')+
+      (branch?' · branch registrada: '+branch.branchName+' ('+branch.worktreeStatus+', HEAD ao vivo não verificado)':'');
+  });
+  const blockers=Array.isArray(admission.blockedReasons)?admission.blockedReasons:[];
+  $('core-tasks').textContent=
+    'Estado do plano: '+(plan.basis||plan.reason||'não disponível')+
+    '\nComandos incertos/ativos: '+(handoff.counts?.unresolvedCommands??'?')+
+    '\nBloqueios: '+(blockers.length?blockers.join(', '):'nenhum bloqueio global identificado')+
+    '\nTarefas aguardando aceite: '+(admission.needsAcceptanceTaskIds?.length||0)+
+    '\nReserva/lease para envio: NÃO concedida nesta leitura.'+
+    '\nBranch/PR por tarefa: verificar no Forge Core (não atestada nesta projeção).'+
+    '\n'+(rows.length?rows.join('\n'):'Nenhuma tarefa registrada.')+
+    (work.length>rows.length?'\n... outras '+(work.length-rows.length)+' tarefas':'');
+}
 function render(){
   if(!state)return;
   const agent=state.agents.find(x=>x.id===active);
@@ -17,7 +79,8 @@ function render(){
   $('autonomy-help').hidden=true;
   const doing=busy.includes(active)||agent.status==='running';
   const awaiting=['awaiting-github','awaiting-provider','verifying'].includes(agent.status);
-  $('send').disabled=operation||active!=='forjador'||doing||awaiting||!ready.includes(active);
+  $('send').disabled=operation||active!=='forjador'||doing||awaiting||!ready.includes(active)||
+    !coreStatus?.connected||!coreProjection?.selectedProjectId;
   $('auto-start').disabled=true;
   $('auto-pause').disabled=true;
   $('new-chat').disabled=operation||active!=='forjador'||doing||awaiting||agent.autoContinue;
@@ -54,6 +117,7 @@ function render(){
     list.append(row);
   }
   if(!state.events.length)list.textContent='Sem alterações confirmadas.';
+  renderCore();
 }
 async function action(fn){
   if(operation)return;
@@ -68,9 +132,37 @@ function apply(data){
   if(data.ready)ready=data.ready;
   if(data.busy)busy=data.busy;
   if(data.sessions)sessions=new Map(data.sessions);
+  if(Object.hasOwn(data,'coreStatus'))coreStatus=data.coreStatus||{connected:false};
+  if(Object.hasOwn(data,'coreProjection'))coreProjection=data.coreProjection;
   if(data.message)message(data.message);
   render();
 }
+$('core-connect').addEventListener('click',()=>action(async()=>{
+  const endpoint=$('core-endpoint').value.trim();
+  const token=$('core-token').value.trim();
+  try{
+    await window.forgeGit.coreConnect({endpoint,token});
+    apply(await window.forgeGit.state());
+    message('Forge MCP conectado. Estado do projeto obtido do Core autorizado.');
+  }finally{
+    // No credential may remain in the renderer after attempting to connect.
+    $('core-token').value='';
+  }
+}));
+$('core-refresh').addEventListener('click',()=>action(async()=>{
+  await window.forgeGit.coreRefresh();
+  apply(await window.forgeGit.state());
+}));
+$('core-disconnect').addEventListener('click',()=>action(async()=>{
+  await window.forgeGit.coreDisconnect();
+  apply(await window.forgeGit.state());
+}));
+$('core-project').addEventListener('change',()=>action(async()=>{
+  const selected=$('core-project').value;
+  if(!selected)return;
+  await window.forgeGit.coreSelect(selected);
+  apply(await window.forgeGit.state());
+}));
 for(const id of IDS){
   $('tab-'+id).addEventListener('click',()=>action(async()=>{
     const data=await window.forgeGit.select(id);

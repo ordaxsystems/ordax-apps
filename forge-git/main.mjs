@@ -9,6 +9,7 @@ import {REPO,ROLES,openProjectMemory} from './project-memory.mjs';
 import {routeForConversation,providerMessage,chatSessionReadiness,navigationTimeoutRecovered} from './provider-routing.mjs';
 import {canonicalProviderChatUrl} from '../forge/product/src/conversation-policy.mjs';
 import {assertForgeGitTransport} from './authority-policy.mjs';
+import {createForgeCoreReadClient} from './forge-core-read-client.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const cli=promisify(execFile);
@@ -16,10 +17,12 @@ const SIDE=430,TOP=46;
 const nextNavigationRetry=new Map();
 let win,store,token='',login='',active='forjador';
 const workers=new Map(),busy=new Set(),ready=new Set(),sessionStates=new Map();
+const core=createForgeCoreReadClient();
 
 function emit(message){
   if(win&&!win.isDestroyed())win.webContents.send('forge-git:event',{
-    message,snapshot:store.snapshot(),active,ready:[...ready],busy:[...busy],sessions:[...sessionStates]
+    message,snapshot:store.snapshot(),active,ready:[...ready],busy:[...busy],sessions:[...sessionStates],
+    coreStatus:core.status(),coreProjection:core.projection()
   });
 }
 function guarded(channel,fn){
@@ -107,6 +110,9 @@ async function checkSessions(){
 }
 async function send({agentId,text,newSession=false,autoContinue=null,continuation=false}){
   assertForgeGitTransport({agentId,autoContinue,continuation});
+  if(!core.status().connected||!core.status().selectedProjectId)
+    throw Error('Conecte o Forge MCP e selecione um projeto autorizado antes de enviar.');
+  await core.ping();
   if(!ROLES.some(r=>r.id===agentId))throw Error('Conversa desconhecida.');
   if(busy.has(agentId))throw Error('Esta conversa já está ocupada.');
   const currentAgent=store.agent(agentId);
@@ -174,7 +180,31 @@ async function send({agentId,text,newSession=false,autoContinue=null,continuatio
   }
 }
 function events(){
-  guarded('fg:state',()=>({snapshot:store.snapshot(),active,ready:[...ready],busy:[...busy],sessions:[...sessionStates]}));
+  guarded('fg:state',()=>({snapshot:store.snapshot(),active,ready:[...ready],busy:[...busy],sessions:[...sessionStates],
+    coreStatus:core.status(),coreProjection:core.projection()}));
+  guarded('fg:core-connect',async options=>{
+    const result=await core.connect(options);
+    try{await core.refresh();}
+    catch(error){core.disconnect();throw error;}
+    emit('Forge MCP conectado: projetos e tarefas lidos do Core canônico.');
+    return {status:result,projection:core.projection()};
+  });
+  guarded('fg:core-refresh',async()=>{
+    await core.ping();
+    const projection=await core.refresh();
+    emit('Forge MCP: leitura canônica atualizada.');
+    return projection;
+  });
+  guarded('fg:core-select',async projectId=>{
+    const projection=await core.refresh(projectId);
+    emit('Forge MCP: projeto autorizado selecionado.');
+    return projection;
+  });
+  guarded('fg:core-disconnect',()=>{
+    core.disconnect();
+    emit('Forge MCP desconectado; novas mensagens bloqueadas.');
+    return core.status();
+  });
   guarded('fg:connect',async()=>{
     const {stdout}=await cli('gh',['auth','token','--hostname','github.com'],{
       timeout:10_000,windowsHide:true,maxBuffer:16_000

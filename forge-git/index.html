@@ -16,12 +16,12 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
 .brand{border-radius:10px;background:#bd7d66;color:#161515;font-weight:800;padding:8px 10px}
 section{padding:17px;border:1px solid #3a3b3f;border-radius:13px;margin:0 0 12px;background:#222427}
 label{display:block;margin:11px 0 6px;color:#d2c9c3;font-size:12px;font-weight:600}
-textarea,input{width:100%;min-width:0;background:#181a1d;color:#f4f1ed;border:1px solid #4d4d51;border-radius:8px;padding:10px;font:inherit}
+textarea,input,select{width:100%;min-width:0;background:#181a1d;color:#f4f1ed;border:1px solid #4d4d51;border-radius:8px;padding:10px;font:inherit}
 textarea{min-height:115px;resize:vertical}
 button{cursor:pointer;background:#323336;border:1px solid #58595c;color:#f4f0eb;padding:10px 12px;border-radius:8px;font:600 13px system-ui}
 button.primary{background:#c58268;color:#201714;border-color:#c58268}
 button:disabled{opacity:.4;cursor:not-allowed}
-button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #e0a07f;outline-offset:2px}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid #e0a07f;outline-offset:2px}
 .full{width:100%;margin-top:10px}.grid{display:flex;gap:8px}.grid button{flex:1}
 .meta{font-size:12px;color:#aeaaab;overflow-wrap:anywhere;white-space:pre-wrap}
 .status{padding:9px 11px;background:#17191c;border:1px solid #3c3d43;border-radius:8px;overflow-wrap:anywhere;white-space:pre-wrap;font-size:12px}
@@ -37,7 +37,25 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 </head>
 <body>
 <aside>
-<header><div><h1>Forge Git</h1><p>GPT Web · MCP · GitHub remoto</p></div><div class="brand">FG</div></header>
+<header><div><h1>Forge Git</h1><p>GPT Web · transporte do Forge MCP</p></div><div class="brand">FG</div></header>
+<section>
+<h2>Forge MCP · estado canônico</h2>
+<p>Conecte o MCP local já autorizado no aplicativo Forge. O endereço e a credencial são utilizados apenas nesta execução; nenhum token será salvo.</p>
+<label for="core-endpoint">Endpoint local do Forge</label>
+<input id="core-endpoint" type="url" placeholder="http://127.0.0.1:PORTA/mcp" autocomplete="off" spellcheck="false">
+<label for="core-token">Token de acesso autorizado</label>
+<input id="core-token" type="password" placeholder="Token exibido pelo Forge" autocomplete="off" spellcheck="false">
+<div class="grid" style="margin-top:9px">
+<button id="core-connect" class="primary" type="button">Conectar MCP</button>
+<button id="core-disconnect" type="button">Desconectar</button>
+</div>
+<div id="core-connection" class="status" style="margin-top:10px">MCP desconectado — sem autoridade de projeto.</div>
+<label for="core-project">Projeto autorizado</label>
+<select id="core-project" disabled aria-label="Projeto canônico"><option value="">Conecte o Forge MCP</option></select>
+<button id="core-refresh" class="full" type="button" disabled>Atualizar estado do Core</button>
+<div id="core-summary" class="meta" style="margin-top:10px">Nenhuma leitura canônica confirmada.</div>
+<div id="core-tasks" class="status" style="margin-top:9px">Tarefas e bloqueios disponíveis após conexão.</div>
+</section>
 <section>
 <h2>Referência histórica GitHub</h2>
 <div class="status">ordaxos-admin/TESTES-FORGE-GIT</div>

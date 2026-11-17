@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
 import {Store} from '../src/store.mjs';
+import {ForgeLocalWorkspaces} from '../src/forge-local-workspaces.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
@@ -87,4 +90,36 @@ test('handoff exposes unresolved commands without replay or external effects',as
   await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
   const listed=await mcp.handle({jsonrpc:'2.0',id:2,method:'tools/list'});
   assert.ok(listed.result.tools.some(x=>x.name==='forge_project_handoff'));
+});
+
+test('handoff exposes only scoped recorded branch, never a live HEAD or PR claim',async t=>{
+  const {store,invoke}=fixture(t);
+  const project=(await invoke('project_quick_create',{creationNonce:'worktree_handoff'})).result;
+  const work=(await invoke('work_create',{projectId:project.projectId,
+    orchestratorId:project.orchestratorId,title:'Checkout A'})).result;
+  const other=(await invoke('project_quick_create',{creationNonce:'other_worktree'})).result;
+  const workspaces=new ForgeLocalWorkspaces({store,documentsDirectory:os.tmpdir()});
+  workspaces.schema();
+  const recordedRoot=path.join(os.tmpdir(),'test-worktree-'+work.taskId);
+  const now=store.now();
+  store.db.prepare(`INSERT INTO forge_task_worktrees
+    (task_id,project_id,workspace_session_id,worktree_root,physical_identity,
+     branch_name,base_head_sha,status,created_at,updated_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?)`).run(work.taskId,project.projectId,
+      store.getWorkspaceSession().id,recordedRoot,'fake-identity',
+      'forge/work-'+work.taskId,'a'.repeat(40),'active',now,now);
+  const handoff=await invoke('project_handoff',{projectId:project.projectId,
+    taskId:work.taskId});
+  const branch=handoff.tasks.find(item=>item.taskId===work.taskId).branchEvidence;
+  assert.equal(branch.branchName,'forge/work-'+work.taskId);
+  assert.equal(branch.baseHeadSha,'a'.repeat(40));
+  assert.equal(branch.worktreeStatus,'active');
+  assert.equal(branch.provenance,'forge_task_worktrees_sqlite');
+  assert.equal(branch.currentHeadVerified,false);
+  assert.equal(branch.pullRequestVerified,false);
+  assert.equal(handoff.continuation.taskLeaseGranted,false);
+  assert.equal(JSON.stringify(handoff).includes(recordedRoot),false,
+    'physical worktree root must never leak through MCP');
+  const foreign=await invoke('project_handoff',{projectId:other.projectId});
+  assert.equal(foreign.tasks.some(item=>item.branchEvidence!==null),false);
 });
