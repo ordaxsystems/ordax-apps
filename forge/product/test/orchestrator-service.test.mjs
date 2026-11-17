@@ -1204,6 +1204,43 @@ test('MCP initialize/discovery/call use exactly the same App service and persist
   assert.equal((await mcp.handle([])).error.code,-32600);
 });
 
+test('MCP safe workflow rejection returns bounded action diagnosis and never exposes arbitrary errors',async t=>{
+  const f=fixture(t),a=await project(f);
+  const mcp=createOrchestratorMcp({service:f.service,getContext:()=>f.context,
+    afterToolInvoke:({operation,output})=>{
+      if(operation==='work_get')throw Error('secret:C:/private/tokens/chatgpt');
+      return output;
+    }
+  });
+  const rpc=(id,name,args)=>mcp.handle({jsonrpc:'2.0',id,method:'tools/call',params:{
+    name:'forge_'+name,arguments:args
+  }});
+  const initialized=await mcp.handle({jsonrpc:'2.0',id:1,method:'initialize',
+    params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}});
+  assert.ok(initialized.result.serverInfo);
+  await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
+  const conflict=await rpc(2,'work_draft_set',{projectId:a.p,taskId:a.w,
+    content:'Rascunho não enviado',draftRevision:2,requestId:'safe_conflict'});
+  assert.equal(conflict.result.isError,true);
+  assert.deepEqual(conflict.result.structuredContent,{
+    schema:'ordax.forge.mcp-workflow-rejection/1',status:'rejected',
+    reason:'task_draft_revision_conflict',
+    recovery:'Read forge_work_get.draftState and use only the next revision. Preserve any newer draft.',
+    requiresReconciliation:true
+  });
+  assert.equal(JSON.stringify(conflict).includes('Rascunho não enviado'),false);
+  const empty=await rpc(3,'work_parallel_launch',{projectId:a.p,
+    taskIds:[a.w,a.w],requestId:'safe_duplicate'});
+  assert.equal(empty.result.isError,true);
+  assert.ok(!empty.result.structuredContent);
+  const secret=await rpc(4,'work_get',{projectId:a.p,taskId:a.w});
+  assert.equal(secret.result.isError,true);
+  assert.equal(JSON.stringify(secret).includes('C:/private'),false);
+  assert.equal(JSON.stringify(secret).includes('secret:'),false);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,0);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM messages').get().n,0);
+});
+
 test('corrupt proposal payload does not block legitimate pending review or reveal another project',async t=>{
   let providerSends=0;
   const f=fixture(t,{coordinator:{available:()=>true,send:async()=>({

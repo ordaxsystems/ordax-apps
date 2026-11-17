@@ -126,6 +126,11 @@ Código de partida: forge/product/src/orchestrator-kernel.mjs, orchestrator-serv
 - Regressão cobre Task vazia, preparação no Store, leitura sem vazamento de conteúdo, recusa de versão antiga, isolamento entre projetos e ausência de envio GPT. **Pendente:** validar CI, integrar e executar no host Windows atualizado; não inferir que o erro remoto `forge_action_rejected` já foi corrigido no host operacional, nem reenviar ação incerta.
 - Aceite físico da pizzaria: as três Tasks finais conservam worktrees separados e nenhum Run GPT novo. Revisão periódica do mesmo coordenador habilitada a cada 60 min com recibo de `continuity_set`; a agenda não autoriza envios GPT por si só.
 
+### Diagnóstico fail-closed de recusas MCP (16/11/2026)
+
+- Branch `fix/forge-mcp-safe-action-rejection-diagnostics-20261116` adiciona no **mesmo** adaptador `orchestrator-mcp` uma lista fechada de códigos de rejeição operacional para revisões de drafts, lançamentos paralelos, pré-requisitos e worktrees. Somente códigos literais conhecidos são projetados com motivo/recuperação estáticos; erros arbitrários, caminhos privados, conteúdo do rascunho, identidade e credenciais continuam opacos.
+- Todas as recusas de mutação indicam reconciliação antes de um novo efeito; o diagnóstico **não** autoriza replay de `work_send`. Teste de regressão cobre CAS obsoleto, recusa desconhecida e ausência de vazamento; isso não prova que a versão instalada no Windows já foi atualizada.
+
 ### P4 — navegação interna segura do View (16/11/2026)
 
 - Commit `1863f019` na branch isolada `feat/forge-live-view-internal-navigation-20261116`: o inspetor DOM canônico em `src/forge-live-view-dom.mjs` permite clicar em âncoras `#fragmento` **somente** quando o alvo existe no documento HTML verificado. Links HTTP(S), `javascript:`, fragments malformados ou inexistentes não entram no catálogo de controles; ancestrais `aria-hidden`/`hidden`/inert continuam não-interativos. Não houve alteração em `desktop/main.mjs`, `orchestrator-service.mjs`, Core, SQLite ou catálogo MCP.

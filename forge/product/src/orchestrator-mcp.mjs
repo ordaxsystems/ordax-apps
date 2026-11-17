@@ -7,6 +7,22 @@ const SAFE_APP_CAPTURE_ERRORS=Object.freeze({
   forge_app_view_renderer_occluded:'The Forge application renderer is minimized or hidden. For authorized project evidence, use forge_project_view_capture; for an already open Task HTML View, use forge_project_view_live_inspect. Neither requires bringing Forge to the foreground.',
   forge_app_view_capture_timeout:'The Forge application renderer did not return pixels. Inspect forge_app_view_status and use an authorized project preview or live DOM inspection instead of repeating the same capture.'
 });
+// These are fixed workflow contract codes, not exception messages from a
+// filesystem, provider, token, project name or user-supplied input. Never
+// forward arbitrary errors or reveal the private draft body.
+const SAFE_WORKFLOW_REJECTION=Object.freeze({
+  task_draft_revision_conflict:'Read forge_work_get.draftState and use only the next revision. Preserve any newer draft.',
+  orchestrator_work_already_started:'Inspect the existing work, Runs and receipts; never resend or create a duplicate Task.',
+  orchestrator_parallel_draft_required:'Inspect each child with forge_work_get; prepare missing drafts with revision compare-and-set.',
+  orchestrator_parallel_work_already_started:'The child already has activity or a send receipt. Review its state before scheduling work.',
+  orchestrator_parallel_work_already_launched:'This Work has an existing durable launch intent; inspect its receipts, do not launch it again.',
+  orchestrator_parallel_launch_disabled:'The canonical project coordinator has not authorized continuous agent dispatch.',
+  orchestrator_paused:'The project coordinator is paused. Inspect the owner-controlled coordinator state.',
+  orchestrator_work_prerequisite_not_confirmed:'One or more prerequisites lack confirmed successful Runs. Review the project work plan.',
+  orchestrator_reconciliation_required:'An uncertain command requires reconciliation before another GPT send.',
+  forge_worktree_task_unprepared:'The Task has no active worktree. Review the owner-approved development state.',
+  forge_worktree_main_dirty:'The canonical project worktree is dirty. Protect unrelated changes before proceeding.'
+});
 // The direct GPT send is a trusted GUI action, never an MCP tool exposed to GPT.
 // Prevent a model from invoking itself recursively through this same adapter.
 const UI_ONLY_OPERATIONS=new Set(['forjador_send']);
@@ -150,6 +166,20 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
                 schema:'ordax.forge.capture-error/1',status:'unavailable',
                 reason,effectDispatched:false,externalEffectsVerified:false,
                 recovery:SAFE_APP_CAPTURE_ERRORS[reason]
+              };
+              return result(id,{isError:true,
+                content:[{type:'text',text:JSON.stringify(diagnostic)}],
+                structuredContent:diagnostic});
+            }
+            if(Object.hasOwn(SAFE_WORKFLOW_REJECTION,reason)){
+              const diagnostic={
+                schema:'ordax.forge.mcp-workflow-rejection/1',
+                status:'rejected',
+                reason,
+                recovery:SAFE_WORKFLOW_REJECTION[reason],
+                // A rejected gateway response is not evidence that a remote
+                // write or provider send never happened. Verify receipts.
+                requiresReconciliation:!tool.readOnly
               };
               return result(id,{isError:true,
                 content:[{type:'text',text:JSON.stringify(diagnostic)}],
