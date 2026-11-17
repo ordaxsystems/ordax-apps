@@ -92,9 +92,17 @@ function renderCore(){
       '\nContinuação: usar a mesma Task e o envio nativo do Forge Core; não reenviar Run incerto.'
     :'\nSelecione uma Task para consultar histórico, Run e bloqueios canônicos.';
   const blockers=Array.isArray(admission.blockedReasons)?admission.blockedReasons:[];
+  const unresolved=Array.isArray(handoff.unresolvedCommands)?handoff.unresolvedCommands:[];
+  const receiptReport=unresolved.map(command=>
+    String(command.commandId||'?')+' ['+String(command.operation||'?')+
+    ', '+String(command.status||'uncertain')+']').join(' | ');
+  const receiptTruncated=handoff.limits?.unresolvedCommandsTruncated===true;
   $('core-tasks').textContent=
     'Estado do plano: '+(plan.basis||plan.reason||'não disponível')+
     '\nComandos incertos/ativos: '+(handoff.counts?.unresolvedCommands??'?')+
+    '\nRecibos pendentes (leitura, nunca reenviar): '+
+      (receiptReport||'nenhum apresentado')+
+      (receiptTruncated?' | lista truncada, consulte o Core':'')+
     '\nBloqueios: '+(blockers.length?blockers.join(', '):'nenhum bloqueio global identificado')+
     '\nTarefas aguardando aceite: '+(admission.needsAcceptanceTaskIds?.length||0)+
     '\nReserva/lease para envio: NÃO concedida nesta leitura.'+

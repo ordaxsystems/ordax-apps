@@ -61,6 +61,7 @@ test('renderer never presents legacy JSON as canonical project state and masks t
         project:{id:'project_A',name:'Pizzaria',repositoryUrl:'https://github.com/example/test'},
         provenance:{source:'canonical_app_sqlite'},
         counts:{unresolvedCommands:1},
+        unresolvedCommands:[{commandId:'command_mcp_1',operation:'work_send',status:'uncertain'}],
         tasks:[{taskId:'task_A',branchEvidence:{branchName:'forge/task-A',
           worktreeStatus:'active',currentHeadVerified:false}}],
         workPlan:{basis:'canonical_run_and_monitor_states_only',workers:[
@@ -76,6 +77,7 @@ test('renderer never presents legacy JSON as canonical project state and masks t
   assert.equal(el('save-draft').disabled,true,'explicit Task selection is required');
   assert.match(el('core-summary').textContent,/Pizzaria/);
   assert.match(el('core-tasks').textContent,/unresolved_command_receipts/);
+  assert.match(el('core-tasks').textContent,/command_mcp_1 \[work_send, uncertain\]/);
   assert.match(el('core-tasks').textContent,/forge\/task-A/);
   assert.match(el('core-tasks').textContent,/HEAD ao vivo não verificado/);
   assert.equal(el('core-project').value,'project_A');
