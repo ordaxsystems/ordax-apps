@@ -48,6 +48,11 @@ test('project handoff restores bounded real context without promoting assistant 
   assert.equal(packet.recentMessages.length,8);
   assert.equal(packet.limits.messagesTruncated,true);
   assert.equal(packet.nextSession.automaticSendAllowed,false);
+  assert.equal(packet.workPlan.projectId,p.projectId);
+  assert.ok(packet.workPlan.verificationRequired.includes(work.taskId));
+  assert.equal(packet.continuation.taskId,work.taskId);
+  assert.ok(packet.continuation.blockedReasons.includes('selected_task_acceptance_unverified'));
+  assert.equal(packet.continuation.taskLeaseGranted,false);
   assert.equal(packet.provenance.physicalFilesInspected,false);
   assert.equal(JSON.stringify(packet).includes('SEGREDO DE OUTRO PROJETO'),false);
   await assert.rejects(invoke('project_handoff',{projectId:p.projectId,
@@ -71,6 +76,9 @@ test('handoff exposes unresolved commands without replay or external effects',as
   assert.equal(handoff.unresolvedCommands[0].commandId,'cmd_uncertain');
   assert.equal(handoff.nextSession.checkUncertainReceiptsBeforeRetry,true);
   assert.equal(handoff.nextSession.automaticRotationPerformed,false);
+  assert.ok(handoff.continuation.blockedReasons.includes('unresolved_command_receipts'));
+  assert.ok(handoff.continuation.blockedReasons.includes('plan_needs_reconciliation'));
+  assert.equal(handoff.continuation.automaticDispatchAllowed,false);
   await assert.rejects(service.invoke({...context,actorId:'attacker'},
     'project_handoff',{projectId:p.projectId}),/orchestrator_access_denied/);
   const mcp=createOrchestratorMcp({service,getContext:()=>context});

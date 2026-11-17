@@ -15,6 +15,7 @@ import {forgeProjectContext,forgeMcpDiscovery} from './forge-executor-context.mj
 import {forgeProjectMemoryView} from './forge-project-memory-view.mjs';
 import {forgeProjectAdministratorView} from './forge-project-administrator-view.mjs';
 import {forgeProjectHandoffView} from './forge-project-handoff-view.mjs';
+import {forgeContinuationDecision} from './forge-continuation-decision.mjs';
 import {forgeProjectMissionsView} from './forge-project-missions-view.mjs';
 import {UNTITLED_FORGE_PROJECT,suggestForgeProjectTitle} from './project-auto-title.mjs';
 import {deleteProjectRecords} from './project-deletion.mjs';
@@ -962,7 +963,26 @@ export class OrchestratorService {
       const taskId=this.scopedTaskId(input);
       return this.files.read(input.projectId,input.path,taskId);
     }
-    if(operation==='project_handoff')return forgeProjectHandoffView(this.store,input.projectId,{taskId:input.taskId||null});
+    if(operation==='project_handoff'){
+      const handoff=forgeProjectHandoffView(this.store,input.projectId,{taskId:input.taskId||null});
+      // One canonical read: history plus the live task dependency graph.
+      // Neither a candidate nor a GPT response grants a provider send.
+      let plan;
+      try{plan=this.projectPlan(input.projectId,4);}
+      catch(error){
+        if(error?.message!=='orchestrator_work_plan_too_large')throw error;
+        // Do not break read-only history for projects beyond planning bounds.
+        // Never select a Task from a truncated graph.
+        return {...handoff,workPlan:{projectId:input.projectId,available:false,
+          reason:'orchestrator_work_plan_too_large',automaticDispatchAllowed:false},
+          continuation:{schema:'ordax.forge.continuation-decision/1',
+            projectId:input.projectId,taskId:input.taskId||null,
+            blockedReasons:['work_plan_too_large'],automaticDispatchAllowed:false,
+            taskLeaseGranted:false,providerMessagesSent:0,nextStep:'reconcile_blockers'}};
+      }
+      return {...handoff,workPlan:plan,
+        continuation:forgeContinuationDecision({handoff,plan,taskId:input.taskId||null})};
+    }
     if(operation==='continuity_status') {
       this.orchestrator(input.projectId,input.orchestratorId);
       return this.continuation.status(input.projectId,input.orchestratorId);
