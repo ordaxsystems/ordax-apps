@@ -376,7 +376,7 @@ test('Forge displays explicit MCP state in Forjador and connections, without sil
   assert.match(worker,/prepareProviderMcpMentionSearch\.toString\(\)/);
   assert.match(worker,/inspectProviderMcpMentionOption\.toString\(\)/);
   assert.match(worker,/activateProviderMcpMentionOption\.toString\(\)/);
-  assert.match(worker,/provider_mcp_search_result_unavailable/);
+  assert.match(worker,/classifyProviderMcpMentionFailure\(/);
   assert.match(worker,/#discardOwnedMcpSearchQuery\(mcpSearchQuery\)/);
   assert.match(worker,/#discardOwnedMcpPreflightDraft\(core,spec\)/);
   assert.match(worker,/mentions\.length!==1/);
