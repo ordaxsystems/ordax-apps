@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import {fileURLToPath} from 'node:url';
-import {providerComposeAvailability,canStartFreshProviderChat,COMPOSE_STATUS_MESSAGES} from '../src/provider-compose-availability.mjs';
+import {providerComposeAvailability,providerTaskComposeAvailability,canStartFreshProviderChat,COMPOSE_STATUS_MESSAGES} from '../src/provider-compose-availability.mjs';
 
 const dir=path.dirname(fileURLToPath(import.meta.url));
 const main=fs.readFileSync(path.resolve(dir,'../desktop/main.mjs'),'utf8');
@@ -16,6 +16,7 @@ test('renderer gates submit on observed session and live composer; anything else
   const ready={active:false,health_pending:false,auth_state:'session_present',composer_ready:true,
     health_observed:true,verification_required:false,provider_access_problem:null};
   assert.deepEqual(providerComposeAvailability(ready),{allowed:true,reason:'ready'});
+  assert.deepEqual(providerTaskComposeAvailability(ready),{allowed:true,reason:'ready'});
   assert.deepEqual(providerComposeAvailability(ready,{hostMode:true}),{allowed:false,reason:'host_auth_unavailable'});
   assert.match(COMPOSE_STATUS_MESSAGES.host_auth_unavailable,/não tem transporte suportado para o ChatGPT Web/);
   assert.match(COMPOSE_STATUS_MESSAGES.host_auth_unavailable,/Entrar em outra aba não conecta a sessão/);
@@ -40,6 +41,27 @@ test('renderer gates submit on observed session and live composer; anything else
     assert.deepEqual(providerComposeAvailability(status),{allowed:false,reason});
     assert.ok(COMPOSE_STATUS_MESSAGES[reason]);
   }
+});
+
+test('busy primary permits independent Task only through an observed idle provider lane',()=>{
+  const ready={id:'agent-2',active:false,auth_state:'session_present',
+    composer_ready:true,health_observed:true};
+  const busy={id:'primary',active:true,auth_state:'session_present',
+    composer_ready:true,health_observed:true,response_generation_active:true};
+  const pool={...busy,worker_pool:[busy,ready]};
+  assert.deepEqual(providerComposeAvailability(pool),{allowed:false,reason:'busy'});
+  assert.deepEqual(providerTaskComposeAvailability(pool),{allowed:true,reason:'ready'});
+  assert.deepEqual(providerTaskComposeAvailability(pool,{hostMode:true}),
+    {allowed:false,reason:'host_auth_unavailable'});
+  for(const lane of [busy,{...ready,auth_state:'anonymous'},
+    {...ready,health_observed:false},{...ready,verification_required:true},
+    {...ready,provider_access_problem:'backend_http_403_observed'},
+    {...ready,provider_access_problem:'backend_http_429_observed'}]){
+    assert.deepEqual(providerTaskComposeAvailability({...pool,worker_pool:[busy,lane]}),
+      {allowed:false,reason:'busy'});
+  }
+  assert.deepEqual(providerTaskComposeAvailability({...pool,worker_pool:[]}),
+    {allowed:false,reason:'busy'});
 });
 
 test('fresh provider chat recovery preserves the Task and is blocked for unsafe sessions or delivery state',()=>{
@@ -97,7 +119,7 @@ test('App has visible login warning, optional local draft, and disabled send ini
   assert.match(html,/id="composerConnectionText"/);
   assert.match(html,/id="composerLogin"/);
   assert.match(html,/id="send"[^>]*disabled/);
-  assert.match(ui,/providerComposeAvailability\(status,\{hostMode:window\.ordaxHost\?\.hostMode===true\}\)/);
+  assert.match(ui,/providerTaskComposeAvailability\(status,\{hostMode:window\.ordaxHost\?\.hostMode===true\}\)/);
   assert.match(html,/id="recoverProviderConversation"[^>]*hidden/);
   assert.match(ui,/await flushDraft\(\);[\s\S]*await window\.ordax\.rotateConversation\(currentTaskId\)[\s\S]*await window\.ordax\.home\(\)/);
   assert.match(ui,/canStartFreshProviderChat\(/);
@@ -107,7 +129,7 @@ test('App has visible login warning, optional local draft, and disabled send ini
   assert.match(ui,/syncComposerAvailability\(\); \/\/ no send until session observed/);
   assert.match(ui,/\$\('#login'\)\.hidden=true/);
   assert.match(ui,/hostMode \|\| composeAvailability\.reason==='ready'/);
-  assert.match(ui,/providerComposeAvailability\(status,\{hostMode:window\.ordaxHost\?\.hostMode===true\}\)/);
+  assert.match(ui,/providerTaskComposeAvailability\(status,\{hostMode:window\.ordaxHost\?\.hostMode===true\}\)/);
 });
 
 // Exercise actual production submit callback against a minimal isolated UI.
@@ -134,7 +156,7 @@ function mount({allowed,send}){
     currentTaskId:taskId,
     currentTask:{draft_revision:2,chat_url:null,continuation:{total_messages:0},messages:[]},
     composeAvailability:{allowed,reason:allowed?'ready':'login_required'},
-    submittingTaskId:null,
+    submittingTaskIds:new Set(),
     draftCache:new Map([[taskId,{revision:2,content:node('#prompt').value}]]),
     $:selector=>selector==='#composer'?{addEventListener:(type,fn)=>{if(type==='submit')callback=fn;}}:node(selector),
     stageDraft:()=>{staged++;},
@@ -162,7 +184,7 @@ test('Enter/submit while signed out never sends, clears text or creates a Run',a
   await f.run();
   assert.equal(f.node('#prompt').value,'Rascunho preservado');
   assert.deepEqual(f.counters(),{staged:1,flushed:0,submissions:0});
-  assert.equal(f.context.submittingTaskId,null);
+  assert.equal(f.context.submittingTaskIds.size,0);
 });
 
 test('provider login expires between UI readiness and transport: draft survives backend denial',async()=>{
@@ -171,7 +193,7 @@ test('provider login expires between UI readiness and transport: draft survives 
   assert.equal(f.node('#prompt').value,'Rascunho preservado');
   assert.equal(f.context.draftCache.get('task_p5_immutable').content,'Rascunho preservado');
   assert.deepEqual(f.counters(),{staged:0,flushed:1,submissions:1});
-  assert.equal(f.context.submittingTaskId,null);
+  assert.equal(f.context.submittingTaskIds.size,0);
 });
 
 test('after confirmed send, draft is cleared only on successful IPC response',async()=>{
@@ -185,4 +207,33 @@ test('after confirmed send, draft is cleared only on successful IPC response',as
   assert.equal(f.node('#prompt').value,'');
   assert.equal(f.context.draftCache.get('task_p5_immutable').content,'');
   assert.equal(f.counters().submissions,1);
+});
+
+test('one pending Task cannot block another Task or trigger a duplicate of itself',async()=>{
+  let releaseFirst;
+  const first=new Promise(resolve=>{releaseFirst=resolve;});
+  const requested=[];
+  const f=mount({allowed:true,send:payload=>{
+    requested.push(payload.taskId);
+    return payload.taskId==='task_p5_immutable'?first:
+      {task:{title:'Second Task',messages:[],checkpoint_record:null,
+        continuation:{total_messages:1}}};
+  }});
+  const sentA=f.run();
+  assert.equal(f.context.submittingTaskIds.has('task_p5_immutable'),true);
+  await f.run();
+  assert.deepEqual(requested,['task_p5_immutable'],'same Task cannot submit twice');
+  f.context.currentTaskId='task_second';
+  f.context.currentTask={draft_revision:1,chat_url:null,
+    continuation:{total_messages:0},messages:[]};
+  f.context.draftCache.set('task_second',{revision:1,content:'Rascunho preservado'});
+  await f.run();
+  assert.deepEqual(requested,['task_p5_immutable','task_second']);
+  assert.equal(f.context.submittingTaskIds.has('task_p5_immutable'),true);
+  assert.equal(f.context.submittingTaskIds.has('task_second'),false);
+  releaseFirst({task:{title:'First Task',messages:[],checkpoint_record:null,
+    continuation:{total_messages:1}}});
+  await sentA;
+  assert.equal(f.context.submittingTaskIds.size,0);
+  assert.equal(f.context.currentTaskId,'task_second');
 });

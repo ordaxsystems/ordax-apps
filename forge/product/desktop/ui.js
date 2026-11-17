@@ -1,6 +1,6 @@
 import { renderLiveStage } from './ui-stage.mjs';
 import { PRODUCT_NAME, PRODUCT_SHORT_NAME } from '../src/product-brand.mjs';
-import { providerComposeAvailability, providerSessionReport, canStartFreshProviderChat, COMPOSE_STATUS_MESSAGES } from '../src/provider-compose-availability.mjs';
+import { providerComposeAvailability, providerTaskComposeAvailability, providerSessionReport, canStartFreshProviderChat, COMPOSE_STATUS_MESSAGES } from '../src/provider-compose-availability.mjs';
 import { resolveProviderLoginAction } from '../src/provider-login-action.mjs';
 import { taskListStatusLabel, taskNavigationStatus } from '../src/task-navigation-status.mjs';
 import { SUPERVISOR_ROLES, supervisorRole } from '../src/supervisor-role-presets.mjs';
@@ -704,7 +704,7 @@ let lastProviderStatus = null;
 let lastProviderPoolSession = null;
 function syncComposerAvailability() {
   // Editor stays enabled: local draft text is NOT a ChatGPT submission.
-  const allowed = composeAvailability.allowed===true && Boolean(currentTaskId) && !submittingTaskId;
+  const allowed = composeAvailability.allowed===true && Boolean(currentTaskId) && !submittingTaskIds.has(currentTaskId);
   const hostMode=window.ordaxHost?.hostMode===true;
   $('#send').disabled = !allowed;
   $('#send').title = allowed ? 'Enviar ao ChatGPT' :
@@ -717,7 +717,8 @@ function syncComposerAvailability() {
   // SAME canonical login/readiness gate at the top of every project screen.
   const gate=$('#forgeProviderGate');
   const pool=lastProviderPoolSession;
-  const poolBlocked=pool?.sendReady===false&&pool.totalWorkers>0;
+  const poolBlocked=pool?.sendReady===false&&pool.totalWorkers>0&&
+    (pool.readyWorkers===0||pool.loginRequired===true);
   const reason=poolBlocked?pool.reason:composeAvailability.reason;
   gate.hidden=reason==='ready';
   $('#forgeProviderGateText').textContent=poolBlocked
@@ -735,12 +736,13 @@ function syncComposerAvailability() {
   $('#composerLogin').hidden = hostMode || composeAvailability.reason==='ready' || composeAvailability.reason==='busy' ||
     (composeAvailability.reason==='conversation_unavailable'&&lastProviderStatus?.auth_state==='session_present');
   const canStartFresh=canStartFreshProviderChat({task:currentTask,status:lastProviderStatus,
-    availability:composeAvailability,activeRun:Boolean(submittingTaskId),hostMode});
+    availability:composeAvailability,activeRun:submittingTaskIds.has(currentTaskId),hostMode});
   $('#recoverProviderConversation').hidden=hostMode||!canStartFresh||composeAvailability.reason!=='conversation_unavailable';
   $('#rotateConversation').disabled=!canStartFresh;
 }
 let navigationEpoch = 0;
-let submittingTaskId = null;
+// Single-flight per Task, not a global lock across independent workers.
+const submittingTaskIds = new Set();
 if(window.ordaxHost?.hostMode===true) {
   composeAvailability=providerComposeAvailability(null,{hostMode:true});
   applyHostProviderLimit();
@@ -1350,7 +1352,7 @@ async function createTask() {
 async function rotateConversation(button=$('#rotateConversation')) {
   if (!currentTaskId) return;
   if(!canStartFreshProviderChat({task:currentTask,status:lastProviderStatus,
-    availability:composeAvailability,activeRun:Boolean(submittingTaskId),hostMode:window.ordaxHost?.hostMode===true})) {
+    availability:composeAvailability,activeRun:submittingTaskIds.has(currentTaskId),hostMode:window.ordaxHost?.hostMode===true})) {
     $('#providerDetail').textContent='A nova conversa só pode ser aberta com sessão observada e sem envio ou execução incertos.';
     return;
   }
@@ -1430,7 +1432,7 @@ async function refreshProvider() {
     lastProviderStatus=status;
     lastProviderPoolSession=Array.isArray(status.worker_pool)?providerSessionReport(status.worker_pool):null;
     syncProviderLoginAction(status);
-    composeAvailability = providerComposeAvailability(status,{hostMode:window.ordaxHost?.hostMode===true});
+    composeAvailability = providerTaskComposeAvailability(status,{hostMode:window.ordaxHost?.hostMode===true});
     // Share the single observed GPT health with the Forjador chat. A ready
     // textarea is not an authenticated session or permission to submit.
     orchestrationUi?.setProviderHealth?.(status);
@@ -1770,7 +1772,7 @@ async function submitTaskMessage(contentOverride = null) {
     input.dispatchEvent(new Event('input', { bubbles:true }));
   }
   const content = input.value.trim();
-  if (!content || submittingTaskId) return false;
+  if (!content || submittingTaskIds.has(currentTaskId)) return false;
   // Enter/requestSubmit cannot bypass the disabled submit button.
   if (!composeAvailability.allowed) {
     syncComposerAvailability();
@@ -1780,7 +1782,7 @@ async function submitTaskMessage(contentOverride = null) {
   const taskId = currentTaskId;
   flushDraft();
   const draftRevision = Math.max(draftCache.get(taskId)?.revision || 0, Number(currentTask?.draft_revision || 0)) + 1;
-  submittingTaskId = taskId;
+  submittingTaskIds.add(taskId);
   syncComposerAvailability();
   // Preserve text until backend accepts the send: logout must not consume drafts.
   $('#runStatus').textContent = currentTask?.chat_url ? 'Enviando…' : currentTask?.continuation?.total_messages ? 'Abrindo nova conversa com memória…' : 'Enviando…';
@@ -1816,7 +1818,7 @@ async function submitTaskMessage(contentOverride = null) {
   } finally {
     $('#runStatus').classList.add('hidden');
     $('#runStatus').textContent = '';
-    submittingTaskId = null;
+    submittingTaskIds.delete(taskId);
     syncComposerAvailability();
     if (currentTaskId === taskId) input.focus();
     refreshProvider();
