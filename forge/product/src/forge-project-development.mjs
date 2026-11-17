@@ -312,7 +312,11 @@ export class ForgeProjectDevelopment {
     return await new Promise((resolve,reject)=>{
       let child;
       try{child=spawn(executable,args,{cwd,env:childEnvironment(),
-        windowsHide:true,stdio:['ignore','pipe','pipe']});}
+        // cmd.exe owns /s /c parsing. Double-escaping the command as a Win32
+        // argument can turn node -e "code()" into a harmless JS string while
+        // returning exit 0. Forward the raw owner-approved command verbatim.
+        windowsHide:true,windowsVerbatimArguments:windows,
+        stdio:['ignore','pipe','pipe']});}
       catch(error){reject(error);return;}
       let stdout=Buffer.alloc(0),stderr=Buffer.alloc(0),outTruncated=false,errTruncated=false;
       let timedOut=false,settled=false,scopeRevoked=false;
