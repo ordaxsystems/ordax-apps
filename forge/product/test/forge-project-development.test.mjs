@@ -73,6 +73,31 @@ test('one native owner grant enables real terminal, Git and revoke through the s
   });
   assert.equal(git.status,'succeeded');
   assert.match(git.result.stdout,/git version/i);
+  // Physical Windows regression: cmd /d /s /c with default Node quoting
+  // makes node -e "console.log(1337)" silently evaluate a JS string and
+  // return exit 0. The real terminal must execute quoted inline code.
+  const inline=await svc.invoke(context,'project_command_run',{
+    projectId:id,requestId:'native_quoted_inline_node',
+    command:'node -e "console.log(1337)"',timeoutMs:15000
+  });
+  assert.equal(inline.status,'succeeded');
+  assert.equal(inline.result.exitCode,0);
+  assert.equal(inline.result.stdout.trim(),'1337');
+  assert.equal(inline.result.stderr.trim(),'');
+  const failure=await svc.invoke(context,'project_command_run',{
+    projectId:id,requestId:'native_inline_nonzero',
+    command:'node -e "process.exit(7)"',timeoutMs:15000
+  });
+  assert.equal(failure.status,'succeeded','the command receipt records its observed exit');
+  assert.equal(failure.result.exitCode,7,'must not report false exit 0');
+  assert.equal(failure.result.commandOutcome,'nonzero_exit');
+  const chained=await svc.invoke(context,'project_command_run',{
+    projectId:id,requestId:'native_quoted_inline_chained',
+    command:'echo BEFORE && node -e "console.log(1337)" && echo AFTER',
+    timeoutMs:15000
+  });
+  assert.equal(chained.result.exitCode,0);
+  assert.match(chained.result.stdout,/BEFORE[\s\S]*1337[\s\S]*AFTER/);
   await assert.rejects(svc.invoke(context,'project_command_run',{
     projectId:id,requestId:'native_directory_escape',command:'echo NOT_ALLOWED',
     workingDirectory:'../'
