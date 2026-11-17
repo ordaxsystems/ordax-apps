@@ -62,7 +62,7 @@ test('global banner uses same fail-closed status including the Forjador layout',
   assert.match(html,/id="forgeProviderGateLogin"/);
   assert.match(script,/gate\.hidden=reason==='ready'/);
   assert.match(script,/GPT Web sem login nesta sessão do Forge/);
-  assert.match(script,/composeAvailability = providerComposeAvailability\(status/);
+  assert.match(script,/composeAvailability = providerTaskComposeAvailability\(status/);
   assert.match(script,/forgeProviderGateLogin'\)\.addEventListener\('click',\(\)=>\$\('#login'\)\.click\(\)\)/);
   assert.match(css,/\.forge-provider-gate:not\(\[hidden\]\)/);
   assert.match(main,/sessionHealth:async\(\)=>\{/);
@@ -88,7 +88,7 @@ test('actual Forjador renderer gate visibly reports logout and blocks sending',(
     $,window:{ordaxHost:{hostMode:false}},
     composeAvailability:{allowed:false,reason:'login_required'},
     currentTaskId:'task_example',currentTask:{chat_url:null},
-    submittingTaskId:null,lastProviderStatus:{auth_state:'anonymous'},lastProviderPoolSession:null,
+    submittingTaskIds:new Set(),lastProviderStatus:{auth_state:'anonymous'},lastProviderPoolSession:null,
     COMPOSE_STATUS_MESSAGES:{login_required:'Entre no ChatGPT.',ready:'Sessão observada.',
       unverified:'Sessão não confirmada.',host_auth_unavailable:'Host sem GPT.'},
     canStartFreshProviderChat:()=>false
@@ -109,6 +109,13 @@ test('actual Forjador renderer gate visibly reports logout and blocks sending',(
   vm.runInContext("lastProviderPoolSession={sendReady:true,totalWorkers:4,readyWorkers:4,loginRequired:false,reason:'ready'};syncComposerAvailability();",context);
   assert.equal($('#forgeProviderGate').hidden,true);
   assert.equal($('#send').disabled,false);
+  vm.runInContext("lastProviderPoolSession={sendReady:false,totalWorkers:4,readyWorkers:3,loginRequired:false,reason:'busy'};syncComposerAvailability();",context);
+  assert.equal($('#forgeProviderGate').hidden,true,'three safe lanes do not trigger a false all-workers-login banner');
+  assert.equal($('#send').disabled,false);
+  vm.runInContext("submittingTaskIds.add('task_example');syncComposerAvailability();",context);
+  assert.equal($('#send').disabled,true,'same Task is single-flight');
+  vm.runInContext("currentTaskId='task_other';syncComposerAvailability();",context);
+  assert.equal($('#send').disabled,false,'another Task can use an idle lane');
   vm.runInContext("window.ordaxHost.hostMode=true;composeAvailability={allowed:false,reason:'host_auth_unavailable'};syncComposerAvailability();",context);
   assert.equal($('#forgeProviderGate').hidden,false);
   assert.equal($('#forgeProviderGateLogin').hidden,true);

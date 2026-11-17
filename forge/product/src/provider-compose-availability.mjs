@@ -24,6 +24,18 @@ export function providerComposeAvailability(status,{hostMode=false}={}) {
   return base;
 }
 
+// Task sends use the existing pool scheduler; a busy primary browser must
+// not serialize another Task when a different worker has observed readiness.
+// Exact lane authentication and MCP app selection remain mandatory in main.
+export function providerTaskComposeAvailability(status,{hostMode=false}={}) {
+  const primary=providerComposeAvailability(status,{hostMode});
+  if(hostMode||primary.allowed)return primary;
+  const lanes=Array.isArray(status?.worker_pool)?status.worker_pool:[];
+  if(lanes.some(lane=>providerComposeAvailability(lane).allowed))
+    return {allowed:true,reason:'ready'};
+  return primary;
+}
+
 // Read-only status for Forge MCP clients. A working App transport is not a
 // logged-in ChatGPT session. Never export cookies, account info or page text.
 export function providerSessionReport(health){
