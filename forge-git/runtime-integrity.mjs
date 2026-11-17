@@ -42,6 +42,11 @@ export function makeForgeGitRuntimeManifest(root,files){
   return {schema:FORGE_GIT_RUNTIME_SCHEMA,
     files:ordered.map(relative=>({path:relative,sha256:fileHash(root,relative)}))};
 }
+export function assertForgeGitRuntimeGate({packaged,proof}={}){
+  if(!proof||proof.status==='invalid'||(packaged===true&&proof.verified!==true))
+    throw Error('forge_git_runtime_integrity_failed');
+  return proof;
+}
 export function verifyForgeGitRuntimeManifest(root,{
   manifestPath=path.join(root,'forge-git','runtime-source.json')
 }={}){
