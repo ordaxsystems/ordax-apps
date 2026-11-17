@@ -53,8 +53,13 @@ jobs:
           before="$BEFORE"
           # A full PR must be validated once. Only subsequent documentation-only
           # pushes with a successful previous head may reuse that proof.
+          # Rebase/force-push may remove the previous PR HEAD from checkout.
+          # A missing or non-ancestor predecessor cannot justify reusing CI;
+          # keep windows_required=true and run the full Windows validation.
           if [[ "$EVENT" == "pull_request" && "$ACTION" == "synchronize" &&
-                "$before" =~ ^[0-9a-f]{40}$ ]]; then
+                "$before" =~ ^[0-9a-f]{40}$ ]] &&
+                git cat-file -e "$before^{commit}" 2>/dev/null &&
+                git merge-base --is-ancestor "$before" "$AFTER"; then
             git diff --check "$before" "$AFTER"
             git diff --name-only "$before" "$AFTER" > "$RUNNER_TEMP/orchestrator-change-paths"
             if [[ "$(node forge/scripts/ci-scope.mjs "$RUNNER_TEMP/orchestrator-change-paths")" == "false" ]]; then
@@ -67,7 +72,9 @@ jobs:
               fi
             fi
           elif [[ "$EVENT" == "push" && "$BEFORE" =~ ^[0-9a-f]{40}$ &&
-                  ! "$BEFORE" =~ ^0{40}$ ]]; then
+                  ! "$BEFORE" =~ ^0{40}$ ]] &&
+                  git cat-file -e "$BEFORE^{commit}" 2>/dev/null &&
+                  git merge-base --is-ancestor "$BEFORE" "$AFTER"; then
             git diff --check "$BEFORE" "$AFTER"
             git diff --name-only "$BEFORE" "$AFTER" > "$RUNNER_TEMP/orchestrator-change-paths"
             if [[ "$(node forge/scripts/ci-scope.mjs "$RUNNER_TEMP/orchestrator-change-paths")" == "false" ]]; then
