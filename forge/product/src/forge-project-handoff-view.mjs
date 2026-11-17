@@ -1,5 +1,6 @@
 import {forgeProjectFileReceiptView} from './forge-project-file-receipts.mjs';
 import {forgeProjectMissionsView} from './forge-project-missions-view.mjs';
+import {forgeVerifiedWorkAcceptances} from './forge-work-acceptance-evidence.mjs';
 
 // Deterministic handoff read model. Rehydrates one project from canonical SQLite;
 // it does not summarize with a model, rotate chats or verify external artifacts.
@@ -37,6 +38,7 @@ export function forgeProjectHandoffView(store,projectId,{taskId=null}={}) {
     status,updated_at AS recordedAt
     FROM forge_task_worktrees WHERE project_id=? AND workspace_session_id=?
     ORDER BY updated_at DESC,task_id LIMIT 256`).all(projectId,session):[];
+  const acceptedWorks=forgeVerifiedWorkAcceptances(db,projectId,session);
   const branches=new Map(worktreeRows.map(row=>[row.taskId,{
     branchName:row.branchName,baseHeadSha:row.baseHeadSha,
     worktreeStatus:row.status,recordedAt:row.recordedAt,
@@ -110,7 +112,9 @@ export function forgeProjectHandoffView(store,projectId,{taskId=null}={}) {
       acceptanceCriteriaVerified:false,semanticReviewPerformed:false},
     counts,
     tasks:tasks.map(row=>({...row,branchEvidence:branches.get(row.taskId)||null,
-      physicalArtifactVerified:false,completionVerified:false})),
+      physicalArtifactVerified:false,
+      completionVerified:acceptedWorks.has(row.taskId),
+      acceptanceEvidence:acceptedWorks.get(row.taskId)||null})),
     recentMessages:messageRows.map(({content,...row})=>({...row,...excerpt(content)})),
     acceptedMemory:memories.map(({content,...row})=>({...row,...excerpt(content,1800),
       editorialNoteOnly:true,externalEffectVerified:false})),

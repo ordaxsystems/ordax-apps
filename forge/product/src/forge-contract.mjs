@@ -32,6 +32,108 @@ const definitions = [
   ['project_worktree_review','Inspect one active Task worktree against the current clean main repository: exact heads, changed file names and ahead/behind counts. No merge, file write, GPT send or Git mutation.',{projectId:id,taskId:id},['projectId','taskId'],true],
   ['project_worktree_verify','Run one explicit verification command in an active Task worktree using the existing owner-approved terminal. Verification succeeds only when the command exits zero and both main/worktree remain clean on the exact same Git heads before and after. Never merges.',{projectId:id,taskId:id,command:text(8000),timeoutMs:{type:'integer',minimum:1000,maximum:1800000}},['projectId','taskId','command'],false],
   ['project_worktree_integrate','Integrate one reviewed Task worktree into the clean main repository. Requires exact reviewed main/branch heads plus successful project_worktree_verify receipts recorded on that same branch head. Conflicts are aborted and never auto-resolved.',{projectId:id,taskId:id,expectedBranchHeadSha:{...text(40),pattern:'^[a-f0-9]{40}$'},expectedMainHeadSha:{...text(40),pattern:'^[a-f0-9]{40}$'},verificationReceiptIds:{type:'array',items:id,minItems:1,maxItems:16}},['projectId','taskId','expectedBranchHeadSha','expectedMainHeadSha','verificationReceiptIds'],false],
+  ['work_accept','Accept a previously integrated Task only after its canonical integration, verified Task worktree receipts, latest succeeded GPT Run, and fresh native tests on a clean integrated main HEAD. Stores one durable acceptance receipt; no provider send, deployment or product certification.',{projectId:id,taskId:id,integrationReceiptId:id,expectedIntegratedHeadSha:{...text(40),pattern:'^[a-f0-9]{40} Requires one-time native Owner approval; no per-command confirmation. This command inherits Windows user privileges, so the project folder is a working directory, NOT a sandbox. Successful Task-scoped commands record the exact Git HEAD observed after completion for Integrator verification. Avoid secrets in commands and output.',{projectId:id,taskId:id,command:text(8000),workingDirectory:text(1000,0),timeoutMs:{type:'integer',minimum:1000,maximum:1800000}},['projectId','command'],false],
+  ['project_files_list','List up to 100 entries in the project workspace or explicitly scoped Task worktree using relative paths; rejects internal worktree administration, traversal and reparse points.',{projectId:id,taskId:id,directory:text(240,0)},['projectId'],true],
+  ['project_file_read','Read one UTF-8 file up to 64 KiB in the authorized project workspace or Task worktree, with SHA-256. No arbitrary disk access.',{projectId:id,taskId:id,path:text(240)},['projectId','path'],true],
+  ['project_file_write','Create or replace one UTF-8 file up to 64 KiB inside the Forge-bound project workspace or explicitly scoped Task worktree. Existing files require previous SHA-256; writes receive durable receipts and checked readback. Never chooses a folder or grants access.',{projectId:id,taskId:id,path:text(240),content:text(65536,0),expectedSha256:{...text(64),pattern:'^[a-f0-9]{64}$'}},['projectId','path','content'],false],
+  ['repository_observe','Read bounded GitHub HEAD metadata only after the owner port verifies and rechecks a project-scoped grant; cache only historical metadata in the App Store. No live authorization, file content, PR mutation or GPT send.',{projectId:id},['projectId'],true],
+  ['workspace_status','Inspect verified project-local workspace bindings and capability availability. No filesystem access.',{projectId:id},['projectId'],true],
+  ['workspace_snapshot','Read a bounded Runtime-verified workspace summary through a project-scoped resource grant.',{projectId:id,bindingId:id},['projectId','bindingId'],true],
+  ['workspace_bind','Bind a preauthorized opaque Runtime resource to a project. Never accepts a filesystem path or grants authority.',{projectId:id,deviceId:id,resourceId:{...text(180),pattern:'^resource_[A-Za-z0-9_-]{8,160}$'}},['projectId','deviceId','resourceId'],false],
+  ['project_create','Create an isolated Forge project and optionally bind its canonical GitHub repository URL. No repository contents are read.',{name:text(140),objective:text(4000,0),repositoryUrl:text(300,0)},['name'],false],
+  ['project_quick_create','Create one empty Forge project and its Forjador chat with no name, goal, GPT work, prompt or provider send required.',{creationNonce:id},['creationNonce'],false],
+  ['project_auto_title','Suggest the title of a still-untitled Forge project from its first persisted user chat message. Does not overwrite a user title, call another model or send GPT.',{projectId:id},['projectId'],false],
+  ['mission_create','Atomically create a project, coordinator and first work conversation with the mission saved as a draft. Does not submit to GPT.',{name:text(140,0),mission:text(4000),repositoryUrl:text(300,0)},['mission'],false],
+  ['project_rename','Rename one accessible project. Does not alter its repository or work.',{projectId:id,name:text(140)},['projectId','name'],false],
+  ['project_delete','Permanently delete one confirmed project and its App-owned conversations. Blocks running or uncertain effects, active observation and resource bindings. Never removes external filesystem projects.',{projectId:id,confirmName:text(140)},['projectId','confirmName'],false],
+  ['project_observation_set','Persist or revoke explicit project-level intent to begin read-only observation. Never starts a scheduler, authenticates GitHub, submits GPT or grants authority.',{projectId:id,enabled:{type:'boolean'}},['projectId','enabled'],false],
+  ['project_repository_set','Set or clear the project GitHub remote reference. This stores a URL only and does not read or write the repository.',{projectId:id,repositoryUrl:text(300,0)},['projectId','repositoryUrl'],false],
+  ['orchestrators_list','List coordinators of one project.',{projectId:id},['projectId'],true],
+  ['orchestrator_create','Create a coordinator with persistent mission and its own local conversation.',{projectId:id,name:text(140),mission:text(4000)},['projectId','name','mission'],false],
+  ['orchestrator_pause','Pause or resume coordination; does not cancel an already submitted provider request.',{projectId:id,orchestratorId:id,paused:{type:'boolean'}},['projectId','orchestratorId','paused'],false],
+  ['continuity_status','Inspect durable post-run analysis, blockers and required reconciliation.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
+  ['continuity_set','Opt in or out of automatic analysis after confirmed work runs and configure the bounded local periodic review interval. Never authorizes GPT sends.',{projectId:id,orchestratorId:id,enabled:{type:'boolean'},reviewIntervalMinutes:{type:'integer',minimum:5,maximum:1440}},['projectId','orchestratorId','enabled'],false],
+  ['continuity_proposals_set','Opt in or out of at most two advisory next-work proposals after confirmed analyses. No GPT sends.',{projectId:id,orchestratorId:id,enabled:{type:'boolean'}},['projectId','orchestratorId','enabled'],false],
+  ['continuity_followup_prepare','Prepare the exact evidence-backed next prompt on the original GPT work Task after an explicit user action. Does not submit; may rotate a canonical conversation only when the reviewed decision requires it.',{projectId:id,orchestratorId:id,reviewRunId:id},['projectId','orchestratorId','reviewRunId'],false],
+  ['autonomous_dialogue_status','Read the latest bounded one-mission dialogue; no external effects.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
+  ['autonomous_continuous_set','Enable or revoke revocable project-scoped continuous technical continuation. Each cycle still requires confirmed GPT Runs, an evidence-scoped progress review, and no uncertain/running receipts. Does not grant external tools or certify files.',{projectId:id,orchestratorId:id,enabled:{type:'boolean'}},['projectId','orchestratorId','enabled'],false],
+  ['autonomous_dialogue_continue','Explicitly authorize the next bounded technical cycle using the exact previous app-owned decision and confirmed GPT Run. Never replay an uncertain send or certify external effects.',{projectId:id,orchestratorId:id,sourceMissionId:id},['projectId','orchestratorId','sourceMissionId'],false],
+  ['work_create','Create a work conversation under a project/coordinator. No provider submission.',{projectId:id,orchestratorId:id,title:text(140)},['projectId','orchestratorId','title'],false],
+  ['work_batch_create','Atomically register 2–16 independent work conversations with one coordinator. No GPT send or authorization grant.',{projectId:id,orchestratorId:id,titles:{type:'array',items:text(140),minItems:2,maxItems:16}},['projectId','orchestratorId','titles'],false],
+  ['work_draft_set','Set the explicit initial prompt draft for one unstarted work. Local state only; never submits GPT.',{projectId:id,taskId:id,content:text(6000),draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','taskId','content','draftRevision'],false],
+  ['work_dependency_set','Replace prerequisite work IDs for one existing work, without dispatching.',{projectId:id,taskId:id,dependsOn:{type:'array',items:id,maxItems:64}},['projectId','taskId','dependsOn'],false],
+  ['work_parallel_launch','Record one durable intent to launch 2–16 prepared independent works after the current parent Runs settle. The tool call itself sends zero GPT messages; child sends use canonical work_send receipts.',{projectId:id,taskIds:{type:'array',items:id,minItems:2,maxItems:16}},['projectId','taskIds'],false],
+  ['work_list','List work conversations, excluding the coordinator chat.',{projectId:id,orchestratorId:id},['projectId'],true],
+  ['work_plan','Inspect bounded dependency readiness of all works in one project, without approving or dispatching any message.',{projectId:id,maxParallel:{type:'integer',minimum:1,maximum:32}},['projectId'],true],
+  ['work_get','Inspect a scoped work and its provider segments without browser navigation.',{projectId:id,taskId:id},['projectId','taskId'],true],
+  ['work_messages','Read a bounded page of persisted work or coordinator messages.',{projectId:id,taskId:id,before:text(1000),limit:{type:'integer',minimum:1,maximum:50}},['projectId','taskId'],true],
+  ['work_send','Send one authorized prompt through the existing App executor. An uncertain command must never be replayed.',{projectId:id,taskId:id,content:text(6000),draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','taskId','content'],false],
+  ['conversation_rotate','Prepare a new GPT segment for the same work. Does not send or bypass limits.',{projectId:id,taskId:id},['projectId','taskId'],false],
+  ['work_failover_prepare','Prepare a replacement GPT session only after the previous work attempt is terminally failed and all effects are reconciled. Rotates the same Task, preserves canonical state and emits a fencing generation; sends zero GPT messages.',{projectId:id,taskId:id},['projectId','taskId'],false],
+  ['forjador_send','Send one normal Forjador chat turn directly to the GPT Web executor in the same project conversation. Uses canonical Run and command receipts; uncertain delivery is never replayed.',{projectId:id,orchestratorId:id,content:text(4000),draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','orchestratorId','content'],false],
+  ['orchestrator_analyze','Inspect bounded local project state, or conservatively classify one receipt-backed GPT Run using the app-owned policy. No model call and no GPT submission.',{projectId:id,orchestratorId:id,reviewRunId:id},['projectId','orchestratorId'],false],
+  ['orchestrator_prepare','Create one review-only local work proposal directly from the recorded user text. No model call and no GPT submission.',{projectId:id,orchestratorId:id,content:text(4000),draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','orchestratorId','content'],false],
+  ['proposals_list','Read pending work proposals for the selected coordinator.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
+  ['proposal_review','Approve creation of one local work with a saved draft, or reject it. Never submits to GPT.',{projectId:id,orchestratorId:id,actionId:id,approved:{type:'boolean'}},['projectId','orchestratorId','actionId','approved'],false],
+  ['proposal_send','After native confirmation, submit the current draft of one prepared work through the existing executor. First send only; uncertain sends never replay.',{projectId:id,orchestratorId:id,actionId:id,draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','orchestratorId','actionId','draftRevision'],false],
+  ['command_get','Inspect a previously accepted command without repeating it.',{commandId:id},['commandId'],true]
+];
+export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,description,properties,required,readOnly]) => ({
+  name:operation.startsWith('forge_')?operation:'forge_'+operation,operation,description,readOnly,
+  inputSchema:{type:'object',additionalProperties:false,
+    properties:{...(!readOnly?{requestId}:{}),...properties},
+    required:[...(!readOnly?['requestId']:[]),...required]},
+  annotations:{readOnlyHint:readOnly,destructiveHint:['work_accept','project_delete','project_command_run','project_worktree_verify','project_worktree_integrate','app_ui_click'].includes(operation),
+    idempotentHint:!['project_command_run','project_worktree_verify'].includes(operation),
+    openWorldHint:['project_command_run','project_worktree_verify','work_send','proposal_send','forjador_send','autonomous_dialogue_start','autonomous_dialogue_continue','app_ui_click','app_ui_fill'].includes(operation)}
+})));
+
+export function validateOrchestratorInput(operation, input) {
+  const tool=ORCHESTRATOR_TOOLS.find(item=>item.operation===operation);
+  if(!tool)throw Error('orchestrator_unknown_operation');
+  if(!input || typeof input!=='object' || Array.isArray(input) ||
+    Object.keys(input).some(key=>!Object.hasOwn(tool.inputSchema.properties,key)))
+    throw Error('orchestrator_invalid_input');
+  const normalized={};
+  for(const [key,schema] of Object.entries(tool.inputSchema.properties)) {
+    const value=input[key];
+    if(value===undefined) {
+      if(tool.inputSchema.required.includes(key))throw Error('orchestrator_invalid_input');
+      continue;
+    }
+    if(schema.type==='string') {
+      if(typeof value!=='string' || value.includes('\0') || value.length>schema.maxLength ||
+        value.trim().length<schema.minLength || (schema.pattern&&!new RegExp(schema.pattern).test(value)))
+        throw Error('orchestrator_invalid_input');
+      // Preserve exact bytes of file content and exact relative path syntax;
+      // silently trimming either would bypass validation or alter source code.
+      normalized[key]=((operation.startsWith('project_file_')&&['content','path'].includes(key))||
+        (operation==='project_files_list'&&key==='directory')||
+        (operation==='project_view_live_fill'&&key==='value')||
+        (operation==='app_ui_fill'&&key==='value'))?value:value.trim();
+    } else if(schema.type==='array') {
+      const item=schema.items;
+      if(!Array.isArray(value)||value.length>schema.maxItems||
+        new Set(value).size!==value.length||value.some(entry=>
+          typeof entry!=='string'||entry.includes('\0')||
+          entry.length>item.maxLength||entry.trim().length<item.minLength||
+          (item.pattern&&!new RegExp(item.pattern).test(entry))))
+        throw Error('orchestrator_invalid_input');
+      normalized[key]=[...value];
+    } else if(schema.type==='boolean') {
+      if(typeof value!=='boolean')throw Error('orchestrator_invalid_input');
+      normalized[key]=value;
+    } else {
+      if(!Number.isSafeInteger(value)||value<schema.minimum||value>schema.maximum)
+        throw Error('orchestrator_invalid_input');
+      normalized[key]=value;
+    }
+  }
+  if(Object.hasOwn(normalized,'repositoryUrl'))
+    normalized.repositoryUrl=normalizeGitHubRepositoryUrl(normalized.repositoryUrl);
+  return {tool,input:normalized};
+}
+},testCommand:text(8000),timeoutMs:{type:'integer',minimum:1000,maximum:1800000}},['projectId','taskId','integrationReceiptId','expectedIntegratedHeadSha','testCommand'],false],
   ['project_command_run','Run a real terminal command in the owner-bound workspace or an explicitly scoped Task worktree. Requires one-time native Owner approval; no per-command confirmation. This command inherits Windows user privileges, so the project folder is a working directory, NOT a sandbox. Successful Task-scoped commands record the exact Git HEAD observed after completion for Integrator verification. Avoid secrets in commands and output.',{projectId:id,taskId:id,command:text(8000),workingDirectory:text(1000,0),timeoutMs:{type:'integer',minimum:1000,maximum:1800000}},['projectId','command'],false],
   ['project_files_list','List up to 100 entries in the project workspace or explicitly scoped Task worktree using relative paths; rejects internal worktree administration, traversal and reparse points.',{projectId:id,taskId:id,directory:text(240,0)},['projectId'],true],
   ['project_file_read','Read one UTF-8 file up to 64 KiB in the authorized project workspace or Task worktree, with SHA-256. No arbitrary disk access.',{projectId:id,taskId:id,path:text(240)},['projectId','path'],true],

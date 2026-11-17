@@ -28,6 +28,9 @@ export function projectWorkPlan({projectId,works,edges,maxParallel=4}={}){
     else if(['reconciliation_required','execution_unresponsive'].includes(monitor)||
       ['interrupted','indeterminate','uncertain'].includes(latest))state='uncertain';
     else if(monitor==='failed'||latest==='failed'||work.status==='error')state='failed';
+    // GPT replies and a manually modified task.status never prove completion.
+    else if(work.acceptanceVerified===true&&work.status==='completed'&&
+      latest==='succeeded')state='succeeded';
     // A succeeded GPT Run proves only the provider response, never repository
     // effects, acceptance criteria, or independent tests. Without a trusted
     // verification receipt, a dependent work item must remain blocked.
@@ -36,7 +39,8 @@ export function projectWorkPlan({projectId,works,edges,maxParallel=4}={}){
       (monitor==null||monitor==='awaiting_instruction'))state='pending';
     return {id:work.id,projectId,state,dependsOn:dependencies.get(work.id),
       responseObserved:latest==='succeeded',
-      verificationRequired:latest==='succeeded'&&state==='blocked'};
+      verificationRequired:latest==='succeeded'&&state==='blocked',
+      effectVerified:state==='succeeded'};
   });
   const result=tasks.length?planParallelWork({tasks,maxParallel}):{
     dispatch:[],blocked:[],waiting:[],capacity:maxParallel,remainingReady:0,inFlight:0
@@ -51,7 +55,7 @@ export function projectWorkPlan({projectId,works,edges,maxParallel=4}={}){
     remainingCandidates:result.remainingReady,
     workers:Object.freeze(tasks.map(t=>Object.freeze({taskId:t.id,state:t.state,
       dependsOn:Object.freeze([...t.dependsOn]),
-      responseObserved:t.responseObserved,effectVerified:false,
+      responseObserved:t.responseObserved,effectVerified:t.effectVerified,
       verificationRequired:t.verificationRequired}))),
     automaticDispatchAllowed:false,
     qualityCertified:false,
