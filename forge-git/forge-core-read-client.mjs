@@ -29,12 +29,15 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
   if(typeof fetchImpl!=='function')throw Error('forge_mcp_fetch_unavailable');
   let auth=null,session=null,epoch=0,nextId=1;
   let selectedProjectId=null,selectedTaskId=null,selectedHandoff=null;
-  let projection=null,prepared=null;
+  let projection=null,prepared=null,nativeDispatchSupported=false;
   const dispatchedRevisions=new Set();
   const connected=()=>Boolean(auth&&session);
   const status=()=>({connected:connected(),source:'forge_local_mcp_authorized',
     loopbackOnly:true,credentialPersisted:false,
-    limitedDraftWrite:true,providerDispatchAllowed:connected(),
+    limitedDraftWrite:true,
+    providerDispatchAllowed:connected()&&nativeDispatchSupported,
+    dispatchBlockReason:connected()&&!nativeDispatchSupported
+      ?'forge_native_dispatch_update_required':null,
     preparedTaskId:prepared?.taskId??null,
     preparedDraftRevision:prepared?.draftRevision??null,
     selectedProjectId,selectedTaskId,
@@ -73,7 +76,7 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
     const oldAuth=auth,oldSession=session;
     ++epoch;auth=null;session=null;projection=null;
     selectedProjectId=null;selectedTaskId=null;selectedHandoff=null;
-    prepared=null;dispatchedRevisions.clear();
+    prepared=null;nativeDispatchSupported=false;dispatchedRevisions.clear();
     void closeGrant(oldAuth,oldSession);
   }
   async function call(name,args={},mode='read'){
@@ -110,8 +113,29 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
         !tools.some(tool=>tool?.name===name&&tool?.annotations?.readOnlyHint===true))||
         !tools.some(tool=>tool?.name===DRAFT_TOOL&&tool?.annotations?.readOnlyHint===false))
         throw Error('forge_mcp_app_scope_required');
+      let dispatchCapable=false;
+      try{
+        // The native Forge may be older than this client. Read-only MCP
+        // stays available; never advertise an unsupported provider send.
+        const probe=await fetchImpl(credentials.endpoint.replace(/\/mcp$/,'/owner-dispatch'),{
+          method:'GET',headers:{
+            Authorization:'Bearer '+credentials.token,
+            'Mcp-Session-Id':initialized
+          },signal:AbortSignal.timeout(3500)
+        });
+        if(probe.status===200){
+          const raw=await probe.text();
+          if(raw.length<=3000){
+            const capability=JSON.parse(raw);
+            dispatchCapable=capability?.schema==='ordax.forge.owner-dispatch-capability/1'&&
+              capability.operation==='work_send'&&
+              capability.requiresNativeApproval===true;
+          }
+        }
+      }catch{dispatchCapable=false;}
       if(version!==epoch)throw Error('forge_mcp_connection_changed');
       auth=credentials;session=initialized;
+      nativeDispatchSupported=dispatchCapable;
       return status();
     }catch(error){
       await closeGrant(credentials,initialized);
@@ -275,6 +299,8 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
       coreReceiptStatus:'succeeded',readbackVerified:true};
   }
   async function dispatchWork({taskId,content,draftRevision}={}){
+    if(!nativeDispatchSupported)
+      throw Error('forge_native_dispatch_update_required');
     if(!connected()||!selectedHandoff||!prepared||
        typeof content!=='string'||content.length<4||content.length>6000)
       throw Error('forge_owner_dispatch_preparation_required');

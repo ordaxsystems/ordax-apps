@@ -74,6 +74,8 @@ test('renderer never presents legacy JSON as canonical project state and masks t
     }
   });
   assert.equal(el('send').disabled,true,'unregistered GPT transport must remain blocked even with MCP connection');
+  assert.equal(el('core-dispatch').disabled,true);
+  assert.match(el('core-connection').textContent,/atualize o Forge nativo/);
   assert.equal(el('save-draft').disabled,true,'explicit Task selection is required');
   assert.match(el('core-summary').textContent,/Pizzaria/);
   assert.match(el('core-tasks').textContent,/unresolved_command_receipts/);
@@ -134,6 +136,7 @@ test('renderer never presents legacy JSON as canonical project state and masks t
       mcpReceiptVerified:true,effectVerified:false};
   };
   observer({coreStatus:{connected:true,selectedProjectId:'project_A',
+    providerDispatchAllowed:true,
     preparedTaskId:'task_A',preparedDraftRevision:3},
     coreProjection:{
       selectedProjectId:'project_A',selectedTaskId:'task_A',

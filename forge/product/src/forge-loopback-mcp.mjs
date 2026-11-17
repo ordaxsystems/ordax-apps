@@ -103,7 +103,7 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
       const ownerRoute=req.url==='/owner-dispatch';
       if((!ownerRoute&&req.url!=='/mcp')||
          !['POST','DELETE','GET'].includes(req.method)||
-         (ownerRoute&&req.method!=='POST'))
+         (ownerRoute&&!['POST','GET'].includes(req.method)))
         return json(res,404,{error:'forge_mcp_route_unavailable'});
       // No browser origins: prevents web pages from using local owner powers.
       if(req.headers.origin!==undefined)return json(res,403,{error:'forge_mcp_browser_origin_denied'});
@@ -111,9 +111,22 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
       const grant=authorizedGrants().find(item=>constantMatch(
         req.headers.authorization,'Bearer '+item.token));
       if(!grant)return json(res,401,{error:'forge_mcp_authorization_required'});
-      if(req.method==='GET')return json(res,405,{error:'forge_mcp_sse_not_supported'},
-        {Allow:'POST, DELETE'});
       const sessionId=req.headers['mcp-session-id'];
+      if(req.method==='GET'){
+        if(!ownerRoute)return json(res,405,{error:'forge_mcp_sse_not_supported'},
+          {Allow:'POST, DELETE'});
+        if(grant.projectId!==FORGE_APP_MCP_SCOPE||typeof ownerDispatch!=='function')
+          return json(res,403,{error:'forge_owner_dispatch_scope_denied'});
+        if(typeof sessionId!=='string'||!SESSION.test(sessionId)||
+           sessions.get(sessionId)?.grant!==grant)
+          return json(res,404,{error:'forge_mcp_session_required'});
+        if(!authorizeProject(grant.projectId))
+          return json(res,403,{error:'forge_mcp_project_revoked'});
+        return json(res,200,{
+          schema:'ordax.forge.owner-dispatch-capability/1',
+          operation:'work_send',requiresNativeApproval:true
+        });
+      }
       if(req.method==='DELETE'){
         const entry=sessions.get(sessionId);
         if(typeof sessionId!=='string'||!entry||entry.grant!==grant)

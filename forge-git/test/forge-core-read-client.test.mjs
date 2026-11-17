@@ -48,6 +48,10 @@ test('read-only client derives projects, works and blockers from real Forge MCP/
   const connected=await client.connect({endpoint:started.endpoint,token:started.token});
   assert.equal(connected.connected,true);
   assert.equal(connected.credentialPersisted,false);
+  assert.equal(connected.providerDispatchAllowed,false,
+    'old Forge still supports canonical reads without advertising dispatch');
+  assert.equal(connected.dispatchBlockReason,'forge_native_dispatch_update_required');
+  await assert.rejects(client.dispatchWork({}),/forge_native_dispatch_update_required/);
   const view=await client.refresh();
   assert.equal(view.source,'forge_mcp_live_read');
   assert.equal(view.liveGithubChecked,false);
@@ -269,7 +273,9 @@ test('owner-only Core dispatch creates a real canonical Run and receipt exactly 
   const started=await f.transport.start(FORGE_APP_MCP_SCOPE);
   const client=createForgeCoreReadClient();
   t.after(()=>client.disconnect());
-  await client.connect({endpoint:started.endpoint,token:started.token});
+  const connected=await client.connect({endpoint:started.endpoint,token:started.token});
+  assert.equal(connected.providerDispatchAllowed,true,
+    'owner ingress must be probed before enabling dispatch');
   await client.refresh();
   await client.selectTask(mission.taskId);
   const revision=client.projection().selectedHandoff.selectedTask.draftRevision;

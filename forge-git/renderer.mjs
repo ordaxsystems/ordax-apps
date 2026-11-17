@@ -10,7 +10,9 @@ function renderCore(){
   $('core-disconnect').disabled=operation||!activeCore;
   $('core-refresh').disabled=operation||!activeCore;
   $('core-connection').textContent=activeCore
-    ?'Forge MCP conectado · leitura somente · token não persistido'
+    ?coreStatus?.providerDispatchAllowed===true
+      ?'Forge MCP conectado · envio inicial via confirmação nativa · token não persistido'
+      :'Forge MCP conectado · leitura e rascunho ativos; atualize o Forge nativo para habilitar o envio autorizado.'
     :'Forge MCP desconectado: selecione e autorize a conexão local.';
   const selector=$('core-project');
   selector.replaceChildren();
@@ -43,7 +45,8 @@ function renderCore(){
   taskSelector.disabled=operation||!activeCore||!tasks.length;
   $('save-draft').disabled=operation||!activeCore||!selected||
     coreProjection?.selectedHandoff?.selectedTask?.taskId!==selected;
-  $('core-dispatch').disabled=operation||!activeCore||!selected||
+  $('core-dispatch').disabled=operation||!activeCore||
+    coreStatus?.providerDispatchAllowed!==true||!selected||
     coreStatus?.preparedTaskId!==selected||
     coreStatus?.preparedDraftRevision!==
       coreProjection?.selectedHandoff?.selectedTask?.draftRevision;
