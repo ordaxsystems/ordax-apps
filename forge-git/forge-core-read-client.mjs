@@ -1,4 +1,4 @@
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 // Forge Git UI bridge to the SAME authorized Forge MCP/Core, not another core.
 // Only a selected Task's explicit draft write is allowed; GPT dispatch stays
 // with the native Forge Core Run/receipt mechanism.
@@ -29,11 +29,14 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
   if(typeof fetchImpl!=='function')throw Error('forge_mcp_fetch_unavailable');
   let auth=null,session=null,epoch=0,nextId=1;
   let selectedProjectId=null,selectedTaskId=null,selectedHandoff=null;
-  let projection=null;
+  let projection=null,prepared=null;
+  const dispatchedRevisions=new Set();
   const connected=()=>Boolean(auth&&session);
   const status=()=>({connected:connected(),source:'forge_local_mcp_authorized',
     loopbackOnly:true,credentialPersisted:false,
-    limitedDraftWrite:true,providerDispatchAllowed:false,
+    limitedDraftWrite:true,providerDispatchAllowed:connected(),
+    preparedTaskId:prepared?.taskId??null,
+    preparedDraftRevision:prepared?.draftRevision??null,
     selectedProjectId,selectedTaskId,
     reason:connected()?null:'forge_mcp_connection_required'});
   async function request(method,params,credentials,sessionId,{notification=false}={}){
@@ -70,6 +73,7 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
     const oldAuth=auth,oldSession=session;
     ++epoch;auth=null;session=null;projection=null;
     selectedProjectId=null;selectedTaskId=null;selectedHandoff=null;
+    prepared=null;dispatchedRevisions.clear();
     void closeGrant(oldAuth,oldSession);
   }
   async function call(name,args={},mode='read'){
@@ -205,6 +209,9 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
     const scoped=keepTask?await readScoped(chosen,keepTask):null;
     if(version!==epoch)throw Error('forge_mcp_connection_changed');
     selectedProjectId=chosen;selectedTaskId=keepTask;selectedHandoff=scoped;
+    if(!keepTask||prepared?.taskId!==keepTask||
+       prepared?.projectId!==chosen||
+       prepared?.draftRevision!==scoped?.selectedTask?.draftRevision)prepared=null;
     projection={source:'forge_mcp_live_read',liveGithubChecked:false,
       observedAt:new Date().toISOString(),projects,selectedProjectId:chosen,
       selectedTaskId,selectedHandoff:scoped,handoff,works,orchestrators};
@@ -221,6 +228,8 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
     if(version!==epoch||projectId!==selectedProjectId)
       throw Error('forge_mcp_connection_changed');
     selectedTaskId=taskId;selectedHandoff=scoped;
+    if(prepared?.taskId!==taskId||
+       prepared?.draftRevision!==scoped?.selectedTask?.draftRevision)prepared=null;
     projection={...projection,selectedTaskId,selectedHandoff:scoped};
     return clone(projection);
   }
@@ -257,14 +266,83 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
     if(after.selectedTask.draftRevision!==revision)
       throw Error('forge_mcp_draft_readback_uncertain');
     selectedHandoff=after;
+    prepared={projectId,taskId,draftRevision:revision,
+      contentSha256:saved.contentSha256};
     projection={...projection,selectedTaskId,selectedHandoff:after,
       observedAt:new Date().toISOString()};
     return {projectId,taskId,draftRevision:revision,
       contentSha256:saved.contentSha256,providerMessagesSent:0,
       coreReceiptStatus:'succeeded',readbackVerified:true};
   }
+  async function dispatchWork({taskId,content,draftRevision}={}){
+    if(!connected()||!selectedHandoff||!prepared||
+       typeof content!=='string'||content.length<4||content.length>6000)
+      throw Error('forge_owner_dispatch_preparation_required');
+    const projectId=selectedProjectId,version=epoch;
+    if(taskId!==selectedTaskId||taskId!==prepared.taskId||
+       projectId!==prepared.projectId||
+       draftRevision!==prepared.draftRevision||
+       createHash('sha256').update(content).digest('hex')!==prepared.contentSha256)
+      throw Error('forge_owner_dispatch_draft_changed');
+    const key=projectId+'|'+taskId+'|'+draftRevision;
+    if(dispatchedRevisions.has(key))throw Error('forge_owner_dispatch_already_attempted');
+    // Fresh read-only handoff before the owner requests one Core execution.
+    const live=await readScoped(projectId,taskId);
+    if(version!==epoch||selectedProjectId!==projectId||selectedTaskId!==taskId)
+      throw Error('forge_mcp_connection_changed');
+    if(live.selectedTask.draftRevision!==draftRevision)
+      throw Error('task_draft_revision_conflict');
+    if(live.continuation?.blockedReasons?.length)
+      throw Error('forge_owner_dispatch_continuation_blocked');
+    const credentials=auth,sessionId=session;
+    // One attempt per prepared revision. If HTTP fails after submission,
+    // a fresh click must never automatically replay the uncertain send.
+    dispatchedRevisions.add(key);
+    const response=await fetchImpl(credentials.endpoint.replace(/\/mcp$/,'/owner-dispatch'),{
+      method:'POST',
+      headers:{Authorization:'Bearer '+credentials.token,
+        'Mcp-Session-Id':sessionId,'Content-Type':'application/json'},
+      body:JSON.stringify({
+        schema:'ordax.forge.owner-dispatch/1',operation:'work_send',
+        projectId,taskId,content,draftRevision,
+        requestId:'fg_dispatch_'+randomUUID()
+      }),
+      signal:AbortSignal.timeout(180_000)
+    });
+    if(version!==epoch||credentials!==auth||sessionId!==session)
+      throw Error('forge_owner_dispatch_connection_changed');
+    if(response.status!==200)
+      throw Error('forge_owner_dispatch_unconfirmed_http_'+response.status);
+    const body=await response.text();
+    if(body.length>8_000)throw Error('forge_owner_dispatch_invalid_receipt');
+    let receipt;
+    try{receipt=JSON.parse(body);}catch{throw Error('forge_owner_dispatch_invalid_receipt');}
+    if(receipt?.schema!=='ordax.forge.owner-dispatch-receipt/1'||
+       receipt.taskId!==taskId||
+       typeof receipt.commandId!=='string'||
+       !/^command_[0-9a-f-]{36}$/.test(receipt.commandId)||
+       !['succeeded','failed','uncertain','running'].includes(receipt.status))
+      throw Error('forge_owner_dispatch_invalid_receipt');
+    if(receipt.status==='succeeded'&&
+       (typeof receipt.runId!=='string'||receipt.responseObserved!==true||
+        receipt.providerMessagesSent!==1))
+      throw Error('forge_owner_dispatch_incomplete_run');
+    prepared=null;
+    const updated=await readScoped(projectId,taskId);
+    if(version!==epoch||selectedTaskId!==taskId)
+      throw Error('forge_mcp_connection_changed');
+    selectedHandoff=updated;
+    projection={...projection,selectedHandoff:updated,
+      observedAt:new Date().toISOString()};
+    return Object.freeze({
+      commandId:receipt.commandId,taskId,runId:receipt.runId,
+      status:receipt.status,responseObserved:receipt.responseObserved===true,
+      mcpReceiptVerified:true,effectVerified:false,sendAttempted:true,
+      retryPermitted:false
+    });
+  }
   return Object.freeze({
-    connect,refresh,ping,selectTask,saveWorkDraft,
+    connect,refresh,ping,selectTask,saveWorkDraft,dispatchWork,
     disconnect:invalidate,status,
     projection:()=>projection?clone(projection):null
   });

@@ -145,6 +145,13 @@ function events(){
     emit('Forge MCP: rascunho confirmado no SQLite; zero mensagens GPT enviadas.');
     return receipt;
   });
+  guarded('fg:core-dispatch',async args=>{
+    const receipt=await core.dispatchWork(args);
+    emit(receipt.status==='succeeded'
+      ?'Forge Core: GPT respondeu; Run e comando confirmados (efeitos externos não verificados).'
+      :'Forge Core: envio '+receipt.status+'; consulte o comando e não repita automaticamente.');
+    return receipt;
+  });
   guarded('fg:core-disconnect',()=>{
     core.disconnect();
     emit('Forge MCP desconectado; novas mensagens bloqueadas.');

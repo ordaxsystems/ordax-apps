@@ -123,5 +123,31 @@ test('renderer never presents legacy JSON as canonical project state and masks t
   assert.deepEqual(saved,[{taskId:'task_A',content:'Rascunho de tarefa real',
     expectedRevision:2}]);
   assert.match(el('draft-confirmation').textContent,/Nenhum GPT foi acionado/);
+  assert.equal(el('instruction').value,'Rascunho de tarefa real',
+    'user must see the exact draft during native dispatch confirmation');
+  globalThis.confirm=()=>true;
+  const dispatched=[];
+  window.forgeGit.coreDispatch=async args=>{
+    dispatched.push(args);
+    return {status:'succeeded',taskId:'task_A',
+      commandId:'command_confirmed',runId:'run_confirmed',
+      mcpReceiptVerified:true,effectVerified:false};
+  };
+  observer({coreStatus:{connected:true,selectedProjectId:'project_A',
+    preparedTaskId:'task_A',preparedDraftRevision:3},
+    coreProjection:{
+      selectedProjectId:'project_A',selectedTaskId:'task_A',
+      selectedHandoff:{selectedTask:{taskId:'task_A',draftRevision:3}},
+      projects:[{id:'project_A',name:'Pizzaria'}],
+      works:[{id:'task_A',title:'Cardápio'}],
+      orchestrators:[]
+    }});
+  assert.equal(el('core-dispatch').disabled,false);
+  el('core-dispatch').listeners.get('click')();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(dispatched,[{taskId:'task_A',
+    content:'Rascunho de tarefa real',draftRevision:3}]);
+  assert.match(el('draft-confirmation').textContent,/Run run_confirmed/);
+  assert.match(el('draft-confirmation').textContent,/NÃO verificados/);
   assert.equal(el('instruction').value,'');
 });

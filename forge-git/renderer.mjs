@@ -43,6 +43,10 @@ function renderCore(){
   taskSelector.disabled=operation||!activeCore||!tasks.length;
   $('save-draft').disabled=operation||!activeCore||!selected||
     coreProjection?.selectedHandoff?.selectedTask?.taskId!==selected;
+  $('core-dispatch').disabled=operation||!activeCore||!selected||
+    coreStatus?.preparedTaskId!==selected||
+    coreStatus?.preparedDraftRevision!==
+      coreProjection?.selectedHandoff?.selectedTask?.draftRevision;
   const handoff=coreProjection?.handoff;
   if(!activeCore||!handoff){
     $('core-summary').textContent='Nenhuma leitura canônica confirmada.';
@@ -227,8 +231,8 @@ $('save-draft').addEventListener('click',()=>action(async()=>{
   if(result?.providerMessagesSent!==0||result?.readbackVerified!==true)
     throw Error('Recibo canônico de rascunho não confirmado.');
   $('draft-confirmation').textContent='Rascunho registrado no Core: Task '+taskId+
-    ', revisão '+result.draftRevision+'. Nenhum GPT foi acionado.';
-  $('instruction').value='';
+    ', revisão '+result.draftRevision+
+    '. Nenhum GPT foi acionado. Confira o texto e escolha Executar Task; a janela do Forge solicitará confirmação.';
   apply(await window.forgeGit.state());
 }));
 for(const id of IDS){
@@ -250,6 +254,28 @@ $('refresh').addEventListener('click',()=>action(async()=>{
 $('check-agent').addEventListener('click',()=>action(async()=>{
   const result=await window.forgeGit.agentRefresh(active);
   apply(result);message(result.note);
+}));
+$('core-dispatch').addEventListener('click',()=>action(async()=>{
+  const taskId=coreProjection?.selectedTaskId;
+  const draftRevision=coreStatus?.preparedDraftRevision;
+  const content=$('instruction').value;
+  if(!taskId||!Number.isSafeInteger(draftRevision))
+    throw Error('Salve primeiro o rascunho da Task selecionada.');
+  if(!confirm('Solicitar ao Forge Core o envio único desta Task? A confirmação decisiva ocorrerá no aplicativo Forge. Um resultado incerto nunca será reenviado automaticamente.'))return;
+  message('Forge Core: confirmação nativa necessária; verificando Run e recibo.');
+  const receipt=await window.forgeGit.coreDispatch({taskId,content,draftRevision});
+  if(receipt?.mcpReceiptVerified!==true)
+    throw Error('forge_owner_dispatch_receipt_unverified');
+  if(receipt.status==='succeeded'){
+    $('instruction').value='';
+    $('draft-confirmation').textContent='Run '+receipt.runId+
+      ' e comando '+receipt.commandId+
+      ' confirmados no Core. Efeitos GitHub/arquivo NÃO verificados.';
+  }else{
+    $('draft-confirmation').textContent='Comando '+receipt.commandId+
+      ': '+receipt.status+'. Consulte o Core. NÃO reenviar.';
+  }
+  apply(await window.forgeGit.state());
 }));
 $('send').addEventListener('click',()=>message(
   'Envio direto desativado. Faça o envio no Forge Core para registrar Run e recibos.'
