@@ -1,9 +1,9 @@
-import {createHash} from 'node:crypto';
 import {copyFileSync,existsSync,lstatSync,mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {builtinModules,createRequire} from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {makeForgeGitRuntimeManifest,verifyForgeGitRuntimeManifest} from '../runtime-integrity.mjs';
 
 export const repositoryRoot=fileURLToPath(new URL('../../',import.meta.url));
 export const forgeGitDirectory=path.join(repositoryRoot,'forge-git');
@@ -11,6 +11,7 @@ export const forgeProductDirectory=path.join(repositoryRoot,'forge','product');
 export const productRequire=createRequire(path.join(forgeProductDirectory,'package.json'));
 
 const ENTRYPOINTS=Object.freeze([
+  'forge-git/bootstrap.mjs',
   'forge-git/main.mjs',
   'forge-git/preload.cjs',
   'forge-git/renderer.mjs',
@@ -67,20 +68,23 @@ export function stageForgeGit({sourceRoot=repositoryRoot,stageDirectory}){
   const stage=path.resolve(stageDirectory);
   const files=collectRuntimeFiles(sourceRoot);
   const original=JSON.parse(readFileSync(path.join(sourceRoot,'forge-git','package.json'),'utf8'));
-  const manifest={schema:'ordax.forge-git.runtime-source/1',
-    files:files.map(relative=>{
-      const data=readFileSync(safeFile(sourceRoot,relative));
-      const target=path.join(stage,...relative.split('/'));
-      mkdirSync(path.dirname(target),{recursive:true});
-      copyFileSync(path.join(sourceRoot,...relative.split('/')),target);
-      return {path:relative,sha256:createHash('sha256').update(data).digest('hex')};
-    })};
+  // Copy the closure once, then hash the actual staged bytes using the
+  // same verifier the packaged bootstrap executes.
+  for(const relative of files){
+    const target=path.join(stage,...relative.split('/'));
+    mkdirSync(path.dirname(target),{recursive:true});
+    copyFileSync(safeFile(sourceRoot,relative),target);
+  }
+  const manifest=makeForgeGitRuntimeManifest(stage,files);
   writeFileSync(path.join(stage,'package.json'),JSON.stringify({
     name:'ordax-forge-git-runtime',version:original.version,
-    private:true,type:'module',main:'forge-git/main.mjs'
+    private:true,type:'module',main:'forge-git/bootstrap.mjs'
   },null,2)+'\n');
   writeFileSync(path.join(stage,'forge-git','runtime-source.json'),
     JSON.stringify(manifest,null,2)+'\n');
+  const check=verifyForgeGitRuntimeManifest(stage);
+  if(!check.verified||check.fileCount!==files.length)
+    throw Error('forge_git_stage_integrity_failed');
   return {stage,version:original.version,files,manifest};
 }
 
