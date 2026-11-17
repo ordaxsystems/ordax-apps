@@ -6,6 +6,8 @@
   "main": "main.mjs",
   "description": "Transporte GPT Web e interface local, sem autoridade de tarefas ou GitHub",
   "scripts": {
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "start": "node scripts/start.mjs",
+    "build:win": "node scripts/build-windows.mjs"
   }
 }

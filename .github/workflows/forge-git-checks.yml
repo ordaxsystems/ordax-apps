@@ -1,0 +1,46 @@
+name: OrdaX Forge Git — Scoped Checks
+
+on:
+  pull_request:
+    paths:
+      - 'forge-git/**'
+      - '.github/workflows/forge-git-checks.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'forge-git/**'
+      - '.github/workflows/forge-git-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forge-git-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  targeted-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout canonical OrdaX Apps
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Validate entrypoints without installing a second Electron
+        run: |
+          node --check forge-git/scripts/runtime.mjs
+          node --check forge-git/scripts/start.mjs
+          node --check forge-git/scripts/build-windows.mjs
+          node --check forge-git/main.mjs
+      - name: Test only Forge Git and canonical Core integration
+        run: npm test --prefix forge-git
+      - name: Reject generated runtime in source
+        run: |
+          test ! -d forge-git/dist
+          test ! -d forge-git/node_modules

@@ -30,3 +30,26 @@ O fluxo físico completo GPT Web → MCP → GitHub → handoff → nova convers
 ## Testes
 
 `cd forge-git && npm test`
+
+
+## Execução e distribuição Windows (fonte canônica)
+
+O Forge Git é somente a **interface Windows/GPT Web**. Ele usa o runtime Electron e o preload do `forge/product` existente; não instala outra implementação do Forge Core, não copia código permanentemente e não cria seu próprio scheduler. Execute na raiz de `ordax-apps`:
+
+```powershell
+npm ci --prefix forge/product
+npm run build:worker-preload --prefix forge/product
+npm run start --prefix forge-git
+```
+
+O `start` verifica as dependências locais e executa o binário Electron de `forge/product/node_modules` com o entrypoint próprio do Forge Git. Não mexe no perfil nem reinicia a janela do Forge Core em uso. A preparação do preload é necessária somente se ausente ou após mudar seu source; não há rebuild completo a cada inicialização.
+
+Para gerar **um executável portátil separado** (Windows x64), quando a entrega for necessária:
+
+```powershell
+npm run build:win --prefix forge-git
+```
+
+O empacotamento recompõe apenas o preload compartilhado, calcula um fechamento de importações locais a partir dos entrypoints do Forge Git e gera uma árvore **temporária** preservando os caminhos canônicos de `forge-git/` e `forge/product/`. A árvore temporária é descartada no final; os fontes do repositório são a única autoridade. Dependência não resolvida, caminho externo ou ausência de pacote necessário bloqueia o processo. O pacote inclui `forge-git/runtime-source.json` com hashes SHA-256 de cada arquivo incluído e é produzido em `forge-git/dist/` (não versionado). O build reutiliza a versão do Electron e o electron-builder já instalados pelo Forge; **nenhuma instalação npm separada** é criada para Forge Git.
+
+Essa distribuição **não** instala nem inicia o Core. Requer Forge nativo atualizado e consentimento do Owner no MCP local. O gate de capacidade evita prometer execução em instalações antigas. O executável gerado e o fluxo completo com GPT Web real ainda precisam de homologação física antes de uma publicação comercial.
