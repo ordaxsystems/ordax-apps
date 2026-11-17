@@ -92,6 +92,49 @@ test('handoff exposes unresolved commands without replay or external effects',as
   assert.ok(listed.result.tools.some(x=>x.name==='forge_project_handoff'));
 });
 
+test('independent Task continuation survives another Task provider uncertainty without replay',async t=>{
+  const {store,invoke,context}=fixture(t);
+  const p=(await invoke('project_quick_create',{creationNonce:'handoff_independent_receipts'})).result;
+  const a=(await invoke('work_create',{projectId:p.projectId,
+    orchestratorId:p.orchestratorId,title:'Frontend independent'})).result.taskId;
+  const b=(await invoke('work_create',{projectId:p.projectId,
+    orchestratorId:p.orchestratorId,title:'Tests uncertain'})).result.taskId;
+  const now=store.now();
+  const insert=(id,operation,status,result)=>store.db.prepare(`INSERT INTO lab_command_receipts
+    (id,workspace_session_id,actor_id,client_id,request_id,project_id,
+    operation,input_hash,status,result,created_at,updated_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id,context.workspaceSessionId,context.actorId,context.clientId,id,p.projectId,
+      operation,'sha',status,result===null?null:JSON.stringify(result),now,now);
+  insert('other_task_uncertain','work_send','uncertain',{taskId:b});
+  let packet=await invoke('project_handoff',{projectId:p.projectId,taskId:a});
+  assert.equal(packet.counts.unresolvedCommands,1);
+  assert.equal(packet.receiptAdmission.totalUnresolvedCommands,1);
+  assert.equal(packet.receiptAdmission.unrelatedTaskWorkReceipts,1);
+  assert.equal(packet.receiptAdmission.blockingUnresolvedCommands,0);
+  assert.equal(packet.continuation.requiresReceiptReconciliation,false);
+  assert.equal(packet.continuation.taskLeaseGranted,false);
+  assert.equal(packet.continuation.automaticDispatchAllowed,false);
+  assert.equal(packet.continuation.providerMessagesSent,0);
+  assert.equal(packet.nextSession.checkUncertainReceiptsBeforeRetry,false);
+  assert.equal(packet.continuation.blockedReasons.includes('unresolved_command_receipts'),false);
+  assert.equal((await invoke('project_handoff',{projectId:p.projectId,taskId:b}))
+    .continuation.requiresReceiptReconciliation,true);
+  assert.equal((await invoke('project_handoff',{projectId:p.projectId}))
+    .continuation.requiresReceiptReconciliation,true);
+  insert('unknown_target_uncertain','work_send','uncertain',{reason:'provider_outcome_unknown'});
+  packet=await invoke('project_handoff',{projectId:p.projectId,taskId:a});
+  assert.equal(packet.receiptAdmission.blockingUnresolvedCommands,1);
+  assert.equal(packet.continuation.requiresReceiptReconciliation,true);
+  store.db.prepare("UPDATE lab_command_receipts SET status='succeeded' WHERE id=?")
+    .run('unknown_target_uncertain');
+  insert('unscoped_filesystem_uncertain','project_command_run','uncertain',{reason:'outcome_unknown'});
+  packet=await invoke('project_handoff',{projectId:p.projectId,taskId:a});
+  assert.equal(packet.receiptAdmission.blockingUnresolvedCommands,1);
+  assert.equal(packet.continuation.requiresReceiptReconciliation,true);
+  assert.equal(store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
 test('handoff exposes only scoped recorded branch, never a live HEAD or PR claim',async t=>{
   const {store,invoke}=fixture(t);
   const project=(await invoke('project_quick_create',{creationNonce:'worktree_handoff'})).result;
