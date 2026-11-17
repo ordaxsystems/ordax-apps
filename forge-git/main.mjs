@@ -10,6 +10,7 @@ import {chatSessionReadiness,navigationTimeoutRecovered} from './provider-routin
 import {canonicalProviderChatUrl} from '../forge/product/src/conversation-policy.mjs';
 import {assertForgeGitTransport} from './authority-policy.mjs';
 import {createForgeCoreReadClient} from './forge-core-read-client.mjs';
+import {assertForgeGitUiSender} from './ipc-sender-policy.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const cli=promisify(execFile);
@@ -26,7 +27,10 @@ function emit(message){
   });
 }
 function guarded(channel,fn){
-  ipcMain.handle(channel,async(_event,...args)=>{
+  ipcMain.handle(channel,async(event,...args)=>{
+    // The provider worker and every child frame are untrusted. Only the
+    // first-party Forge Git main frame may touch native Core credentials.
+    assertForgeGitUiSender(event,win);
     try{return await fn(...args);}
     catch(e){const message=String(e?.message||e);emit(message);throw Error(message);}
   });
