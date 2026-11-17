@@ -118,7 +118,7 @@ test('application MCP can create durable synthetic projects without exposing rec
     assert.ok(tools.includes(name),'application MCP tool missing: '+name);
   for(const name of ['forge_project_create','forge_project_quick_create','forge_project_auto_title',
     'forge_work_send','forge_forjador_send','forge_autonomous_dialogue_start',
-    'forge_autonomous_dialogue_continue'])
+    'forge_autonomous_dialogue_continue','forge_project_observation_set'])
     assert.ok(!tools.includes(name),'App-internal or recursive operation leaked into ChatGPT MCP: '+name);
   assert.equal(FORGE_APP_MCP_OPERATIONS.length,64,'shared remote catalog must remain within the gateway contract');
   assert.ok(tools.length<=64,'runtime capability filtering may only reduce the canonical catalog');
