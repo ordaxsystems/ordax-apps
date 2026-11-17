@@ -305,7 +305,9 @@ export class ForgeProjectDevelopment {
     // Reject echo, arbitrary JS, shell chains and redirects as acceptance
     // tests; the Owner has already approved this native project capability.
     if(typeof testCommand!=='string'||testCommand.length>8000||
-      /[;&|><\r\n\0]/u.test(testCommand)||
+      !/^[A-Za-z0-9_./:@= -]+$/u.test(testCommand)||
+      testCommand.split(/\s+/u).some(arg=>arg==='..'||arg.startsWith('../')||
+        arg.includes('/../'))||
       !/^(?:node(?:\.exe)?\s+--test(?:\s|$)|npm(?:\.cmd)?\s+(?:run\s+)?test(?:[\s:]|$)|pnpm\s+(?:run\s+)?test(?:[\s:]|$)|pytest(?:\s|$)|python(?:3)?\s+-m\s+pytest(?:\s|$)|go\s+test(?:\s|$)|cargo\s+test(?:\s|$)|dotnet\s+test(?:\s|$))/u.test(testCommand))
       throw Error('forge_work_accept_test_command_invalid');
     if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1000||timeoutMs>MAX_TIMEOUT_MS)

@@ -104,6 +104,12 @@ test('Task acceptance requires real native test on integrated main, persists in 
   });
   await assert.rejects(f.accept('invalid_echo',{...input,testCommand:'echo PASS'}),
     /forge_work_accept_test_command_invalid/);
+  await assert.rejects(f.accept('invalid_substitution',{
+    ...input,testCommand:'node --test $(echo forbidden)'}),
+    /forge_work_accept_test_command_invalid/);
+  await assert.rejects(f.accept('invalid_parent_path',{
+    ...input,testCommand:'node --test ../outside.test.mjs'}),
+    /forge_work_accept_test_command_invalid/);
   await assert.rejects(f.accept('invalid_head',{
     ...input,expectedIntegratedHeadSha:'a'.repeat(40)}),
     /forge_work_accept_integration_unverified/);
