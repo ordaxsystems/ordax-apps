@@ -24,7 +24,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import {HTML_ARTIFACT_LIMIT_BYTES,validateHtmlArtifactName} from '../src/provider-html-artifact.mjs';
-import {classifyProviderMcpSelection,requireSelectedMcpForPrompt,inspectProviderMcpComposerSelection,inspectProviderMcpAddContextTrigger,activateProviderMcpAddContextTrigger,prepareProviderMcpMentionSearch,inspectProviderMcpMentionOption,activateProviderMcpMentionOption,inspectProviderMcpPickerOption,activateProviderMcpPickerOption,placeProviderComposerCaretAtEnd,isStandaloneMcpSelection,providerMcpAppSpec} from '../src/provider-mcp-selection.mjs';
+import {classifyProviderMcpSelection,requireSelectedMcpForPrompt,inspectProviderMcpComposerSelection,inspectProviderMcpAddContextTrigger,activateProviderMcpAddContextTrigger,prepareProviderMcpMentionSearch,inspectProviderMcpMentionOption,activateProviderMcpMentionOption,inspectProviderMcpPickerOption,activateProviderMcpPickerOption,placeProviderComposerCaretAtEnd,isStandaloneMcpSelection,providerMcpAppSpec,PROVIDER_MCP_OPTION_OBSERVATION,PROVIDER_MCP_TOKEN_CONFIRMATION,classifyProviderMcpMentionFailure} from '../src/provider-mcp-selection.mjs';
 import { fileURLToPath } from 'node:url';
 import { classifyProviderContextAttachmentObservation, selectProviderContextFileInput, PROVIDER_CONTEXT_FILE_INPUT_SELECTOR, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
 
@@ -708,23 +708,34 @@ export class EmbeddedChatWorker {
             ';return inspect(document,'+JSON.stringify(spec)+')})()';
           const activateMentionExpression='(()=>{const activate='+activateProviderMcpMentionOption.toString()+
             ';return activate(document,'+JSON.stringify(spec)+')})()';
-          let mentionChoice=null;
-          for(let i=0;i<16;i++){
+          let mentionChoice=null,mentionActivated=false;
+          for(let i=0;i<PROVIDER_MCP_OPTION_OBSERVATION.attempts;i++){
             mentionChoice=await wc.executeJavaScript(mentionChoiceExpression).catch(()=>null);
             if(mentionChoice?.optionCount>1)throw Error('provider_mcp_search_ambiguous');
             if(mentionChoice?.optionCount===1&&mentionChoice?.selectable===true){
               const activated=await wc.executeJavaScript(activateMentionExpression).catch(()=>null);
               if(activated?.activated!==true)throw Error('provider_mcp_search_option_unhittable');
+              mentionActivated=true;
               break;
             }
-            if(i<15)await sleep(100);
+            if(i<PROVIDER_MCP_OPTION_OBSERVATION.attempts-1)
+              await sleep(PROVIDER_MCP_OPTION_OBSERVATION.delayMs);
           }
-          for(let i=0;i<16;i++){
+          // A successful app click is NOT evidence of a selected app. Give
+          // asynchronous ChatGPT rendering a bounded chance to publish the
+          // exact immutable app:// token before deciding whether it is safe.
+          for(let i=0;i<PROVIDER_MCP_TOKEN_CONFIRMATION.attempts;i++){
             selected=await this.inspectMcpSelectionReadOnly({allowDuringRun:true,app:mcpApp});
             if(selected.selectionObserved===true)break;
-            if(i<15)await sleep(100);
+            if(i<PROVIDER_MCP_TOKEN_CONFIRMATION.attempts-1)
+              await sleep(PROVIDER_MCP_TOKEN_CONFIRMATION.delayMs);
           }
-          if(selected?.selectionObserved!==true)throw Error('provider_mcp_search_result_unavailable');
+          if(selected?.selectionObserved!==true)
+            throw Error(classifyProviderMcpMentionFailure({
+              optionCount:mentionChoice?.optionCount,
+              optionActivated:mentionActivated,
+              selectionState:selected?.state
+            }));
           ownsMcpSearchQuery=false;
           clicked=true;
         }

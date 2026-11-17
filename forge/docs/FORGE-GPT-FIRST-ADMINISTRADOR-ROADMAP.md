@@ -131,6 +131,12 @@ Código de partida: forge/product/src/orchestrator-kernel.mjs, orchestrator-serv
 - Branch `fix/forge-mcp-safe-action-rejection-diagnostics-20261116` adiciona no **mesmo** adaptador `orchestrator-mcp` uma lista fechada de códigos de rejeição operacional para revisões de drafts, lançamentos paralelos, pré-requisitos e worktrees. Somente códigos literais conhecidos são projetados com motivo/recuperação estáticos; erros arbitrários, caminhos privados, conteúdo do rascunho, identidade e credenciais continuam opacos.
 - Todas as recusas de mutação indicam reconciliação antes de um novo efeito; o diagnóstico **não** autoriza replay de `work_send`. Teste de regressão cobre CAS obsoleto, recusa desconhecida e ausência de vazamento; isso não prova que a versão instalada no Windows já foi atualizada.
 
+### Gate GPT Web — seleção MCP identificável e assíncrona (16/11/2026)
+
+- Branch `fix/forge-gpt-mcp-selection-evidence-window-20261116`: após a falha física `provider_mcp_search_result_unavailable` no P3, o worker passa a aguardar por janelas **limitadas** a opção cujo `data-plugin-impression-id` corresponda ao ID canônico do Forge MCP e, após clique verificado, aguarda a inserção observável do `app://` exato no composer. Não transforma nome visível, clique ou presença de sessão em autorização; nenhuma submissão ocorre sem token confirmado.
+- A ausência de resultado, opção não selecionável, token não verificado e navegação não confirmada recebem instruções específicas no painel da Task sem expor cookies, DOM, URLs de conversa ou conteúdo privado. Regressões verificam janelas máximas, códigos estáveis e fail-closed.
+- **Gate ainda aberto:** CI, aplicação à instância Windows e prova de um novo Run GPT com Forge MCP realmente selecionado, seguido por leitura de efeitos e SHA. Esta mudança não comprova que o aplicativo esteja conectado à conta GPT de cada worker nem reenvia Commands antigos.
+
 ### P4 — navegação interna segura do View (16/11/2026)
 
 - Commit `1863f019` na branch isolada `feat/forge-live-view-internal-navigation-20261116`: o inspetor DOM canônico em `src/forge-live-view-dom.mjs` permite clicar em âncoras `#fragmento` **somente** quando o alvo existe no documento HTML verificado. Links HTTP(S), `javascript:`, fragments malformados ou inexistentes não entram no catálogo de controles; ancestrais `aria-hidden`/`hidden`/inert continuam não-interativos. Não houve alteração em `desktop/main.mjs`, `orchestrator-service.mjs`, Core, SQLite ou catálogo MCP.

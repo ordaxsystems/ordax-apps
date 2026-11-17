@@ -15,6 +15,20 @@ export function providerMcpAppSpec(app='forge-mcp') {
   return spec;
 }
 
+// Bounded provider UI observation, not a fallback permission or an implied
+// tool grant. Rendering can be asynchronous after an exact-ID app click.
+export const PROVIDER_MCP_OPTION_OBSERVATION=Object.freeze({attempts:40,delayMs:150});
+export const PROVIDER_MCP_TOKEN_CONFIRMATION=Object.freeze({attempts:50,delayMs:160});
+
+export function classifyProviderMcpMentionFailure({
+  optionCount=0,optionActivated=false,selectionState='not_observed'
+}={}) {
+  if(selectionState==='name_visible_unverified')return 'provider_mcp_token_unverified';
+  if(optionActivated===true)return 'provider_mcp_search_result_unavailable';
+  if(optionCount===0)return 'provider_mcp_app_unavailable';
+  return 'provider_mcp_search_option_unhittable';
+}
+
 // A literal @ mention is not the connected ChatGPT app. Never dispatch a
 // tool-dependent task without the exact selected, visible app in this composer.
 export function requireSelectedMcpForPrompt(prompt,selection,{requiresMcp=false,app='forge-mcp'}={}) {
