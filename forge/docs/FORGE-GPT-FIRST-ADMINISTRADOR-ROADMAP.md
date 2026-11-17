@@ -608,3 +608,10 @@ preservados na exclusão, e nenhuma alegação de efeito sem prova independente.
 - O compositor passa a usar a **mesma classificação de prontidão** em cada lane do pool existente, admitindo outro envio apenas quando uma delas está realmente observada e o scheduler tiver autoridade para selecionar e verificar a lane na execução. A trava é por Task, impedindo duplicação da própria Task durante Run pendente.
 - Nenhum segundo executor ou fonte de verdade. Host sem transporte, login/verificação ausente, HTTP 403/429, ocupação total, status incerto e seleção MCP não confirmada continuam fail-closed; a UI não promove presença de sessão a identidade atestada.
 - A ativação Windows deste patch requer Run P3 anterior encerrado ou reconciliado. Aceite P3/P4 exige Runs e efeitos reais para as três frentes, testes de produtos e integração das worktrees.
+
+### Continuidade por Task diante de recibos incertos independentes (17/11/2026)
+
+- Uma Task distinta com `work_send` incerto não deve bloquear o handoff de toda a missão. `forge_project_handoff` passa a projetar, no **mesmo SQLite** e sobre a VIEW `lab_command_receipt_scope` já canônica, a contagem completa por Task de recibos bloqueantes, independente da lista diagnóstica truncada de 12 itens.
+- A decisão de continuidade admite leitura da Task A se os únicos recibos não resolvidos forem envios explicitamente atribuídos à Task B. **Permanecem bloqueantes**: comandos/efeitos de projeto, work_send/proposal_send de destino desconhecido, comandos da própria Task A, projeção ausente/inconsistente, dependências, Runs em andamento e aceite não verificado.
+- A admissão é **somente leitura**: nenhum lease concedido, nenhum envio GPT automático, nenhuma Task/branch nova, nenhuma outra fila/tabela. `work_parallel_launch`, scheduler, recibos, Owner e prevenção de replay continuam autoridades de execução; esta mudança alinha o handoff ao monitor por Task existente.
+- Gate: testes de duas Tasks, recibo próprio, incerto desconhecido, efeito não-provedor, adulteração/incompletude de prova, isolamento e CI Windows; homologação de failover físico ainda requer controle de lease antes de takeover do Run incerto.

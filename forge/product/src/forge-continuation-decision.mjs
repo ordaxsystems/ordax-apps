@@ -16,7 +16,30 @@ export function forgeContinuationDecision({handoff,plan,taskId=null}={}) {
   const blockers=[];
   // Coordinator chat is a valid handoff scope, but not an executable Work.
   if(taskId!==null&&!selected)blockers.push('selected_task_not_work');
-  if(Number(handoff.counts?.unresolvedCommands)>0)blockers.push('unresolved_command_receipts');
+  // Project-level uncertainty is a quarantine for unowned effects, not for
+  // unrelated Tasks that have a complete, Task-scoped receipt. Require the
+  // independent full-ledger aggregate; a missing or inconsistent projection
+  // can never silently downgrade a project-wide block.
+  const globalUnresolved=handoff.counts?.unresolvedCommands;
+  const receiptAdmission=handoff.receiptAdmission;
+  const scopedReceiptEvidence=taskId!==null&&
+    Number.isSafeInteger(globalUnresolved)&&globalUnresolved>=0&&
+    receiptAdmission?.schema==='ordax.forge.receipt-admission/1'&&
+    receiptAdmission.projectId===projectId&&receiptAdmission.taskId===taskId&&
+    receiptAdmission.source==='canonical_app_sqlite_lab_command_receipt_scope'&&
+    Number.isSafeInteger(receiptAdmission.totalUnresolvedCommands)&&
+    receiptAdmission.totalUnresolvedCommands===globalUnresolved&&
+    Number.isSafeInteger(receiptAdmission.blockingUnresolvedCommands)&&
+    receiptAdmission.blockingUnresolvedCommands>=0&&
+    receiptAdmission.blockingUnresolvedCommands<=globalUnresolved&&
+    Number.isSafeInteger(receiptAdmission.unrelatedTaskWorkReceipts)&&
+    receiptAdmission.unrelatedTaskWorkReceipts>=0&&
+    receiptAdmission.blockingUnresolvedCommands+
+      receiptAdmission.unrelatedTaskWorkReceipts===globalUnresolved;
+  if((!Number.isSafeInteger(globalUnresolved)||globalUnresolved<0)||
+     (globalUnresolved>0&&(taskId===null||!scopedReceiptEvidence||
+       receiptAdmission.blockingUnresolvedCommands>0)))
+    blockers.push('unresolved_command_receipts');
   if(plan.workCount===0)blockers.push('plan_needs_reconciliation');
   if(taskId!==null&&selected){
     if(selected.state==='running')blockers.push('selected_task_occupied');
@@ -43,6 +66,8 @@ export function forgeContinuationDecision({handoff,plan,taskId=null}={}) {
     blockedReasons:Object.freeze(unique(blockers)),
     requiresTaskSelection:requiresSelection,
     requiresReceiptReconciliation:blocksOnReceipts(blockers),
+    unrelatedTaskWorkReceipts:scopedReceiptEvidence
+      ?receiptAdmission.unrelatedTaskWorkReceipts:0,
     activeRuns:Number(plan.inFlight)||0,
     uncertainTaskIds:Object.freeze(workers.filter(w=>w.state==='uncertain').map(w=>w.taskId)),
     needsAcceptanceTaskIds:Object.freeze(workers.filter(w=>w.verificationRequired).map(w=>w.taskId)),

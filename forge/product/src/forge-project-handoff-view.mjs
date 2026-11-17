@@ -69,6 +69,32 @@ export function forgeProjectHandoffView(store,projectId,{taskId=null}={}) {
     (SELECT COUNT(*) FROM lab_command_receipts
       WHERE project_id=? AND status IN ('running','uncertain')) AS unresolvedCommands`)
     .get(projectId,projectId,taskId,taskId,projectId,projectId,projectId);
+  // Task continuation can proceed while a *different* Task has an uncertain
+  // provider send. The established receipt-scope view is the authority; do
+  // not infer ownership from the truncated twelve-item diagnostic list.
+  // Any unscoped send or non-send project effect still blocks every Task.
+  const receiptAdmission=taskId===null?null:(()=>{
+    const result=db.prepare(`SELECT
+      COUNT(*) AS totalUnresolvedCommands,
+      COALESCE(SUM(CASE
+        WHEN operation IN ('work_send','proposal_send')
+          AND task_id IS NOT NULL AND task_id!=? THEN 1 ELSE 0 END),0)
+        AS unrelatedTaskWorkReceipts,
+      COALESCE(SUM(CASE
+        WHEN operation NOT IN ('work_send','proposal_send')
+          OR task_id=? OR unknown_work_target=1 THEN 1 ELSE 0 END),0)
+        AS blockingUnresolvedCommands
+      FROM lab_command_receipt_scope
+      WHERE project_id=? AND status IN ('running','uncertain')`)
+      .get(taskId,taskId,projectId);
+    return {schema:'ordax.forge.receipt-admission/1',projectId,taskId,
+      source:'canonical_app_sqlite_lab_command_receipt_scope',
+      totalUnresolvedCommands:result.totalUnresolvedCommands,
+      blockingUnresolvedCommands:result.blockingUnresolvedCommands,
+      unrelatedTaskWorkReceipts:result.unrelatedTaskWorkReceipts,
+      // Read-only summary is not an execution lease or permission to send.
+      taskLeaseGranted:false,providerMessagesSent:0};
+  })();
   const recentFileWrites=forgeProjectFileReceiptView(store,projectId,{limit:8});
   const selectedTask=task?{
     taskId:task.id,title:task.title,kind:task.kind,localStatus:task.status,
@@ -89,6 +115,7 @@ export function forgeProjectHandoffView(store,projectId,{taskId=null}={}) {
     acceptedMemory:memories.map(({content,...row})=>({...row,...excerpt(content,1800),
       editorialNoteOnly:true,externalEffectVerified:false})),
     unresolvedCommands:unresolved,
+    receiptAdmission,
     recentFileWriteReceipts:recentFileWrites.items,
     limits:{tasksTruncated:counts.tasks>tasks.length,
       messagesTruncated:counts.messages>messageRows.length,
@@ -97,7 +124,8 @@ export function forgeProjectHandoffView(store,projectId,{taskId=null}={}) {
       fileWriteReceiptsTruncated:recentFileWrites.truncated},
     nextSession:{automaticSendAllowed:false,automaticRotationPerformed:false,
       requiresExplicitAuthorizedChatSession:true,
-      checkUncertainReceiptsBeforeRetry:unresolved.length>0,
+      checkUncertainReceiptsBeforeRetry:taskId===null
+        ?counts.unresolvedCommands>0:receiptAdmission.blockingUnresolvedCommands>0,
       instruction:'Continue only within this project. Read missing history through authorized MCP tools; do not assume a provider reply proves a filesystem change.'}
   };
 }

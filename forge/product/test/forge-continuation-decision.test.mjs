@@ -45,6 +45,39 @@ test('uncertain command receipt blocks the chosen Task without blind retry',()=>
   assert.equal(result.requiresReceiptReconciliation,true);
 });
 
+test('scoped receipt admission releases only an unrelated Task and fails closed on inconsistent evidence',()=>{
+  const receiptAdmission={
+    schema:'ordax.forge.receipt-admission/1',
+    source:'canonical_app_sqlite_lab_command_receipt_scope',
+    projectId,taskId:'task_alpha',
+    totalUnresolvedCommands:2,blockingUnresolvedCommands:0,
+    unrelatedTaskWorkReceipts:2,taskLeaseGranted:false,providerMessagesSent:0
+  };
+  const h=handoff({counts:{unresolvedCommands:2},receiptAdmission});
+  const independent=forgeContinuationDecision({handoff:h,plan:plan(),taskId:'task_alpha'});
+  assert.deepEqual(independent.blockedReasons,[]);
+  assert.equal(independent.unrelatedTaskWorkReceipts,2);
+  assert.equal(independent.requiresReceiptReconciliation,false);
+  assert.equal(independent.automaticDispatchAllowed,false);
+  assert.equal(independent.taskLeaseGranted,false);
+  const unscoped=forgeContinuationDecision({handoff:{...h,selectedTask:null},
+    plan:plan()});
+  assert.equal(unscoped.requiresReceiptReconciliation,true);
+  for(const altered of [
+    {...receiptAdmission,taskId:'task_beta'},
+    {...receiptAdmission,totalUnresolvedCommands:1},
+    {...receiptAdmission,unrelatedTaskWorkReceipts:1},
+    {...receiptAdmission,source:'external'},
+    null
+  ]){
+    const blocked=forgeContinuationDecision({
+      handoff:handoff({counts:{unresolvedCommands:2},receiptAdmission:altered}),
+      plan:plan(),taskId:'task_alpha'
+    });
+    assert.equal(blocked.requiresReceiptReconciliation,true,'invalid scope must fail closed');
+  }
+});
+
 test('another active agent does not automatically occupy an independent candidate',()=>{
   const result=forgeContinuationDecision({handoff:handoff(),taskId:'task_alpha',
     plan:plan({inFlight:1,candidates:['task_alpha'],
