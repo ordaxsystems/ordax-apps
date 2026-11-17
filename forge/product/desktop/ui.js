@@ -1225,8 +1225,9 @@ async function openTask(id) {
   document.body.classList.remove('orchestrator-rail-open');
   $('#contextRail').classList.remove('open');
   $('#orchestratorWorkRail').hidden=true;
-  if (id !== currentTaskId) await flushDraft();
   const epoch = ++navigationEpoch;
+  if (id !== currentTaskId) await flushDraft();
+  if (epoch !== navigationEpoch) return;
   const task = await window.ordax.openTask(id);
   if (epoch !== navigationEpoch || !task) return;
   currentTaskId = id;
@@ -1235,6 +1236,9 @@ async function openTask(id) {
   // Make the GPT work destination visible again after inspecting a Run
   // coordinator. Merely changing the central panel would keep a hidden pane.
   await selectRightPane('provider');
+  // Native pane visibility is asynchronous. Another Task can become current
+  // while it settles; never restore the stale Task draft into that composer.
+  if(epoch!==navigationEpoch||currentTaskId!==id)return;
   showSupervisorRole(task);
   showDraft(task);
   syncComposerAvailability();
