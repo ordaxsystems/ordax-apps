@@ -4,7 +4,7 @@ import {mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync,existsSync,symli
 import path from 'node:path';
 import os from 'node:os';
 import {collectRuntimeFiles,stageForgeGit} from '../scripts/runtime.mjs';
-import {verifyForgeGitRuntimeManifest} from '../runtime-integrity.mjs';
+import {assertForgeGitRuntimeGate,verifyForgeGitRuntimeManifest} from '../runtime-integrity.mjs';
 
 function fixture(t){
   const root=mkdtempSync(path.join(os.tmpdir(),'forge-git-stage-test-'));
@@ -117,4 +117,20 @@ test('runtime verifier never trusts a symlink in the manifest tree',t=>{
   }
   assert.deepEqual(verifyForgeGitRuntimeManifest(stage),
     {status:'invalid',verified:false,reason:'content_mismatch'});
+});
+
+test('only an unpackaged developer start may lack the runtime manifest',t=>{
+  const {root}=fixture(t);
+  const proof=verifyForgeGitRuntimeManifest(root);
+  assert.equal(proof.status,'unattested');
+  assert.doesNotThrow(()=>assertForgeGitRuntimeGate({packaged:false,proof}));
+  assert.throws(()=>assertForgeGitRuntimeGate({packaged:true,proof}),
+    /forge_git_runtime_integrity_failed/);
+  const stage=path.join(root,'out');
+  stageForgeGit({sourceRoot:root,stageDirectory:stage});
+  const verified=verifyForgeGitRuntimeManifest(stage);
+  assert.doesNotThrow(()=>assertForgeGitRuntimeGate({packaged:true,proof:verified}));
+  assert.throws(()=>assertForgeGitRuntimeGate({packaged:false,proof:{
+    status:'invalid',verified:false
+  }}),/forge_git_runtime_integrity_failed/);
 });
