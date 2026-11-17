@@ -117,3 +117,91 @@ test('UI connector rejects write operations even with owner MCP permission',asyn
   assert.equal(Object.hasOwn(client,'call'),false);
   assert.equal(Object.hasOwn(client,'send'),false);
 });
+
+test('explicit owner draft saves on the same canonical Work Task with CAS and no GPT Run',async t=>{
+  const f=fixture(t);
+  const mission=(await f.service.invoke(f.context,'mission_create',{
+    name:'Continuidade',mission:'Construir o menu e seus testes.',
+    requestId:'core_ui_draft_1'
+  })).result;
+  const started=await f.transport.start(FORGE_APP_MCP_SCOPE);
+  const client=createForgeCoreReadClient();
+  t.after(()=>client.disconnect());
+  await client.connect({endpoint:started.endpoint,token:started.token});
+  await client.refresh();
+  const selected=await client.selectTask(mission.taskId);
+  const before=selected.selectedHandoff.selectedTask.draftRevision;
+  assert.equal(selected.selectedTaskId,mission.taskId);
+  assert.equal(selected.selectedHandoff.continuation.taskLeaseGranted,false);
+  const saved=await client.saveWorkDraft({
+    taskId:mission.taskId,content:'Criar menu acessível com testes.',
+    expectedRevision:before
+  });
+  assert.equal(saved.projectId,mission.projectId);
+  assert.equal(saved.taskId,mission.taskId);
+  assert.equal(saved.draftRevision,before+1);
+  assert.equal(saved.providerMessagesSent,0);
+  assert.equal(saved.coreReceiptStatus,'succeeded');
+  assert.equal(saved.readbackVerified,true);
+  assert.match(saved.contentSha256,/^[a-f0-9]{64}$/);
+  const authoritative=await f.service.invoke(f.context,'project_handoff',{
+    projectId:mission.projectId,taskId:mission.taskId
+  });
+  assert.equal(authoritative.selectedTask.draftRevision,before+1);
+  assert.equal(f.store.getTaskDraft(mission.taskId).draft,'Criar menu acessível com testes.');
+  assert.equal(authoritative.tasks.find(t=>t.taskId===mission.taskId).lastRunId,null);
+  await assert.rejects(client.saveWorkDraft({
+    taskId:mission.taskId,content:'Do not replay first revision.',expectedRevision:before
+  }),/task_draft_revision_conflict/);
+});
+
+test('two sessions reject stale draft and prevent cross-project Task writes',async t=>{
+  const f=fixture(t);
+  const a=(await f.service.invoke(f.context,'mission_create',{
+    name:'Projeto A',mission:'Implementar A.',requestId:'core_ui_draft_A'
+  })).result;
+  const b=(await f.service.invoke(f.context,'mission_create',{
+    name:'Projeto B',mission:'Implementar B.',requestId:'core_ui_draft_B'
+  })).result;
+  const started=await f.transport.start(FORGE_APP_MCP_SCOPE);
+  const left=createForgeCoreReadClient(),right=createForgeCoreReadClient();
+  t.after(()=>{left.disconnect();right.disconnect();});
+  for(const client of [left,right]){
+    await client.connect({endpoint:started.endpoint,token:started.token});
+    await client.refresh(a.projectId);
+    await client.selectTask(a.taskId);
+  }
+  const rev=left.projection().selectedHandoff.selectedTask.draftRevision;
+  await left.saveWorkDraft({taskId:a.taskId,content:'Prepare A.',expectedRevision:rev});
+  await assert.rejects(right.saveWorkDraft({
+    taskId:a.taskId,content:'Stale write.',expectedRevision:rev
+  }),/task_draft_revision_conflict/);
+  await assert.rejects(left.saveWorkDraft({
+    taskId:b.taskId,content:'Cross project.',expectedRevision:rev+1
+  }),/forge_mcp_task_not_authorized/);
+  await assert.rejects(left.selectTask(b.taskId),/forge_mcp_task_not_authorized/);
+  const fresh=await right.refresh(b.projectId);
+  assert.equal(fresh.selectedTaskId,null,'cross-project selection clears original Task');
+});
+
+test('started Work refuses draft mutation without any direct provider send',async t=>{
+  const f=fixture(t);
+  const mission=(await f.service.invoke(f.context,'mission_create',{
+    name:'Já iniciada',mission:'Não substituir a conversa.',
+    requestId:'core_ui_started_work'
+  })).result;
+  const started=await f.transport.start(FORGE_APP_MCP_SCOPE);
+  const client=createForgeCoreReadClient();
+  t.after(()=>client.disconnect());
+  await client.connect({endpoint:started.endpoint,token:started.token});
+  await client.refresh();
+  const selected=await client.selectTask(mission.taskId);
+  f.store.appendMessage(mission.taskId,'user','Previously started work.',{
+    authorSource:'human'
+  });
+  await assert.rejects(client.saveWorkDraft({
+    taskId:mission.taskId,content:'Must not overwrite a running conversation.',
+    expectedRevision:selected.selectedHandoff.selectedTask.draftRevision
+  }),/forge_mcp_operation_unavailable/);
+  assert.equal(Object.hasOwn(client,'send'),false);
+});

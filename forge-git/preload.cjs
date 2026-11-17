@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('forgeGit',{
   coreConnect:options=>ipcRenderer.invoke('fg:core-connect',options),
   coreRefresh:()=>ipcRenderer.invoke('fg:core-refresh'),
   coreSelect:projectId=>ipcRenderer.invoke('fg:core-select',projectId),
+  coreSelectTask:taskId=>ipcRenderer.invoke('fg:core-select-task',taskId),
+  coreSaveDraft:args=>ipcRenderer.invoke('fg:core-save-draft',args),
   coreDisconnect:()=>ipcRenderer.invoke('fg:core-disconnect'),
   select:id=>ipcRenderer.invoke('fg:tab',id),
   send:args=>ipcRenderer.invoke('fg:send',args),

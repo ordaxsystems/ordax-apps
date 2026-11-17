@@ -6,7 +6,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EmbeddedChatWorker} from '../forge/product/desktop/embedded-worker.mjs';
 import {REPO,ROLES,openProjectMemory} from './project-memory.mjs';
-import {routeForConversation,providerMessage,chatSessionReadiness,navigationTimeoutRecovered} from './provider-routing.mjs';
+import {chatSessionReadiness,navigationTimeoutRecovered} from './provider-routing.mjs';
 import {canonicalProviderChatUrl} from '../forge/product/src/conversation-policy.mjs';
 import {assertForgeGitTransport} from './authority-policy.mjs';
 import {createForgeCoreReadClient} from './forge-core-read-client.mjs';
@@ -108,76 +108,11 @@ async function checkSessions(){
     }
   }));
 }
-async function send({agentId,text,newSession=false,autoContinue=null,continuation=false}){
+// Only the native Forge Core may reserve Task/Run and issue provider sends.
+// A direct Electron GPT send here has no canonical Run or MCP receipt.
+async function send({agentId,autoContinue=null,continuation=false}={}){
   assertForgeGitTransport({agentId,autoContinue,continuation});
-  if(!core.status().connected||!core.status().selectedProjectId)
-    throw Error('Conecte o Forge MCP e selecione um projeto autorizado antes de enviar.');
-  await core.ping();
-  if(!ROLES.some(r=>r.id===agentId))throw Error('Conversa desconhecida.');
-  if(busy.has(agentId))throw Error('Esta conversa já está ocupada.');
-  const currentAgent=store.agent(agentId);
-  if(['awaiting-github','awaiting-provider','verifying'].includes(currentAgent.status))
-    throw Error('A conversa anterior ainda está sendo verificada; não enviarei uma segunda tarefa.');
-  if(currentAgent.autoContinue && autoContinue!==true && !continuation)
-    throw Error('Pause a missão contínua antes de enviar outra tarefa.');
-  if(!ready.has(agentId))throw Error('A guia do ChatGPT ainda não carregou.');
-  const task=String(text??'').trim();
-  if(task.length<4||task.length>3500)throw Error('Descreva a tarefa em até 3500 caracteres.');
-  if(autoContinue===true){
-    if(agentId==='forjador')throw Error('Continuação automática só é permitida para agentes.');
-    store.patch(agentId,{autoContinue:true,autoRounds:0,autoPending:false,autoGoal:task});
-  }else if(autoContinue===false && agentId!=='forjador'){
-    store.patch(agentId,{autoContinue:false,autoPending:false});
-  }
-  // One durable transition claims the next turn before contacting GPT Web.
-  // An interrupted in-flight turn is reconciled, never blindly resent.
-  store.beginTurn(agentId,task,{continuation,newSession});
-  busy.add(agentId);
-  emit('GPT Web: '+agentId+' iniciou uma conversa.');
-  try{
-    const worker=workers.get(agentId);
-    const old=store.agent(agentId);
-    const fresh=newSession||!old.chatUrl;
-    const route=routeForConversation(agentId);
-    const prompt=providerMessage({
-      agentId,task,repo:REPO,branch:null,continuation:false
-    });
-    // The Forge MCP, not the GPT Web transport, authorizes all project effects.
-    let submittedPrompt=prompt;
-    if(route.requiresMcp){
-      const prepared=await worker.prepareMcpPrompt({
-        prompt,chatUrl:fresh?null:old.chatUrl,newSession:fresh,mcpApp:route.mcpApp
-      });
-      submittedPrompt=prepared.providerPrompt;
-    }
-    const answer=await worker.sendPrompt({
-      prompt:submittedPrompt,chatUrl:fresh?null:old.chatUrl,newSession:fresh,
-      requiresMcp:route.requiresMcp,mcpApp:route.mcpApp??'forge-mcp'
-    });
-    store.patch(agentId,{
-      chatUrl:answer.chatUrl||store.agent(agentId).chatUrl||old.chatUrl,
-      status:'verifying',
-      lastResponse:String(answer.text||'').slice(0,320),
-      lastError:null
-    });
-    // Forge Git observes only the GPT transport. The Core owns all Task/Run,
-    // Git and MCP effects; a provider answer does not certify a tool call.
-    store.patch(agentId,{status:'idle',lastError:null,awaitingSince:null});
-    emit('Resposta GPT observada. Verifique projeto, Tasks e recibos no Forge MCP.');
-    return {chatUrl:store.agent(agentId).chatUrl,
-      providerReplyObserved:true,verified:false,mcpReceiptVerified:false};
-  }catch(e){
-    const reason=String(e?.message||e).slice(0,240);
-    // A failed or ambiguous provider send is never replayed automatically.
-    // It remains blocked until the Forge Core can reconcile its receipts.
-    store.patch(agentId,{status:'blocked',lastError:reason,
-      autoContinue:false,autoPending:false});
-    emit(agentId+' bloqueado: '+reason);
-    throw e;
-  }finally{
-    busy.delete(agentId);
-
-  }
+  throw Error('forge_core_owns_provider_dispatch');
 }
 function events(){
   guarded('fg:state',()=>({snapshot:store.snapshot(),active,ready:[...ready],busy:[...busy],sessions:[...sessionStates],
@@ -199,6 +134,16 @@ function events(){
     const projection=await core.refresh(projectId);
     emit('Forge MCP: projeto autorizado selecionado.');
     return projection;
+  });
+  guarded('fg:core-select-task',async taskId=>{
+    const projection=await core.selectTask(taskId);
+    emit('Forge MCP: Task canônica selecionada; nenhum Run iniciado.');
+    return projection;
+  });
+  guarded('fg:core-save-draft',async args=>{
+    const receipt=await core.saveWorkDraft(args);
+    emit('Forge MCP: rascunho confirmado no SQLite; zero mensagens GPT enviadas.');
+    return receipt;
   });
   guarded('fg:core-disconnect',()=>{
     core.disconnect();
@@ -230,18 +175,7 @@ function events(){
   guarded('fg:auto-pause',()=>{throw Error('forge_core_owns_continuity');});
   guarded('fg:refresh',()=>{throw Error('forge_core_owns_github_evidence');});
   guarded('fg:agent-refresh',()=>{throw Error('forge_core_owns_github_evidence');});
-  guarded('fg:new-chat',id=>{
-    assertForgeGitTransport({agentId:id});
-    if(busy.has(id))throw Error('Aguarde a resposta atual.');
-    const agent=store.agent(id);
-    if(['awaiting-github','awaiting-provider','verifying'].includes(agent.status))
-      throw Error('Verificação pendente: a conversa anterior pode estar trabalhando.');
-    if(agent.autoContinue)
-      throw Error('Pause a missão contínua antes de abrir outra conversa.');
-    store.patch(id,{chatUrl:null,status:'idle',lastError:null});
-    emit('Nova conversa preparada para '+id+'. A memória do projeto foi mantida.');
-    return store.snapshot();
-  });
+  guarded('fg:new-chat',()=>{throw Error('forge_core_owns_conversation_rotation');});
   guarded('fg:inbox',()=>store.snapshot().inbox.filter(e=>!e.delivered));
   guarded('fg:open-url',async url=>{
     if(typeof url!=='string'||!/^https:\/\/github\.com\/ordaxos-admin\/TESTES-FORGE-GIT(?:\/[A-Za-z0-9/_#.-]*)?$/.test(url))

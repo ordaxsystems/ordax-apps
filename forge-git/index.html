@@ -54,6 +54,10 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 <select id="core-project" disabled aria-label="Projeto canônico"><option value="">Conecte o Forge MCP</option></select>
 <button id="core-refresh" class="full" type="button" disabled>Atualizar estado do Core</button>
 <div id="core-summary" class="meta" style="margin-top:10px">Nenhuma leitura canônica confirmada.</div>
+<label for="core-task">Task do Core (identidade persistente)</label>
+<select id="core-task" disabled aria-label="Task canônica"><option value="">Selecione uma Task</option></select>
+<button id="save-draft" class="full primary" type="button" disabled>Salvar rascunho da Task no Core (sem enviar GPT)</button>
+<div id="draft-confirmation" class="meta" style="margin-top:8px">Nenhum rascunho enviado ao Core.</div>
 <div id="core-tasks" class="status" style="margin-top:9px">Tarefas e bloqueios disponíveis após conexão.</div>
 </section>
 <section>
@@ -66,10 +70,10 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 </section>
 <section>
 <h2>Conversa ativa: <span id="role">Forjador</span></h2>
-<p>Conversa e transporte do GPT Web. Projetos, tarefas, memória, Git e continuidade pertencem ao Forge MCP/Core. O login GPT e o aplicativo MCP precisam estar disponíveis para envio.</p>
+<p>Visualização GPT Web. O envio direto foi bloqueado porque não cria Run no Core. Escolha uma Task e salve o rascunho acima; depois use o envio nativo do Forge, que registra Run e recibos. Mensagens digitadas manualmente no navegador não são Runs canônicos.</p>
 <label for="instruction">Missão ou mensagem</label>
 <textarea id="instruction" placeholder="Continue trabalhando no projeto autorizado pelo Forge MCP."></textarea>
-<button id="send" class="primary full" type="button">Enviar ao GPT Web com MCP</button>
+<button id="send" class="full" type="button" disabled>Envio direto bloqueado — use Forge Core</button>
 <div class="grid" id="autonomy-controls" hidden style="margin-top:9px">
   <button id="auto-start" type="button">Missão contínua</button>
   <button id="auto-pause" type="button">Pausar</button>

@@ -27,6 +27,22 @@ function renderCore(){
   }
   selector.value=coreProjection?.selectedProjectId||'';
   selector.disabled=operation||!activeCore||!projects.length;
+  const tasks=activeCore?(coreProjection?.works||[]):[];
+  const selected=coreProjection?.selectedTaskId||'';
+  const taskSelector=$('core-task');
+  taskSelector.replaceChildren();
+  const none=document.createElement('option');
+  none.value='';none.textContent='Selecione uma Task canônica';
+  taskSelector.append(none);
+  for(const task of tasks){
+    const option=document.createElement('option');
+    option.value=task.id;option.textContent=task.title||task.id;
+    taskSelector.append(option);
+  }
+  taskSelector.value=selected;
+  taskSelector.disabled=operation||!activeCore||!tasks.length;
+  $('save-draft').disabled=operation||!activeCore||!selected||
+    coreProjection?.selectedHandoff?.selectedTask?.taskId!==selected;
   const handoff=coreProjection?.handoff;
   if(!activeCore||!handoff){
     $('core-summary').textContent='Nenhuma leitura canônica confirmada.';
@@ -54,6 +70,17 @@ function renderCore(){
       (w.runningRuns?' · '+w.runningRuns+' execução(ões) ativa(s)':'')+
       (branch?' · branch registrada: '+branch.branchName+' ('+branch.worktreeStatus+', HEAD ao vivo não verificado)':'');
   });
+  const scoped=coreProjection?.selectedHandoff;
+  const selectedInfo=scoped?.selectedTask;
+  const selectedBlockers=scoped?.continuation?.blockedReasons||[];
+  const lastMessages=(scoped?.recentMessages||[]).slice(-3).map(m=>
+    String(m.role||'?')+': '+String(m.excerpt||m.text||'mensagem registrada').slice(0,130));
+  const selectedReport=selectedInfo
+    ?'\nTask escolhida: '+selectedInfo.taskId+
+      '\nRascunho revisionado: '+selectedInfo.draftRevision+
+      '\nBloqueios desta Task: '+(selectedBlockers.length?selectedBlockers.join(', '):'nenhum encontrado (não concede lease)')+
+      '\nMensagens recentes: '+(lastMessages.length?lastMessages.join(' | '):'sem mensagens registradas')
+    :'\nSelecione uma Task para consultar o handoff exato e preparar um rascunho.';
   const blockers=Array.isArray(admission.blockedReasons)?admission.blockedReasons:[];
   $('core-tasks').textContent=
     'Estado do plano: '+(plan.basis||plan.reason||'não disponível')+
@@ -63,13 +90,13 @@ function renderCore(){
     '\nReserva/lease para envio: NÃO concedida nesta leitura.'+
     '\nBranch/PR por tarefa: verificar no Forge Core (não atestada nesta projeção).'+
     '\n'+(rows.length?rows.join('\n'):'Nenhuma tarefa registrada.')+
-    (work.length>rows.length?'\n... outras '+(work.length-rows.length)+' tarefas':'');
+    (work.length>rows.length?'\n... outras '+(work.length-rows.length)+' tarefas':'')+selectedReport;
 }
 function render(){
   if(!state)return;
   const agent=state.agents.find(x=>x.id===active);
   $('role').textContent=nameOf(active);
-  $('send').textContent=active==='forjador'?'Enviar ao GPT Web com Forge MCP':'Delegação pertence ao Forge Core';
+  $('send').textContent='Envio direto bloqueado — use Forge Core';
   for(const id of IDS){
     const button=$('tab-'+id);
     button.classList.toggle('active',id===active);
@@ -79,11 +106,10 @@ function render(){
   $('autonomy-help').hidden=true;
   const doing=busy.includes(active)||agent.status==='running';
   const awaiting=['awaiting-github','awaiting-provider','verifying'].includes(agent.status);
-  $('send').disabled=operation||active!=='forjador'||doing||awaiting||!ready.includes(active)||
-    !coreStatus?.connected||!coreProjection?.selectedProjectId;
+  $('send').disabled=true; // No unregistered GPT effect outside Core Run/receipt.
   $('auto-start').disabled=true;
   $('auto-pause').disabled=true;
-  $('new-chat').disabled=operation||active!=='forjador'||doing||awaiting||agent.autoContinue;
+  $('new-chat').disabled=true; // Core owns rotation of the same Task.
   $('check-agent').disabled=true;
   $('refresh').disabled=true;
   $('connect').disabled=operation;
@@ -161,6 +187,30 @@ $('core-project').addEventListener('change',()=>action(async()=>{
   const selected=$('core-project').value;
   if(!selected)return;
   await window.forgeGit.coreSelect(selected);
+  $('draft-confirmation').textContent='Projeto selecionado; escolha a Task antes de salvar.';
+  apply(await window.forgeGit.state());
+}));
+$('core-task').addEventListener('change',()=>action(async()=>{
+  const selected=$('core-task').value;
+  if(!selected)return;
+  await window.forgeGit.coreSelectTask(selected);
+  $('draft-confirmation').textContent='Task selecionada; rascunho ainda não foi salvo.';
+  apply(await window.forgeGit.state());
+}));
+$('save-draft').addEventListener('click',()=>action(async()=>{
+  const taskId=coreProjection?.selectedTaskId;
+  const expectedRevision=coreProjection?.selectedHandoff?.selectedTask?.draftRevision;
+  const content=$('instruction').value;
+  if(!taskId||!Number.isSafeInteger(expectedRevision))
+    throw Error('Selecione uma Task canônica antes de preparar trabalho.');
+  if(typeof content!=='string'||content.trim().length<4)
+    throw Error('Descreva a tarefa antes de salvar o rascunho.');
+  const result=await window.forgeGit.coreSaveDraft({taskId,content,expectedRevision});
+  if(result?.providerMessagesSent!==0||result?.readbackVerified!==true)
+    throw Error('Recibo canônico de rascunho não confirmado.');
+  $('draft-confirmation').textContent='Rascunho registrado no Core: Task '+taskId+
+    ', revisão '+result.draftRevision+'. Nenhum GPT foi acionado.';
+  $('instruction').value='';
   apply(await window.forgeGit.state());
 }));
 for(const id of IDS){
@@ -183,16 +233,9 @@ $('check-agent').addEventListener('click',()=>action(async()=>{
   const result=await window.forgeGit.agentRefresh(active);
   apply(result);message(result.note);
 }));
-$('send').addEventListener('click',()=>action(async()=>{
-  const text=$('instruction').value.trim();
-  if(!text)throw Error('Escreva a missão.');
-  if(!confirm('Enviar esta missão ao '+nameOf(active)+'? O GPT só terá acesso às ferramentas MCP que estiverem autorizadas.'))return;
-  $('instruction').value='';
-  message('Mensagem em execução no GPT Web. O aplicativo verificará o GitHub após a resposta.');
-  await window.forgeGit.send({agentId:active,text});
-  apply(await window.forgeGit.state());
-}));
-$('auto-start').addEventListener('click',()=>action(async()=>{
+$('send').addEventListener('click',()=>message(
+  'Envio direto desativado. Faça o envio no Forge Core para registrar Run e recibos.'
+));$('auto-start').addEventListener('click',()=>action(async()=>{
   if(active==='forjador')throw Error('Missão contínua pertence aos agentes.');
   const text=$('instruction').value.trim();
   if(!text)throw Error('Escreva a missão.');

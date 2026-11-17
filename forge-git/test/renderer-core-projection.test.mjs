@@ -72,10 +72,45 @@ test('renderer never presents legacy JSON as canonical project state and masks t
       orchestrators:[{id:'o1',name:'Forjador',status:'ready'}]
     }
   });
-  assert.equal(el('send').disabled,false,'only verified MCP projection + GPT ready enables chat');
+  assert.equal(el('send').disabled,true,'unregistered GPT transport must remain blocked even with MCP connection');
+  assert.equal(el('save-draft').disabled,true,'explicit Task selection is required');
   assert.match(el('core-summary').textContent,/Pizzaria/);
   assert.match(el('core-tasks').textContent,/unresolved_command_receipts/);
   assert.match(el('core-tasks').textContent,/forge\/task-A/);
   assert.match(el('core-tasks').textContent,/HEAD ao vivo não verificado/);
   assert.equal(el('core-project').value,'project_A');
+  const selectedHandoff={
+    project:{id:'project_A'},
+    selectedTask:{taskId:'task_A',kind:'work',draftRevision:2},
+    continuation:{taskId:'task_A',blockedReasons:[],taskLeaseGranted:false},
+    recentMessages:[]
+  };
+  observer({
+    coreProjection:{
+      source:'forge_mcp_live_read',observedAt:'2026-11-16T12:05:00Z',
+      selectedProjectId:'project_A',selectedTaskId:'task_A',selectedHandoff,
+      projects:[{id:'project_A',name:'Pizzaria'}],
+      handoff:{
+        project:{id:'project_A',name:'Pizzaria'},tasks:[],
+        counts:{unresolvedCommands:0},workPlan:{workers:[]},
+        continuation:{blockedReasons:[],taskLeaseGranted:false}
+      },
+      works:[{id:'task_A',title:'Cardápio'}],orchestrators:[]
+    }
+  });
+  assert.equal(el('save-draft').disabled,false,
+    'selected Core Task enables preparation, not GPT dispatch');
+  assert.equal(el('send').disabled,true);
+  const saved=[];
+  window.forgeGit.coreSaveDraft=async receipt=>{
+    saved.push(receipt);
+    return {providerMessagesSent:0,readbackVerified:true,draftRevision:3};
+  };
+  el('instruction').value='Rascunho de tarefa real';
+  el('save-draft').listeners.get('click')();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(saved,[{taskId:'task_A',content:'Rascunho de tarefa real',
+    expectedRevision:2}]);
+  assert.match(el('draft-confirmation').textContent,/Nenhum GPT foi acionado/);
+  assert.equal(el('instruction').value,'');
 });
