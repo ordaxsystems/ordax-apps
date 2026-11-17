@@ -19,6 +19,7 @@ Na interface nativa do Forge, habilite o **MCP local** com o consentimento do Ow
 - Projetos, missões, tarefas, Runs, bloqueios, dependências e branches locais registradas vêm do Core/SQLite. Branch/HEAD persistidos são **históricos**, não verificações atuais do GitHub, PRs ou critérios de aceite.
 - O token fica apenas em RAM durante a conexão, é removido do campo após a tentativa e nunca é enviado para o JSON de histórico ou incluído no estado projetado à UI.
 - A conexão e a seleção de um projeto autorizado, bem como a sessão GPT e a seleção efetiva do aplicativo MCP no executor, são requisitos para permitir **novas** mensagens do Forjador. Ausência de prova mantém o envio bloqueado; não há replay automático.
+- A leitura canônica é revalidada a cada 45 segundos pelo monitor de saúde já existente, sem scheduler extra. Revogação ou falha de transporte limpa a conexão e bloqueia os envios.
 
 ## Limite de migração
 

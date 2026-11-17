@@ -293,16 +293,26 @@ app.whenReady().then(async()=>{
   events();
   await win.loadFile(path.join(here,'index.html'));
   layout();
-  // Reconcile commits made independently by GPT conversations.
-  // This observes GitHub only; it never issues GPT prompts or GitHub writes.
+  // Reuse the existing provider-health timer for Core read-only projection.
+  // No GitHub writes, independent scheduler, GPT send or authority transfer.
   let polling=false;
   const watcher=setInterval(async()=>{
     if(polling||!win)return;
     polling=true;
     try{
-      await checkSessions();
-
-
+      try{await checkSessions();}
+      catch(error){emit('Sessão GPT Web indisponível: '+String(error?.message||error).slice(0,120));}
+      if(core.status().connected){
+        try{
+          await core.ping();
+          await core.refresh(); // Read-only projection, no second scheduler.
+          emit('Forge MCP: estado canônico revalidado.');
+        }catch(error){
+          core.disconnect();
+          emit('Forge MCP indisponível; envios bloqueados até reconectar: '+
+            String(error?.message||error).slice(0,120));
+        }
+      }
     }finally{polling=false;}
   },45_000);
   watcher.unref();
