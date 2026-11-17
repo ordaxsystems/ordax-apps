@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "main": "main.mjs",
-  "description": "Protótipo GPT Web → GitHub, isolado do Forge MCP",
+  "description": "Transporte GPT Web e interface local, sem autoridade de tarefas ou GitHub",
   "scripts": {
     "test": "node --test test/*.test.mjs"
   }

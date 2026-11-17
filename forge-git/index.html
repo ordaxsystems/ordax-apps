@@ -39,48 +39,48 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 <aside>
 <header><div><h1>Forge Git</h1><p>GPT Web · MCP · GitHub remoto</p></div><div class="brand">FG</div></header>
 <section>
-<h2>Projeto GitHub</h2>
+<h2>Referência histórica GitHub</h2>
 <div class="status">ordaxos-admin/TESTES-FORGE-GIT</div>
 <button id="connect" class="primary full" type="button">Conectar GitHub do Windows</button>
 <div id="login-state" class="meta">Verificando autenticação…</div>
-<button id="refresh" class="full" type="button">Atualizar memória pelo GitHub</button>
+<button id="refresh" class="full" type="button" hidden>Observação antiga desativada</button>
 <div id="revision" class="meta" style="margin-top:10px">Nenhuma revisão confirmada</div>
 </section>
 <section>
 <h2>Conversa ativa: <span id="role">Forjador</span></h2>
-<p>Escreva o objetivo normalmente. O GPT escolhe os passos e utiliza as ferramentas que estiverem realmente disponíveis.</p>
+<p>Conversa e transporte do GPT Web. Projetos, tarefas, memória, Git e continuidade pertencem ao Forge MCP/Core. O login GPT e o aplicativo MCP precisam estar disponíveis para envio.</p>
 <label for="instruction">Missão ou mensagem</label>
-<textarea id="instruction" placeholder="Crie um site de pizzaria neste repositório, teste e corrija até ficar pronto."></textarea>
+<textarea id="instruction" placeholder="Continue trabalhando no projeto autorizado pelo Forge MCP."></textarea>
 <button id="send" class="primary full" type="button">Enviar ao GPT Web com MCP</button>
-<div class="grid" id="autonomy-controls" style="margin-top:9px">
+<div class="grid" id="autonomy-controls" hidden style="margin-top:9px">
   <button id="auto-start" type="button">Missão contínua</button>
   <button id="auto-pause" type="button">Pausar</button>
 </div>
-<p id="autonomy-help">Continua após commits confirmados, até 6 ciclos ou PR. Informa o Forjador ao confirmar o resultado. Sem merge automático.</p>
+<p id="autonomy-help" hidden>Autonomia e continuação foram transferidas ao Forge Core.</p>
 <div class="grid" style="margin-top:9px">
 <button id="new-chat" type="button">Nova conversa</button>
-<button id="check-agent" type="button">Verificar GitHub</button>
+<button id="check-agent" type="button" hidden>Verificar GitHub</button>
 </div>
 <div id="agent-status" class="status" style="margin-top:11px">Nenhuma conversa iniciada</div>
 </section>
 <section>
 <h2>Continuidade do projeto</h2>
-<p>O aplicativo guarda a revisão verificada, as conversas e os avisos dos agentes; nenhum chat é fonte exclusiva de memória.</p>
+<p>Memória e plano canônicos são consultados pelo Forge MCP. Informações locais anteriores são exibidas somente como histórico, nunca como autorização de trabalho.</p>
 <div id="inbox" class="meta">Sem avisos.</div>
-<button id="notify-forjador" class="full" type="button">Informar o Forjador dos resultados</button>
+<button id="notify-forjador" class="full" type="button" hidden>Notificação legada desativada</button>
 </section>
 <section>
-<h2>Atividade verificada</h2>
+<h2>Histórico local (não é prova MCP)</h2>
 <div id="history">Sem alterações confirmadas.</div>
 <div id="status" class="status" style="margin-top:10px">Pronto para conectar.</div>
 </section>
-<p>Protótipo em sandbox. GPT só poderá alterar o GitHub por ferramentas autorizadas; uma resposta não é prova de commit. Não há merge automático.</p>
+<p>A interface não conclui tarefas nem integra PRs. Um texto GPT não é recibo MCP/GitHub. Verifique os bloqueios e evidências no Forge Core.</p>
 </aside>
 <nav id="tabbar" aria-label="Conversas GPT Web">
 <button id="tab-forjador" type="button">Forjador</button>
 <button id="tab-agent-1" type="button">Agente 1</button>
 <button id="tab-agent-2" type="button">Agente 2</button>
-<span class="hint">Abas independentes · memória compartilhada</span>
+<span class="hint">Agentes antigos: somente leitura · Forge MCP decide</span>
 </nav>
 <script type="module" src="./renderer.mjs"></script>
 </body>

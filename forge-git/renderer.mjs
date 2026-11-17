@@ -7,39 +7,39 @@ function render(){
   if(!state)return;
   const agent=state.agents.find(x=>x.id===active);
   $('role').textContent=nameOf(active);
-  $('send').textContent=active==='forjador'?'Enviar ao GPT Web com Forge MCP':'Executar no GPT Web';
+  $('send').textContent=active==='forjador'?'Enviar ao GPT Web com Forge MCP':'Delegação pertence ao Forge Core';
   for(const id of IDS){
     const button=$('tab-'+id);
     button.classList.toggle('active',id===active);
     button.setAttribute('aria-selected',String(id===active));
   }
-  $('autonomy-controls').hidden=active==='forjador';
-  $('autonomy-help').hidden=active==='forjador';
+  $('autonomy-controls').hidden=true;
+  $('autonomy-help').hidden=true;
   const doing=busy.includes(active)||agent.status==='running';
   const awaiting=['awaiting-github','awaiting-provider','verifying'].includes(agent.status);
-  $('send').disabled=operation||!connected||doing||awaiting||agent.autoContinue||!ready.includes(active);
-  $('auto-start').disabled=operation||!connected||doing||awaiting||agent.autoContinue||!ready.includes(active);
-  $('auto-pause').disabled=!connected||!agent.autoContinue;
-  $('new-chat').disabled=operation||doing||awaiting||agent.autoContinue;
-  $('check-agent').disabled=operation||!connected;
-  $('refresh').disabled=operation||!connected;
+  $('send').disabled=operation||active!=='forjador'||doing||awaiting||!ready.includes(active);
+  $('auto-start').disabled=true;
+  $('auto-pause').disabled=true;
+  $('new-chat').disabled=operation||active!=='forjador'||doing||awaiting||agent.autoContinue;
+  $('check-agent').disabled=true;
+  $('refresh').disabled=true;
   $('connect').disabled=operation;
-  $('notify-forjador').disabled=operation||!connected||busy.includes('forjador')||
-    !state.inbox.some(x=>!x.delivered);
+  $('notify-forjador').disabled=true;
   const branch=agent.branch||'(sem branch)';
   const chatStatus={
     'ready':'pronto',
     'login-required':'login necessário',
     'authenticating':'autenticando',
     'unavailable':'aguardando verificação'
-  }[sessions.get(active)]||'carregando';
+  }[sessions.get(active)]||(active==='forjador'?'carregando':'histórico (sem worker separado)');
   $('agent-status').textContent=
     'Estado: '+agent.status+'\nGPT Web: '+chatStatus+'\nBranch: '+branch+
     '\nConversa: '+(agent.chatUrl?'vinculada':'nova')+
     (agent.lastError?'\nBloqueio: '+agent.lastError:'')+
-    (agent.autoContinue?'\nContinuidade automática: ativa ('+(agent.autoRounds||0)+'/6)':'');
+    (active!=='forjador'?'\nAgente histórico (somente leitura): novas tarefas são gerenciadas no Forge Core.':'\nAutoridade: Forge MCP; resposta do GPT não comprova operações.')+
+    (agent.autoContinue?'\nCheckpoint antigo preservado; envios automáticos do app desativados.':'');
   const observed=state.observed||{};
-  $('revision').textContent='Main: '+(observed.base||'?')+'@'+(observed.sha||'?').slice(0,12)+
+  $('revision').textContent='Histórico local (não é GitHub ao vivo): '+(observed.base||'?')+'@'+(observed.sha||'?').slice(0,12)+
     (observed.at?'\nVerificado: '+observed.at:'');
   const unread=state.inbox.filter(x=>!x.delivered);
   $('inbox').textContent=unread.length?unread.length+' aviso(s) pendente(s):\n'+
@@ -134,8 +134,8 @@ action(async()=>{
     connected=true;
     $('login-state').textContent='Conectado: '+who.login;
   }catch(error){
-    $('login-state').textContent='Conecte a conta GitHub pelo botão.';
-    message('GitHub: '+String(error.message||error));
+    $('login-state').textContent='GitHub não conectado nesta interface (opcional para conversar com o Forge MCP).';
+    message('GitHub: '+String(error.message||error)+'; o Forge Core é responsável por evidências e permissões.');
   }
   apply(await window.forgeGit.state());
 });

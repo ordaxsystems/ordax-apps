@@ -1,33 +1,22 @@
-# Forge Git
+# Forge Git — transporte GPT Web
 
-GPT Web desenvolve no GitHub remoto; o aplicativo mantém estado, abas e continuidade.
+O Forge MCP/Core existente em `../forge/` é a autoridade sobre projetos, missões, Tasks, Runs, memória, dependências, continuidade, Git e evidências. O Forge Git não despacha Tasks, não cria branches/PRs e não certifica efeitos externos.
 
-**Missão comum:** o GPT recebe somente repositório, branch e objetivo. Não recebe log de eventos nem JSON.
+## Operação atual
 
-**Missão contínua:** o app observa commits reais, abre uma conversa nova com branch, HEAD confirmado e objetivo resumido, e continua sem repetir alterações. Para ao detectar PR, após seis ciclos ou ao pausar. Se a resposta terminar antes da escrita GitHub, aguarda por cinco minutos antes de sinalizar bloqueio.
+- A conversa **Forjador** utiliza o `EmbeddedChatWorker` já existente e exige a seleção do aplicativo Forge MCP autorizado no GPT Web.
+- Sem sessão GPT observada, o envio é recusado. Ausência do app MCP ou seleção não verificada também bloqueia o envio no próprio executor.
+- O histórico de conversas e notificações dos antigos `agent-1` e `agent-2` permanece visível como **histórico somente leitura**: nenhum worker paralelo novo é aberto pelo Forge Git para eles, e chamadas IPC de despacho são recusadas no backend.
+- O scheduler de continuação, as notificações automáticas e as mutações GitHub do Forge Git foram retirados. O login GitHub nesta interface serve somente à configuração/verificação da conta histórica; a autoridade sobre código e integração é do Forge Core.
+- Uma resposta GPT retorna `providerReplyObserved`, nunca `mcpReceiptVerified` ou `verified`. Não há confirmação fictícia da ferramenta MCP.
+- A abertura de nova conversa não reenvia mensagens automaticamente. Uma falha ou resultado incerto bloqueia novos efeitos até reconciliação canônica.
 
-**Limite automático:** os seis ciclos contam turnos de trabalho com ao menos um commit confirmado, não cada commit individual. Vários commits feitos pelo GPT no mesmo turno usam um único checkpoint.
+## Limite de migração
 
-**Conversa restaurada:** o aplicativo salva o endereço canônico do chat durante a navegação e reabre a conversa salva após reiniciar. Para uma missão interrompida, nunca usa a página inicial ou outro chat como prova de que o GPT terminou. Se o login expirar, fica bloqueado até uma sessão válida ser observada.
+O arquivo anterior `forge-git-project.json` é preservado para URLs de conversas, sessões e registros antigos, **não** para selecionar Tasks, renovar leases ou decidir continuidade. A projeção em tempo real de projetos, Tasks, branches e PRs do SQLite/Core ainda precisa substituir a vista histórica; não equiparar os registros antigos ao estado canônico. Não eliminar esse arquivo antes de conciliar conversas e efeitos preexistentes.
 
-**Instância única:** o aplicativo bloqueia uma segunda instância sobre o mesmo perfil e sua memória. Abrir novamente o atalho restaura a janela existente, sem criar outro executor ou repetir a missão.
+O fluxo físico completo GPT Web → MCP → GitHub → handoff → nova conversa permanece dependente dos gates reais de sessão, permissões e recibos.
 
-**Reinício seguro:** o app só consome um checkpoint de continuação quando registra o novo turno. Antes disso, a tarefa permanece pendente; depois, um reinício reconcilia a execução anterior e não reenvia o mesmo prompt automaticamente.
+## Testes
 
-**Timeout recuperável:** o Forge Git tenta restaurar a conversa salva após `provider_navigation_timeout` sem enviar novas mensagens, com intervalo mínimo de 3 minutos. Somente a conversa exata, um GPT autenticado e comprovadamente ocioso e um HEAD remoto confirmado permitem limpar o bloqueio.
-
-**Sessão GPT Web:** a aba só fica pronta quando o editor e a sessão estão observados. Login ausente, autenticação em andamento e indisponibilidade aparecem no painel; o app não envia uma tarefa por presumir que a página carregou.
-
-**Forjador automático:** durante uma missão contínua já autorizada, o aplicativo informa o Forjador ao confirmar o resultado remoto e o término da conversa do agente. O aviso é curto, consulta a memória pelo Forge MCP e registra a tentativa antes do envio. Se o retorno for incerto, o aviso continua pendente para revisão manual, sem reenvio automático.
-
-**Forjador:** os avisos são enviados em resumo curto. Os avisos enviados usam `forge_project_memory` com `projectId="forge_git"`. A resposta GPT não comprova a consulta MCP: sem recibo verificável, o aviso fica pendente e não é reenviado automaticamente. O Forge MCP original não atualiza esta memória do Forge Git.
-
-**Forge MCP:** a ferramenta existente `forge_project_memory` com `projectId=forge_git` lê o checkpoint persistido do Forge Git no mesmo perfil Windows, sem gravar nem importar dados para o SQLite do Forge. A gravação e a verificação GitHub continuam sob responsabilidade do Forge Git; a ferramenta só aparece quando o Forge MCP nativo atualizado oferece esse acesso.
-
-**Memória:** persistida no `userData` em `forge-git-project.json`, atualizada pelo próprio aplicativo com revisões GitHub; o Forjador pode consultar avisos. O Forge MCP existente ainda não grava nessa memória diretamente.
-
-**Escopo de testes:** apenas `ordaxos-admin/TESTES-FORGE-GIT`, branches dos agentes, sem merge automático. Para iniciar: `OrdaX Forge Git (DEV)` no Windows.
-
-**Limitações:** a continuidade entre conversas foi validada em testes físicos; operação ininterrupta por 24h ainda não foi homologada; a sessão GPT Web autenticada e suas ferramentas podem ter indisponibilidade. O aplicativo não utiliza API de modelos.
-
-**Testes:** `cd forge-git && npm test`.
+`cd forge-git && npm test`
