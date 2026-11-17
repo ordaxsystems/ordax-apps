@@ -296,6 +296,47 @@ export class ForgeProjectDevelopment {
       verificationRequired:true,cleanupPending,workspaceScope:'project_root',
       rootPathExposed:false};
   }
+  // A Task branch has already been integrated. A new, scope-checked test
+  // must run on the CLEAN main repository, pinned to the same live Git HEAD.
+  // This does not certify the product's semantic requirements or deployment.
+  async verifyIntegratedWork(projectId,{expectedIntegratedHeadSha,testCommand,timeoutMs=DEFAULT_TIMEOUT_MS}={}){
+    if(!/^[a-f0-9]{40}$/.test(String(expectedIntegratedHeadSha||'')))
+      throw Error('forge_work_accept_head_invalid');
+    // Reject echo, arbitrary JS, shell chains and redirects as acceptance
+    // tests; the Owner has already approved this native project capability.
+    if(typeof testCommand!=='string'||testCommand.length>8000||
+      !/^[A-Za-z0-9_./:@= -]+$/u.test(testCommand)||
+      testCommand.split(/\s+/u).some(arg=>arg==='..'||arg.startsWith('../')||
+        arg.includes('/../'))||
+      !/^(?:node(?:\.exe)?\s+--test(?:\s|$)|npm(?:\.cmd)?\s+(?:run\s+)?test(?:[\s:]|$)|pnpm\s+(?:run\s+)?test(?:[\s:]|$)|pytest(?:\s|$)|python(?:3)?\s+-m\s+pytest(?:\s|$)|go\s+test(?:\s|$)|cargo\s+test(?:\s|$)|dotnet\s+test(?:\s|$))/u.test(testCommand))
+      throw Error('forge_work_accept_test_command_invalid');
+    if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1000||timeoutMs>MAX_TIMEOUT_MS)
+      throw Error('forge_development_command_invalid');
+    if(!this.status(projectId).available)
+      throw Error('forge_development_owner_approval_required');
+    const git=command=>this.run({projectId,command,timeoutMs:30000});
+    const head=await git('git rev-parse HEAD');
+    const status=await git('git status --porcelain=v1 --untracked-files=all');
+    const ancestor=await git('git merge-base --is-ancestor '+expectedIntegratedHeadSha+' HEAD');
+    const testedHead=head.stdout.trim();
+    if(head.exitCode!==0||!/^[a-f0-9]{40}$/.test(testedHead)||
+      status.exitCode!==0||status.stdout.trim()||ancestor.exitCode!==0)
+      throw Error('forge_work_accept_main_unverified');
+    const result=await this.run({projectId,command:testCommand,timeoutMs});
+    const after=await git('git rev-parse HEAD');
+    const afterStatus=await git('git status --porcelain=v1 --untracked-files=all');
+    const verified=result.completed===true&&result.exitCode===0&&
+      result.stdoutTruncated!==true&&result.stderrTruncated!==true&&
+      after.exitCode===0&&after.stdout.trim()===testedHead&&
+      afterStatus.exitCode===0&&!afterStatus.stdout.trim();
+    return {...result,verified,
+      verificationReason:verified?null:'forge_work_accept_postmerge_test_or_head_failed',
+      integratedHeadSha:expectedIntegratedHeadSha,
+      testedMainHeadSha:testedHead,
+      acceptanceScope:'verified_integrated_git_milestone',
+      externalEffectsVerified:verified,providerMessagesSent:0};
+  }
+
   async run({projectId,taskId=null,command,workingDirectory:relative='',timeoutMs=DEFAULT_TIMEOUT_MS}={}){
     if(typeof command!=='string'||!command.trim()||command.length>8000||command.includes('\0')||
        !Number.isSafeInteger(timeoutMs)||timeoutMs<1000||timeoutMs>MAX_TIMEOUT_MS)

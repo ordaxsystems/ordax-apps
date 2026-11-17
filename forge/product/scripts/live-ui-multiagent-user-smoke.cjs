@@ -185,10 +185,30 @@ let phase='startup',failurePhase=null;
           .find(x=>x.dataset.id===${JSON.stringify(item.taskId)});
         if(!button)return false;button.click();return true;
       })()`);
-      if(!opened||!(await wait(`document.getElementById('taskTitle').textContent===
+      const ready=opened&&await wait(`document.getElementById('taskTitle').textContent===
         ${JSON.stringify(item.title)}&&
-        document.getElementById('prompt').value===${JSON.stringify(item.draft)}`)))
+        document.getElementById('prompt').value===${JSON.stringify(item.draft)}`);
+      if(!ready){
+        // No drafts, user text, account data or provider URLs in diagnostics:
+        // only booleans to distinguish stale UI from wrong SQLite identity.
+        try{
+          const proof=await evaluate(`(async()=>({
+            expectedTaskVisible:document.getElementById('taskId').textContent.trim()===
+              ${JSON.stringify(item.taskId)},
+            titleMatches:document.getElementById('taskTitle').textContent===
+              ${JSON.stringify(item.title)},
+            inputMatches:document.getElementById('prompt').value===
+              ${JSON.stringify(item.draft)},
+            savedDraftMatches:(await window.ordax.getTaskDraft(
+              ${JSON.stringify(item.taskId)})).draft===${JSON.stringify(item.draft)},
+            panelVisible:!document.getElementById('taskPanel').classList.contains('hidden')
+          }))()`);
+          console.error(JSON.stringify({
+            schema:'ordax.forge.packaged-multiagent-open-diagnostic/1',
+            ordinal:tasks.indexOf(item),clicked:opened===true,proof}));
+        }catch{}
         throw Error('multiagent_draft_leaked');
+      }
       const state=await evaluate(`(async()=>({
         id:document.getElementById('taskId').textContent.trim(),
         draft:(await window.ordax.getTaskDraft(${JSON.stringify(item.taskId)})).draft,

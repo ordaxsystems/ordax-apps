@@ -246,6 +246,10 @@ test('one app MCP token discovers projects and writes only verified owner folder
   assert.ok(tools.length<=64);
   assert.ok(tools.includes('forge_project_delete'), 'owner-authorized MCP can delete a confirmed project');
   assert.ok(!tools.includes('forge_forjador_send'), 'GPT cannot recursively dispatch itself');
+  assert.ok(!tools.includes('forge_project_observation_set'),
+    'unimplemented observation intent remains in native App, not GPT MCP');
+  assert.ok(tools.includes('forge_work_accept'),
+    'verified Task acceptance is available in the bounded canonical catalog');
   const catalog=await request(app.endpoint,app.token,init.session,invoke(3,'projects_list'));
   assert.equal(catalog.body.result.structuredContent.projects.length,3);
   const writeA=await request(app.endpoint,app.token,init.session,

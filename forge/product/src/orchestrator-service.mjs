@@ -22,6 +22,7 @@ import {deleteProjectRecords} from './project-deletion.mjs';
 import {ProjectRepository} from './project-repository.mjs';
 import {workExecutionSummary} from './work-execution-summary.mjs';
 import {projectWorkPlan} from './work-plan-read-model.mjs';
+import {forgeVerifiedWorkAcceptances} from './forge-work-acceptance-evidence.mjs';
 import {appendRemoteRepositoryInstructions,normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
 
 function missionProjectName(mission) {
@@ -374,6 +375,8 @@ export class OrchestratorService {
     if(binding?.kind==='orchestrator'&&!allowCoordinator)throw Error('orchestrator_coordinator_channel_required');
     if(allowCoordinator&&binding?.kind!=='orchestrator')throw Error('orchestrator_coordinator_task_required');
     if(binding?.status==='paused')throw Error('orchestrator_paused');
+    if(binding?.kind==='work'&&this.db.prepare("SELECT status FROM tasks WHERE id=?")
+      .get(taskId)?.status==='completed')throw Error('orchestrator_work_already_accepted');
     // A normal GPT Task need not belong to a Forge project. It has no
     // project-level receipts to query; passing undefined into SQLite here
     // blocked every ordinary unbound Task before a Run could be recorded.
@@ -656,6 +659,7 @@ export class OrchestratorService {
     if(operation==='project_worktree_review')return this.reviewProjectWorktree(context,input);
     if(operation==='project_worktree_verify')return this.verifyProjectWorktree(context,input);
     if(operation==='project_worktree_integrate')return this.integrateProjectWorktree(context,input);
+    if(operation==='work_accept')return this.acceptIntegratedWork(context,input);
     if(operation==='project_command_run')return this.runProjectCommand(context,input);
     if(tool.readOnly&&operation==='status'){
       const status=this.read(context,operation,input);
@@ -811,6 +815,137 @@ export class OrchestratorService {
         taskId:input.taskId,reason:definitive?error.message:'forge_worktree_integration_uncertain',
         integrated:false,externalEffectsVerified:false
       },definitive?'failed':'uncertain'));}catch{}
+      throw error;
+    }
+  }
+
+  // One owner-authorized post-merge acceptance receipt for one Task. The
+  // existing Git, SQLite, native terminal, and provider receipts own authority.
+  // A command success alone, or the text "done" in ChatGPT, can never accept.
+  async acceptIntegratedWork(context,input){
+    if(!this.development)throw Error('forge_development_unavailable');
+    this.task(input.projectId,input.taskId,'work');
+    const session=context.workspaceSessionId;
+    const latest=()=>this.db.prepare(
+      'SELECT t.id,t.status AS taskStatus,'+
+      '(SELECT id FROM runs WHERE task_id=t.id ORDER BY rowid DESC LIMIT 1) AS runId,'+
+      '(SELECT status FROM runs WHERE task_id=t.id ORDER BY rowid DESC LIMIT 1) AS runStatus '+
+      'FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id '+
+      'WHERE b.project_id=? AND b.kind=\'work\' AND t.id=? AND t.workspace_session_id=?')
+      .get(input.projectId,input.taskId,session);
+    const before=()=> {
+      const task=latest();
+      if(!task||task.taskStatus==='completed'||task.runStatus!=='succeeded')
+        throw Error('forge_work_accept_run_unverified');
+      if(this.hasUnresolvedWorkReceipt(input.projectId,input.taskId,{includeRunning:true})||
+         listTaskUncertainTransportRuns(this.store,input.taskId).length)
+        throw Error('forge_work_accept_unresolved_provider');
+      const admission=forgeProjectHandoffView(this.store,input.projectId,
+        {taskId:input.taskId}).receiptAdmission;
+      if(!admission||admission.blockingUnresolvedCommands!==0)
+        throw Error('forge_work_accept_unresolved_effect');
+      // The last observed Run must be attributable to one durable, confirmed
+      // Forge provider send, not an invented/historical chat response.
+      const sent=this.db.prepare(
+        'SELECT id FROM lab_command_receipts WHERE project_id=? AND workspace_session_id=? '+
+        "AND operation IN ('work_send','proposal_send') AND status='succeeded' "+
+        "AND json_valid(result) AND json_extract(result,'$.taskId')=? "+
+        "AND json_extract(result,'$.runId')=? "+
+        "AND json_extract(result,'$.responseObserved')=1 LIMIT 1")
+        .get(input.projectId,session,input.taskId,task.runId);
+      if(!sent)throw Error('forge_work_accept_provider_receipt_missing');
+      if(!this.development.status(input.projectId).available)
+        throw Error('forge_development_owner_approval_required');
+      const root=this.development.workspaces.taskWorktree(input.projectId,input.taskId);
+      if(!root||root.status!=='integrated'||
+        root.integratedHeadSha!==input.expectedIntegratedHeadSha)
+        throw Error('forge_work_accept_integration_unverified');
+      const integrated=this.db.prepare(
+        'SELECT result FROM lab_command_receipts WHERE id=? AND project_id=? '+
+        "AND workspace_session_id=? AND operation='project_worktree_integrate' "+
+        "AND status='succeeded'")
+        .get(input.integrationReceiptId,input.projectId,session);
+      let item=null;
+      try{item=JSON.parse(integrated?.result||'null');}catch{}
+      if(item?.taskId!==input.taskId||item.status!=='integrated'||
+        item.integratedHeadSha!==root.integratedHeadSha||
+        !/^[a-f0-9]{40}$/.test(item.branchHeadSha||'')||
+        !Array.isArray(item.verificationReceiptIds)||
+        item.verificationReceiptIds.length<1||item.verificationReceiptIds.length>16||
+        new Set(item.verificationReceiptIds).size!==item.verificationReceiptIds.length)
+        throw Error('forge_work_accept_integration_unverified');
+      for(const id of item.verificationReceiptIds){
+        const row=this.db.prepare(
+          'SELECT result FROM lab_command_receipts WHERE id=? AND project_id=? '+
+          "AND workspace_session_id=? AND operation='project_worktree_verify' "+
+          "AND status='succeeded'").get(id,input.projectId,session);
+        let result=null;
+        try{result=JSON.parse(row?.result||'null');}catch{}
+        if(result?.taskId!==input.taskId||result.verified!==true||
+          result.completed!==true||result.exitCode!==0||
+          result.verifiedBranchHeadSha!==item.branchHeadSha)
+          throw Error('forge_work_accept_verification_receipt_invalid');
+      }
+      const previous=this.db.prepare(
+        'SELECT id FROM lab_command_receipts WHERE project_id=? AND workspace_session_id=? '+
+        "AND operation='work_accept' AND status IN ('running','uncertain','succeeded') "+
+        "AND json_valid(result) AND json_extract(result,'$.taskId')=? LIMIT 1")
+        .get(input.projectId,session,input.taskId);
+      if(previous)throw Error('forge_work_accept_already_requested');
+      return {runId:task.runId,integratedHeadSha:root.integratedHeadSha};
+    };
+    const reserved=this.transaction(()=>{
+      this.requireAccess(context,'work_accept',input.projectId);
+      const prior=this.db.prepare(
+        'SELECT id FROM lab_command_receipts WHERE workspace_session_id=? '+
+        'AND actor_id=? AND client_id=? AND request_id=?')
+        .get(session,context.actorId,context.clientId,input.requestId);
+      if(prior)return this.reserve(context,'work_accept',input);
+      const proof=before();
+      const command=this.reserve(context,'work_accept',input);
+      this.db.prepare(
+        "UPDATE lab_command_receipts SET result=? WHERE id=? AND status='running'")
+        .run(JSON.stringify({taskId:input.taskId,phase:'testing_integrated_main'}),
+          command.commandId);
+      return {...command,proof};
+    });
+    if(reserved.existing)return reserved.existing;
+    try {
+      const test=await this.development.verifyIntegratedWork(input.projectId,input);
+      const accepted=test.verified===true;
+      const evidence={...test,taskId:input.taskId,
+        sourceRunId:reserved.proof.runId,accepted,
+        integrationReceiptId:input.integrationReceiptId,
+        testCommandSha256:createHash('sha256').update(input.testCommand).digest('hex'),
+        providerMessagesSent:0};
+      if(!accepted)return this.transaction(()=>this.finish(reserved.commandId,evidence,'failed'));
+      return this.transaction(()=>{
+        this.requireAccess(context,'work_accept',input.projectId);
+        if(!this.development.status(input.projectId).available)
+          throw Error('forge_development_owner_approval_required');
+        const task=latest();
+        if(task?.runId!==reserved.proof.runId||task.runStatus!=='succeeded'||
+          task.taskStatus==='completed')
+          throw Error('forge_work_accept_run_changed');
+        const changed=this.db.prepare(
+          "UPDATE tasks SET status='completed',updated_at=? WHERE id=? AND status!='completed'")
+          .run(this.store.now(),input.taskId).changes;
+        if(changed!==1)throw Error('forge_work_accept_state_changed');
+        return this.finish(reserved.commandId,evidence);
+      });
+    }catch(error){
+      const safe=new Set([
+        'forge_work_accept_test_command_invalid',
+        'forge_work_accept_head_invalid',
+        'forge_work_accept_main_unverified',
+        'forge_development_owner_approval_required',
+        'forge_development_command_invalid'
+      ]);
+      try{this.transaction(()=>this.finish(reserved.commandId,{
+        taskId:input.taskId,accepted:false,
+        reason:safe.has(error?.message)?error.message:'forge_work_accept_outcome_unconfirmed',
+        providerMessagesSent:0
+      },safe.has(error?.message)?'failed':'uncertain'));}catch{}
       throw error;
     }
   }
@@ -1220,9 +1355,12 @@ export class OrchestratorService {
       const edges=this.db.prepare(`SELECT project_id,task_id,prerequisite_id
         FROM lab_work_dependencies WHERE project_id=? ORDER BY task_id,prerequisite_id`)
         .all(projectId);
+      const acceptances=forgeVerifiedWorkAcceptances(this.db,projectId,
+        this.store.getWorkspaceSession().id);
       const planning=projectWorkPlan({
         projectId:projectId,maxParallel:maxParallel,edges,
-        works:works.map(w=>({...w,monitor:this.monitor(w,[{
+        works:works.map(w=>({...w,acceptanceVerified:acceptances.has(w.id),
+          monitor:this.monitor(w,[{
           status:w.latest_run_status,started_at:w.latest_started_at,
           heartbeat_at:w.latest_heartbeat_at
         }],projectId)}))

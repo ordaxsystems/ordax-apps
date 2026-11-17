@@ -11,7 +11,11 @@ export const FORGE_APP_MCP_SCOPE='forge_app';
 // truncation or duplicate project creation semantics.
 const APP_MCP_EXCLUDED=new Set([
   'work_send','proposal_send','forjador_send','autonomous_dialogue_continue',
-  'project_create','project_quick_create','project_auto_title'
+  'project_create','project_quick_create','project_auto_title',
+  // Project observation is only an intent flag today: there is no external
+  // observation executor to authorize. Keep it in the owner App IPC, not in
+  // the bounded public GPT MCP catalog. work_accept uses the reclaimed slot.
+  'project_observation_set'
 ]);
 export const FORGE_APP_MCP_OPERATIONS=Object.freeze(ORCHESTRATOR_TOOLS
   .map(tool=>tool.operation).filter(op=>!APP_MCP_EXCLUDED.has(op)));
