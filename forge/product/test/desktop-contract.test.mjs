@@ -62,8 +62,12 @@ test('owner development gate is discoverable without duplicate consent or automa
   assert.match(ui,/await orchestrationUi.start\(\{restoreNavigation:savedNavigation\}\);\s*void refreshForgeDevelopmentAccess\(\)/);
   assert.equal(ui.split('revision!==forgeDevelopmentGateRevision||').length-1,2,
     'older status requests must be discarded on both success and failure');
-  assert.equal(ui.split('orchestrationUi?.getProjectId?.()!==projectId)return;').length-1,2,
-    'old project responses cannot overwrite a newer selected project');
+  const developmentRefresh=ui.slice(
+    ui.indexOf('async function refreshForgeDevelopmentAccess()'),
+    ui.indexOf("document.getElementById('forgeProjectAdvanced')?.addEventListener")
+  );
+  assert.equal(developmentRefresh.split('orchestrationUi?.getProjectId?.()!==projectId)return;').length-1,2,
+    'old development approval responses cannot overwrite a newer selected project');
   assert.match(ui,/summary\?\.setAttribute\('aria-description'/);
   assert.equal((ui.match(/window\.ordax\.forgeDevelopmentApprove\(projectId\)/g)||[]).length,1,
     'only the explicit native Owner button invokes consent');
