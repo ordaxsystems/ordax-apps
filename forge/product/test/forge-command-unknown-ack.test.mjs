@@ -62,6 +62,11 @@ test('native Owner quarantine: immutable original, one reviewed receipt, scoped 
   assert.equal(handoff.counts.unresolvedCommands,0);
   assert.deepEqual(handoff.unresolvedCommands,[]);
   assert.equal(handoff.continuation.requiresReceiptReconciliation,false);
+  const status=await f.invoke('status');
+  assert.equal(status.uncertainCommands,0,'status excludes audited history from outstanding effects');
+  assert.deepEqual(status.uncertainByProject,[]);
+  assert.equal(f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE id=?')
+    .get('command_uncertain_target').status,'uncertain','audit history is immutable');
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 test('uncertain sends, missing evidence, foreign project and MCP-origin acknowledgements fail closed',async t=>{
