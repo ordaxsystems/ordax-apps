@@ -1220,7 +1220,7 @@ export class OrchestratorService {
       // One bounded, read-only grouping from the existing receipt ledger. A
       // global session count must not be presented as this project's count.
       const uncertainRows=this.db.prepare(`SELECT project_id AS projectId,COUNT(*) AS count
-        FROM lab_command_receipts WHERE status='uncertain' AND
+        FROM lab_command_active_unresolved WHERE status='uncertain' AND
           workspace_session_id=? AND actor_id=? AND client_id=?
         GROUP BY project_id ORDER BY project_id`)
         .all(context.workspaceSessionId,context.actorId,context.clientId);
