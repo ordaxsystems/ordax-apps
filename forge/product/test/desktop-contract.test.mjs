@@ -31,6 +31,8 @@ test('owner development gate is discoverable without duplicate consent or automa
   assert.match(ui,/function showForgeDevelopmentGate\(gate=null\)/);
   assert.match(ui,/showForgeDevelopmentGate\(access.available\?null:/);
   assert.match(ui,/if\(projectChanged\)void refreshForgeDevelopmentAccess\(\)/);
+  assert.match(ui,/const revision=\+\+forgeDevelopmentGateRevision/);
+  assert.match(ui,/if\(revision!==forgeDevelopmentGateRevision\|\|/);
   assert.match(ui,/await orchestrationUi.start\(\{restoreNavigation:savedNavigation\}\);\s*void refreshForgeDevelopmentAccess\(\)/);
   assert.match(ui,/if\(orchestrationUi\?\.getProjectId\?\.\(\)!==projectId\)return;/);
   assert.match(ui,/summary\?\.setAttribute\('aria-description'/);
