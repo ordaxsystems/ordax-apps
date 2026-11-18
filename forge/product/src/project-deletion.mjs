@@ -8,7 +8,7 @@ export function deleteProjectRecords(db,{projectId,workspaceSessionId,confirmNam
   if(project.observation_requested===1)throw Error('orchestrator_project_delete_observation_active');
   if(db.prepare('SELECT 1 FROM lab_project_workspaces WHERE project_id=? LIMIT 1').get(projectId))
     throw Error('orchestrator_project_delete_workspace_bound');
-  if(db.prepare("SELECT 1 FROM lab_command_receipts WHERE project_id=? AND status IN ('running','uncertain') LIMIT 1").get(projectId))
+  if(db.prepare("SELECT 1 FROM lab_command_active_unresolved WHERE project_id=? AND status IN ('running','uncertain') LIMIT 1").get(projectId))
     throw Error('orchestrator_project_delete_commands_unresolved');
   if(db.prepare("SELECT 1 FROM runs r JOIN lab_task_bindings b ON b.task_id=r.task_id WHERE b.project_id=? AND r.status='running' LIMIT 1").get(projectId))
     throw Error('orchestrator_project_delete_run_active');
