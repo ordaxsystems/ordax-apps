@@ -720,6 +720,10 @@ test('optional receipt lookup capability is never inferred from a forged or abse
 });
 
 test('protected owner grant survives native listener and Forge Git client restart without new consent or GPT send',async t=>{
+  const step=async(label,task)=>{
+    try{return await task();}
+    catch(error){throw new Error('protected_resume_stage_'+label+': '+String(error?.message||error),{cause:error});}
+  };
   const f=fixture(t);
   const mission=(await f.service.invoke(f.context,'mission_create',{
     name:'Retomada segura',mission:'Continuar na mesma Task sem novo envio.',
@@ -733,8 +737,8 @@ test('protected owner grant survives native listener and Forge Git client restar
   const initial=await f.transport.start(FORGE_APP_MCP_SCOPE);
   const originalClient=createForgeCoreReadClient();
   t.after(()=>originalClient.disconnect());
-  await originalClient.connect({endpoint:initial.endpoint,token:initial.token});
-  await originalClient.refresh(mission.projectId);
+  await step('first_connect',()=>originalClient.connect({endpoint:initial.endpoint,token:initial.token}));
+  await step('first_refresh',()=>originalClient.refresh(mission.projectId));
   assert.equal(originalClient.projection().selectedProjectId,mission.projectId);
   assert.equal(originalClient.projection().works[0].id,mission.taskId);
   assert.equal(originalClient.status().providerDispatchAllowed,false);
@@ -743,22 +747,22 @@ test('protected owner grant survives native listener and Forge Git client restar
   const sealed=readFileSync(path.join(dir,'forge-git-mcp-connection.sealed.json'),'utf8');
   assert.equal(sealed.includes(initial.token),false,'no plaintext bearer in the saved UI profile');
   originalClient.disconnect();
-  await f.transport.stop();
+  await step('first_stop',()=>f.transport.stop());
 
   // The native Forge Core restores its *existing* owner grant using the
   // canonical listener's fixed port and restored token. No second authority.
   const port=Number(new URL(initial.endpoint).port);
-  const resumed=await f.transport.start(FORGE_APP_MCP_SCOPE,{
+  const resumed=await step('native_resume',()=>f.transport.start(FORGE_APP_MCP_SCOPE,{
     listenPort:port,resumeToken:initial.token
-  });
+  }));
   assert.equal(resumed.endpoint,initial.endpoint);
   assert.equal(resumed.token,initial.token);
   const successorClient=createForgeCoreReadClient();
   t.after(()=>successorClient.disconnect());
   const recovered=cache.recover();
   assert.deepEqual(recovered,{endpoint:initial.endpoint,token:initial.token});
-  await successorClient.connect(recovered);
-  const readBack=await successorClient.refresh(mission.projectId);
+  await step('successor_connect',()=>successorClient.connect(recovered));
+  const readBack=await step('successor_refresh',()=>successorClient.refresh(mission.projectId));
   assert.equal(successorClient.status().connected,true);
   assert.equal(readBack.selectedProjectId,mission.projectId);
   assert.equal(readBack.handoff.project.id,mission.projectId);
@@ -770,12 +774,12 @@ test('protected owner grant survives native listener and Forge Git client restar
 
   // The old sealed bearer cannot renew access after the Core rotates it.
   successorClient.disconnect();
-  await f.transport.stop();
-  const rotated=await f.transport.start(FORGE_APP_MCP_SCOPE,{listenPort:port});
+  await step('second_stop',()=>f.transport.stop());
+  const rotated=await step('rotate',()=>f.transport.start(FORGE_APP_MCP_SCOPE,{listenPort:port}));
   assert.notEqual(rotated.token,initial.token);
   const revokedClient=createForgeCoreReadClient();
   t.after(()=>revokedClient.disconnect());
-  await assert.rejects(revokedClient.connect(cache.recover()),/forge_mcp_http_401/);
+  await step('revoked_connect',()=>assert.rejects(revokedClient.connect(cache.recover()),/forge_mcp_http_401/));
   assert.equal(revokedClient.status().connected,false);
   cache.clear(); // Same revoked-grant cleanup performed by the Forge Git shell.
   assert.equal(cache.recover(),null);
