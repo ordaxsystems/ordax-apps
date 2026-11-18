@@ -72,6 +72,7 @@ test('uncertain sends, missing evidence, foreign project and MCP-origin acknowle
   seed(f,{id:'command_provider_send',projectId:a.projectId,operation:'work_send',
     result:{reason:'provider_result_unknown'}});
   const input={projectId:a.projectId,commandId:'command_missing_proof',
+    requestId:'native_review_missing_proof',
     note:'Resultado ainda desconhecido e sem prova independente suficiente para reclassificar.',
     acknowledgeUnknownEffects:true};
   assert.throws(()=>f.service.closeUnverifiedCommand(f.context,input,
