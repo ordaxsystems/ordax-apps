@@ -251,7 +251,9 @@ function events(){
     return {login:who.login,identityVerified:true,repositoryAccessVerified:false};
   });
   guarded('fg:tab',async id=>{
-    if(!ROLES.some(role=>role.id===id))throw Error('Guia desconhecida.');
+    // Historical agents have no provider WebContentsView. All real agent
+    // allocation, continuity and chat rotation belong to Forge Core.
+    if(id!=='forjador')throw Error('forge_core_owns_historical_agent');
     active=id;layout();emit('Aba selecionada: '+id);return {active};
   });
   guarded('fg:send',send);
