@@ -1986,6 +1986,22 @@ body.orchestrator-focus #executionOverview:has(#executionMissionBadge[data-state
   body:has(#empty:not(.hidden)) .brand-row .logo{width:38px;height:38px}
 }
 
+/* The closed disclosure reports a blocked native permission; it does not
+   duplicate the consent control or alter the authorization gate. */
+.forge-project-advanced[data-development-gate]>summary::before{
+  margin-left:auto;margin-right:8px;font-size:10px;font-weight:550;
+  color:var(--muted);text-align:right;line-height:1.3
+}
+.forge-project-advanced[data-development-gate="approval-required"]>summary::before{
+  content:'Autorizar terminal'
+}
+.forge-project-advanced[data-development-gate="workspace-required"]>summary::before{
+  content:'Vincular pasta'
+}
+.forge-project-advanced[data-development-gate="unavailable"]>summary::before{
+  content:'Verificar permissão'
+}
+
 /* Project terminal authorization lives under existing advanced project settings. */
 .forge-development-access{
   display:grid;gap:9px;margin:14px 0 3px;padding:15px;

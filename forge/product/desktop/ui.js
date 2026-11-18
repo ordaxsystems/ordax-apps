@@ -72,17 +72,40 @@ document.getElementById('settingsOpenProject')?.addEventListener('click',async()
   requestAnimationFrame(()=>document.getElementById('projectRepositoryInput')?.focus());
 });
 
+// Only the existing native Owner consent can grant terminal authority.
+// Surface its status on the closed project disclosure without another grant
+// button, prompt, state store or implicit permission change.
+let forgeDevelopmentGateRevision=0;
+function showForgeDevelopmentGate(gate=null) {
+  const details=document.getElementById('forgeProjectAdvanced');
+  const summary=details?.querySelector('summary');
+  if(!details)return;
+  if(gate)details.dataset.developmentGate=gate;
+  else delete details.dataset.developmentGate;
+  const descriptions={
+    'approval-required':'Terminal não autorizado neste projeto. Abra Gerenciar projeto e confirme na interface nativa.',
+    'workspace-required':'Pasta do projeto ainda não vinculada. Abra Gerenciar projeto.',
+    'unavailable':'Não foi possível verificar a permissão de desenvolvimento. Abra Gerenciar projeto para conferir.'
+  };
+  if(descriptions[gate])summary?.setAttribute('aria-description',descriptions[gate]);
+  else summary?.removeAttribute('aria-description');
+}
 async function refreshForgeDevelopmentAccess() {
+  const revision=++forgeDevelopmentGateRevision;
   const projectId=orchestrationUi?.getProjectId?.()||null;
   const status=document.getElementById('forgeDevelopmentAccessStatus');
   const approve=document.getElementById('forgeDevelopmentApprove');
   const revoke=document.getElementById('forgeDevelopmentRevoke');
   if(!status||!approve||!revoke)return;
+  showForgeDevelopmentGate(null);
   approve.disabled=!projectId;revoke.disabled=true;
   if(!projectId){status.textContent='Selecione um projeto.';return;}
   try {
     const access=await window.ordax.forgeDevelopmentStatus(projectId);
-    if(orchestrationUi?.getProjectId?.()!==projectId)return;
+    if(revision!==forgeDevelopmentGateRevision||
+       orchestrationUi?.getProjectId?.()!==projectId)return;
+    showForgeDevelopmentGate(access.available?null:
+      access.ownerBoundWorkspace?'approval-required':'workspace-required');
     approve.disabled=access.available||!access.ownerBoundWorkspace;
     revoke.disabled=!access.ownerApproved;
     status.textContent=access.available
@@ -91,6 +114,9 @@ async function refreshForgeDevelopmentAccess() {
         ?'Terminal desativado. Ative uma vez para liberar comandos, Git e builds.'
         :'Vincule a pasta do projeto antes de habilitar comandos.';
   }catch {
+    if(revision!==forgeDevelopmentGateRevision||
+       orchestrationUi?.getProjectId?.()!==projectId)return;
+    showForgeDevelopmentGate('unavailable');
     status.textContent='Não foi possível verificar a autorização.';
     approve.disabled=true;revoke.disabled=true;
   }
@@ -1903,6 +1929,7 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
     // Refreshing works within one project must not erase a verified Preview.
     if(projectChanged||previewOutOfScope)clearWorkSurfacePreview();
     scopedProjectId=nextProjectId;
+    if(projectChanged)void refreshForgeDevelopmentAccess();
     // Do not reinitialize a verified Files view if navigation already loaded
     // this project before the work-list callback finished.
     if(projectChanged&&nextProjectId!==forgeFilesProjectId)void refreshForgeFilesPanel();
@@ -1939,6 +1966,7 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
 });
 const savedNavigation=workspace?.metadata?.navigation;
 await orchestrationUi.start({restoreNavigation:savedNavigation});
+void refreshForgeDevelopmentAccess();
 window.ordax.onForgeProjectFileChanged?.(payload=>{
   if(typeof payload?.projectId!=='string'||
      payload.projectId!==orchestrationUi?.getProjectId?.())return;
