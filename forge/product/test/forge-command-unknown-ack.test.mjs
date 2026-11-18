@@ -18,9 +18,10 @@ function fixture(t){
   return {store,context,service,invoke};
 }
 function seed(f,{id,projectId,operation='project_command_run',status='uncertain',
-  result=null,at='2026-11-17T10:00:00.000Z'}){
+  result=null,at='2026-11-17T10:00:00.000Z',actorId=f.context.actorId,
+  clientId=f.context.clientId}){
   f.store.db.prepare('INSERT INTO lab_command_receipts (id,workspace_session_id,actor_id,client_id,request_id,project_id,operation,input_hash,status,result,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)')
-    .run(id,f.context.workspaceSessionId,f.context.actorId,f.context.clientId,id,
+    .run(id,f.context.workspaceSessionId,actorId,clientId,id,
       projectId,operation,'a'.repeat(64),status,
       result===null?null:JSON.stringify(result),at,at);
 }
@@ -90,4 +91,28 @@ test('uncertain sends, missing evidence, foreign project and MCP-origin acknowle
   await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
   const listed=await mcp.handle({jsonrpc:'2.0',id:2,method:'tools/list',params:{}});
   assert.equal(listed.result.tools.some(x=>x.name==='forge_command_close_unverified'),false);
+});
+test('native Owner can acknowledge a scoped remote MCP terminal receipt without rewriting or replaying it',async t=>{
+  const f=fixture(t);
+  const p=(await f.invoke('project_quick_create',{creationNonce:'review_remote_client'})).result;
+  seed(f,{id:'command_remote_client_unknown',projectId:p.projectId,
+    actorId:'authorized-remote-actor',clientId:'connected-gpt-web-app',
+    result:{reason:'forge_development_command_outcome_uncertain',externalEffectsVerified:false}});
+  seed(f,{id:'command_native_recovery_proof',projectId:p.projectId,
+    status:'succeeded',at:'2026-11-18T12:00:00.000Z',
+    result:{projectId:p.projectId,completed:true,exitCode:0,
+      commandOutcome:'exit_zero',workspaceScope:'project_root'}});
+  const before=f.store.db.prepare('SELECT * FROM lab_command_receipts WHERE id=?')
+    .get('command_remote_client_unknown');
+  const ack=f.service.closeUnverifiedCommand(f.context,{
+    projectId:p.projectId,commandId:'command_remote_client_unknown',
+    acknowledgeUnknownEffects:true,requestId:'native_remote_receipt_review',
+    note:'Reconheço que o resultado original permanece desconhecido; proíbo a repetição.'
+  },{nativeOwnerConfirmed:true});
+  assert.equal(ack.status,'succeeded');
+  assert.equal(ack.result.evidenceCommandId,'command_native_recovery_proof');
+  assert.equal((await f.invoke('project_handoff',{projectId:p.projectId})).counts.unresolvedCommands,0);
+  assert.deepEqual(f.store.db.prepare('SELECT * FROM lab_command_receipts WHERE id=?')
+    .get('command_remote_client_unknown'),before);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
