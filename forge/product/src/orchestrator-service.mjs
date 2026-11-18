@@ -424,8 +424,14 @@ export class OrchestratorService {
       if(row.status!=='uncertain')throw Error('orchestrator_receipt_result_invalid');
       result={reason:'receipt_result_unreadable'};
     }
+    const outstanding=row.status==='uncertain'&&row.operation==='project_command_run'
+      ?Boolean(this.db.prepare('SELECT 1 FROM lab_command_active_unresolved WHERE id=?')
+        .get(row.id)):row.status==='uncertain';
     return {commandId:row.id,operation:row.operation,status:row.status,
-      requiresReconciliation:row.status==='uncertain',
+      requiresReconciliation:outstanding,
+      ...(row.status==='uncertain'&&!outstanding?{
+        reviewedUnknownOutcome:true,externalEffectsVerified:false,replayAllowed:false
+      }:{}),
       result,updatedAt:row.updated_at};
   }
 
@@ -436,6 +442,67 @@ export class OrchestratorService {
     if(!row)throw Error('orchestrator_command_unavailable');
     this.requireAccess(context,row.operation,row.project_id);
     return this.receipt(row);
+  }
+
+  // This is a native-Owner-only, append-only review. It never changes the
+  // original uncertain receipt, never replays its command and never certifies
+  // historical external effects. A later success only proves current health.
+  closeUnverifiedCommand(context,input) {
+    if(context?.nativeOwnerConfirmed!==true)
+      throw Error('forge_command_review_native_owner_required');
+    this.requireAccess(context,'command_close_unverified',input.projectId);
+    if(input.acknowledgeUnknownEffects!==true)
+      throw Error('forge_command_review_acknowledgement_required');
+    const grant=this.development?.status?.(input.projectId);
+    if(grant?.ownerApproved!==true||grant.available!==true)
+      throw Error('forge_command_review_owner_grant_required');
+    return this.transaction(()=>{
+      this.requireAccess(context,'command_close_unverified',input.projectId);
+      // Resolve idempotency before checking the now-closed original receipt.
+      const existing=this.db.prepare(`SELECT id FROM lab_command_receipts WHERE
+        workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
+        .get(context.workspaceSessionId,context.actorId,context.clientId,input.requestId);
+      if(existing)return this.reserve(context,'command_close_unverified',input).existing;
+      const source=this.db.prepare(`SELECT * FROM lab_command_receipts
+        WHERE id=? AND project_id=? AND workspace_session_id=?
+          AND actor_id=? AND client_id=?`).get(input.commandId,input.projectId,
+          context.workspaceSessionId,context.actorId,context.clientId);
+      if(!source||source.operation!=='project_command_run'||source.status!=='uncertain')
+        throw Error('forge_command_review_scope_or_status_invalid');
+      // Only the known terminal timeout path is eligible, not provider sends
+      // or corrupted/unreadable receipts.
+      let sourceResult;
+      try{sourceResult=JSON.parse(source.result||'null');}catch{}
+      if(sourceResult?.reason!=='forge_development_command_outcome_uncertain'||
+         sourceResult.externalEffectsVerified!==false)
+        throw Error('forge_command_review_effect_unverified');
+      if(!this.db.prepare('SELECT 1 FROM lab_command_active_unresolved WHERE id=?')
+        .get(source.id))throw Error('forge_command_review_already_closed');
+      const candidates=this.db.prepare(`SELECT id,result,updated_at
+        FROM lab_command_receipts WHERE project_id=? AND workspace_session_id=?
+          AND actor_id=? AND client_id=? AND operation='project_command_run'
+          AND status='succeeded' AND updated_at>=?
+        ORDER BY rowid DESC LIMIT 40`).all(input.projectId,
+          context.workspaceSessionId,context.actorId,context.clientId,source.updated_at);
+      const proof=candidates.find(row=>{
+        let value;
+        try{value=JSON.parse(row.result||'null');}catch{return false;}
+        return value?.completed===true&&value.exitCode===0&&
+          value.commandOutcome==='exit_zero'&&value.workspaceScope==='project_root'&&
+          value.projectId===input.projectId;
+      });
+      if(!proof)throw Error('forge_command_review_independent_evidence_missing');
+      const reserved=this.reserve(context,'command_close_unverified',input);
+      if(reserved.existing)return reserved.existing;
+      return this.finish(reserved.commandId,{
+        schema:'ordax.forge.unknown-command-acknowledgement/1',
+        targetCommandId:source.id,originalStatus:'uncertain',
+        originalInputHash:source.input_hash,disposition:'abandon_unverified',
+        acknowledgedUnknownEffects:true,externalEffectsVerified:false,
+        originalReceiptPreserved:true,replayAllowed:false,
+        evidenceCommandId:proof.id,note:input.note
+      });
+    });
   }
 
   reserve(context,operation,input) {
@@ -688,6 +755,7 @@ export class OrchestratorService {
     if(operation==='project_worktree_integrate')return this.integrateProjectWorktree(context,input);
     if(operation==='work_accept')return this.acceptIntegratedWork(context,input);
     if(operation==='project_command_run')return this.runProjectCommand(context,input);
+    if(operation==='command_close_unverified')return this.closeUnverifiedCommand(context,input);
     if(tool.readOnly&&operation==='status'){
       const status=this.read(context,operation,input);
       // A provider SEND method is only an installed adapter, not login proof.
