@@ -14,20 +14,26 @@ import {createForgeCoreReadClient,validateForgeLoopbackEndpoint} from './forge-c
 import {prepareForgeGitPairRequest,unsealForgeGitPairResponse} from '../forge/product/src/forge-git-owner-pair-crypto.mjs';
 import {createProtectedForgeConnection} from './protected-connection.mjs';
 import {assertForgeGitUiSender} from './ipc-sender-policy.mjs';
+import {createForgeGitShutdown} from './owner-shell-shutdown.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const cli=promisify(execFile);
 const SIDE=430,TOP=46;
 const nextNavigationRetry=new Map();
-let win,store,login='',active='forjador';
+let win,store,login='',active='forjador',watcher=null,shuttingDown=false;
 const workers=new Map(),busy=new Set(),ready=new Set(),sessionStates=new Map();
 const core=createForgeCoreReadClient();
+const releaseOwnedViews=createForgeGitShutdown({
+  workers,disconnectCore:()=>core.disconnect(),
+  stopWatcher:()=>{if(watcher){clearInterval(watcher);watcher=null;}}
+});
 let protectedConnection=null,connectionBusy=false,explicitlyDisconnected=false,pairingBusy=false,pairingCode=null;
 const coreUiStatus=()=>({...core.status(),pairingCode,
   reconnectProtected:protectedConnection?.supported()===true,
   reconnectRemembered:protectedConnection?.exists()===true});
 
 function emit(message){
+  if(shuttingDown)return;
   if(win&&!win.isDestroyed())win.webContents.send('forge-git:event',{
     message,snapshot:store.snapshot(),active,ready:[...ready],busy:[...busy],sessions:[...sessionStates],
     coreStatus:coreUiStatus(),coreProjection:core.projection()
@@ -72,6 +78,7 @@ function recordSessionReadiness(id,health){
 
 }
 async function checkSessions(){
+  if(shuttingDown)return;
   await Promise.all([...workers].map(async([id,worker])=>{
     const health=await worker.health().catch(()=>null);
     recordSessionReadiness(id,health);
@@ -285,6 +292,7 @@ app.whenReady().then(async()=>{
     // Capture the actual ChatGPT thread as soon as navigation establishes it.
     // If the app is killed mid-response, the next process can restore it.
     const saveChatUrl=(_event,url)=>{
+      if(shuttingDown)return;
       const observed=canonicalProviderChatUrl(
         typeof url==='string'?url:worker.view.webContents.getURL()
       );
@@ -296,7 +304,16 @@ app.whenReady().then(async()=>{
     win.contentView.addChildView(worker.view);
   }
   for(const kind of ['resize','maximize','restore'])win.on(kind,layout);
-  win.on('closed',()=>{win=null;});
+  win.on('closed',()=>{
+    // The visible shell is gone; release its attached GPT WebContentsView
+    // BEFORE the Electron quit boundary to avoid an invisible single-instance
+    // holder. No Task, Run or GPT send is performed.
+    win=null;
+    shuttingDown=true;
+    const result=releaseOwnedViews();
+    if(result.failures)console.error('forge_git_shutdown_cleanup_failed',result.failures);
+    app.quit();
+  });
   events();
   await win.loadFile(path.join(here,'index.html'));
   layout();
@@ -305,7 +322,8 @@ app.whenReady().then(async()=>{
   // Reuse the existing provider-health timer for Core read-only projection.
   // No GitHub writes, independent scheduler, GPT send or authority transfer.
   let polling=false;
-  const watcher=setInterval(async()=>{
+  watcher=setInterval(async()=>{
+    if(shuttingDown)return;
     if(polling||!win)return;
     polling=true;
     try{
@@ -336,9 +354,11 @@ app.whenReady().then(async()=>{
     const saved=store.agent(id).chatUrl;
     const restoreUrl=canonicalProviderChatUrl(saved)||'https://chatgpt.com/';
     worker.load(restoreUrl).then(async()=>{
+      if(shuttingDown)return;
       const health=await worker.health().catch(()=>null);
       recordSessionReadiness(id,health);
     }).catch(e=>{
+      if(shuttingDown)return;
       store.patch(id,{status:'blocked',lastError:String(e?.message||e).slice(0,200)});
       emit(id+' indisponível: '+String(e?.message||e));
     });
@@ -346,3 +366,8 @@ app.whenReady().then(async()=>{
 }).catch(error=>{console.error(error);app.quit();});
 }
 app.on('window-all-closed',()=>app.quit());
+app.on('before-quit',()=>{
+  shuttingDown=true;
+  const result=releaseOwnedViews();
+  if(result.failures)console.error('forge_git_shutdown_cleanup_failed',result.failures);
+});
