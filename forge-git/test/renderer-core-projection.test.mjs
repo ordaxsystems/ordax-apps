@@ -64,6 +64,14 @@ test('renderer never presents legacy JSON as canonical project state and masks t
   observer({coreStatus:{connected:false,reconnectProtected:true,
     reconnectRemembered:false}});
   assert.equal(el('core-pair').disabled,false);
+  observer({coreStatus:{connected:false,reconnectProtected:true,
+    pairingCode:'A1B2C3D4E5'}});
+  assert.equal(el('core-pair-code').hidden,false);
+  assert.match(el('core-pair-code').textContent,/A1B2C3D4E5/);
+  observer({coreStatus:{connected:false,reconnectProtected:true,
+    pairingCode:null}});
+  assert.equal(el('core-pair-code').hidden,true);
+  assert.equal(el('core-pair-code').textContent,'');
   el('core-pair').listeners.get('click')();
   await new Promise(resolve=>setImmediate(resolve));
   assert.deepEqual(pairAttempts,['http://127.0.0.1:12345/mcp'],
