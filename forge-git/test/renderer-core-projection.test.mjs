@@ -56,6 +56,22 @@ test('renderer never presents legacy JSON as canonical project state and masks t
   assert.deepEqual(connectAttempts,[{endpoint:'http://127.0.0.1:12345/mcp',
     token:'SENSITIVE-CREDENTIAL',remember:true}]);
   assert.doesNotMatch(el('status').textContent,/SENSITIVE-CREDENTIAL/);
+  const pairAttempts=[];
+  window.forgeGit.corePair=async endpoint=>{
+    pairAttempts.push(endpoint);
+    return {paired:true};
+  };
+  observer({coreStatus:{connected:false,reconnectProtected:true,
+    reconnectRemembered:false}});
+  assert.equal(el('core-pair').disabled,false);
+  el('core-pair').listeners.get('click')();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(pairAttempts,['http://127.0.0.1:12345/mcp'],
+    'pairing transmits only the loopback endpoint, never a bearer from the renderer');
+  assert.equal(el('core-token').value,'');
+  observer({coreStatus:{connected:false,reconnectProtected:false}});
+  assert.equal(el('core-pair').disabled,true,
+    'without protected Windows storage the owner pairing must fail closed');
   observer({
     coreStatus:{connected:true,selectedProjectId:'project_A'},
     coreProjection:{
