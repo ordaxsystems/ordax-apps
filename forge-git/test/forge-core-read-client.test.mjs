@@ -430,7 +430,8 @@ test('late MCP polling cannot replace a newer Task selection or drafted revision
   const chosen=await client.selectTask(mission.taskId);
   assert.equal(chosen.selectedTaskId,mission.taskId);
   release();
-  await staleSelectionPoll;
+  assert.equal(await staleSelectionPoll,null,
+    'stale poll does not falsely report a fresh MCP read');
   assert.equal(client.projection().selectedTaskId,mission.taskId,
     'old polling must not clear the explicit Task');
 
@@ -445,7 +446,8 @@ test('late MCP polling cannot replace a newer Task selection or drafted revision
   });
   assert.equal(receipt.readbackVerified,true);
   release();
-  await staleDraftPoll;
+  assert.equal(await staleDraftPoll,null,
+    'stale read cannot report an updated draft as its own read');
   assert.equal(client.projection().selectedTaskId,mission.taskId);
   assert.equal(client.projection().selectedHandoff.selectedTask.draftRevision,
     receipt.draftRevision);
