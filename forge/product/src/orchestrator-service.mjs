@@ -545,7 +545,8 @@ export class OrchestratorService {
         const safeBeforeAction=!applied&&!error?.forgeAppUiActionSubmitted&&
           (error?.forgeAppUiActionNotSubmitted===true||
            ['forge_app_ui_stale','forge_app_ui_busy',
-            'forge_app_ui_unavailable'].includes(error?.message));
+            'forge_app_ui_unavailable',
+            'forge_app_ui_self_termination_blocked'].includes(error?.message));
         const code=safeBeforeAction?error?.message:'forge_app_ui_action_unconfirmed';
         this.transaction(()=>this.finish(reserved.commandId,
           {reason:code,actionVerified:false},

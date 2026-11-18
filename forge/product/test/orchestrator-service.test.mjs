@@ -1531,6 +1531,20 @@ test('real Electron app UI MCP action receipts are idempotent and unknown effect
     {...click,requestId:'app_ui_stale_once'});
   assert.equal(stale.status,'failed');
   assert.equal(stale.result.reason,'forge_app_ui_stale');
+  // Native shutdown cannot be acknowledged after the process disappears.
+  // A remote click on the exit control must fail before DOM dispatch,
+  // not produce another uncertain command or get replayed on recovery.
+  f.service.viewPort.ui=async()=>{calls++;const error=Error('forge_app_ui_self_termination_blocked');
+    error.forgeAppUiActionNotSubmitted=true;throw error;};
+  const exitInput={...click,requestId:'app_ui_exit_denied',
+    controlIndex:27,expectedLabel:'Sair completamente do Forge'};
+  const exit=await f.service.invoke(f.context,'app_ui_click',exitInput);
+  assert.equal(exit.status,'failed');
+  assert.equal(exit.requiresReconciliation,false);
+  assert.equal(exit.result.reason,'forge_app_ui_self_termination_blocked');
+  const afterExit=calls;
+  assert.deepEqual(await f.service.invoke(f.context,'app_ui_click',exitInput),exit);
+  assert.equal(calls,afterExit);
   f.setAllowed(false);
   await assert.rejects(f.service.invoke(f.context,'app_ui_click',
     {...click,requestId:'app_ui_access_denied'}),/access_denied/);

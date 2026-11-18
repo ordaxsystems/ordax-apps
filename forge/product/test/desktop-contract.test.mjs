@@ -43,6 +43,18 @@ test('Forjador uncertain receipt notice is project-scoped and never treats other
   assert.match(malformed,/neste perfil/);
 });
 
+test('remote MCP app clicks cannot terminate their own durable receipt writer',()=>{
+  const main=fs.readFileSync(path.join(root,'desktop','main.mjs'),'utf8');
+  const service=fs.readFileSync(path.join(root,'src','orchestrator-service.mjs'),'utf8');
+  const ui=fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
+  assert.match(main,/before\.state\.controls\[input\.controlIndex\]\?\.id==='backgroundExitApp'/);
+  const beforeDispatch=main.indexOf("before.state.controls[input.controlIndex]?.id==='backgroundExitApp'");
+  const dispatch=main.indexOf("mayHaveDispatched=true;",beforeDispatch);
+  assert.ok(beforeDispatch>=0&&dispatch>beforeDispatch,'denial precedes any DOM dispatch');
+  assert.match(service,/forge_app_ui_self_termination_blocked/);
+  assert.match(ui,/window\.ordax\.quitApp\(\)/,'native Owner exit remains available');
+});
+
 test('confirmed HTML artifact download stays scoped to a succeeded Run and never sends prompts',()=>{
   const main=fs.readFileSync(path.join(root,'desktop','main.mjs'),'utf8');
   const worker=fs.readFileSync(path.join(root,'desktop','embedded-worker.mjs'),'utf8');

@@ -1606,6 +1606,12 @@ orchestratorService.viewPort=Object.freeze({
       const before=await forgeAppUiInspect(window);
       if(before.revision!==input.expectedRevision)
         throw Error('forge_app_ui_stale');
+      // Terminating this process would destroy the command/receipt writer
+      // before it could acknowledge the effect. Native Owner quit remains
+      // available, but remote UI automation must fail BEFORE dispatch.
+      if(operation==='app_ui_click'&&
+         before.state.controls[input.controlIndex]?.id==='backgroundExitApp')
+        throw Error('forge_app_ui_self_termination_blocked');
       const action=operation.slice('app_ui_'.length);
       const command={mode:action,expectedState:before.state,
         ...(action==='scroll'?
