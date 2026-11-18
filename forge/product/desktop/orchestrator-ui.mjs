@@ -1304,12 +1304,28 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     // Preserve the one result node while rebuilding chat history. Removing it
     // before refreshAutonomousDialogue would make the ID unresolvable.
     box.replaceChildren(recoveryNotice,$('coordinatorOutcome'));
-    const uncertainCommands=Number.isSafeInteger(engineStatus?.uncertainCommands)
-      ?engineStatus.uncertainCommands:0;
-    recoveryNotice.classList.toggle('hidden',uncertainCommands===0);
-    recoveryNotice.textContent=uncertainCommands
-      ?`Há ${uncertainCommands} comando${uncertainCommands===1?'':'s'} com resultado incerto nesta sessão. A solicitação está registrada, mas não há resposta confirmada; nada foi reenviado automaticamente. Revise o histórico antes de decidir outro envio.`
-      :'';
+    const uncertainCommands=Number.isSafeInteger(engineStatus?.uncertainCommands)&&
+      engineStatus.uncertainCommands>=0?engineStatus.uncertainCommands:null;
+    const projectReceipts=engineStatus?.uncertainByProject;
+    const projectCount=Array.isArray(projectReceipts)
+      ?projectReceipts.find(item=>item?.projectId===p)?.count??0:null;
+    const scopedCount=Number.isSafeInteger(projectCount)&&projectCount>=0&&
+      (uncertainCommands===null||projectCount<=uncertainCommands)?projectCount:null;
+    let recoveryMessage='';
+    if(uncertainCommands===null){
+      recoveryMessage='Não foi possível verificar os recibos pendentes. Confira o estado antes de qualquer novo envio.';
+    }else if(uncertainCommands>0&&scopedCount===null){
+      recoveryMessage=`Há ${uncertainCommands} comando${uncertainCommands===1?'':'s'} com resultado incerto neste perfil. O projeto de origem ainda não foi confirmado. Revise os recibos; nada foi reenviado automaticamente.`;
+    }else if(scopedCount>0){
+      const elsewhere=uncertainCommands-scopedCount;
+      recoveryMessage=`Há ${scopedCount} comando${scopedCount===1?'':'s'} com resultado incerto neste projeto`+
+        (elsewhere?` e ${elsewhere} fora dele`:'')+
+        '. Revise os recibos antes de qualquer nova ação; nada foi reenviado automaticamente.';
+    }else if(uncertainCommands>0){
+      recoveryMessage=`Este projeto não possui comandos incertos. Há ${uncertainCommands} pendência${uncertainCommands===1?'':'s'} fora dele, preservada${uncertainCommands===1?'':'s'} para revisão; nada foi reenviado automaticamente.`;
+    }
+    recoveryNotice.classList.toggle('hidden',!recoveryMessage);
+    recoveryNotice.textContent=recoveryMessage;
     // The Forjador's own ChatGPT Task was previously reachable only through
     // hidden Work navigation. Reuse the canonical Task inspection and explicit
     // read-only reply recovery; never create a second delivery/retry route.
