@@ -153,4 +153,12 @@ test('renderer never presents legacy JSON as canonical project state and masks t
   assert.match(el('draft-confirmation').textContent,/Run run_confirmed/);
   assert.match(el('draft-confirmation').textContent,/NÃO verificados/);
   assert.equal(el('instruction').value,'');
+  observer({snapshot:{...snapshot(),inbox:[{
+    kind:'github_revision',detail:'REGISTRO_LEGADO_SOMENTE_LEITURA',
+    delivered:false
+  }]}});
+  assert.match(el('inbox').textContent,/Arquivo histórico/);
+  assert.match(el('inbox').textContent,/sem autorização de envio ou Task/);
+  assert.match(el('inbox').textContent,/REGISTRO_LEGADO_SOMENTE_LEITURA/);
+  assert.doesNotMatch(el('inbox').textContent,/avisos pendentes/);
 });

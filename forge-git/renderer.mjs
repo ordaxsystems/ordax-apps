@@ -155,9 +155,11 @@ function render(){
   const observed=state.observed||{};
   $('revision').textContent='Histórico local (não é GitHub ao vivo): '+(observed.base||'?')+'@'+(observed.sha||'?').slice(0,12)+
     (observed.at?'\nVerificado: '+observed.at:'');
-  const unread=state.inbox.filter(x=>!x.delivered);
-  $('inbox').textContent=unread.length?unread.length+' aviso(s) pendente(s):\n'+
-    unread.slice(-5).map(x=>'• '+x.detail+(x.autoNotified?' (Forjador avisado; MCP não confirmado)':'')).join('\n'):'Sem avisos pendentes.';
+  const archived=(state.inbox||[]).filter(x=>!x.delivered);
+  $('inbox').textContent=archived.length
+    ?'Arquivo histórico (sem autorização de envio ou Task): '+archived.length+' aviso(s) antigos:\n'+
+      archived.slice(-5).map(x=>'• '+x.detail).join('\n')
+    :'Arquivo histórico: sem avisos antigos.';
   const list=$('history');
   list.replaceChildren();
   for(const event of state.events.slice(-12).reverse()){
