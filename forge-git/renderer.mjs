@@ -8,6 +8,7 @@ function message(text){$('status').textContent=String(text||'');}
 function renderCore(){
   const activeCore=coreStatus?.connected===true;
   $('core-connect').disabled=operation;
+  $('core-pair').disabled=operation||activeCore||coreStatus?.reconnectProtected!==true;
   $('core-disconnect').disabled=operation||!activeCore;
   $('core-refresh').disabled=operation||!activeCore;
   $('core-connection').textContent=(activeCore
@@ -228,6 +229,12 @@ function apply(data){
   if(data.message)message(data.message);
   render();
 }
+$('core-pair').addEventListener('click',()=>action(async()=>{
+  const endpoint=$('core-endpoint').value.trim();
+  await window.forgeGit.corePair(endpoint);
+  apply(await window.forgeGit.state());
+  message('Forge Git vinculado ao MCP do Forge com autorização nativa. A reconexão protegida foi habilitada.');
+}));
 $('core-connect').addEventListener('click',()=>action(async()=>{
   const endpoint=$('core-endpoint').value.trim();
   const token=$('core-token').value.trim();
