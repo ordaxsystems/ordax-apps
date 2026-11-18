@@ -360,13 +360,43 @@ export class ForgeProjectDevelopment {
         stdio:['ignore','pipe','pipe']});}
       catch(error){reject(error);return;}
       let stdout=Buffer.alloc(0),stderr=Buffer.alloc(0),outTruncated=false,errTruncated=false;
-      let timedOut=false,settled=false,scopeRevoked=false;
+      let timedOut=false,settled=false,scopeRevoked=false,termination=null;
       const terminate=()=>{
-        if(windows){
-          try{const killer=spawn('taskkill.exe',['/PID',String(child.pid),'/T','/F'],
-            {windowsHide:true,stdio:'ignore'});killer.unref();}catch{}
-        }
-        try{child.kill('SIGKILL');}catch{}
+        if(termination)return;
+        // On Windows cmd.exe is the *parent* of the actual command. Killing
+        // cmd immediately races taskkill /T's descendant enumeration and can
+        // orphan browsers/builds with inherited stdout pipes. Wait for the
+        // bounded native tree-kill attempt before killing the shell fallback.
+        termination=new Promise(resolve=>{
+          let done=false,watchdog=null,killer=null;
+          const complete=()=>{
+            if(done)return;done=true;
+            if(watchdog)clearTimeout(watchdog);
+            try{child.kill('SIGKILL');}catch{}
+            resolve();
+          };
+          if(!windows){complete();return;}
+          try{
+            killer=spawn('taskkill.exe',['/PID',String(child.pid),'/T','/F'],
+              {windowsHide:true,stdio:'ignore'});
+            killer.once('error',complete);
+            killer.once('close',complete);
+            watchdog=setTimeout(()=>{
+              try{killer.kill('SIGKILL');}catch{}
+              complete();
+            },10000);
+            watchdog.unref?.();
+          }catch{complete();}
+        });
+        // A descendant can hold stdout open even after cmd exits. A timeout
+        // or revoke must not leave the durable command running forever.
+        void termination.then(()=>{
+          if(settled)return;
+          settled=true;clearTimeout(timeout);clearInterval(monitor);
+          child.stdout?.destroy();child.stderr?.destroy();
+          reject(Error(scopeRevoked?'forge_development_scope_changed':
+            'forge_development_command_outcome_uncertain'));
+        });
       };
       const timeout=setTimeout(()=>{timedOut=true;terminate();},timeoutMs);
       timeout.unref?.();
@@ -389,8 +419,9 @@ export class ForgeProjectDevelopment {
         const result=appendBounded(stderr,chunk);stderr=result.buffer;
         errTruncated=errTruncated||result.truncated;
       });
-      const finish=(error,code,signal)=>{
+      const finish=async(error,code,signal)=>{
         if(settled)return;settled=true;clearTimeout(timeout);clearInterval(monitor);
+        if(termination)await termination;
         if(scopeRevoked)return reject(Error('forge_development_scope_changed'));
         if(error)return reject(error);
         if(timedOut)return reject(Error('forge_development_command_outcome_uncertain'));
@@ -417,8 +448,8 @@ export class ForgeProjectDevelopment {
           ...(gitHeadSha?{gitHeadSha}:{}),
           workspaceIsSandbox:false,externalEffectsVerified:false});
       };
-      child.once('error',error=>finish(error,null,null));
-      child.once('close',(code,signal)=>finish(null,code,signal));
+      child.once('error',error=>{void finish(error,null,null).catch(reject);});
+      child.once('close',(code,signal)=>{void finish(null,code,signal).catch(reject);});
     });
   }
 }
