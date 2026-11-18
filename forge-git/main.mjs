@@ -163,7 +163,6 @@ function events(){
   guarded('fg:refresh',()=>{throw Error('forge_core_owns_github_evidence');});
   guarded('fg:agent-refresh',()=>{throw Error('forge_core_owns_github_evidence');});
   guarded('fg:new-chat',()=>{throw Error('forge_core_owns_conversation_rotation');});
-  guarded('fg:inbox',()=>store.snapshot().inbox.filter(e=>!e.delivered));
 }
 // The checkpoint has one process owner. Without this lock, two Electron
 // launches could each write the same JSON and repeat a GPT mission.
