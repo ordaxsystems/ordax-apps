@@ -451,3 +451,47 @@ test('late MCP polling cannot replace a newer Task selection or drafted revision
     receipt.draftRevision);
   assert.equal(client.status().preparedDraftRevision,receipt.draftRevision);
 });
+
+test('explicit project switch wins when background polling starts during its MCP read',async t=>{
+  const f=fixture(t);
+  const a=(await f.service.invoke(f.context,'mission_create',{
+    name:'Projeto A',mission:'Trabalho do projeto A.',
+    requestId:'core_ui_switch_a'
+  })).result;
+  const b=(await f.service.invoke(f.context,'mission_create',{
+    name:'Projeto B',mission:'Trabalho do projeto B.',
+    requestId:'core_ui_switch_b'
+  })).result;
+  const started=await f.transport.start(FORGE_APP_MCP_SCOPE);
+  let intercepted=false,entered,release;
+  const enteredPromise=new Promise(resolve=>{entered=resolve;});
+  const fetchImpl=async(url,options)=>{
+    const body=options?.body?JSON.parse(options.body):null;
+    if(!intercepted&&body?.method==='tools/call'&&
+       body.params?.name==='forge_work_list'&&
+       body.params?.arguments?.projectId===b.projectId){
+      intercepted=true;
+      const response=await fetch(url,options);
+      entered();
+      await new Promise(resolve=>{release=resolve;});
+      return response;
+    }
+    return fetch(url,options);
+  };
+  const client=createForgeCoreReadClient({fetchImpl});
+  t.after(()=>client.disconnect());
+  await client.connect({endpoint:started.endpoint,token:started.token});
+  await client.refresh(a.projectId);
+  const selecting=client.refresh(b.projectId);
+  await enteredPromise;
+  const during=await client.refresh();
+  assert.equal(during.selectedProjectId,a.projectId,
+    'poll remains read-only while project switch is in flight');
+  release();
+  await selecting;
+  assert.equal(client.projection().selectedProjectId,b.projectId);
+  assert.equal(client.projection().handoff.project.id,b.projectId);
+  assert.equal(client.status().selectedProjectId,b.projectId);
+  assert.equal(client.projection().selectedTaskId,null,
+    'Task must be selected separately for the new project');
+});
