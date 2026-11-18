@@ -77,7 +77,6 @@ const definitions = [
   ['proposals_list','Read pending work proposals for the selected coordinator.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
   ['proposal_review','Approve creation of one local work with a saved draft, or reject it. Never submits to GPT.',{projectId:id,orchestratorId:id,actionId:id,approved:{type:'boolean'}},['projectId','orchestratorId','actionId','approved'],false],
   ['proposal_send','After native confirmation, submit the current draft of one prepared work through the existing executor. First send only; uncertain sends never replay.',{projectId:id,orchestratorId:id,actionId:id,draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','orchestratorId','actionId','draftRevision'],false],
-  ['command_close_unverified','Explicit Owner acknowledgement of one uncertain local terminal command after independent later successful verification. The original remains uncertain and never counts as success; acknowledgement only closes its continuation blocker without replay.',{projectId:id,commandId:id,acknowledgeUnknownEffects:{type:'boolean'},note:text(600,40)},['projectId','commandId','acknowledgeUnknownEffects','note'],false],
   ['command_get','Inspect a previously accepted command without repeating it.',{commandId:id},['commandId'],true]
 ];
 export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,description,properties,required,readOnly]) => ({
@@ -85,14 +84,12 @@ export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,desc
   inputSchema:{type:'object',additionalProperties:false,
     properties:{...(!readOnly?{requestId}:{}),...properties},
     required:[...(!readOnly?['requestId']:[]),...required]},
-  annotations:{readOnlyHint:readOnly,destructiveHint:['work_accept','project_delete','project_command_run','project_worktree_verify','project_worktree_integrate','command_close_unverified','app_ui_click'].includes(operation),
+  annotations:{readOnlyHint:readOnly,destructiveHint:['work_accept','project_delete','project_command_run','project_worktree_verify','project_worktree_integrate','app_ui_click'].includes(operation),
     idempotentHint:!['project_command_run','project_worktree_verify'].includes(operation),
     openWorldHint:['project_command_run','project_worktree_verify','work_send','proposal_send','forjador_send','autonomous_dialogue_start','autonomous_dialogue_continue','app_ui_click','app_ui_fill'].includes(operation)}
 })));
 
-export function validateOrchestratorInput(operation, input) {
-  const tool=ORCHESTRATOR_TOOLS.find(item=>item.operation===operation);
-  if(!tool)throw Error('orchestrator_unknown_operation');
+function validateInputAgainstTool(tool,operation,input) {
   if(!input || typeof input!=='object' || Array.isArray(input) ||
     Object.keys(input).some(key=>!Object.hasOwn(tool.inputSchema.properties,key)))
     throw Error('orchestrator_invalid_input');
@@ -134,4 +131,25 @@ export function validateOrchestratorInput(operation, input) {
   if(Object.hasOwn(normalized,'repositoryUrl'))
     normalized.repositoryUrl=normalizeGitHubRepositoryUrl(normalized.repositoryUrl);
   return {tool,input:normalized};
+}
+
+export function validateOrchestratorInput(operation,input) {
+  const tool=ORCHESTRATOR_TOOLS.find(item=>item.operation===operation);
+  if(!tool)throw Error('orchestrator_unknown_operation');
+  return validateInputAgainstTool(tool,operation,input);
+}
+
+// Not an MCP/API catalog entry. The existing canonical validation rules are
+// reused for the single trusted Electron Owner IPC flow.
+const NATIVE_COMMAND_REVIEW_TOOL=Object.freeze({
+  operation:'command_close_unverified',
+  inputSchema:{
+    properties:{requestId,projectId:id,commandId:id,
+      acknowledgeUnknownEffects:{type:'boolean'},note:text(600,40)},
+    required:['requestId','projectId','commandId','acknowledgeUnknownEffects','note']
+  }
+});
+export function validateNativeCommandReviewInput(input){
+  return validateInputAgainstTool(NATIVE_COMMAND_REVIEW_TOOL,
+    'command_close_unverified',input).input;
 }
