@@ -753,7 +753,8 @@ export class OrchestratorService {
     if(operation==='project_worktree_integrate')return this.integrateProjectWorktree(context,input);
     if(operation==='work_accept')return this.acceptIntegratedWork(context,input);
     if(operation==='project_command_run')return this.runProjectCommand(context,input);
-    if(operation==='command_close_unverified')return this.closeUnverifiedCommand(context,input);
+    // The review capability exists only in trusted native IPC, never invoke/MCP.
+    if(operation==='command_close_unverified')throw Error('forge_command_review_native_only');
     if(tool.readOnly&&operation==='status'){
       const status=this.read(context,operation,input);
       // A provider SEND method is only an installed adapter, not login proof.
