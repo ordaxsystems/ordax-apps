@@ -32,7 +32,8 @@ test('unknown terminal result can only be acknowledged by native Owner after a s
   assert.match(ui,/window\.ordax\.orchestratorInvoke\('project_handoff',\{projectId\}\)/);
   assert.match(ui,/window\.ordax\.forgeCommandCloseUnverified\(projectId,row\.commandId\)/);
   assert.match(ui,/if\(projectChanged\)void refreshForgeUncertainCommands\(\)/);
-  assert.match(mcp,/UI_ONLY_OPERATIONS=new Set\(\['forjador_send','command_close_unverified'\]\)/);
+  assert.match(mcp,/UI_ONLY_OPERATIONS=new Set\(\['forjador_send'\]\)/);
+  assert.doesNotMatch(mcp,/['"]command_close_unverified['"]/, 'native only operation is not part of the MCP tool catalog');
   assert.match(service,/if\(nativeOwnerConfirmed!==true\)/);
   const entry="registerUiHandler('ordax:forge:command:close-unverified'";
   assert.equal(main.split(entry).length-1,1,'one native Owner review entrypoint');
