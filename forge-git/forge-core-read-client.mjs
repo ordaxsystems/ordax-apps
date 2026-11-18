@@ -155,6 +155,20 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
     if(version!==epoch)throw Error('forge_mcp_connection_changed');
     return status();
   }
+  // The existing provider-health interval is the sole monitor. Its failure
+  // may revoke only the grant it actually inspected, never a newer session
+  // established while its network requests were pending.
+  async function monitorRefresh(){
+    if(!connected())throw Error('forge_mcp_connection_required');
+    const monitoredEpoch=epoch;
+    try{
+      await ping();
+      return await refresh();
+    }catch(error){
+      if(monitoredEpoch===epoch)invalidate();
+      throw error;
+    }
+  }
   async function readScoped(projectId,taskId){
     const [result,work,history]=await Promise.all([
       call('forge_project_handoff',{projectId,taskId}),
@@ -330,7 +344,7 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
     if(!connected()||!selectedHandoff||!prepared||
        typeof content!=='string'||content.length<4||content.length>6000)
       throw Error('forge_owner_dispatch_preparation_required');
-    const projectId=selectedProjectId,version=epoch;
+    const projectId=selectedProjectId,version=epoch,expectedPrepared=prepared;
     if(taskId!==selectedTaskId||taskId!==prepared.taskId||
        projectId!==prepared.projectId||
        draftRevision!==prepared.draftRevision||
@@ -340,7 +354,8 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
     if(dispatchedRevisions.has(key))throw Error('forge_owner_dispatch_already_attempted');
     // Fresh read-only handoff before the owner requests one Core execution.
     const live=await readScoped(projectId,taskId);
-    if(version!==epoch||selectedProjectId!==projectId||selectedTaskId!==taskId)
+    if(version!==epoch||selectedProjectId!==projectId||selectedTaskId!==taskId||
+       expectedPrepared!==prepared)
       throw Error('forge_mcp_connection_changed');
     if(live.selectedTask.draftRevision!==draftRevision)
       throw Error('task_draft_revision_conflict');
@@ -350,17 +365,27 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
     // One attempt per prepared revision. If HTTP fails after submission,
     // a fresh click must never automatically replay the uncertain send.
     dispatchedRevisions.add(key);
-    const response=await fetchImpl(credentials.endpoint.replace(/\/mcp$/,'/owner-dispatch'),{
-      method:'POST',
-      headers:{Authorization:'Bearer '+credentials.token,
-        'Mcp-Session-Id':sessionId,'Content-Type':'application/json'},
-      body:JSON.stringify({
-        schema:'ordax.forge.owner-dispatch/1',operation:'work_send',
-        projectId,taskId,content,draftRevision,
-        requestId:'fg_dispatch_'+randomUUID()
-      }),
-      signal:AbortSignal.timeout(180_000)
-    });
+    // From this point a provider effect may exist even if HTTP times out.
+    // Do not continue displaying the same revision as ready to send again.
+    prepared=null;
+    let response;
+    try{
+      response=await fetchImpl(credentials.endpoint.replace(/\/mcp$/,'/owner-dispatch'),{
+        method:'POST',
+        headers:{Authorization:'Bearer '+credentials.token,
+          'Mcp-Session-Id':sessionId,'Content-Type':'application/json'},
+        body:JSON.stringify({
+          schema:'ordax.forge.owner-dispatch/1',operation:'work_send',
+          projectId,taskId,content,draftRevision,
+          requestId:'fg_dispatch_'+randomUUID()
+        }),
+        signal:AbortSignal.timeout(180_000)
+      });
+    }catch{
+      // A lost HTTP response cannot prove the provider did not execute.
+      // Preserve the Core as authority and demand receipt reconciliation.
+      throw Error('forge_owner_dispatch_result_uncertain_check_core_no_retry');
+    }
     if(version!==epoch||credentials!==auth||sessionId!==session)
       throw Error('forge_owner_dispatch_connection_changed');
     if(response.status!==200)
@@ -379,7 +404,6 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
        (typeof receipt.runId!=='string'||receipt.responseObserved!==true||
         receipt.providerMessagesSent!==1))
       throw Error('forge_owner_dispatch_incomplete_run');
-    prepared=null;
     const updated=await readScoped(projectId,taskId);
     if(version!==epoch||selectedTaskId!==taskId)
       throw Error('forge_mcp_connection_changed');
@@ -394,7 +418,7 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
     });
   }
   return Object.freeze({
-    connect,refresh,ping,selectTask,saveWorkDraft,dispatchWork,
+    connect,refresh,ping,monitorRefresh,selectTask,saveWorkDraft,dispatchWork,
     disconnect:invalidate,status,
     projection:()=>projection?clone(projection):null
   });

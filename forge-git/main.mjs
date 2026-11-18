@@ -219,13 +219,17 @@ app.whenReady().then(async()=>{
       catch(error){emit('Sessão GPT Web indisponível: '+String(error?.message||error).slice(0,120));}
       if(core.status().connected){
         try{
-          await core.ping();
-          const refreshed=await core.refresh(); // Read-only projection, no second scheduler.
+          // One read-only monitor, same Core grant; never revoke a newer session.
+          const refreshed=await core.monitorRefresh();
           if(refreshed)emit('Forge MCP: estado canônico revalidado.');
         }catch(error){
-          core.disconnect();
-          emit('Forge MCP indisponível; envios bloqueados até reconectar: '+
-            String(error?.message||error).slice(0,120));
+          // monitorRefresh invalidates only the grant it monitored. A stale
+          // failure must not disconnect or report the replacement grant as down.
+          if(core.status().connected)
+            emit('Forge MCP: leitura antiga descartada; sessão atual preservada.');
+          else
+            emit('Forge MCP indisponível; envios bloqueados até reconectar: '+
+              String(error?.message||error).slice(0,120));
         }
       }
     }finally{polling=false;}
