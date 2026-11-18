@@ -29,7 +29,7 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
   if(typeof fetchImpl!=='function')throw Error('forge_mcp_fetch_unavailable');
   let auth=null,session=null,epoch=0,nextId=1;
   // A monitor read must not overwrite a more recent Task or draft action.
-  let projectionRevision=0,refreshSequence=0;
+  let projectionRevision=0,refreshSequence=0,projectSelectionPending=0;
   let selectedProjectId=null,selectedTaskId=null,selectedHandoff=null;
   let projection=null,prepared=null,nativeDispatchSupported=false;
   const dispatchedRevisions=new Set();
@@ -77,6 +77,7 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
   function invalidate(){
     const oldAuth=auth,oldSession=session;
     ++epoch;++projectionRevision;++refreshSequence;
+    projectSelectionPending=0; // New MCP sessions cannot inherit a stale UI selection.
     auth=null;session=null;projection=null;
     selectedProjectId=null;selectedTaskId=null;selectedHandoff=null;
     prepared=null;nativeDispatchSupported=false;dispatchedRevisions.clear();
@@ -196,56 +197,70 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
   }
   async function refresh(projectId=null){
     if(!connected())throw Error('forge_mcp_connection_required');
-    const version=epoch,revision=projectionRevision,request=++refreshSequence;
-    const listed=await call('forge_projects_list');
-    if(!Array.isArray(listed.projects))throw Error('forge_mcp_projects_invalid');
-    const projects=listed.projects.filter(p=>PROJECT.test(p?.id||''))
-      .slice(0,200).map(p=>({id:p.id,name:String(p.name||'').slice(0,140),
-        objective:String(p.objective||'').slice(0,400),
-        repositoryUrl:typeof p.repository_url==='string'?p.repository_url:null,
-        observationRequested:p.observation_requested===1}));
-    const requested=projectId===null?selectedProjectId:projectId;
-    if(requested!==null&&(!PROJECT.test(requested)||!projects.some(p=>p.id===requested)))
-      throw Error('forge_mcp_project_not_authorized');
-    const chosen=requested||(projects[0]?.id??null);
-    let handoff=null,works=[],orchestrators=[];
-    if(chosen){
-      handoff=await call('forge_project_handoff',{projectId:chosen});
-      if(handoff?.schema!=='ordax.forge.project-handoff/1'||handoff.project?.id!==chosen||
-         handoff.provenance?.source!=='canonical_app_sqlite')
-        throw Error('forge_mcp_handoff_invalid');
-      const replies=await Promise.all([
-        call('forge_work_list',{projectId:chosen}),
-        call('forge_orchestrators_list',{projectId:chosen})
-      ]);
-      if(!Array.isArray(replies[0]?.works)||!Array.isArray(replies[1]?.orchestrators))
-        throw Error('forge_mcp_work_projection_invalid');
-      works=replies[0].works.map(w=>({
-        id:w.id,title:String(w.title||'').slice(0,140),status:w.status,
-        latestRunStatus:w.latest_run_status,
-        runningRuns:Number(w.running_runs)||0,
-        providerSegments:Number(w.provider_segments)||0,
-        orchestratorId:w.orchestrator_id
-      }));
-      orchestrators=replies[1].orchestrators.map(o=>({
-        id:o.id,name:String(o.name||'').slice(0,140),status:o.status
-      }));
+    const selectionEpoch=epoch;
+    const explicitProjectSelection=projectId!==null;
+    // A background poll may not supersede an explicit project selection.
+    // Existing Core state remains visible until the new project is verified.
+    if(!explicitProjectSelection&&projectSelectionPending>0)
+      return null;
+    if(explicitProjectSelection){
+      ++projectSelectionPending;
+      ++projectionRevision;
     }
-    const keepTask=chosen===selectedProjectId&&selectedTaskId&&
-      works.some(w=>w.id===selectedTaskId)?selectedTaskId:null;
-    const scoped=keepTask?await readScoped(chosen,keepTask):null;
-    if(version!==epoch)throw Error('forge_mcp_connection_changed');
-    // Discard responses started before a newer refresh or explicit mutation.
-    if(request!==refreshSequence||revision!==projectionRevision)
-      return projection?clone(projection):null;
-    selectedProjectId=chosen;selectedTaskId=keepTask;selectedHandoff=scoped;
-    if(!keepTask||prepared?.taskId!==keepTask||
-       prepared?.projectId!==chosen||
-       prepared?.draftRevision!==scoped?.selectedTask?.draftRevision)prepared=null;
-    projection={source:'forge_mcp_live_read',liveGithubChecked:false,
-      observedAt:new Date().toISOString(),projects,selectedProjectId:chosen,
-      selectedTaskId,selectedHandoff:scoped,handoff,works,orchestrators};
-    return clone(projection);
+    try{
+      const version=epoch,revision=projectionRevision,request=++refreshSequence;
+      const listed=await call('forge_projects_list');
+      if(!Array.isArray(listed.projects))throw Error('forge_mcp_projects_invalid');
+      const projects=listed.projects.filter(p=>PROJECT.test(p?.id||''))
+        .slice(0,200).map(p=>({id:p.id,name:String(p.name||'').slice(0,140),
+          objective:String(p.objective||'').slice(0,400),
+          repositoryUrl:typeof p.repository_url==='string'?p.repository_url:null,
+          observationRequested:p.observation_requested===1}));
+      const requested=projectId===null?selectedProjectId:projectId;
+      if(requested!==null&&(!PROJECT.test(requested)||!projects.some(p=>p.id===requested)))
+        throw Error('forge_mcp_project_not_authorized');
+      const chosen=requested||(projects[0]?.id??null);
+      let handoff=null,works=[],orchestrators=[];
+      if(chosen){
+        handoff=await call('forge_project_handoff',{projectId:chosen});
+        if(handoff?.schema!=='ordax.forge.project-handoff/1'||handoff.project?.id!==chosen||
+           handoff.provenance?.source!=='canonical_app_sqlite')
+          throw Error('forge_mcp_handoff_invalid');
+        const replies=await Promise.all([
+          call('forge_work_list',{projectId:chosen}),
+          call('forge_orchestrators_list',{projectId:chosen})
+        ]);
+        if(!Array.isArray(replies[0]?.works)||!Array.isArray(replies[1]?.orchestrators))
+          throw Error('forge_mcp_work_projection_invalid');
+        works=replies[0].works.map(w=>({
+          id:w.id,title:String(w.title||'').slice(0,140),status:w.status,
+          latestRunStatus:w.latest_run_status,
+          runningRuns:Number(w.running_runs)||0,
+          providerSegments:Number(w.provider_segments)||0,
+          orchestratorId:w.orchestrator_id
+        }));
+        orchestrators=replies[1].orchestrators.map(o=>({
+          id:o.id,name:String(o.name||'').slice(0,140),status:o.status
+        }));
+      }
+      const keepTask=chosen===selectedProjectId&&selectedTaskId&&
+        works.some(w=>w.id===selectedTaskId)?selectedTaskId:null;
+      const scoped=keepTask?await readScoped(chosen,keepTask):null;
+      if(version!==epoch)throw Error('forge_mcp_connection_changed');
+      // Discard responses started before a newer refresh or explicit mutation.
+      if(request!==refreshSequence||revision!==projectionRevision)
+        return null;
+      selectedProjectId=chosen;selectedTaskId=keepTask;selectedHandoff=scoped;
+      if(!keepTask||prepared?.taskId!==keepTask||
+         prepared?.projectId!==chosen||
+         prepared?.draftRevision!==scoped?.selectedTask?.draftRevision)prepared=null;
+      projection={source:'forge_mcp_live_read',liveGithubChecked:false,
+        observedAt:new Date().toISOString(),projects,selectedProjectId:chosen,
+        selectedTaskId,selectedHandoff:scoped,handoff,works,orchestrators};
+      return clone(projection);
+    }finally{
+      if(explicitProjectSelection&&epoch===selectionEpoch)--projectSelectionPending;
+    }
   }
   async function selectTask(taskId){
     if(!connected()||!projection?.selectedProjectId)
@@ -254,9 +269,10 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
        !projection.works.some(work=>work.id===taskId))
       throw Error('forge_mcp_task_not_authorized');
     const version=epoch,projectId=selectedProjectId;
-    ++projectionRevision;
+    const selectionRevision=++projectionRevision;
     const scoped=await readScoped(projectId,taskId);
-    if(version!==epoch||projectId!==selectedProjectId)
+    if(version!==epoch||projectId!==selectedProjectId||
+       selectionRevision!==projectionRevision)
       throw Error('forge_mcp_connection_changed');
     ++projectionRevision;
     selectedTaskId=taskId;selectedHandoff=scoped;

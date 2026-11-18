@@ -131,6 +131,7 @@ function events(){
   guarded('fg:core-refresh',async()=>{
     await core.ping();
     const projection=await core.refresh();
+    if(!projection)throw Error('forge_mcp_project_selection_in_progress');
     emit('Forge MCP: leitura canônica atualizada.');
     return projection;
   });
@@ -250,8 +251,8 @@ app.whenReady().then(async()=>{
       if(core.status().connected){
         try{
           await core.ping();
-          await core.refresh(); // Read-only projection, no second scheduler.
-          emit('Forge MCP: estado canônico revalidado.');
+          const refreshed=await core.refresh(); // Read-only projection, no second scheduler.
+          if(refreshed)emit('Forge MCP: estado canônico revalidado.');
         }catch(error){
           core.disconnect();
           emit('Forge MCP indisponível; envios bloqueados até reconectar: '+

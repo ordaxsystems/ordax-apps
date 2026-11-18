@@ -430,7 +430,8 @@ test('late MCP polling cannot replace a newer Task selection or drafted revision
   const chosen=await client.selectTask(mission.taskId);
   assert.equal(chosen.selectedTaskId,mission.taskId);
   release();
-  await staleSelectionPoll;
+  assert.equal(await staleSelectionPoll,null,
+    'stale poll does not falsely report a fresh MCP read');
   assert.equal(client.projection().selectedTaskId,mission.taskId,
     'old polling must not clear the explicit Task');
 
@@ -445,9 +446,100 @@ test('late MCP polling cannot replace a newer Task selection or drafted revision
   });
   assert.equal(receipt.readbackVerified,true);
   release();
-  await staleDraftPoll;
+  assert.equal(await staleDraftPoll,null,
+    'stale read cannot report an updated draft as its own read');
   assert.equal(client.projection().selectedTaskId,mission.taskId);
   assert.equal(client.projection().selectedHandoff.selectedTask.draftRevision,
     receipt.draftRevision);
   assert.equal(client.status().preparedDraftRevision,receipt.draftRevision);
+});
+
+test('explicit project switch wins when background polling starts during its MCP read',async t=>{
+  const f=fixture(t);
+  const a=(await f.service.invoke(f.context,'mission_create',{
+    name:'Projeto A',mission:'Trabalho do projeto A.',
+    requestId:'core_ui_switch_a'
+  })).result;
+  const b=(await f.service.invoke(f.context,'mission_create',{
+    name:'Projeto B',mission:'Trabalho do projeto B.',
+    requestId:'core_ui_switch_b'
+  })).result;
+  const started=await f.transport.start(FORGE_APP_MCP_SCOPE);
+  let intercepted=false,entered,release;
+  const enteredPromise=new Promise(resolve=>{entered=resolve;});
+  const fetchImpl=async(url,options)=>{
+    const body=options?.body?JSON.parse(options.body):null;
+    if(!intercepted&&body?.method==='tools/call'&&
+       body.params?.name==='forge_work_list'&&
+       body.params?.arguments?.projectId===b.projectId){
+      intercepted=true;
+      const response=await fetch(url,options);
+      entered();
+      await new Promise(resolve=>{release=resolve;});
+      return response;
+    }
+    return fetch(url,options);
+  };
+  const client=createForgeCoreReadClient({fetchImpl});
+  t.after(()=>client.disconnect());
+  await client.connect({endpoint:started.endpoint,token:started.token});
+  await client.refresh(a.projectId);
+  const selecting=client.refresh(b.projectId);
+  await enteredPromise;
+  const during=await client.refresh();
+  assert.equal(during,null,'no stale read may claim a fresh projection');
+  assert.equal(client.projection().selectedProjectId,a.projectId,
+    'project selection is still pending in the Core client');
+  release();
+  await selecting;
+  assert.equal(client.projection().selectedProjectId,b.projectId);
+  assert.equal(client.projection().handoff.project.id,b.projectId);
+  assert.equal(client.status().selectedProjectId,b.projectId);
+  assert.equal(client.projection().selectedTaskId,null,
+    'Task must be selected separately for the new project');
+});
+
+test('new MCP session does not inherit a pending project selection from revoked session',async t=>{
+  const f=fixture(t);
+  const a=(await f.service.invoke(f.context,'mission_create',{
+    name:'Sessão A',mission:'Verificar projeto após reconexão.',
+    requestId:'core_ui_reconnect_a'
+  })).result;
+  const b=(await f.service.invoke(f.context,'mission_create',{
+    name:'Sessão B',mission:'Atrasar leitura da sessão anterior.',
+    requestId:'core_ui_reconnect_b'
+  })).result;
+  const started=await f.transport.start(FORGE_APP_MCP_SCOPE);
+  let entered,release,blocked=false;
+  const enteredPromise=new Promise(resolve=>{entered=resolve;});
+  const fetchImpl=async(url,options)=>{
+    const body=options?.body?JSON.parse(options.body):null;
+    if(!blocked&&body?.method==='tools/call'&&
+       body.params?.name==='forge_work_list'&&
+       body.params?.arguments?.projectId===b.projectId){
+      blocked=true;
+      const response=await fetch(url,options);
+      entered();
+      await new Promise(resolve=>{release=resolve;});
+      return response;
+    }
+    return fetch(url,options);
+  };
+  const client=createForgeCoreReadClient({fetchImpl});
+  t.after(()=>client.disconnect());
+  await client.connect({endpoint:started.endpoint,token:started.token});
+  await client.refresh(a.projectId);
+  const oldSelection=client.refresh(b.projectId);
+  // Observe the expected revocation error immediately, before it can reject.
+  void oldSelection.catch(()=>{});
+  await enteredPromise;
+  client.disconnect();
+  assert.equal(client.status().connected,false);
+  await client.connect({endpoint:started.endpoint,token:started.token});
+  const current=await client.refresh(a.projectId);
+  assert.equal(current.selectedProjectId,a.projectId,
+    'new grant must not be blocked by old pending project selection');
+  release();
+  await assert.rejects(oldSelection,/forge_mcp_connection_changed/);
+  assert.equal(client.projection().selectedProjectId,a.projectId);
 });
