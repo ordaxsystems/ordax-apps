@@ -74,10 +74,20 @@ test('revoked, malformed, moved or forged credentials cannot silently reconnect'
   cache.clear();
   const target=path.join(dir,'target.txt');
   writeFileSync(target,'do-not-overwrite');
-  symlinkSync(target,file);
-  assert.throws(()=>cache.recover(),/forge_git_protected_connection_file_invalid/);
-  assert.throws(()=>cache.save({endpoint,token}),/forge_git_protected_connection_file_invalid/);
-  cache.clear();
+  try{
+    symlinkSync(target,file);
+  }catch(error){
+    // Standard Windows accounts can forbid creating symlinks entirely.
+    // Keep the production lstat/symlink guard and exercise the path where
+    // the OS permits link creation; never elevate permissions for tests.
+    if(error?.code!=='EPERM')throw error;
+    t.diagnostic('Windows policy does not allow creating a test symlink');
+  }
+  if(cache.exists()){
+    assert.throws(()=>cache.recover(),/forge_git_protected_connection_file_invalid/);
+    assert.throws(()=>cache.save({endpoint,token}),/forge_git_protected_connection_file_invalid/);
+    cache.clear();
+  }
   assert.equal(readFileSync(target,'utf8'),'do-not-overwrite');
 });
 
