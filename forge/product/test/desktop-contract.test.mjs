@@ -20,6 +20,26 @@ const uiHtml = fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
 const e2eLock = fs.readFileSync(path.join(root,'scripts','e2e-lock.cjs'),'utf8');
 const liveText = fs.readFileSync(path.join(root,'scripts','live-ui-text-smoke.cjs'),'utf8');
 
+test('owner development gate is discoverable without duplicate consent or automatic grant',()=>{
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  assert.match(uiHtml,/id="forgeProjectAdvanced"/);
+  assert.match(uiHtml,/id="forgeDevelopmentApprove"/);
+  assert.match(uiHtml,/id="forgeDevelopmentRevoke"/);
+  assert.equal((uiHtml.match(/id="forgeDevelopmentApprove"/g)||[]).length,1);
+  assert.match(css,/data-development-gate="approval-required"/);
+  assert.match(css,/data-development-gate="workspace-required"/);
+  assert.match(ui,/function showForgeDevelopmentGate\(gate=null\)/);
+  assert.match(ui,/showForgeDevelopmentGate\(access.available\?null:/);
+  assert.match(ui,/if\(projectChanged\)void refreshForgeDevelopmentAccess\(\)/);
+  assert.match(ui,/await orchestrationUi.start\(\{restoreNavigation:savedNavigation\}\);\s*void refreshForgeDevelopmentAccess\(\)/);
+  assert.match(ui,/if\(orchestrationUi\?\.getProjectId\?\.\(\)!==projectId\)return;/);
+  assert.match(ui,/summary\?\.setAttribute\('aria-description'/);
+  assert.equal((ui.match(/window\.ordax\.forgeDevelopmentApprove\(projectId\)/g)||[]).length,1,
+    'only the explicit native Owner button invokes consent');
+  assert.match(main,/await confirmInActiveUi\(\{/);
+  assert.match(main,/forgeProjectDevelopment\.approve\(projectId,\{expectedScopeHash:scopeHash\}\)/);
+});
+
 test('Forjador uncertain receipt notice is project-scoped and never treats other projects as its effects',()=>{
   const state={uncertainCommands:4,uncertainByProject:[
     {projectId:'project_a',count:1},{projectId:'project_b',count:3}
