@@ -268,7 +268,20 @@ $('core-dispatch').addEventListener('click',()=>action(async()=>{
     throw Error('Salve primeiro o rascunho da Task selecionada.');
   if(!confirm('Solicitar ao Forge Core o envio único desta Task? A confirmação decisiva ocorrerá no aplicativo Forge. Um resultado incerto nunca será reenviado automaticamente.'))return;
   message('Forge Core: confirmação nativa necessária; verificando Run e recibo.');
-  const receipt=await window.forgeGit.coreDispatch({taskId,content,draftRevision});
+  let receipt;
+  try{
+    receipt=await window.forgeGit.coreDispatch({taskId,content,draftRevision});
+  }catch(error){
+    const code=String(error?.message||error);
+    // Once an owner-dispatch POST might have left the app, no local retry is safe.
+    // Show the canonical reconciliation action, not an invitation to resubmit.
+    if(/^forge_owner_dispatch_(?:result_uncertain|unconfirmed_http_|invalid_receipt|incomplete_run|connection_changed)/.test(code)){
+      $('draft-confirmation').textContent=
+        'Resultado do envio não confirmado. A operação pode ter ocorrido. NÃO reenvie: consulte o comando e o Run no Forge Core para reconciliar o recibo.';
+      apply(await window.forgeGit.state());
+    }
+    throw error;
+  }
   if(receipt?.mcpReceiptVerified!==true)
     throw Error('forge_owner_dispatch_receipt_unverified');
   if(receipt.status==='succeeded'){
