@@ -16,14 +16,18 @@ const DRAFT_TOOL='forge_work_draft_set';
 const RECEIPT_TOOL='forge_command_get';
 const clone=value=>JSON.parse(JSON.stringify(value));
 
-export function validateForgeEndpoint(endpoint,token){
+export function validateForgeLoopbackEndpoint(endpoint){
   const match=typeof endpoint==='string'?ENDPOINT.exec(endpoint.trim()):null;
   const port=match?Number(match[1]):0;
   if(!match||!Number.isInteger(port)||port<1024||port>65535)
     throw Error('forge_mcp_local_endpoint_invalid');
+  return endpoint.trim();
+}
+export function validateForgeEndpoint(endpoint,token){
+  const normalized=validateForgeLoopbackEndpoint(endpoint);
   if(typeof token!=='string'||!TOKEN.test(token.trim()))
     throw Error('forge_mcp_local_token_invalid');
-  return Object.freeze({endpoint:endpoint.trim(),token:token.trim()});
+  return Object.freeze({endpoint:normalized,token:token.trim()});
 }
 
 export function createForgeCoreReadClient({fetchImpl=fetch}={}){
