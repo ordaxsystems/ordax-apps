@@ -17,11 +17,11 @@ export function forgeProjectAdministratorView(store,projectId) {
     WHERE b.project_id=? AND b.kind='work' AND t.workspace_session_id=?
     ORDER BY t.updated_at DESC,t.id DESC LIMIT 24`).all(projectId,store.getWorkspaceSession().id);
   const unresolved=db.prepare(`SELECT id AS commandId,operation,status,updated_at AS updatedAt
-    FROM lab_command_receipts WHERE project_id=? AND status IN ('running','uncertain')
+    FROM lab_command_active_unresolved WHERE project_id=? AND status IN ('running','uncertain')
     ORDER BY updated_at DESC,id DESC LIMIT 16`).all(projectId);
   const totals=db.prepare(`SELECT
     (SELECT COUNT(*) FROM lab_task_bindings b WHERE b.project_id=? AND b.kind='work') AS works,
-    (SELECT COUNT(*) FROM lab_command_receipts WHERE project_id=?
+    (SELECT COUNT(*) FROM lab_command_active_unresolved WHERE project_id=?
       AND status IN ('running','uncertain')) AS unresolvedCommands,
     (SELECT COUNT(*) FROM lab_orchestrators WHERE project_id=?) AS coordinatorConversations`)
     .get(projectId,projectId,projectId);
