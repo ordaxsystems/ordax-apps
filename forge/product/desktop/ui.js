@@ -90,6 +90,56 @@ function showForgeDevelopmentGate(gate=null) {
   if(descriptions[gate])summary?.setAttribute('aria-description',descriptions[gate]);
   else summary?.removeAttribute('aria-description');
 }
+let forgeUncertainReviewRevision=0;
+async function refreshForgeUncertainCommands(){
+  const revision=++forgeUncertainReviewRevision;
+  const projectId=orchestrationUi?.getProjectId?.()||null;
+  const status=document.getElementById('forgeUncertainCommandsStatus');
+  const list=document.getElementById('forgeUncertainCommandsList');
+  if(!status||!list)return;
+  list.replaceChildren();
+  if(!projectId){status.textContent='Selecione um projeto.';return;}
+  status.textContent='Consultando recibos canônicos do projeto…';
+  try{
+    const packet=await window.ordax.orchestratorInvoke('project_handoff',{projectId});
+    if(revision!==forgeUncertainReviewRevision||
+       orchestrationUi?.getProjectId?.()!==projectId)return;
+    const pending=Array.isArray(packet?.unresolvedCommands)
+      ?packet.unresolvedCommands.filter(row=>row.operation==='project_command_run'&&
+         row.status==='uncertain'&&/^command_[A-Za-z0-9_-]{8,}$/.test(row.commandId)): [];
+    const truncated=packet?.limits?.unresolvedCommandsTruncated===true;
+    status.textContent=pending.length
+      ?pending.length+' comando(s) interrompidos com resultado desconhecido. O reconhecimento não atesta sucesso.'
+      :truncated?'Há mais recibos pendentes. Consulte o histórico completo.'
+        :'Nenhum terminal incerto pendente.';
+    if(truncated)status.textContent+=' Lista resumida; outros recibos permanecem bloqueados.';
+    for(const row of pending){
+      const button=document.createElement('button');
+      button.type='button';
+      button.textContent='Revisar '+row.commandId.slice(0,20);
+      button.dataset.commandId=row.commandId;
+      button.setAttribute('aria-label','Revisar resultado desconhecido do comando '+row.commandId);
+      button.addEventListener('click',async()=>{
+        if(orchestrationUi?.getProjectId?.()!==projectId)return;
+        button.disabled=true;
+        try{
+          const receipt=await window.ordax.forgeCommandCloseUnverified(projectId,row.commandId);
+          if(receipt?.cancelled!==true&&receipt?.status!=='succeeded')
+            throw Error('forge_unknown_command_review_unconfirmed');
+          if(receipt?.cancelled!==true)await refreshForgeUncertainCommands();
+        }catch{
+          if(orchestrationUi?.getProjectId?.()===projectId)
+            status.textContent='A revisão não foi aceita. Confira a autorização e a prova independente; o comando continua incerto.';
+        }finally{button.disabled=false;}
+      });
+      list.append(button);
+    }
+  }catch{
+    if(revision===forgeUncertainReviewRevision&&
+       orchestrationUi?.getProjectId?.()===projectId)
+      status.textContent='Não foi possível consultar os recibos. Nenhuma revisão foi efetuada.';
+  }
+}
 async function refreshForgeDevelopmentAccess() {
   const revision=++forgeDevelopmentGateRevision;
   const projectId=orchestrationUi?.getProjectId?.()||null;
@@ -122,7 +172,10 @@ async function refreshForgeDevelopmentAccess() {
   }
 }
 document.getElementById('forgeProjectAdvanced')?.addEventListener('toggle',event=>{
-  if(event.target.open)void refreshForgeDevelopmentAccess();
+  if(event.target.open){
+    void refreshForgeDevelopmentAccess();
+    void refreshForgeUncertainCommands();
+  }
 });
 document.getElementById('forgeDevelopmentApprove')?.addEventListener('click',async()=>{
   const projectId=orchestrationUi?.getProjectId?.();
@@ -1930,6 +1983,7 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
     if(projectChanged||previewOutOfScope)clearWorkSurfacePreview();
     scopedProjectId=nextProjectId;
     if(projectChanged)void refreshForgeDevelopmentAccess();
+    if(projectChanged)void refreshForgeUncertainCommands();
     // Do not reinitialize a verified Files view if navigation already loaded
     // this project before the work-list callback finished.
     if(projectChanged&&nextProjectId!==forgeFilesProjectId)void refreshForgeFilesPanel();
@@ -1967,6 +2021,7 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
 const savedNavigation=workspace?.metadata?.navigation;
 await orchestrationUi.start({restoreNavigation:savedNavigation});
 void refreshForgeDevelopmentAccess();
+void refreshForgeUncertainCommands();
 window.ordax.onForgeProjectFileChanged?.(payload=>{
   if(typeof payload?.projectId!=='string'||
      payload.projectId!==orchestrationUi?.getProjectId?.())return;
