@@ -6,7 +6,7 @@ import {constants,createHash,createPublicKey,generateKeyPairSync,privateDecrypt,
 
 const REQUEST='ordax.forge-git.owner-pair-request/1';
 const RECEIPT='ordax.forge-git.owner-pair-response/1';
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{4}-[0-9a-f]{12}$/;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const TOKEN=/^[A-Za-z0-9_-]{40,128}$/;
 const KEY=/^[A-Za-z0-9_-]{350,520}$/;
 const CT=/^[A-Za-z0-9_-]{342}$/;
