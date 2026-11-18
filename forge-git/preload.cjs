@@ -16,7 +16,6 @@ contextBridge.exposeInMainWorld('forgeGit',{
   agentRefresh:id=>ipcRenderer.invoke('fg:agent-refresh',id),
   newChat:id=>ipcRenderer.invoke('fg:new-chat',id),
   notifyForjador:()=>ipcRenderer.invoke('fg:notify-forjador'),
-  openUrl:url=>ipcRenderer.invoke('fg:open-url',url),
   onEvent:listener=>{
     const handler=(_event,data)=>listener(data);
     ipcRenderer.on('forge-git:event',handler);
