@@ -779,7 +779,25 @@ test('protected owner grant survives native listener and Forge Git client restar
   assert.notEqual(rotated.token,initial.token);
   const revokedClient=createForgeCoreReadClient();
   t.after(()=>revokedClient.disconnect());
-  await step('revoked_connect',()=>assert.rejects(revokedClient.connect(cache.recover()),/forge_mcp_http_401/));
+  // Node's pooled HTTP socket can be reset once when the local listener
+  // restarts on the same port. Only the idempotent initialization handshake
+  // may be retried; a bearer rejection must never be bypassed or replay work.
+  let revokeConfirmed=false;
+  for(let attempt=0;attempt<3;attempt++){
+    try{
+      await revokedClient.connect(cache.recover());
+      throw Error('revoked_owner_grant_unexpectedly_accepted');
+    }catch(error){
+      const reason=String(error?.message||error);
+      if(reason==='forge_mcp_http_401'){
+        revokeConfirmed=true;
+        break;
+      }
+      if(reason!=='fetch failed')throw error;
+    }
+  }
+  assert.equal(revokeConfirmed,true,
+    'a stale TCP connection cannot be mistaken for Owner approval');
   assert.equal(revokedClient.status().connected,false);
   cache.clear(); // Same revoked-grant cleanup performed by the Forge Git shell.
   assert.equal(cache.recover(),null);
