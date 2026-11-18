@@ -261,7 +261,7 @@ export class ForgeLocalWorkspaces {
     const observed=this.db.prepare('SELECT observation_requested FROM lab_projects WHERE id=?')
       .get(projectId);
     if(observed?.observation_requested===1)throw Error('forge_workspace_migration_observation_active');
-    if(this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE project_id=? AND status IN ('running','uncertain') LIMIT 1")
+    if(this.db.prepare("SELECT 1 FROM lab_command_active_unresolved WHERE project_id=? AND status IN ('running','uncertain') LIMIT 1")
       .get(projectId))throw Error('forge_workspace_migration_command_unresolved');
     if(this.db.prepare("SELECT 1 FROM runs r JOIN lab_task_bindings b ON b.task_id=r.task_id WHERE b.project_id=? AND r.status='running' LIMIT 1")
       .get(projectId))throw Error('forge_workspace_migration_run_active');
