@@ -1,5 +1,5 @@
 import {randomUUID,createHash} from 'node:crypto';
-import {ORCHESTRATOR_CONTRACT,ORCHESTRATOR_TOOLS,validateOrchestratorInput} from './forge-contract.mjs';
+import {ORCHESTRATOR_CONTRACT,ORCHESTRATOR_TOOLS,validateOrchestratorInput,validateNativeCommandReviewInput} from './forge-contract.mjs';
 import {assertTaskHasNoUncertainTransport,listTaskUncertainTransportRuns} from './provider-uncertain-run-policy.mjs';
 import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
 import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
@@ -151,6 +151,9 @@ export class OrchestratorService {
     // reference to the old table name. Recreate after migration below.
     if(!receiptSchema.includes("'failed'")){
       this.db.exec('DROP VIEW IF EXISTS lab_command_receipt_scope');
+      // SQLite rewrites dependent VIEW targets on ALTER TABLE RENAME.
+      // Drop this derived view BEFORE renaming the old receipt table.
+      this.db.exec('DROP VIEW IF EXISTS lab_command_active_unresolved');
       this.transaction(()=>{
       this.db.exec('ALTER TABLE lab_command_receipts RENAME TO lab_command_receipts_legacy');
       this.db.exec(`CREATE TABLE lab_command_receipts (
@@ -175,7 +178,30 @@ export class OrchestratorService {
     // Read-only projection over the ONE durable receipt ledger. SQLite JSON
     // extraction is never attempted on invalid/truncated result data. A work
     // receipt with an unresolvable Task quarantines its OWN project only.
-    this.db.exec(`CREATE VIEW IF NOT EXISTS lab_command_receipt_scope AS
+    // Effective unresolved commands are a read-only projection of the same
+    // append-only receipt ledger. An Owner acknowledgement is a NEW receipt:
+    // the original command stays uncertain, is never replayed, and never
+    // becomes evidence of success or of external effects.
+    this.db.exec(`CREATE VIEW IF NOT EXISTS lab_command_active_unresolved AS
+      SELECT c.* FROM lab_command_receipts c
+      WHERE c.status IN ('running','uncertain') AND (
+        c.status='running' OR c.operation!='project_command_run' OR
+        NOT EXISTS(SELECT 1 FROM lab_command_receipts a
+          WHERE a.operation='command_close_unverified' AND a.status='succeeded'
+            AND a.project_id=c.project_id
+            AND a.workspace_session_id=c.workspace_session_id
+            AND CASE WHEN json_valid(a.result) THEN
+              json_extract(a.result,'$.targetCommandId')=c.id
+              AND json_extract(a.result,'$.originalInputHash')=c.input_hash
+              AND json_extract(a.result,'$.disposition')='abandon_unverified'
+              AND json_extract(a.result,'$.acknowledgedUnknownEffects')=1
+              AND json_extract(a.result,'$.externalEffectsVerified')=0
+            ELSE 0 END
+        )
+      )`);
+    // Recreate only this derived VIEW; its stored source remains unchanged.
+    this.db.exec('DROP VIEW IF EXISTS lab_command_receipt_scope');
+    this.db.exec(`CREATE VIEW lab_command_receipt_scope AS
       SELECT c.rowid AS receipt_rowid,c.id,c.project_id,c.operation,c.status,
         b.task_id AS task_id,
         CASE WHEN c.operation IN ('work_send','proposal_send')
@@ -185,7 +211,9 @@ export class OrchestratorService {
       LEFT JOIN lab_task_bindings b ON b.project_id=c.project_id
         AND b.task_id=CASE WHEN json_valid(c.result) THEN
           CASE WHEN json_type(c.result,'$.taskId')='text'
-            THEN json_extract(c.result,'$.taskId') END END`);
+            THEN json_extract(c.result,'$.taskId') END END
+      WHERE c.status NOT IN ('running','uncertain') OR
+        EXISTS(SELECT 1 FROM lab_command_active_unresolved u WHERE u.id=c.id)`);
     this.continuation=new LabContinuation({store,service:this});
     this.autonomous=new AutonomousDialogue({store,service:this});
     this.workspace=new ProjectWorkspace({store,port:workspacePort});
@@ -398,8 +426,14 @@ export class OrchestratorService {
       if(row.status!=='uncertain')throw Error('orchestrator_receipt_result_invalid');
       result={reason:'receipt_result_unreadable'};
     }
+    const outstanding=row.status==='uncertain'&&row.operation==='project_command_run'
+      ?Boolean(this.db.prepare('SELECT 1 FROM lab_command_active_unresolved WHERE id=?')
+        .get(row.id)):row.status==='uncertain';
     return {commandId:row.id,operation:row.operation,status:row.status,
-      requiresReconciliation:row.status==='uncertain',
+      requiresReconciliation:outstanding,
+      ...(row.status==='uncertain'&&!outstanding?{
+        reviewedUnknownOutcome:true,externalEffectsVerified:false,replayAllowed:false
+      }:{}),
       result,updatedAt:row.updated_at};
   }
 
@@ -410,6 +444,66 @@ export class OrchestratorService {
     if(!row)throw Error('orchestrator_command_unavailable');
     this.requireAccess(context,row.operation,row.project_id);
     return this.receipt(row);
+  }
+
+  // This is a native-Owner-only, append-only review. It never changes the
+  // original uncertain receipt, never replays its command and never certifies
+  // historical external effects. A later success only proves current health.
+  closeUnverifiedCommand(context,raw,{nativeOwnerConfirmed=false}={}) {
+    const input=validateNativeCommandReviewInput(raw);
+    if(nativeOwnerConfirmed!==true)
+      throw Error('forge_command_review_native_owner_required');
+    this.requireAccess(context,'command_close_unverified',input.projectId);
+    if(input.acknowledgeUnknownEffects!==true)
+      throw Error('forge_command_review_acknowledgement_required');
+    const grant=this.development?.status?.(input.projectId);
+    if(grant?.ownerApproved!==true||grant.available!==true)
+      throw Error('forge_command_review_owner_grant_required');
+    return this.transaction(()=>{
+      this.requireAccess(context,'command_close_unverified',input.projectId);
+      // Resolve idempotency before checking the now-closed original receipt.
+      const existing=this.db.prepare(`SELECT id FROM lab_command_receipts WHERE
+        workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
+        .get(context.workspaceSessionId,context.actorId,context.clientId,input.requestId);
+      if(existing)return this.reserve(context,'command_close_unverified',input).existing;
+      const source=this.db.prepare(`SELECT * FROM lab_command_receipts
+        WHERE id=? AND project_id=? AND workspace_session_id=?`).get(input.commandId,
+          input.projectId,context.workspaceSessionId);
+      if(!source||source.operation!=='project_command_run'||source.status!=='uncertain')
+        throw Error('forge_command_review_scope_or_status_invalid');
+      // Only the known terminal timeout path is eligible, not provider sends
+      // or corrupted/unreadable receipts.
+      let sourceResult;
+      try{sourceResult=JSON.parse(source.result||'null');}catch{}
+      if(sourceResult?.reason!=='forge_development_command_outcome_uncertain'||
+         sourceResult.externalEffectsVerified!==false)
+        throw Error('forge_command_review_effect_unverified');
+      if(!this.db.prepare('SELECT 1 FROM lab_command_active_unresolved WHERE id=?')
+        .get(source.id))throw Error('forge_command_review_already_closed');
+      const candidates=this.db.prepare(`SELECT id,result,updated_at
+        FROM lab_command_receipts WHERE project_id=? AND workspace_session_id=?
+          AND operation='project_command_run' AND status='succeeded'
+          AND updated_at>=? ORDER BY rowid DESC LIMIT 40`).all(input.projectId,
+          context.workspaceSessionId,source.updated_at);
+      const proof=candidates.find(row=>{
+        let value;
+        try{value=JSON.parse(row.result||'null');}catch{return false;}
+        return value?.completed===true&&value.exitCode===0&&
+          value.commandOutcome==='exit_zero'&&value.workspaceScope==='project_root'&&
+          value.projectId===input.projectId;
+      });
+      if(!proof)throw Error('forge_command_review_independent_evidence_missing');
+      const reserved=this.reserve(context,'command_close_unverified',input);
+      if(reserved.existing)return reserved.existing;
+      return this.finish(reserved.commandId,{
+        schema:'ordax.forge.unknown-command-acknowledgement/1',
+        targetCommandId:source.id,originalStatus:'uncertain',
+        originalInputHash:source.input_hash,disposition:'abandon_unverified',
+        acknowledgedUnknownEffects:true,externalEffectsVerified:false,
+        originalReceiptPreserved:true,replayAllowed:false,
+        evidenceCommandId:proof.id,note:input.note
+      });
+    });
   }
 
   reserve(context,operation,input) {
@@ -1127,7 +1221,7 @@ export class OrchestratorService {
       // One bounded, read-only grouping from the existing receipt ledger. A
       // global session count must not be presented as this project's count.
       const uncertainRows=this.db.prepare(`SELECT project_id AS projectId,COUNT(*) AS count
-        FROM lab_command_receipts WHERE status='uncertain' AND
+        FROM lab_command_active_unresolved WHERE status='uncertain' AND
           workspace_session_id=? AND actor_id=? AND client_id=?
         GROUP BY project_id ORDER BY project_id`)
         .all(context.workspaceSessionId,context.actorId,context.clientId);

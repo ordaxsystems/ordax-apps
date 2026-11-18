@@ -20,6 +20,33 @@ const uiHtml = fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
 const e2eLock = fs.readFileSync(path.join(root,'scripts','e2e-lock.cjs'),'utf8');
 const liveText = fs.readFileSync(path.join(root,'scripts','live-ui-text-smoke.cjs'),'utf8');
 
+test('unknown terminal result can only be acknowledged by native Owner after a scoped confirm',()=>{
+  const preload=fs.readFileSync(path.join(root,'desktop','preload.cjs'),'utf8');
+  const mcp=fs.readFileSync(path.join(root,'src','orchestrator-mcp.mjs'),'utf8');
+  const service=fs.readFileSync(path.join(root,'src','orchestrator-service.mjs'),'utf8');
+  assert.match(uiHtml,/id="forgeUncertainCommandsStatus"/);
+  assert.match(uiHtml,/id="forgeUncertainCommandsList"/);
+  assert.equal((uiHtml.match(/id="forgeUncertainCommandsList"/g)||[]).length,1);
+  assert.match(preload,/forgeCommandCloseUnverified: \(projectId,commandId\)/);
+  assert.match(ui,/function refreshForgeUncertainCommands\(\)/);
+  assert.match(ui,/window\.ordax\.orchestratorInvoke\('project_handoff',\{projectId\}\)/);
+  assert.match(ui,/window\.ordax\.forgeCommandCloseUnverified\(projectId,row\.commandId\)/);
+  assert.match(ui,/if\(projectChanged\)void refreshForgeUncertainCommands\(\)/);
+  assert.match(mcp,/UI_ONLY_OPERATIONS=new Set\(\['forjador_send'\]\)/);
+  assert.doesNotMatch(mcp,/['"]command_close_unverified['"]/, 'native only operation is not part of the MCP tool catalog');
+  assert.match(service,/if\(nativeOwnerConfirmed!==true\)/);
+  const entry="registerUiHandler('ordax:forge:command:close-unverified'";
+  assert.equal(main.split(entry).length-1,1,'one native Owner review entrypoint');
+  const area=main.slice(main.indexOf(entry),main.indexOf("// Local MCP is explicitly enabled",main.indexOf(entry)));
+  assert.match(area,/requireTrustedSupervisorRenderer\(event\)/);
+  assert.match(area,/if\(hostBrowserMode\)throw Error\('forge_command_review_native_only'\)/);
+  assert.match(area,/await confirmInActiveUi\(\{/);
+  assert.match(area,/if\(!accepted\)return \{cancelled:true\}/);
+  assert.match(area,/closeUnverifiedCommand\(localOrchestratorContext,\{/);
+  assert.match(area,/\},\{nativeOwnerConfirmed:true\}\)/);
+  assert.doesNotMatch(ui,/closeUnverifiedCommand\(/,'web UI cannot call the privileged method directly');
+});
+
 test('owner development gate is discoverable without duplicate consent or automatic grant',()=>{
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   assert.match(uiHtml,/id="forgeProjectAdvanced"/);
@@ -36,8 +63,12 @@ test('owner development gate is discoverable without duplicate consent or automa
   assert.match(ui,/await orchestrationUi.start\(\{restoreNavigation:savedNavigation\}\);\s*void refreshForgeDevelopmentAccess\(\)/);
   assert.equal(ui.split('revision!==forgeDevelopmentGateRevision||').length-1,2,
     'older status requests must be discarded on both success and failure');
-  assert.equal(ui.split('orchestrationUi?.getProjectId?.()!==projectId)return;').length-1,2,
-    'old project responses cannot overwrite a newer selected project');
+  const developmentRefresh=ui.slice(
+    ui.indexOf('async function refreshForgeDevelopmentAccess()'),
+    ui.indexOf("document.getElementById('forgeProjectAdvanced')?.addEventListener")
+  );
+  assert.equal(developmentRefresh.split('orchestrationUi?.getProjectId?.()!==projectId)return;').length-1,2,
+    'old development approval responses cannot overwrite a newer selected project');
   assert.match(ui,/summary\?\.setAttribute\('aria-description'/);
   assert.equal((ui.match(/window\.ordax\.forgeDevelopmentApprove\(projectId\)/g)||[]).length,1,
     'only the explicit native Owner button invokes consent');

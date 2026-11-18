@@ -58,7 +58,7 @@ export function forgeProjectHandoffView(store,projectId,{taskId=null}={}) {
     WHERE b.project_id=? AND m.status='active'
     ORDER BY m.updated_at DESC,m.rowid DESC LIMIT 12`).all(projectId);
   const unresolved=db.prepare(`SELECT id AS commandId,operation,status
-    FROM lab_command_receipts WHERE project_id=? AND status IN ('running','uncertain')
+    FROM lab_command_active_unresolved WHERE project_id=? AND status IN ('running','uncertain')
     ORDER BY updated_at DESC,id DESC LIMIT 12`).all(projectId);
   const counts=db.prepare(`SELECT
     (SELECT COUNT(*) FROM lab_task_bindings WHERE project_id=?) AS tasks,
@@ -68,7 +68,7 @@ export function forgeProjectHandoffView(store,projectId,{taskId=null}={}) {
       WHERE b.project_id=? AND m.status='active') AS acceptedMemories,
     (SELECT COUNT(*) FROM project_memory_candidates c JOIN lab_task_bindings b ON b.task_id=c.task_id
       WHERE b.project_id=? AND c.status='pending') AS pendingSuggestions,
-    (SELECT COUNT(*) FROM lab_command_receipts
+    (SELECT COUNT(*) FROM lab_command_active_unresolved
       WHERE project_id=? AND status IN ('running','uncertain')) AS unresolvedCommands`)
     .get(projectId,projectId,taskId,taskId,projectId,projectId,projectId);
   // Task continuation can proceed while a *different* Task has an uncertain

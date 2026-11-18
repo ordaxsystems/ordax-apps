@@ -964,7 +964,7 @@ export class AutonomousDialogue {
     // Unknown/unscoped receipts and same-project uncertainty remain fail-closed;
     // the running GPT gate remains global (one physical executor).
     if(this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
-       this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE (project_id=? OR project_id IS NULL) "+
+       this.db.prepare("SELECT 1 FROM lab_command_active_unresolved WHERE (project_id=? OR project_id IS NULL) "+
          "AND status IN ('running','uncertain') LIMIT 1").get(row.project_id))
       return false;
     const taskId=finalPhase?row.task_b_id:row.task_a_id;
@@ -1030,7 +1030,7 @@ export class AutonomousDialogue {
     try{decision=JSON.parse(row.review_b_json||'null');}catch{}
     if(decision?.acceptance?.status!=='answer_indicates_progress')
       return {state:'awaiting_verified_progress',missionId:row.id};
-    if(this.db.prepare(`SELECT 1 FROM lab_command_receipts
+    if(this.db.prepare(`SELECT 1 FROM lab_command_active_unresolved
       WHERE (project_id=? OR project_id IS NULL) AND status IN ('running','uncertain')
       LIMIT 1`).get(row.project_id)||
       this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get())
