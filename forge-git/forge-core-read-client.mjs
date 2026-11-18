@@ -77,6 +77,7 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
   function invalidate(){
     const oldAuth=auth,oldSession=session;
     ++epoch;++projectionRevision;++refreshSequence;
+    projectSelectionPending=0; // New MCP sessions cannot inherit a stale UI selection.
     auth=null;session=null;projection=null;
     selectedProjectId=null;selectedTaskId=null;selectedHandoff=null;
     prepared=null;nativeDispatchSupported=false;dispatchedRevisions.clear();
@@ -196,6 +197,7 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
   }
   async function refresh(projectId=null){
     if(!connected())throw Error('forge_mcp_connection_required');
+    const selectionEpoch=epoch;
     const explicitProjectSelection=projectId!==null;
     // A background poll may not supersede an explicit project selection.
     // Existing Core state remains visible until the new project is verified.
@@ -257,7 +259,7 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
         selectedTaskId,selectedHandoff:scoped,handoff,works,orchestrators};
       return clone(projection);
     }finally{
-      if(explicitProjectSelection)--projectSelectionPending;
+      if(explicitProjectSelection&&epoch===selectionEpoch)--projectSelectionPending;
     }
   }
   async function selectTask(taskId){
