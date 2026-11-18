@@ -29,7 +29,7 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
   if(typeof fetchImpl!=='function')throw Error('forge_mcp_fetch_unavailable');
   let auth=null,session=null,epoch=0,nextId=1;
   // A monitor read must not overwrite a more recent Task or draft action.
-  let projectionRevision=0,refreshSequence=0;
+  let projectionRevision=0,refreshSequence=0,projectSelectionPending=0;
   let selectedProjectId=null,selectedTaskId=null,selectedHandoff=null;
   let projection=null,prepared=null,nativeDispatchSupported=false;
   const dispatchedRevisions=new Set();
@@ -196,6 +196,16 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
   }
   async function refresh(projectId=null){
     if(!connected())throw Error('forge_mcp_connection_required');
+    const explicitProjectSelection=projectId!==null;
+    // A background poll may not supersede an explicit project selection.
+    // Existing Core state remains visible until the new project is verified.
+    if(!explicitProjectSelection&&projectSelectionPending>0)
+      return projection?clone(projection):null;
+    if(explicitProjectSelection){
+      ++projectSelectionPending;
+      ++projectionRevision;
+    }
+    try{
     const version=epoch,revision=projectionRevision,request=++refreshSequence;
     const listed=await call('forge_projects_list');
     if(!Array.isArray(listed.projects))throw Error('forge_mcp_projects_invalid');
@@ -246,6 +256,9 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
       observedAt:new Date().toISOString(),projects,selectedProjectId:chosen,
       selectedTaskId,selectedHandoff:scoped,handoff,works,orchestrators};
     return clone(projection);
+    }finally{
+      if(explicitProjectSelection)--projectSelectionPending;
+    }
   }
   async function selectTask(taskId){
     if(!connected()||!projection?.selectedProjectId)
@@ -254,9 +267,10 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
        !projection.works.some(work=>work.id===taskId))
       throw Error('forge_mcp_task_not_authorized');
     const version=epoch,projectId=selectedProjectId;
-    ++projectionRevision;
+    const selectionRevision=++projectionRevision;
     const scoped=await readScoped(projectId,taskId);
-    if(version!==epoch||projectId!==selectedProjectId)
+    if(version!==epoch||projectId!==selectedProjectId||
+       selectionRevision!==projectionRevision)
       throw Error('forge_mcp_connection_changed');
     ++projectionRevision;
     selectedTaskId=taskId;selectedHandoff=scoped;
