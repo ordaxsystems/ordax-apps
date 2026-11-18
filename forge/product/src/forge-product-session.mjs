@@ -70,16 +70,23 @@ export function createForgeProductSession({
   let refreshing=null,connecting=null;
   const supported=()=>platform==='win32'&&safeStorage?.isEncryptionAvailable?.()===true&&
     typeof safeStorage.encryptString==='function'&&typeof safeStorage.decryptString==='function';
-  function read(){
-    if(!supported()||!fs.existsSync(file))return null;
+  // Only the native app can inspect sealed credentials. Report bounded reasons
+  // without exposing tokens, account data or raw decryption exceptions.
+  function inspect(){
+    if(!supported())return {session:null,errorCode:'forge_product_secure_storage_unavailable'};
+    if(!fs.existsSync(file))return {session:null,errorCode:null};
+    let raw;
+    try{raw=safeStorage.decryptString(fs.readFileSync(file));}
+    catch{return {session:null,errorCode:'forge_product_session_unreadable'};}
     try{
-      const raw=safeStorage.decryptString(fs.readFileSync(file));
       const data=JSON.parse(raw);
       const claims=validateSession(data);
-      if(typeof data.email!=='string'||!EMAIL.test(data.email))return null;
-      return {...data,...claims};
-    }catch{return null;}
+      if(typeof data.email!=='string'||!EMAIL.test(data.email))
+        return {session:null,errorCode:'forge_product_session_invalid'};
+      return {session:{...data,...claims},errorCode:null};
+    }catch{return {session:null,errorCode:'forge_product_session_invalid'};}
   }
+  function read(){return inspect().session;}
   function save(body,email){
     if(!supported())throw Error('forge_product_secure_storage_unavailable');
     const claims=validateSession(body);
@@ -240,8 +247,8 @@ export function createForgeProductSession({
   return Object.freeze({
     supported,
     status(){
-      const current=read();
-      return {supported:supported(),connected:Boolean(current),
+      const {session:current,errorCode}=inspect();
+      return {supported:supported(),connected:Boolean(current),sessionError:errorCode,
         subjectId:current?.subjectId??null,issuer:current?.issuer??null,
         email:current?.email??null,expiresAt:current?.expiresAt??null,
         clientId:current?.clientId??null,mode:current?.mode??null,
