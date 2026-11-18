@@ -9,6 +9,12 @@ function renderCore(){
   const activeCore=coreStatus?.connected===true;
   $('core-connect').disabled=operation;
   $('core-pair').disabled=operation||activeCore||coreStatus?.reconnectProtected!==true;
+  const code=coreStatus?.pairingCode;
+  const pairedCode=typeof code==='string'&&/^[A-F0-9]{10}$/.test(code)?code:null;
+  $('core-pair-code').hidden=pairedCode===null;
+  $('core-pair-code').textContent=pairedCode
+    ?'Código de vínculo: '+pairedCode+'\nCompare exatamente este código com a confirmação nativa do Forge.'
+    :'';
   $('core-disconnect').disabled=operation||!activeCore;
   $('core-refresh').disabled=operation||!activeCore;
   $('core-connection').textContent=(activeCore
