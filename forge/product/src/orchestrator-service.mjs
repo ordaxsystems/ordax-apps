@@ -1122,23 +1122,36 @@ export class OrchestratorService {
       this.orchestrator(input.projectId,input.orchestratorId);
       return this.continuation.status(input.projectId,input.orchestratorId);
     }
-    if(operation==='status')return {
-      contract:ORCHESTRATOR_CONTRACT,engine:'app-owned',
-      tools:ORCHESTRATOR_TOOLS.map(t=>t.name),
-      externalTransport:'not_connected',autonomousExecution:false,
-      autonomousAnalysisAvailable:true,
-      coordinatorDraftCommitAvailable:true,
-      workspacePortAvailable:this.workspace.available(),
-      repositoryPortAvailable:this.repository.available(),
-      continuationEnabled:Number(this.db.prepare('SELECT COUNT(*) n FROM lab_continuation_policies WHERE enabled=1').get().n),
-      analysisAvailable:true,analysisMode:'app_owned',
-      providerExecutionAvailable:typeof this.provider?.send==='function',
-      executor:this.executorAdmission(),
-      activeRuns:Number(this.db.prepare("SELECT COUNT(*) n FROM runs WHERE status='running'").get().n),
-      uncertainCommands:Number(this.db.prepare(`SELECT COUNT(*) n FROM lab_command_receipts
-        WHERE status='uncertain' AND workspace_session_id=? AND actor_id=? AND client_id=?`)
-        .get(context.workspaceSessionId,context.actorId,context.clientId).n)
-    };
+    if(operation==='status'){
+      // One bounded, read-only grouping from the existing receipt ledger. A
+      // global session count must not be presented as this project's count.
+      const uncertainRows=this.db.prepare(`SELECT project_id AS projectId,COUNT(*) AS count
+        FROM lab_command_receipts WHERE status='uncertain' AND
+          workspace_session_id=? AND actor_id=? AND client_id=?
+        GROUP BY project_id ORDER BY project_id`)
+        .all(context.workspaceSessionId,context.actorId,context.clientId);
+      const uncertainByProject=uncertainRows.filter(row=>{
+        if(!row.projectId)return false;
+        try{return this.authorize({context,operation:'projects_list',projectId:row.projectId})===true;}
+        catch{return false;}
+      }).map(row=>({projectId:row.projectId,count:Number(row.count)}));
+      return {
+        contract:ORCHESTRATOR_CONTRACT,engine:'app-owned',
+        tools:ORCHESTRATOR_TOOLS.map(t=>t.name),
+        externalTransport:'not_connected',autonomousExecution:false,
+        autonomousAnalysisAvailable:true,
+        coordinatorDraftCommitAvailable:true,
+        workspacePortAvailable:this.workspace.available(),
+        repositoryPortAvailable:this.repository.available(),
+        continuationEnabled:Number(this.db.prepare('SELECT COUNT(*) n FROM lab_continuation_policies WHERE enabled=1').get().n),
+        analysisAvailable:true,analysisMode:'app_owned',
+        providerExecutionAvailable:typeof this.provider?.send==='function',
+        executor:this.executorAdmission(),
+        activeRuns:Number(this.db.prepare("SELECT COUNT(*) n FROM runs WHERE status='running'").get().n),
+        uncertainCommands:uncertainRows.reduce((total,row)=>total+Number(row.count),0),
+        uncertainByProject
+      };
+    }
     if(operation==='projects_list')return {projects:this.db.prepare(
       'SELECT id,name,objective,repository_url,created_at,observation_requested FROM lab_projects WHERE workspace_session_id=? ORDER BY created_at,id LIMIT 200')
       .all(context.workspaceSessionId).filter(row=>this.authorize({context,operation,projectId:row.id})===true)};
