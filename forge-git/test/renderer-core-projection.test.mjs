@@ -161,4 +161,28 @@ test('renderer never presents legacy JSON as canonical project state and masks t
   assert.match(el('inbox').textContent,/sem autorização de envio ou Task/);
   assert.match(el('inbox').textContent,/REGISTRO_LEGADO_SOMENTE_LEITURA/);
   assert.doesNotMatch(el('inbox').textContent,/avisos pendentes/);
+
+  observer({coreStatus:{connected:true,selectedProjectId:'project_A',
+    providerDispatchAllowed:true,
+    preparedTaskId:'task_A',preparedDraftRevision:3},
+    coreProjection:{
+      selectedProjectId:'project_A',selectedTaskId:'task_A',
+      selectedHandoff:{selectedTask:{taskId:'task_A',draftRevision:3}},
+      projects:[{id:'project_A',name:'Pizzaria'}],
+      works:[{id:'task_A',title:'Cardápio'}],
+      orchestrators:[]
+    }});
+  el('instruction').value='Pedido que pode ter sido enviado';
+  window.forgeGit.coreDispatch=async()=>{
+    throw Error('forge_owner_dispatch_result_uncertain_check_core_no_retry');
+  };
+  assert.equal(el('core-dispatch').disabled,false);
+  el('core-dispatch').listeners.get('click')();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.match(el('draft-confirmation').textContent,/Resultado do envio não confirmado/);
+  assert.match(el('draft-confirmation').textContent,/NÃO reenvie/);
+  assert.match(el('draft-confirmation').textContent,/Forge Core/);
+  assert.equal(el('instruction').value,'Pedido que pode ter sido enviado');
+  assert.equal(el('core-dispatch').disabled,true,
+    'failed result cannot leave the send action visibly ready');
 });
