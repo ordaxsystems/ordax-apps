@@ -42,9 +42,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 <header><div><h1>Forge Git</h1><p>GPT Web · transporte do Forge MCP</p></div><div class="brand">FG</div></header>
 <section>
 <h2>Forge MCP · estado canônico</h2>
-<p>Conecte o MCP local já autorizado no aplicativo Forge. O endereço e a credencial são utilizados apenas nesta execução; nenhum token será salvo.</p>
+<p>Para vincular sem copiar tokens, informe apenas o endereço do MCP local do Forge e clique em <strong>Vincular com autorização nativa</strong>. Compare o código nas duas janelas e confirme uma vez no Forge. O token existente será transferido cifrado e salvo somente no armazenamento protegido deste Windows.</p>
 <label for="core-endpoint">Endpoint local do Forge</label>
 <input id="core-endpoint" type="url" placeholder="http://127.0.0.1:PORTA/mcp" autocomplete="off" spellcheck="false">
+<button id="core-pair" class="full primary" type="button" style="margin:10px 0">Vincular com autorização nativa (sem copiar token)</button>
+<p class="meta">Alternativa manual, caso o Forge nativo ainda não ofereça o pareamento:</p>
 <label for="core-token">Token de acesso autorizado</label>
 <input id="core-token" type="password" placeholder="Token exibido pelo Forge" autocomplete="off" spellcheck="false">
 <label class="secure-choice" for="core-remember">
