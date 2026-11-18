@@ -145,6 +145,9 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
         const isAuthorized=()=>bound()&&valid(appGrant)&&
           authorizeProject(FORGE_APP_MCP_SCOPE);
         if(!isAuthorized())return json(res,403,{error:'forge_mcp_pair_grant_changed'});
+        // A second request can finish parsing while the first was awaiting
+        // its body. Reserve the sole native confirmation only after parsing.
+        if(ownerPairInFlight)return json(res,409,{error:'forge_mcp_pair_in_progress'});
         ownerPairInFlight=true;
         try{
           const approved=await ownerPair({code},{isAuthorized});
