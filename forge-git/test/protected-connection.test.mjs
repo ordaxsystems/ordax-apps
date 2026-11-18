@@ -1,36 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCipheriv,createDecipheriv,randomBytes} from 'node:crypto';
 import {mkdtempSync,readFileSync,readdirSync,rmSync,writeFileSync,symlinkSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createProtectedForgeConnection} from '../protected-connection.mjs';
+import {createTestSecureStoragePort} from './helpers/secure-storage-port.mjs';
 
 const endpoint='http://127.0.0.1:25687/mcp';
 const token='Q'.repeat(48);
-function cryptoPort(){
-  const key=randomBytes(32);
-  return {
-    isEncryptionAvailable:()=>true,
-    encryptString(value){
-      const iv=randomBytes(12);
-      const cipher=createCipheriv('aes-256-gcm',key,iv);
-      const encrypted=Buffer.concat([cipher.update(value,'utf8'),cipher.final()]);
-      return Buffer.concat([iv,cipher.getAuthTag(),encrypted]);
-    },
-    decryptString(buffer){
-      const iv=buffer.subarray(0,12),tag=buffer.subarray(12,28),bytes=buffer.subarray(28);
-      const decipher=createDecipheriv('aes-256-gcm',key,iv);
-      decipher.setAuthTag(tag);
-      return Buffer.concat([decipher.update(bytes),decipher.final()]).toString('utf8');
-    }
-  };
-}
 function fixture(t,opts={}){
   const dir=mkdtempSync(path.join(os.tmpdir(),'fg-dpapi-'));
   t.after(()=>rmSync(dir,{recursive:true,force:true}));
   return {dir,cache:createProtectedForgeConnection({
-    directory:dir,secureStorage:cryptoPort(),platform:'win32',...opts
+    directory:dir,secureStorage:createTestSecureStoragePort(),platform:'win32',...opts
   })};
 }
 
