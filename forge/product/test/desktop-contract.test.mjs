@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {resolveProjectOnboardingMission,describeProjectPreflight,describeExecutionMonitor,describeConversationOutcome} from '../desktop/orchestrator-ui.mjs';
+import {resolveProjectOnboardingMission,describeProjectPreflight,describeExecutionMonitor,describeConversationOutcome,describeUncertainReceiptNotice} from '../desktop/orchestrator-ui.mjs';
 import {PRODUCT_NAME,PRODUCT_SHORT_NAME} from '../src/product-brand.mjs';
 const root = path.resolve(import.meta.dirname, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
@@ -19,6 +19,29 @@ const ui = fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
 const uiHtml = fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
 const e2eLock = fs.readFileSync(path.join(root,'scripts','e2e-lock.cjs'),'utf8');
 const liveText = fs.readFileSync(path.join(root,'scripts','live-ui-text-smoke.cjs'),'utf8');
+
+test('Forjador uncertain receipt notice is project-scoped and never treats other projects as its effects',()=>{
+  const state={uncertainCommands:4,uncertainByProject:[
+    {projectId:'project_a',count:1},{projectId:'project_b',count:3}
+  ]};
+  const own=describeUncertainReceiptNotice(state,'project_a');
+  assert.match(own,/1 comando com resultado incerto neste projeto/);
+  assert.match(own,/3 fora dele/);
+  assert.match(own,/nada foi reenviado automaticamente/);
+  const other=describeUncertainReceiptNotice(state,'project_missing');
+  assert.match(other,/Este projeto não possui comandos incertos/);
+  assert.match(other,/4 pendências fora dele/);
+  assert.doesNotMatch(other,/4 comandos com resultado incerto neste projeto/);
+  assert.equal(describeUncertainReceiptNotice({uncertainCommands:0,uncertainByProject:[]},'project_a'),'');
+  const legacy=describeUncertainReceiptNotice({uncertainCommands:4},'project_a');
+  assert.match(legacy,/neste perfil/);
+  assert.doesNotMatch(legacy,/neste projeto/);
+  assert.match(describeUncertainReceiptNotice(null,'project_a'),/Não foi possível verificar/);
+  const malformed=describeUncertainReceiptNotice({
+    uncertainCommands:2,uncertainByProject:[{projectId:'project_a',count:5}]
+  },'project_a');
+  assert.match(malformed,/neste perfil/);
+});
 
 test('confirmed HTML artifact download stays scoped to a succeeded Run and never sends prompts',()=>{
   const main=fs.readFileSync(path.join(root,'desktop','main.mjs'),'utf8');

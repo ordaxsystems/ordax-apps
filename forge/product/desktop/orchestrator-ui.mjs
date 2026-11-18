@@ -24,6 +24,29 @@ export function describeExecutionMonitor({running,attention}) {
 // Name-only onboarding uses the existing mission_create contract. This
 // description is coordination guidance, never permission to inspect GitHub,
 // execute work or send messages to GPT Web.
+// Present only canonical receipt counts. Never infer an outcome, retry a
+// command, or attribute another project's pending effect to this project.
+export function describeUncertainReceiptNotice(engineStatus,projectId){
+  const uncertainCommands=Number.isSafeInteger(engineStatus?.uncertainCommands)&&
+    engineStatus.uncertainCommands>=0?engineStatus.uncertainCommands:null;
+  const projectReceipts=engineStatus?.uncertainByProject;
+  const projectCount=Array.isArray(projectReceipts)
+    ?projectReceipts.find(item=>item?.projectId===projectId)?.count??0:null;
+  const scopedCount=Number.isSafeInteger(projectCount)&&projectCount>=0&&
+    (uncertainCommands===null||projectCount<=uncertainCommands)?projectCount:null;
+  if(uncertainCommands===null)
+    return 'Não foi possível verificar os recibos pendentes. Confira o estado antes de qualquer novo envio.';
+  if(uncertainCommands===0)return '';
+  if(scopedCount===null)
+    return `Há ${uncertainCommands} comando${uncertainCommands===1?'':'s'} com resultado incerto neste perfil. O projeto de origem ainda não foi confirmado. Revise os recibos; nada foi reenviado automaticamente.`;
+  if(scopedCount>0){
+    const elsewhere=uncertainCommands-scopedCount;
+    return `Há ${scopedCount} comando${scopedCount===1?'':'s'} com resultado incerto neste projeto`+
+      (elsewhere?` e ${elsewhere} fora dele`:'')+
+      '. Revise os recibos antes de qualquer nova ação; nada foi reenviado automaticamente.';
+  }
+  return `Este projeto não possui comandos incertos. Há ${uncertainCommands} pendência${uncertainCommands===1?'':'s'} fora dele, preservada${uncertainCommands===1?'':'s'} para revisão; nada foi reenviado automaticamente.`;
+}
 export function resolveProjectOnboardingMission(name,objective) {
   const explicit=String(objective||'').trim();
   if(explicit)return explicit;
@@ -1304,12 +1327,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     // Preserve the one result node while rebuilding chat history. Removing it
     // before refreshAutonomousDialogue would make the ID unresolvable.
     box.replaceChildren(recoveryNotice,$('coordinatorOutcome'));
-    const uncertainCommands=Number.isSafeInteger(engineStatus?.uncertainCommands)
-      ?engineStatus.uncertainCommands:0;
-    recoveryNotice.classList.toggle('hidden',uncertainCommands===0);
-    recoveryNotice.textContent=uncertainCommands
-      ?`Há ${uncertainCommands} comando${uncertainCommands===1?'':'s'} com resultado incerto nesta sessão. A solicitação está registrada, mas não há resposta confirmada; nada foi reenviado automaticamente. Revise o histórico antes de decidir outro envio.`
-      :'';
+    const recoveryMessage=describeUncertainReceiptNotice(engineStatus,p);
+    recoveryNotice.classList.toggle('hidden',!recoveryMessage);
+    recoveryNotice.textContent=recoveryMessage;
     // The Forjador's own ChatGPT Task was previously reachable only through
     // hidden Work navigation. Reuse the canonical Task inspection and explicit
     // read-only reply recovery; never create a second delivery/retry route.

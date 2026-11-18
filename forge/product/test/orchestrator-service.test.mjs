@@ -833,6 +833,30 @@ test('in-flight requests do not run twice; pause and a second work cannot bypass
   await assert.rejects(f.call('work_send',{...input,requestId:'paused'}),/paused/);
 });
 
+test('status reports uncertain receipt counts per authorized project without replay or cross-project attribution',async t=>{
+  const f=fixture(t),a=await project(f,'Projeto com duas pendências'),
+    b=await project(f,'Projeto com uma pendência');
+  const reserve=(projectId,requestId)=>f.service.transaction(()=>
+    f.service.reserve(f.context,'project_command_run',{
+      requestId,projectId,command:'echo NEVER_EXECUTED'
+    }));
+  const first=reserve(a.p,'unc-a1'),second=reserve(a.p,'unc-a2'),
+    third=reserve(b.p,'unc-b1');
+  assert.equal(f.service.recoverInterruptedCommands(),3);
+  const status=await f.call('status');
+  assert.equal(status.uncertainCommands,3);
+  assert.deepEqual(status.uncertainByProject,[
+    {projectId:a.p,count:2},{projectId:b.p,count:1}
+  ].sort((x,y)=>x.projectId.localeCompare(y.projectId)));
+  for(const id of [first.commandId,second.commandId,third.commandId]){
+    const receipt=await f.call('command_get',{commandId:id});
+    assert.equal(receipt.status,'uncertain');
+    assert.equal(receipt.requiresReconciliation,true);
+  }
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,0);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
 test('interrupted command recovery only marks uncertain and cannot dispatch or change existing Tasks',async t=>{
   const f=fixture(t),a=await project(f);
   const reserved=f.service.transaction(()=>f.service.reserve(f.context,'work_send',{
