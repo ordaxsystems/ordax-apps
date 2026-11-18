@@ -5,6 +5,11 @@ import {OrchestratorService} from '../../forge/product/src/orchestrator-service.
 import {createOrchestratorMcp} from '../../forge/product/src/orchestrator-mcp.mjs';
 import {createForgeLoopbackMcp,FORGE_APP_MCP_SCOPE} from '../../forge/product/src/forge-loopback-mcp.mjs';
 import {createForgeCoreReadClient,validateForgeEndpoint} from '../forge-core-read-client.mjs';
+import {createProtectedForgeConnection} from '../protected-connection.mjs';
+import {createTestSecureStoragePort} from './helpers/secure-storage-port.mjs';
+import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 
 function fixture(t,{provider=null,ownerDispatch=null}={}){
   const store=new Store(':memory:');
@@ -712,4 +717,67 @@ test('optional receipt lookup capability is never inferred from a forged or abse
   await assert.rejects(client.inspectUnresolvedReceipt({
     commandId:'command_00000000-0000-4000-8000-000000000001'
   }),/forge_mcp_receipt_read_unavailable/);
+});
+
+test('protected owner grant survives native listener and Forge Git client restart without new consent or GPT send',async t=>{
+  const f=fixture(t);
+  const mission=(await f.service.invoke(f.context,'mission_create',{
+    name:'Retomada segura',mission:'Continuar na mesma Task sem novo envio.',
+    requestId:'core_ui_protected_resume_restart_1'
+  })).result;
+  const dir=mkdtempSync(path.join(os.tmpdir(),'forge-git-e2e-resume-'));
+  t.after(()=>rmSync(dir,{recursive:true,force:true}));
+  const storage=createTestSecureStoragePort();
+  const cache=createProtectedForgeConnection({directory:dir,
+    secureStorage:storage,platform:'win32'});
+  const initial=await f.transport.start(FORGE_APP_MCP_SCOPE);
+  const originalClient=createForgeCoreReadClient();
+  t.after(()=>originalClient.disconnect());
+  await originalClient.connect({endpoint:initial.endpoint,token:initial.token});
+  await originalClient.refresh(mission.projectId);
+  assert.equal(originalClient.projection().selectedProjectId,mission.projectId);
+  assert.equal(originalClient.projection().works[0].id,mission.taskId);
+  assert.equal(originalClient.status().providerDispatchAllowed,false);
+  cache.save({endpoint:initial.endpoint,token:initial.token});
+
+  const sealed=readFileSync(path.join(dir,'forge-git-mcp-connection.sealed.json'),'utf8');
+  assert.equal(sealed.includes(initial.token),false,'no plaintext bearer in the saved UI profile');
+  originalClient.disconnect();
+  await f.transport.stop();
+
+  // The native Forge Core restores its *existing* owner grant using the
+  // canonical listener's fixed port and restored token. No second authority.
+  const port=Number(new URL(initial.endpoint).port);
+  const resumed=await f.transport.start(FORGE_APP_MCP_SCOPE,{
+    listenPort:port,resumeToken:initial.token
+  });
+  assert.equal(resumed.endpoint,initial.endpoint);
+  assert.equal(resumed.token,initial.token);
+  const successorClient=createForgeCoreReadClient();
+  t.after(()=>successorClient.disconnect());
+  const recovered=cache.recover();
+  assert.deepEqual(recovered,{endpoint:initial.endpoint,token:initial.token});
+  await successorClient.connect(recovered);
+  const readBack=await successorClient.refresh(mission.projectId);
+  assert.equal(successorClient.status().connected,true);
+  assert.equal(readBack.selectedProjectId,mission.projectId);
+  assert.equal(readBack.handoff.project.id,mission.projectId);
+  assert.ok(readBack.works.some(work=>work.id===mission.taskId));
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) AS total FROM runs').get().total,0,
+    'resume must not start a provider Run');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) AS total FROM messages').get().total,0,
+    'resume must not send a GPT message');
+
+  // The old sealed bearer cannot renew access after the Core rotates it.
+  successorClient.disconnect();
+  await f.transport.stop();
+  const rotated=await f.transport.start(FORGE_APP_MCP_SCOPE,{listenPort:port});
+  assert.notEqual(rotated.token,initial.token);
+  const revokedClient=createForgeCoreReadClient();
+  t.after(()=>revokedClient.disconnect());
+  await assert.rejects(revokedClient.connect(cache.recover()),/forge_mcp_http_401/);
+  assert.equal(revokedClient.status().connected,false);
+  cache.clear(); // Same revoked-grant cleanup performed by the Forge Git shell.
+  assert.equal(cache.recover(),null);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) AS total FROM runs').get().total,0);
 });
