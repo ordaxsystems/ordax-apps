@@ -397,3 +397,57 @@ test('uncertain Core provider send returns canonical uncertain receipt without a
   }),/forge_owner_dispatch_preparation_required|forge_owner_dispatch_already_attempted/);
   assert.equal(calls,1);
 });
+
+test('late MCP polling cannot replace a newer Task selection or drafted revision',async t=>{
+  const f=fixture(t);
+  const mission=(await f.service.invoke(f.context,'mission_create',{
+    name:'Concorrência',mission:'Preservar a Task selecionada.',
+    requestId:'core_ui_polling_race_1'
+  })).result;
+  const started=await f.transport.start(FORGE_APP_MCP_SCOPE);
+  let pauseNext=false,entered,release;
+  const fetchImpl=async(url,options)=>{
+    const body=options?.body?JSON.parse(options.body):null;
+    if(pauseNext&&body?.method==='tools/call'&&
+       body.params?.name==='forge_work_list'){
+      pauseNext=false;
+      const response=await fetch(url,options);
+      entered();
+      await new Promise(resolve=>{release=resolve;});
+      return response;
+    }
+    return fetch(url,options);
+  };
+  const client=createForgeCoreReadClient({fetchImpl});
+  t.after(()=>client.disconnect());
+  await client.connect({endpoint:started.endpoint,token:started.token});
+  await client.refresh();
+
+  let enteredPromise=new Promise(resolve=>{entered=resolve;});
+  pauseNext=true;
+  const staleSelectionPoll=client.refresh();
+  await enteredPromise;
+  const chosen=await client.selectTask(mission.taskId);
+  assert.equal(chosen.selectedTaskId,mission.taskId);
+  release();
+  await staleSelectionPoll;
+  assert.equal(client.projection().selectedTaskId,mission.taskId,
+    'old polling must not clear the explicit Task');
+
+  enteredPromise=new Promise(resolve=>{entered=resolve;});
+  pauseNext=true;
+  const staleDraftPoll=client.refresh();
+  await enteredPromise;
+  const revision=client.projection().selectedHandoff.selectedTask.draftRevision;
+  const receipt=await client.saveWorkDraft({
+    taskId:mission.taskId,content:'Manter o rascunho após polling atrasado.',
+    expectedRevision:revision
+  });
+  assert.equal(receipt.readbackVerified,true);
+  release();
+  await staleDraftPoll;
+  assert.equal(client.projection().selectedTaskId,mission.taskId);
+  assert.equal(client.projection().selectedHandoff.selectedTask.draftRevision,
+    receipt.draftRevision);
+  assert.equal(client.status().preparedDraftRevision,receipt.draftRevision);
+});
