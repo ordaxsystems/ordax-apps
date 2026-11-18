@@ -10,7 +10,8 @@ import {verifyGithubIdentity} from './github-identity.mjs';
 import {chatSessionReadiness,navigationTimeoutRecovered} from './provider-routing.mjs';
 import {canonicalProviderChatUrl} from '../forge/product/src/conversation-policy.mjs';
 import {assertForgeGitTransport} from './authority-policy.mjs';
-import {createForgeCoreReadClient} from './forge-core-read-client.mjs';
+import {createForgeCoreReadClient,validateForgeLoopbackEndpoint} from './forge-core-read-client.mjs';
+import {prepareForgeGitPairRequest,unsealForgeGitPairResponse} from '../forge/product/src/forge-git-owner-pair-crypto.mjs';
 import {createProtectedForgeConnection} from './protected-connection.mjs';
 import {assertForgeGitUiSender} from './ipc-sender-policy.mjs';
 
@@ -21,8 +22,8 @@ const nextNavigationRetry=new Map();
 let win,store,login='',active='forjador';
 const workers=new Map(),busy=new Set(),ready=new Set(),sessionStates=new Map();
 const core=createForgeCoreReadClient();
-let protectedConnection=null,connectionBusy=false,explicitlyDisconnected=false;
-const coreUiStatus=()=>({...core.status(),
+let protectedConnection=null,connectionBusy=false,explicitlyDisconnected=false,pairingBusy=false,pairingCode=null;
+const coreUiStatus=()=>({...core.status(),pairingCode,
   reconnectProtected:protectedConnection?.supported()===true,
   reconnectRemembered:protectedConnection?.exists()===true});
 
@@ -106,6 +107,7 @@ async function send({agentId,autoContinue=null,continuation=false}={}){
   throw Error('forge_core_owns_provider_dispatch');
 }
 async function connectExistingCore(options,{automatic=false}={}){
+  if(automatic&&pairingBusy)return false;
   if(connectionBusy){
     if(automatic)return false;
     throw Error('forge_mcp_connection_in_progress');
@@ -153,7 +155,43 @@ async function connectExistingCore(options,{automatic=false}={}){
 function events(){
   guarded('fg:state',()=>({snapshot:store.snapshot(),active,ready:[...ready],busy:[...busy],sessions:[...sessionStates],
     coreStatus:coreUiStatus(),coreProjection:core.projection()}));
-  guarded('fg:core-connect',options=>connectExistingCore(options));
+  guarded('fg:core-connect',options=>{
+    if(pairingBusy)throw Error('forge_mcp_pair_in_progress');
+    return connectExistingCore(options);
+  });
+  guarded('fg:core-pair',async({endpoint}={})=>{
+    if(pairingBusy||connectionBusy||core.status().connected)
+      throw Error('forge_mcp_pair_connection_busy');
+    if(!protectedConnection.supported())
+      throw Error('forge_git_windows_dpapi_unavailable');
+    const local=validateForgeLoopbackEndpoint(endpoint);
+    pairingBusy=true;
+    try{
+      const prepared=prepareForgeGitPairRequest();
+      pairingCode=prepared.code;
+      emit('Compare no Forge nativo o código de vínculo '+prepared.code+
+        '. Confirme somente se ele corresponde ao mostrado neste Forge Git.');
+      const response=await fetch(local.replace(/\/mcp$/,'/owner-pair'),{
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-Forge-Git-Pair':'1'},
+        body:JSON.stringify(prepared.request),
+        signal:AbortSignal.timeout(90_000)
+      });
+      if(response.status!==200)
+        throw Error('forge_mcp_pair_rejected_http_'+response.status);
+      const raw=await response.text();
+      if(raw.length>2000)throw Error('forge_mcp_pair_response_too_large');
+      let envelope;
+      try{envelope=JSON.parse(raw);}
+      catch{throw Error('forge_mcp_pair_response_invalid');}
+      const token=unsealForgeGitPairResponse(prepared,envelope);
+      // A sealed transfer is NOT authorization. The same strict MCP catalog
+      // and canonical project readback must pass before saving DPAPI locally.
+      const result=await connectExistingCore({endpoint:local,token,remember:true});
+      emit('Forge Git vinculado ao Forge Core sem copiar token. Reconexão protegida habilitada.');
+      return {paired:true,status:result.status,projection:result.projection};
+    }finally{pairingCode=null;pairingBusy=false;emit('');}
+  });
   guarded('fg:core-refresh',async()=>{
     await core.ping();
     const projection=await core.refresh();
