@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('ordax', {
   forgeDevelopmentStatus: projectId => ipcRenderer.invoke('ordax:forge:development:status',projectId),
   forgeDevelopmentApprove: projectId => ipcRenderer.invoke('ordax:forge:development:approve',projectId),
   forgeDevelopmentRevoke: projectId => ipcRenderer.invoke('ordax:forge:development:revoke',projectId),
+  forgeCommandCloseUnverified: (projectId,commandId) => ipcRenderer.invoke('ordax:forge:command:close-unverified',projectId,commandId),
   onOrchestratorChanged: callback => {
     const listener=()=>callback();
     ipcRenderer.on('ordax:orchestrator:changed',listener);
