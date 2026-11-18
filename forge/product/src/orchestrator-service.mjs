@@ -1,5 +1,5 @@
 import {randomUUID,createHash} from 'node:crypto';
-import {ORCHESTRATOR_CONTRACT,ORCHESTRATOR_TOOLS,validateOrchestratorInput} from './forge-contract.mjs';
+import {ORCHESTRATOR_CONTRACT,ORCHESTRATOR_TOOLS,validateOrchestratorInput,validateNativeCommandReviewInput} from './forge-contract.mjs';
 import {assertTaskHasNoUncertainTransport,listTaskUncertainTransportRuns} from './provider-uncertain-run-policy.mjs';
 import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
 import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
@@ -151,6 +151,9 @@ export class OrchestratorService {
     // reference to the old table name. Recreate after migration below.
     if(!receiptSchema.includes("'failed'")){
       this.db.exec('DROP VIEW IF EXISTS lab_command_receipt_scope');
+      // SQLite rewrites dependent VIEW targets on ALTER TABLE RENAME.
+      // Drop this derived view BEFORE renaming the old receipt table.
+      this.db.exec('DROP VIEW IF EXISTS lab_command_active_unresolved');
       this.transaction(()=>{
       this.db.exec('ALTER TABLE lab_command_receipts RENAME TO lab_command_receipts_legacy');
       this.db.exec(`CREATE TABLE lab_command_receipts (
@@ -447,7 +450,7 @@ export class OrchestratorService {
   // original uncertain receipt, never replays its command and never certifies
   // historical external effects. A later success only proves current health.
   closeUnverifiedCommand(context,raw,{nativeOwnerConfirmed=false}={}) {
-    const {input}=validateOrchestratorInput('command_close_unverified',raw);
+    const input=validateNativeCommandReviewInput(raw);
     if(nativeOwnerConfirmed!==true)
       throw Error('forge_command_review_native_owner_required');
     this.requireAccess(context,'command_close_unverified',input.projectId);
@@ -753,8 +756,6 @@ export class OrchestratorService {
     if(operation==='project_worktree_integrate')return this.integrateProjectWorktree(context,input);
     if(operation==='work_accept')return this.acceptIntegratedWork(context,input);
     if(operation==='project_command_run')return this.runProjectCommand(context,input);
-    // The review capability exists only in trusted native IPC, never invoke/MCP.
-    if(operation==='command_close_unverified')throw Error('forge_command_review_native_only');
     if(tool.readOnly&&operation==='status'){
       const status=this.read(context,operation,input);
       // A provider SEND method is only an installed adapter, not login proof.
