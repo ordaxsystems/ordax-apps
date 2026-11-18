@@ -175,7 +175,31 @@ export class OrchestratorService {
     // Read-only projection over the ONE durable receipt ledger. SQLite JSON
     // extraction is never attempted on invalid/truncated result data. A work
     // receipt with an unresolvable Task quarantines its OWN project only.
-    this.db.exec(`CREATE VIEW IF NOT EXISTS lab_command_receipt_scope AS
+    // Effective unresolved commands are a read-only projection of the same
+    // append-only receipt ledger. An Owner acknowledgement is a NEW receipt:
+    // the original command stays uncertain, is never replayed, and never
+    // becomes evidence of success or of external effects.
+    this.db.exec(`CREATE VIEW IF NOT EXISTS lab_command_active_unresolved AS
+      SELECT c.* FROM lab_command_receipts c
+      WHERE c.status IN ('running','uncertain') AND (
+        c.status='running' OR c.operation!='project_command_run' OR
+        NOT EXISTS(SELECT 1 FROM lab_command_receipts a
+          WHERE a.operation='command_close_unverified' AND a.status='succeeded'
+            AND a.project_id=c.project_id
+            AND a.workspace_session_id=c.workspace_session_id
+            AND a.actor_id=c.actor_id AND a.client_id=c.client_id
+            AND CASE WHEN json_valid(a.result) THEN
+              json_extract(a.result,'$.targetCommandId')=c.id
+              AND json_extract(a.result,'$.originalInputHash')=c.input_hash
+              AND json_extract(a.result,'$.disposition')='abandon_unverified'
+              AND json_extract(a.result,'$.acknowledgedUnknownEffects')=1
+              AND json_extract(a.result,'$.externalEffectsVerified')=0
+            ELSE 0 END
+        )
+      )`);
+    // Recreate only this derived VIEW; its stored source remains unchanged.
+    this.db.exec('DROP VIEW IF EXISTS lab_command_receipt_scope');
+    this.db.exec(`CREATE VIEW lab_command_receipt_scope AS
       SELECT c.rowid AS receipt_rowid,c.id,c.project_id,c.operation,c.status,
         b.task_id AS task_id,
         CASE WHEN c.operation IN ('work_send','proposal_send')
@@ -185,7 +209,9 @@ export class OrchestratorService {
       LEFT JOIN lab_task_bindings b ON b.project_id=c.project_id
         AND b.task_id=CASE WHEN json_valid(c.result) THEN
           CASE WHEN json_type(c.result,'$.taskId')='text'
-            THEN json_extract(c.result,'$.taskId') END END`);
+            THEN json_extract(c.result,'$.taskId') END END
+      WHERE c.status NOT IN ('running','uncertain') OR
+        EXISTS(SELECT 1 FROM lab_command_active_unresolved u WHERE u.id=c.id)`);
     this.continuation=new LabContinuation({store,service:this});
     this.autonomous=new AutonomousDialogue({store,service:this});
     this.workspace=new ProjectWorkspace({store,port:workspacePort});
