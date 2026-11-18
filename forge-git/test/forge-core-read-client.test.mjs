@@ -543,3 +543,129 @@ test('new MCP session does not inherit a pending project selection from revoked 
   await assert.rejects(oldSelection,/forge_mcp_connection_changed/);
   assert.equal(client.projection().selectedProjectId,a.projectId);
 });
+
+test('old monitor failure after MCP reconnect never revokes the replacement grant',async t=>{
+  const f=fixture(t);
+  const mission=(await f.service.invoke(f.context,'mission_create',{
+    name:'Troca de sessão',mission:'Preservar grant novo após resposta antiga.',
+    requestId:'core_ui_monitor_reconnect_1'
+  })).result;
+  const started=await f.transport.start(FORGE_APP_MCP_SCOPE);
+  let hold=false,entered,release;
+  const waitForHold=new Promise(resolve=>{entered=resolve;});
+  const fetchImpl=async(url,options)=>{
+    const body=options?.body?JSON.parse(options.body):null;
+    if(hold&&body?.method==='tools/call'&&
+       body.params?.name==='forge_work_list'){
+      hold=false;
+      const response=await fetch(url,options);
+      entered();
+      await new Promise(resolve=>{release=resolve;});
+      return response;
+    }
+    return fetch(url,options);
+  };
+  const client=createForgeCoreReadClient({fetchImpl});
+  t.after(()=>client.disconnect());
+  await client.connect({endpoint:started.endpoint,token:started.token});
+  await client.refresh(mission.projectId);
+  hold=true;
+  const oldMonitor=client.monitorRefresh();
+  // Observe expected rejection immediately to avoid an unhandled promise.
+  void oldMonitor.catch(()=>{});
+  await waitForHold;
+  client.disconnect();
+  await client.connect({endpoint:started.endpoint,token:started.token});
+  const current=await client.refresh(mission.projectId);
+  assert.equal(current.selectedProjectId,mission.projectId);
+  release();
+  await assert.rejects(oldMonitor,/forge_mcp_connection_changed/);
+  assert.equal(client.status().connected,true,
+    'old polling cannot revoke a newer valid owner grant');
+  assert.equal(client.projection().selectedProjectId,mission.projectId);
+  await client.ping();
+});
+
+test('monitor read failure on current MCP grant disconnects fail closed',async t=>{
+  const f=fixture(t);
+  await f.service.invoke(f.context,'mission_create',{
+    name:'Falha real',mission:'Não manter o Core falsamente conectado.',
+    requestId:'core_ui_monitor_transport_1'
+  });
+  const started=await f.transport.start(FORGE_APP_MCP_SCOPE);
+  let dropRead=false;
+  const fetchImpl=async(url,options)=>{
+    const body=options?.body?JSON.parse(options.body):null;
+    if(dropRead&&body?.method==='tools/call'&&
+       body.params?.name==='forge_projects_list')
+      return new Response('service unavailable',{status:503});
+    return fetch(url,options);
+  };
+  const client=createForgeCoreReadClient({fetchImpl});
+  t.after(()=>client.disconnect());
+  await client.connect({endpoint:started.endpoint,token:started.token});
+  await client.refresh();
+  dropRead=true;
+  await assert.rejects(client.monitorRefresh(),/forge_mcp_http_503/);
+  assert.equal(client.status().connected,false);
+  assert.equal(client.projection(),null);
+  await assert.rejects(client.dispatchWork({}),/forge_native_dispatch_update_required/);
+});
+
+test('lost owner-dispatch HTTP response clears prepared draft and never repeats GPT',async t=>{
+  let f,providerSends=0,dispatchRequests=0;
+  const provider={ready:async()=>true,available:()=>true,
+    send:async({taskId})=>{
+      providerSends++;
+      const runId=f.store.startRun(taskId);
+      f.store.finishRun(taskId,runId);
+      return {confirmed:true,deliveryObserved:true,responseObserved:true,
+        effectVerified:false,runId};
+    }};
+  f=fixture(t,{provider,ownerDispatch:async(input,{isAuthorized})=>{
+    assert.equal(isAuthorized(),true);
+    return f.service.invoke(f.context,'work_send',input);
+  }});
+  const mission=(await f.service.invoke(f.context,'mission_create',{
+    name:'Resposta perdida',mission:'Não reexecutar operação já confirmada no Core.',
+    requestId:'core_ui_dispatch_response_lost_1'
+  })).result;
+  const started=await f.transport.start(FORGE_APP_MCP_SCOPE);
+  const fetchImpl=async(url,options)=>{
+    if(url.endsWith('/owner-dispatch')&&options.method==='POST'){
+      dispatchRequests++;
+      const response=await fetch(url,options);
+      assert.equal(response.status,200);
+      // The Core may have already committed a Run before the TCP result is lost.
+      throw Error('simulated_lost_http_response_after_core_commit');
+    }
+    return fetch(url,options);
+  };
+  const client=createForgeCoreReadClient({fetchImpl});
+  t.after(()=>client.disconnect());
+  await client.connect({endpoint:started.endpoint,token:started.token});
+  await client.refresh(mission.projectId);
+  await client.selectTask(mission.taskId);
+  const revision=client.projection().selectedHandoff.selectedTask.draftRevision;
+  const content='Executar no Core uma única vez e preservar o recibo.';
+  const saved=await client.saveWorkDraft({
+    taskId:mission.taskId,content,expectedRevision:revision
+  });
+  assert.equal(client.status().preparedDraftRevision,saved.draftRevision);
+  await assert.rejects(client.dispatchWork({
+    taskId:mission.taskId,content,draftRevision:saved.draftRevision
+  }),/forge_owner_dispatch_result_uncertain_check_core_no_retry/);
+  assert.equal(providerSends,1);
+  assert.equal(dispatchRequests,1);
+  assert.equal(client.status().preparedTaskId,null,
+    'the UI must not present the old revision as ready to send');
+  assert.equal(client.status().preparedDraftRevision,null);
+  await assert.rejects(client.dispatchWork({
+    taskId:mission.taskId,content,draftRevision:saved.draftRevision
+  }),/forge_owner_dispatch_preparation_required/);
+  assert.equal(providerSends,1);
+  assert.equal(dispatchRequests,1);
+  const stored=f.store.db.prepare('SELECT count(*) AS count FROM runs WHERE task_id=?')
+    .get(mission.taskId);
+  assert.equal(stored.count,1,'the Core has the only durable GPT Run');
+});
