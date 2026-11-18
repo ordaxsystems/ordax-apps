@@ -39,7 +39,7 @@ test('native Owner quarantine: immutable original, one reviewed receipt, scoped 
   const input={projectId:p.projectId,commandId:'command_uncertain_target',
     acknowledgeUnknownEffects:true,requestId:'native_review_accepted_1',
     note:'O efeito continua desconhecido. Reconheço o risco e não vou repetir esse comando.'};
-  await assert.rejects(f.invoke('command_close_unverified',input),/native_owner_required/);
+  await assert.rejects(f.invoke('command_close_unverified',input),/forge_command_review_native_only/);
   const ack=f.service.closeUnverifiedCommand(f.context,input,{nativeOwnerConfirmed:true});
   assert.equal(ack.status,'succeeded');
   assert.equal(ack.result.disposition,'abandon_unverified');
