@@ -1,9 +1,9 @@
 const $=id=>document.getElementById(id);
-const IDS=['forjador','agent-1','agent-2'];
+const IDS=['forjador'];
 let state=null,active='forjador',connected=false,ready=[],busy=[],operation=false,sessions=new Map();
 let coreStatus={connected:false},coreProjection=null,receiptPanelProject=null;
 let reconnectChoiceInitialized=false;
-const nameOf=id=>({forjador:'Forjador','agent-1':'Agente 1','agent-2':'Agente 2'})[id]||id;
+const nameOf=id=>id==='forjador'?'Forjador':id;
 function message(text){$('status').textContent=String(text||'');}
 function renderCore(){
   const activeCore=coreStatus?.connected===true;
