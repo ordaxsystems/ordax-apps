@@ -485,8 +485,9 @@ test('explicit project switch wins when background polling starts during its MCP
   const selecting=client.refresh(b.projectId);
   await enteredPromise;
   const during=await client.refresh();
-  assert.equal(during.selectedProjectId,a.projectId,
-    'poll remains read-only while project switch is in flight');
+  assert.equal(during,null,'no stale read may claim a fresh projection');
+  assert.equal(client.projection().selectedProjectId,a.projectId,
+    'project selection is still pending in the Core client');
   release();
   await selecting;
   assert.equal(client.projection().selectedProjectId,b.projectId);
