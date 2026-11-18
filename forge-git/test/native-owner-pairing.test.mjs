@@ -139,3 +139,25 @@ test('a stale Owner approval can never return a bearer after grant revocation',a
   const outcome=await result;
   assert.notEqual(outcome.status,200,'revoked grant cannot yield encrypted bearer');
 });
+
+test('simultaneous pairing requests trigger only one native confirmation',async t=>{
+  let entered,finish;
+  const approvalStarted=new Promise(resolve=>{entered=resolve;});
+  let approvals=0;
+  const f=fixture(t,{ownerPair:async()=>{
+    approvals++;
+    entered();
+    return new Promise(resolve=>{finish=()=>resolve(true);});
+  }});
+  const listener=await f.transport.start(FORGE_APP_MCP_SCOPE);
+  const first=prepareForgeGitPairRequest();
+  const firstResult=requestPair(listener.endpoint,first.request);
+  await approvalStarted;
+  const second=await requestPair(listener.endpoint,prepareForgeGitPairRequest().request);
+  assert.equal(second.status,409);
+  assert.equal(approvals,1,'one Owner dialog, not one per overlapping request');
+  finish();
+  const result=await firstResult;
+  assert.equal(result.status,200);
+  assert.equal(unsealForgeGitPairResponse(first,await result.json()),listener.token);
+});
