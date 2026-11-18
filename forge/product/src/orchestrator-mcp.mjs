@@ -25,7 +25,7 @@ const SAFE_WORKFLOW_REJECTION=Object.freeze({
 });
 // The direct GPT send is a trusted GUI action, never an MCP tool exposed to GPT.
 // Prevent a model from invoking itself recursively through this same adapter.
-const UI_ONLY_OPERATIONS=new Set(['forjador_send']);
+const UI_ONLY_OPERATIONS=new Set(['forjador_send','command_close_unverified']);
 
 // MCP tools/lifecycle adapter hosted by the App. The host supplies the trusted
 // context on EVERY call. This module opens no port, reads no database and owns
