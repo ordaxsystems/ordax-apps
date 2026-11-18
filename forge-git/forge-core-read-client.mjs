@@ -368,17 +368,24 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
     // From this point a provider effect may exist even if HTTP times out.
     // Do not continue displaying the same revision as ready to send again.
     prepared=null;
-    const response=await fetchImpl(credentials.endpoint.replace(/\/mcp$/,'/owner-dispatch'),{
-      method:'POST',
-      headers:{Authorization:'Bearer '+credentials.token,
-        'Mcp-Session-Id':sessionId,'Content-Type':'application/json'},
-      body:JSON.stringify({
-        schema:'ordax.forge.owner-dispatch/1',operation:'work_send',
-        projectId,taskId,content,draftRevision,
-        requestId:'fg_dispatch_'+randomUUID()
-      }),
-      signal:AbortSignal.timeout(180_000)
-    });
+    let response;
+    try{
+      response=await fetchImpl(credentials.endpoint.replace(/\/mcp$/,'/owner-dispatch'),{
+        method:'POST',
+        headers:{Authorization:'Bearer '+credentials.token,
+          'Mcp-Session-Id':sessionId,'Content-Type':'application/json'},
+        body:JSON.stringify({
+          schema:'ordax.forge.owner-dispatch/1',operation:'work_send',
+          projectId,taskId,content,draftRevision,
+          requestId:'fg_dispatch_'+randomUUID()
+        }),
+        signal:AbortSignal.timeout(180_000)
+      });
+    }catch{
+      // A lost HTTP response cannot prove the provider did not execute.
+      // Preserve the Core as authority and demand receipt reconciliation.
+      throw Error('forge_owner_dispatch_result_uncertain_check_core_no_retry');
+    }
     if(version!==epoch||credentials!==auth||sessionId!==session)
       throw Error('forge_owner_dispatch_connection_changed');
     if(response.status!==200)
