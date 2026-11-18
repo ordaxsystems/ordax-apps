@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
+import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 
 function fixture(t){
@@ -12,7 +13,8 @@ function fixture(t){
   service.development={status:()=>({ownerApproved:true,available:true})};
   let serial=0;
   const invoke=(operation,input={})=>service.invoke(context,operation,
-    {requestId:'native_review_'+(++serial),...input});
+    ORCHESTRATOR_TOOLS.find(tool=>tool.operation===operation)?.readOnly
+      ?input:{requestId:'native_review_'+(++serial),...input});
   return {store,context,service,invoke};
 }
 function seed(f,{id,projectId,operation='project_command_run',status='uncertain',
