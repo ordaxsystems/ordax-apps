@@ -185,4 +185,48 @@ test('renderer never presents legacy JSON as canonical project state and masks t
   assert.equal(el('instruction').value,'Pedido que pode ter sido enviado');
   assert.equal(el('core-dispatch').disabled,true,
     'failed result cannot leave the send action visibly ready');
+
+  const commandId='command_11111111-1111-4111-8111-111111111111';
+  const pendingProjection={
+    selectedProjectId:'project_A',selectedTaskId:null,selectedHandoff:null,
+    projects:[{id:'project_A',name:'Pizzaria'}],works:[],orchestrators:[],
+    handoff:{project:{id:'project_A',name:'Pizzaria'},
+      unresolvedCommands:[{commandId,operation:'work_send',status:'uncertain'}],
+      counts:{unresolvedCommands:1},workPlan:{workers:[]},
+      continuation:{blockedReasons:['unresolved_command_receipts']}}
+  };
+  const enabledStatus={connected:true,receiptLookupAllowed:true,
+    providerDispatchAllowed:false,selectedProjectId:'project_A'};
+  observer({coreStatus:enabledStatus,coreProjection:pendingProjection});
+  assert.equal(el('core-command').value,commandId);
+  assert.equal(el('core-command-check').disabled,false);
+  const checked=[];
+  window.forgeGit.coreReceiptRead=async id=>{
+    checked.push(id);
+    return {commandId:id,operation:'work_send',status:'uncertain',
+      readOnly:true,requiresReconciliation:true,
+      checkedAt:'2026-11-18T06:00:00Z',externalEffectsVerified:false};
+  };
+  window.forgeGit.state=async()=>({
+    ...frame,coreStatus:enabledStatus,coreProjection:pendingProjection
+  });
+  el('core-command-check').listeners.get('click')();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(checked,[commandId]);
+  assert.match(el('core-receipt-status').textContent,/Estado registrado: uncertain/);
+  assert.match(el('core-receipt-status').textContent,/NÃO reenvie/);
+
+  observer({coreStatus:{...enabledStatus,receiptLookupAllowed:false},
+    coreProjection:pendingProjection});
+  assert.equal(el('core-command-check').disabled,true,
+    'no unverified receipt capability may be presented as working');
+  observer({coreStatus:enabledStatus,
+    coreProjection:{...pendingProjection,selectedProjectId:'project_B',
+      projects:[{id:'project_B',name:'Projeto B'}],
+      handoff:{project:{id:'project_B',name:'Projeto B'},
+        unresolvedCommands:[],counts:{unresolvedCommands:0},
+        workPlan:{workers:[]},continuation:{blockedReasons:[]}}}});
+  assert.equal(el('core-command-check').disabled,true);
+  assert.doesNotMatch(el('core-receipt-status').textContent,/Estado registrado: uncertain/,
+    'switching projects must clear the other project receipt result');
 });

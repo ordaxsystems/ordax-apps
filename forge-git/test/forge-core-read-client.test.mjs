@@ -392,6 +392,22 @@ test('uncertain Core provider send returns canonical uncertain receipt without a
   const receipt=f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE id=?')
     .get(sent.commandId);
   assert.equal(receipt.status,'uncertain');
+  assert.equal(client.status().receiptLookupAllowed,true);
+  // The same Core/SQLite receipt is read again without dispatching GPT.
+  await client.refresh(mission.projectId);
+  const inspected=await client.inspectUnresolvedReceipt({commandId:sent.commandId});
+  assert.deepEqual({
+    commandId:inspected.commandId,operation:inspected.operation,
+    status:inspected.status,requiresReconciliation:inspected.requiresReconciliation,
+    readOnly:inspected.readOnly,externalEffectsVerified:inspected.externalEffectsVerified
+  },{
+    commandId:sent.commandId,operation:'work_send',status:'uncertain',
+    requiresReconciliation:true,readOnly:true,externalEffectsVerified:false
+  });
+  await assert.rejects(client.inspectUnresolvedReceipt({
+    commandId:'command_00000000-0000-4000-8000-000000000000'
+  }),/forge_mcp_receipt_not_in_selected_project/);
+  assert.equal(calls,1,'receipt lookup never sends a provider message');
   await assert.rejects(client.dispatchWork({
     taskId:mission.taskId,content,draftRevision:saved.draftRevision
   }),/forge_owner_dispatch_preparation_required|forge_owner_dispatch_already_attempted/);
@@ -668,4 +684,32 @@ test('lost owner-dispatch HTTP response clears prepared draft and never repeats 
   const stored=f.store.db.prepare('SELECT count(*) AS count FROM runs WHERE task_id=?')
     .get(mission.taskId);
   assert.equal(stored.count,1,'the Core has the only durable GPT Run');
+});
+
+test('optional receipt lookup capability is never inferred from a forged or absent tool',async t=>{
+  const f=fixture(t);
+  await f.service.invoke(f.context,'mission_create',{
+    name:'Compatibilidade',mission:'MCP antigo sem leitura de recibos.',
+    requestId:'forge_git_receipt_optional'
+  });
+  const listener=await f.transport.start(FORGE_APP_MCP_SCOPE);
+  const client=createForgeCoreReadClient({fetchImpl:async(url,options)=>{
+    const body=options?.body?JSON.parse(options.body):null;
+    const response=await fetch(url,options);
+    if(body?.method!=='tools/list'||response.status!==200)return response;
+    const data=await response.json();
+    data.result.tools=data.result.tools.map(tool=>tool.name==='forge_command_get'
+      ?{...tool,annotations:{...tool.annotations,readOnlyHint:false}}
+      :tool);
+    return new Response(JSON.stringify(data),{status:200,headers:response.headers});
+  }});
+  t.after(()=>client.disconnect());
+  const state=await client.connect({endpoint:listener.endpoint,token:listener.token});
+  assert.equal(state.connected,true);
+  assert.equal(state.receiptLookupAllowed,false,
+    'read-only permission must be verified rather than assumed');
+  await client.refresh();
+  await assert.rejects(client.inspectUnresolvedReceipt({
+    commandId:'command_00000000-0000-4000-8000-000000000001'
+  }),/forge_mcp_receipt_read_unavailable/);
 });

@@ -60,6 +60,10 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 <button id="core-dispatch" class="full primary" type="button" disabled>Executar Task via Forge Core (confirmação nativa)</button>
 <div id="draft-confirmation" class="meta" style="margin-top:8px">Nenhum rascunho enviado ao Core.</div>
 <div id="core-tasks" class="status" style="margin-top:9px">Tarefas e bloqueios disponíveis após conexão.</div>
+<label for="core-command">Recibo pendente do projeto</label>
+<select id="core-command" disabled aria-label="Comando pendente no Forge Core"><option value="">Nenhum recibo pendente</option></select>
+<button id="core-command-check" class="full" type="button" disabled>Consultar recibo no Forge Core (sem reexecutar)</button>
+<div id="core-receipt-status" class="meta" aria-live="polite" style="margin-top:8px">Selecione um recibo pendente para consultar o estado atual. Nenhum comando será reenviado.</div>
 </section>
 <section>
 <h2>Identidade GitHub (opcional)</h2>

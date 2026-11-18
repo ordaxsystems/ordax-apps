@@ -139,6 +139,11 @@ function events(){
       :'Forge Core: envio '+receipt.status+'; consulte o comando e não repita automaticamente.');
     return receipt;
   });
+  guarded('fg:core-receipt-read',async commandId=>{
+    const receipt=await core.inspectUnresolvedReceipt({commandId});
+    emit('Forge MCP: recibo canônico consultado sem reenviar nem alterar a Task.');
+    return receipt;
+  });
   guarded('fg:core-disconnect',()=>{
     core.disconnect();
     emit('Forge MCP desconectado; novas mensagens bloqueadas.');
