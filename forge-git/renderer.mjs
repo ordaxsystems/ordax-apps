@@ -247,7 +247,7 @@ for(const id of IDS){
 $('connect').addEventListener('click',()=>action(async()=>{
   const connectedUser=await window.forgeGit.connect();
   connected=true;
-  $('login-state').textContent='Conectado: '+connectedUser.login;
+  $('login-state').textContent='Identidade GitHub verificada: '+connectedUser.login+'. Acesso aos repositórios: não verificado no Forge Git.';
   apply(await window.forgeGit.state());
 }));
 $('refresh').addEventListener('click',()=>action(async()=>{
@@ -314,7 +314,7 @@ action(async()=>{
   try{
     const who=await window.forgeGit.connect();
     connected=true;
-    $('login-state').textContent='Conectado: '+who.login;
+    $('login-state').textContent='Identidade GitHub verificada: '+who.login+'. Acesso aos repositórios: não verificado no Forge Git.';
   }catch(error){
     $('login-state').textContent='GitHub não conectado nesta interface (opcional para conversar com o Forge MCP).';
     message('GitHub: '+String(error.message||error)+'; o Forge Core é responsável por evidências e permissões.');

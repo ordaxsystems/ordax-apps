@@ -1,11 +1,12 @@
-import {app,BrowserWindow,ipcMain,shell} from 'electron';
+import {app,BrowserWindow,ipcMain} from 'electron';
 import {mkdirSync} from 'node:fs';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EmbeddedChatWorker} from '../forge/product/desktop/embedded-worker.mjs';
-import {REPO,ROLES,openProjectMemory} from './project-memory.mjs';
+import {ROLES,openProjectMemory} from './project-memory.mjs';
+import {verifyGithubIdentity} from './github-identity.mjs';
 import {chatSessionReadiness,navigationTimeoutRecovered} from './provider-routing.mjs';
 import {canonicalProviderChatUrl} from '../forge/product/src/conversation-policy.mjs';
 import {assertForgeGitTransport} from './authority-policy.mjs';
@@ -16,7 +17,7 @@ const here=path.dirname(fileURLToPath(import.meta.url));
 const cli=promisify(execFile);
 const SIDE=430,TOP=46;
 const nextNavigationRetry=new Map();
-let win,store,token='',login='',active='forjador';
+let win,store,login='',active='forjador';
 const workers=new Map(),busy=new Set(),ready=new Set(),sessionStates=new Map();
 const core=createForgeCoreReadClient();
 
@@ -35,25 +36,6 @@ function guarded(channel,fn){
     catch(e){const message=String(e?.message||e);emit(message);throw Error(message);}
   });
 }
-async function gh(endpoint,{credential=token}={}){
-  if(!credential)throw Error('Conecte o GitHub no Windows.');
-  if(!['/user',repoPath].includes(endpoint))throw Error('forge_core_owns_github_api');
-  const response=await fetch('https://api.github.com'+endpoint,{
-    method:'GET',headers:{
-      Authorization:'Bearer '+credential,
-      Accept:'application/vnd.github+json',
-      'X-GitHub-Api-Version':'2022-11-28'
-    },
-    signal:AbortSignal.timeout(30_000)
-  });
-  const payload=await response.text();
-  let result={};
-  try{result=payload?JSON.parse(payload):{};}
-  catch{throw Error('Resposta inválida do GitHub');}
-  if(!response.ok)throw Error('GitHub '+response.status+': '+String(result?.message||response.statusText).slice(0,180));
-  return result;
-}
-const repoPath='/repos/'+REPO;
 function layout(){
   if(!win||win.isDestroyed())return;
   const [width,height]=win.getContentSize();
@@ -166,18 +148,11 @@ function events(){
     const {stdout}=await cli('gh',['auth','token','--hostname','github.com'],{
       timeout:10_000,windowsHide:true,maxBuffer:16_000
     });
-    const candidate=stdout.trim();
-    const who=await gh('/user',{credential:candidate});
-    if(typeof who?.login!=='string'||!who.login)throw Error('Conta GitHub não confirmada.');
-    const repository=await gh(repoPath,{credential:candidate});
-    if(!repository?.id)throw Error('Repositório de referência não confirmado.');
-    // This app only checks account identity; no push scope is required.
-    // All project Git permissions and effects are owned by Forge Core.
-    token=candidate;login=who.login;
-
-
-    emit('GitHub conectado: '+login);
-    return {login,repo:REPO};
+    const who=await verifyGithubIdentity({credential:stdout.trim()});
+    // Do not retain a GitHub token. No project/repository access is inferred.
+    login=who.login;
+    emit('Identidade GitHub confirmada: '+login+'; acesso a projetos não verificado.');
+    return {login:who.login,identityVerified:true,repositoryAccessVerified:false};
   });
   guarded('fg:tab',async id=>{
     if(!ROLES.some(role=>role.id===id))throw Error('Guia desconhecida.');
@@ -189,11 +164,6 @@ function events(){
   guarded('fg:agent-refresh',()=>{throw Error('forge_core_owns_github_evidence');});
   guarded('fg:new-chat',()=>{throw Error('forge_core_owns_conversation_rotation');});
   guarded('fg:inbox',()=>store.snapshot().inbox.filter(e=>!e.delivered));
-  guarded('fg:open-url',async url=>{
-    if(typeof url!=='string'||!/^https:\/\/github\.com\/ordaxos-admin\/TESTES-FORGE-GIT(?:\/[A-Za-z0-9/_#.-]*)?$/.test(url))
-      throw Error('URL externa não autorizada.');
-    await shell.openExternal(url);return true;
-  });
 }
 // The checkpoint has one process owner. Without this lock, two Electron
 // launches could each write the same JSON and repeat a GPT mission.
