@@ -200,7 +200,7 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
     // A background poll may not supersede an explicit project selection.
     // Existing Core state remains visible until the new project is verified.
     if(!explicitProjectSelection&&projectSelectionPending>0)
-      return projection?clone(projection):null;
+      return null;
     if(explicitProjectSelection){
       ++projectSelectionPending;
       ++projectionRevision;
