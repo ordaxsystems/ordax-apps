@@ -77,64 +77,7 @@ const definitions = [
   ['proposals_list','Read pending work proposals for the selected coordinator.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
   ['proposal_review','Approve creation of one local work with a saved draft, or reject it. Never submits to GPT.',{projectId:id,orchestratorId:id,actionId:id,approved:{type:'boolean'}},['projectId','orchestratorId','actionId','approved'],false],
   ['proposal_send','After native confirmation, submit the current draft of one prepared work through the existing executor. First send only; uncertain sends never replay.',{projectId:id,orchestratorId:id,actionId:id,draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','orchestratorId','actionId','draftRevision'],false],
-  ['command_close_unverified','Explicit Owner acknowledgement of one uncertain local terminal command after independent later successful verification. The original remains uncertain and never counts as success; acknowledgement only closes its continuation blocker without replay.',{projectId:id,commandId:id,expectedInputHash:{...text(64),pattern:'^[a-f0-9]{64}
-];
-export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,description,properties,required,readOnly]) => ({
-  name:operation.startsWith('forge_')?operation:'forge_'+operation,operation,description,readOnly,
-  inputSchema:{type:'object',additionalProperties:false,
-    properties:{...(!readOnly?{requestId}:{}),...properties},
-    required:[...(!readOnly?['requestId']:[]),...required]},
-  annotations:{readOnlyHint:readOnly,destructiveHint:['work_accept','project_delete','project_command_run','project_worktree_verify','project_worktree_integrate','command_close_unverified','app_ui_click'].includes(operation),
-    idempotentHint:!['project_command_run','project_worktree_verify'].includes(operation),
-    openWorldHint:['project_command_run','project_worktree_verify','work_send','proposal_send','forjador_send','autonomous_dialogue_start','autonomous_dialogue_continue','app_ui_click','app_ui_fill'].includes(operation)}
-})));
-
-export function validateOrchestratorInput(operation, input) {
-  const tool=ORCHESTRATOR_TOOLS.find(item=>item.operation===operation);
-  if(!tool)throw Error('orchestrator_unknown_operation');
-  if(!input || typeof input!=='object' || Array.isArray(input) ||
-    Object.keys(input).some(key=>!Object.hasOwn(tool.inputSchema.properties,key)))
-    throw Error('orchestrator_invalid_input');
-  const normalized={};
-  for(const [key,schema] of Object.entries(tool.inputSchema.properties)) {
-    const value=input[key];
-    if(value===undefined) {
-      if(tool.inputSchema.required.includes(key))throw Error('orchestrator_invalid_input');
-      continue;
-    }
-    if(schema.type==='string') {
-      if(typeof value!=='string' || value.includes('\0') || value.length>schema.maxLength ||
-        value.trim().length<schema.minLength || (schema.pattern&&!new RegExp(schema.pattern).test(value)))
-        throw Error('orchestrator_invalid_input');
-      // Preserve exact bytes of file content and exact relative path syntax;
-      // silently trimming either would bypass validation or alter source code.
-      normalized[key]=((operation.startsWith('project_file_')&&['content','path'].includes(key))||
-        (operation==='project_files_list'&&key==='directory')||
-        (operation==='project_view_live_fill'&&key==='value')||
-        (operation==='app_ui_fill'&&key==='value'))?value:value.trim();
-    } else if(schema.type==='array') {
-      const item=schema.items;
-      if(!Array.isArray(value)||value.length>schema.maxItems||
-        new Set(value).size!==value.length||value.some(entry=>
-          typeof entry!=='string'||entry.includes('\0')||
-          entry.length>item.maxLength||entry.trim().length<item.minLength||
-          (item.pattern&&!new RegExp(item.pattern).test(entry))))
-        throw Error('orchestrator_invalid_input');
-      normalized[key]=[...value];
-    } else if(schema.type==='boolean') {
-      if(typeof value!=='boolean')throw Error('orchestrator_invalid_input');
-      normalized[key]=value;
-    } else {
-      if(!Number.isSafeInteger(value)||value<schema.minimum||value>schema.maximum)
-        throw Error('orchestrator_invalid_input');
-      normalized[key]=value;
-    }
-  }
-  if(Object.hasOwn(normalized,'repositoryUrl'))
-    normalized.repositoryUrl=normalizeGitHubRepositoryUrl(normalized.repositoryUrl);
-  return {tool,input:normalized};
-}
-},evidenceCommandId:id,acknowledgeUnknownEffects:{type:'boolean'},note:text(600,40)},['projectId','commandId','expectedInputHash','evidenceCommandId','acknowledgeUnknownEffects','note'],false],
+  ['command_close_unverified','Explicit Owner acknowledgement of one uncertain local terminal command after independent later successful verification. The original remains uncertain and never counts as success; acknowledgement only closes its continuation blocker without replay.',{projectId:id,commandId:id,expectedInputHash:{...text(64),pattern:'^[a-f0-9]{64}$'},evidenceCommandId:id,acknowledgeUnknownEffects:{type:'boolean'},note:text(600,40)},['projectId','commandId','expectedInputHash','evidenceCommandId','acknowledgeUnknownEffects','note'],false],
   ['command_get','Inspect a previously accepted command without repeating it.',{commandId:id},['commandId'],true]
 ];
 export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,description,properties,required,readOnly]) => ({
@@ -142,7 +85,7 @@ export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,desc
   inputSchema:{type:'object',additionalProperties:false,
     properties:{...(!readOnly?{requestId}:{}),...properties},
     required:[...(!readOnly?['requestId']:[]),...required]},
-  annotations:{readOnlyHint:readOnly,destructiveHint:['work_accept','project_delete','project_command_run','project_worktree_verify','project_worktree_integrate','app_ui_click'].includes(operation),
+  annotations:{readOnlyHint:readOnly,destructiveHint:['work_accept','project_delete','project_command_run','project_worktree_verify','project_worktree_integrate','command_close_unverified','app_ui_click'].includes(operation),
     idempotentHint:!['project_command_run','project_worktree_verify'].includes(operation),
     openWorldHint:['project_command_run','project_worktree_verify','work_send','proposal_send','forjador_send','autonomous_dialogue_start','autonomous_dialogue_continue','app_ui_click','app_ui_fill'].includes(operation)}
 })));
