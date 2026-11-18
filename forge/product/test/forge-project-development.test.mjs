@@ -98,6 +98,27 @@ test('one native owner grant enables real terminal, Git and revoke through the s
   });
   assert.equal(chained.result.exitCode,0);
   assert.match(chained.result.stdout,/BEFORE[\s\S]*1337[\s\S]*AFTER/);
+  if(process.platform==='win32'){
+    // Real Windows process tree: cmd.exe -> node.exe -> ping.exe.
+    // A timed-out shell must not be killed before taskkill /T can enumerate
+    // its child/grandchild; otherwise the ping process may survive as an orphan.
+    const childPidFile=path.join(folder,'spawned-grandchild.pid');
+    const command='node -e "const c=require(\'child_process\').spawn(\'ping\',[\'-n\',\'50\',\'127.0.0.1\'],{stdio:\'ignore\'});require(\'fs\').writeFileSync(\'spawned-grandchild.pid\',String(c.pid));setInterval(()=>{},1000)"';
+    await assert.rejects(svc.invoke(context,'project_command_run',{
+      projectId:id,requestId:'native_descendant_timeout',command,timeoutMs:2800
+    }),/forge_development_command_outcome_uncertain/);
+    assert.equal(fs.existsSync(childPidFile),true,'grandchild must have started');
+    const grandchildPid=Number(fs.readFileSync(childPidFile,'utf8'));
+    assert.ok(Number.isSafeInteger(grandchildPid)&&grandchildPid>0);
+    await new Promise(resolve=>setTimeout(resolve,200));
+    let alive=true;
+    try{process.kill(grandchildPid,0);}
+    catch(error){if(error.code==='ESRCH')alive=false;else throw error;}
+    assert.equal(alive,false,'Windows taskkill must terminate the entire child tree');
+    assert.equal(store.db.prepare('SELECT status FROM lab_command_receipts WHERE request_id=?')
+      .get('native_descendant_timeout').status,'uncertain',
+      'external effects before timeout still need reconciliation');
+  }
   await assert.rejects(svc.invoke(context,'project_command_run',{
     projectId:id,requestId:'native_directory_escape',command:'echo NOT_ALLOWED',
     workingDirectory:'../'
