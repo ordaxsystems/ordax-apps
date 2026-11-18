@@ -1,7 +1,7 @@
 const $=id=>document.getElementById(id);
 const IDS=['forjador','agent-1','agent-2'];
 let state=null,active='forjador',connected=false,ready=[],busy=[],operation=false,sessions=new Map();
-let coreStatus={connected:false},coreProjection=null;
+let coreStatus={connected:false},coreProjection=null,receiptPanelProject=null;
 const nameOf=id=>({forjador:'Forjador','agent-1':'Agente 1','agent-2':'Agente 2'})[id]||id;
 function message(text){$('status').textContent=String(text||'');}
 function renderCore(){
@@ -51,6 +51,35 @@ function renderCore(){
     coreStatus?.preparedDraftRevision!==
       coreProjection?.selectedHandoff?.selectedTask?.draftRevision;
   const handoff=coreProjection?.handoff;
+  const unresolved=activeCore&&Array.isArray(handoff?.unresolvedCommands)
+    ?handoff.unresolvedCommands:[];
+  const receiptSelector=$('core-command');
+  const previouslySelected=receiptSelector.value;
+  receiptSelector.replaceChildren();
+  const availableReceipts=unresolved.filter(item=>
+    typeof item?.commandId==='string'&&
+    /^command_[0-9a-f-]{36}$/.test(item.commandId)).slice(0,40);
+  if(!availableReceipts.length){
+    const option=document.createElement('option');
+    option.value='';option.textContent='Nenhum recibo pendente deste projeto';
+    receiptSelector.append(option);
+  }else for(const item of availableReceipts){
+    const option=document.createElement('option');
+    option.value=item.commandId;
+    option.textContent=item.commandId+' · '+String(item.status||'incerto');
+    receiptSelector.append(option);
+  }
+  receiptSelector.value=availableReceipts.some(item=>item.commandId===previouslySelected)
+    ?previouslySelected:(availableReceipts[0]?.commandId||'');
+  receiptSelector.disabled=operation||!activeCore||
+    coreStatus?.receiptLookupAllowed!==true||!availableReceipts.length;
+  $('core-command-check').disabled=receiptSelector.disabled||!receiptSelector.value;
+  const projectKey=activeCore?coreProjection?.selectedProjectId??null:null;
+  if(projectKey!==receiptPanelProject){
+    receiptPanelProject=projectKey;
+    $('core-receipt-status').textContent=
+      'Recibos são consultados somente no Forge Core. Nenhuma operação será reenviada.';
+  }
   if(!activeCore||!handoff){
     $('core-summary').textContent='Nenhuma leitura canônica confirmada.';
     $('core-tasks').textContent='Tarefas e bloqueios disponíveis após conexão.';
@@ -99,7 +128,6 @@ function renderCore(){
       '\nContinuação: usar a mesma Task e o envio nativo do Forge Core; não reenviar Run incerto.'
     :'\nSelecione uma Task para consultar histórico, Run e bloqueios canônicos.';
   const blockers=Array.isArray(admission.blockedReasons)?admission.blockedReasons:[];
-  const unresolved=Array.isArray(handoff.unresolvedCommands)?handoff.unresolvedCommands:[];
   const receiptReport=unresolved.map(command=>
     String(command.commandId||'?')+' ['+String(command.operation||'?')+
     ', '+String(command.status||'uncertain')+']').join(' | ');
@@ -205,6 +233,25 @@ $('core-connect').addEventListener('click',()=>action(async()=>{
 $('core-refresh').addEventListener('click',()=>action(async()=>{
   await window.forgeGit.coreRefresh();
   apply(await window.forgeGit.state());
+}));
+$('core-command-check').addEventListener('click',()=>action(async()=>{
+  const commandId=$('core-command').value;
+  const projectId=coreProjection?.selectedProjectId;
+  if(!commandId||!projectId)throw Error('Selecione um recibo do projeto canônico.');
+  const receipt=await window.forgeGit.coreReceiptRead(commandId);
+  if(receipt?.readOnly!==true||receipt.commandId!==commandId)
+    throw Error('forge_mcp_receipt_readback_invalid');
+  apply(await window.forgeGit.state());
+  if(coreProjection?.selectedProjectId!==projectId)
+    throw Error('forge_mcp_project_changed_during_receipt_read');
+  $('core-receipt-status').textContent=
+    'Consultado no Forge Core: '+receipt.commandId+
+    '\nOperação: '+receipt.operation+
+    '\nEstado registrado: '+receipt.status+
+    '\nVerificado em: '+receipt.checkedAt+
+    '\n'+(receipt.requiresReconciliation
+      ?'PENDENTE: resultado incerto ou em execução. NÃO reenvie; reconcilie no Core.'
+      :'Recibo registrado. Isso NÃO comprova alterações externas, aceite ou conclusão da Task.');
 }));
 $('core-disconnect').addEventListener('click',()=>action(async()=>{
   await window.forgeGit.coreDisconnect();
