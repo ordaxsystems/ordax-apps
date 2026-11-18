@@ -13,7 +13,7 @@ function renderCore(){
   $('core-connection').textContent=(activeCore
     ?coreStatus?.providerDispatchAllowed===true
       ?'Forge MCP conectado · envio inicial sujeito somente à confirmação nativa.'
-      :'Forge MCP conectado · leitura e rascunho disponíveis; envio exige Forge nativo compatível.'
+      :'Forge MCP conectado · leitura e rascunho disponíveis; atualize o Forge nativo para habilitar o envio autorizado.'
     :'Forge MCP desconectado: conecte uma vez e habilite a proteção Windows se desejar.')+
     (coreStatus?.reconnectRemembered===true
       ?'\nReconexão protegida salva neste Windows (o Core pode revogá-la).'
