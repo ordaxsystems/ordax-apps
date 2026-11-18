@@ -48,6 +48,8 @@ test('native owner window uses the one shutdown gate on explicit close and quit'
   assert.match(main,/win\.on\('closed',[\s\S]*?releaseOwnedViews\(\)[\s\S]*?app\.quit\(\)/);
   assert.match(main,/app\.on\('before-quit',[\s\S]*?releaseOwnedViews\(\)/);
   assert.match(main,/if\(shuttingDown\)return/);
-  assert.doesNotMatch(main,/app\.exit\(0\)|process\.exit\(0\)/,
-    'process exit must not bypass native lifecycle');
+  assert.match(main,/if\\(!ownsProfile\\)app\\.exit\\(0\\)/,
+    'the pre-existing duplicate process guard must remain active');
+  assert.doesNotMatch(main,/process\\.exit\\(0\\)/,
+    'the owner window must use the normal Electron quit lifecycle');
 });
