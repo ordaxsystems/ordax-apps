@@ -530,6 +530,8 @@ test('new MCP session does not inherit a pending project selection from revoked 
   await client.connect({endpoint:started.endpoint,token:started.token});
   await client.refresh(a.projectId);
   const oldSelection=client.refresh(b.projectId);
+  // Observe the expected revocation error immediately, before it can reject.
+  void oldSelection.catch(()=>{});
   await enteredPromise;
   client.disconnect();
   assert.equal(client.status().connected,false);
