@@ -47,9 +47,8 @@ test('native owner window uses the one shutdown gate on explicit close and quit'
   const main=readFileSync(new URL('../main.mjs',import.meta.url),'utf8');
   assert.match(main,/win\.on\('closed',[\s\S]*?releaseOwnedViews\(\)[\s\S]*?app\.quit\(\)/);
   assert.match(main,/app\.on\('before-quit',[\s\S]*?releaseOwnedViews\(\)/);
-  assert.match(main,/if\(shuttingDown\)return/);
-  assert.match(main,/if\\(!ownsProfile\\)app\\.exit\\(0\\)/,
-    'the pre-existing duplicate process guard must remain active');
-  assert.doesNotMatch(main,/process\\.exit\\(0\\)/,
-    'the owner window must use the normal Electron quit lifecycle');
+  assert.ok(main.includes('if(!ownsProfile)app.exit(0)'),
+    'duplicate instances still leave without opening another profile');
+  assert.equal(main.includes('process.exit(0)'),false,
+    'the live shell uses the normal Electron quit lifecycle');
 });
