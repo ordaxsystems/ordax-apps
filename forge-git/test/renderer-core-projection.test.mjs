@@ -34,10 +34,11 @@ test('renderer never presents legacy JSON as canonical project state and masks t
     createElement:()=>new FakeElement()
   };
   let observer=null;
+  const connectAttempts=[];
   globalThis.window={forgeGit:{
     state:async()=>frame,
     connect:async()=>{throw Error('GitHub opcional');},
-    coreConnect:async()=>{throw Error('forge_mcp_http_401');},
+    coreConnect:async args=>{connectAttempts.push(args);throw Error('forge_mcp_http_401');},
     onEvent:callback=>{observer=callback;return ()=>{};}
   }};
   await import('../renderer.mjs?core-ui');
@@ -47,10 +48,13 @@ test('renderer never presents legacy JSON as canonical project state and masks t
   assert.match(el('core-connection').textContent,/desconectado/);
   assert.match(el('core-summary').textContent,/Nenhuma leitura canônica/);
   el('core-token').value='SENSITIVE-CREDENTIAL';
+  el('core-remember').checked=true;
   el('core-endpoint').value='http://127.0.0.1:12345/mcp';
   el('core-connect').listeners.get('click')();
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(el('core-token').value,'');
+  assert.deepEqual(connectAttempts,[{endpoint:'http://127.0.0.1:12345/mcp',
+    token:'SENSITIVE-CREDENTIAL',remember:true}]);
   assert.doesNotMatch(el('status').textContent,/SENSITIVE-CREDENTIAL/);
   observer({
     coreStatus:{connected:true,selectedProjectId:'project_A'},
@@ -127,7 +131,7 @@ test('renderer never presents legacy JSON as canonical project state and masks t
   assert.match(el('draft-confirmation').textContent,/Nenhum GPT foi acionado/);
   assert.equal(el('instruction').value,'Rascunho de tarefa real',
     'user must see the exact draft during native dispatch confirmation');
-  globalThis.confirm=()=>true;
+  globalThis.confirm=()=>{throw Error('duplicate_renderer_confirmation_forbidden');};
   const dispatched=[];
   window.forgeGit.coreDispatch=async args=>{
     dispatched.push(args);

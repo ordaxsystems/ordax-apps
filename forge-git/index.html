@@ -17,6 +17,8 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
 section{padding:17px;border:1px solid #3a3b3f;border-radius:13px;margin:0 0 12px;background:#222427}
 label{display:block;margin:11px 0 6px;color:#d2c9c3;font-size:12px;font-weight:600}
 textarea,input,select{width:100%;min-width:0;background:#181a1d;color:#f4f1ed;border:1px solid #4d4d51;border-radius:8px;padding:10px;font:inherit}
+label.secure-choice{display:flex;align-items:center;gap:8px;line-height:1.5;cursor:pointer}
+label.secure-choice input{width:16px;min-width:16px;height:16px;accent-color:#c58268}
 textarea{min-height:115px;resize:vertical}
 button{cursor:pointer;background:#323336;border:1px solid #58595c;color:#f4f0eb;padding:10px 12px;border-radius:8px;font:600 13px system-ui}
 button.primary{background:#c58268;color:#201714;border-color:#c58268}
@@ -45,6 +47,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 <input id="core-endpoint" type="url" placeholder="http://127.0.0.1:PORTA/mcp" autocomplete="off" spellcheck="false">
 <label for="core-token">Token de acesso autorizado</label>
 <input id="core-token" type="password" placeholder="Token exibido pelo Forge" autocomplete="off" spellcheck="false">
+<label class="secure-choice" for="core-remember">
+<input id="core-remember" type="checkbox">
+Manter conexão protegida neste Windows e reconectar automaticamente
+</label>
+<p>O Forge Core continua controlando acesso e revogação. Para funcionar após reiniciar também o Forge nativo, ative uma vez a opção de reconexão segura do MCP nas configurações dele. Nenhum projeto ou Run é autorizado pelo armazenamento desta conexão.</p>
 <div class="grid" style="margin-top:9px">
 <button id="core-connect" class="primary" type="button">Conectar MCP</button>
 <button id="core-disconnect" type="button">Desconectar</button>

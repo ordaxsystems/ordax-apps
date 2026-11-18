@@ -1,4 +1,4 @@
-import {app,BrowserWindow,ipcMain} from 'electron';
+import {app,BrowserWindow,ipcMain,safeStorage} from 'electron';
 import {mkdirSync} from 'node:fs';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -11,6 +11,7 @@ import {chatSessionReadiness,navigationTimeoutRecovered} from './provider-routin
 import {canonicalProviderChatUrl} from '../forge/product/src/conversation-policy.mjs';
 import {assertForgeGitTransport} from './authority-policy.mjs';
 import {createForgeCoreReadClient} from './forge-core-read-client.mjs';
+import {createProtectedForgeConnection} from './protected-connection.mjs';
 import {assertForgeGitUiSender} from './ipc-sender-policy.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
@@ -20,11 +21,15 @@ const nextNavigationRetry=new Map();
 let win,store,login='',active='forjador';
 const workers=new Map(),busy=new Set(),ready=new Set(),sessionStates=new Map();
 const core=createForgeCoreReadClient();
+let protectedConnection=null,connectionBusy=false,explicitlyDisconnected=false;
+const coreUiStatus=()=>({...core.status(),
+  reconnectProtected:protectedConnection?.supported()===true,
+  reconnectRemembered:protectedConnection?.exists()===true});
 
 function emit(message){
   if(win&&!win.isDestroyed())win.webContents.send('forge-git:event',{
     message,snapshot:store.snapshot(),active,ready:[...ready],busy:[...busy],sessions:[...sessionStates],
-    coreStatus:core.status(),coreProjection:core.projection()
+    coreStatus:coreUiStatus(),coreProjection:core.projection()
   });
 }
 function guarded(channel,fn){
@@ -100,16 +105,55 @@ async function send({agentId,autoContinue=null,continuation=false}={}){
   assertForgeGitTransport({agentId,autoContinue,continuation});
   throw Error('forge_core_owns_provider_dispatch');
 }
+async function connectExistingCore(options,{automatic=false}={}){
+  if(connectionBusy){
+    if(automatic)return false;
+    throw Error('forge_mcp_connection_in_progress');
+  }
+  if(!automatic&&typeof options?.remember!=='boolean')
+    throw Error('forge_git_remember_choice_required');
+  if(!automatic&&options.remember&&!protectedConnection.supported())
+    throw Error('forge_git_windows_dpapi_unavailable');
+  connectionBusy=true;
+  try{
+    let credentials=options;
+    if(automatic){
+      if(explicitlyDisconnected||!protectedConnection.exists())return false;
+      try{credentials=protectedConnection.recover();}
+      catch{
+        protectedConnection.clear();
+        emit('Reconexão protegida inválida; conecte novamente no Forge Core.');
+        return false;
+      }
+      if(!credentials)return false;
+    }
+    try{
+      await core.connect(credentials);
+      await core.refresh();
+      if(!automatic){
+        if(options.remember)protectedConnection.save(credentials);
+        else protectedConnection.clear();
+        explicitlyDisconnected=false;
+      }
+      emit(automatic
+        ?'Forge MCP reconectado com autorização protegida no Windows.'
+        :'Forge MCP conectado: consentimento canônico validado.');
+      return {status:coreUiStatus(),projection:core.projection()};
+    }catch(error){
+      core.disconnect();
+      if(automatic&&/^forge_mcp_http_(?:401|403)|forge_mcp_app_scope_required|forge_mcp_untrusted_server/.test(String(error?.message||error))){
+        protectedConnection.clear();
+        emit('Autorização MCP revogada ou alterada; nova conexão explícita necessária.');
+      }
+      if(automatic)return false;
+      throw error;
+    }
+  }finally{connectionBusy=false;}
+}
 function events(){
   guarded('fg:state',()=>({snapshot:store.snapshot(),active,ready:[...ready],busy:[...busy],sessions:[...sessionStates],
-    coreStatus:core.status(),coreProjection:core.projection()}));
-  guarded('fg:core-connect',async options=>{
-    const result=await core.connect(options);
-    try{await core.refresh();}
-    catch(error){core.disconnect();throw error;}
-    emit('Forge MCP conectado: projetos e tarefas lidos do Core canônico.');
-    return {status:result,projection:core.projection()};
-  });
+    coreStatus:coreUiStatus(),coreProjection:core.projection()}));
+  guarded('fg:core-connect',options=>connectExistingCore(options));
   guarded('fg:core-refresh',async()=>{
     await core.ping();
     const projection=await core.refresh();
@@ -145,9 +189,11 @@ function events(){
     return receipt;
   });
   guarded('fg:core-disconnect',()=>{
+    explicitlyDisconnected=true;
     core.disconnect();
-    emit('Forge MCP desconectado; novas mensagens bloqueadas.');
-    return core.status();
+    protectedConnection.clear();
+    emit('Forge MCP desconectado; reconexão automática desativada.');
+    return coreUiStatus();
   });
   guarded('fg:connect',async()=>{
     const {stdout}=await cli('gh',['auth','token','--hostname','github.com'],{
@@ -174,6 +220,9 @@ function events(){
 const profile=path.join(app.getPath('appData'),'OrdaX','ForgeGit');
 mkdirSync(profile,{recursive:true});
 app.setPath('userData',profile);
+protectedConnection=createProtectedForgeConnection({
+  directory:profile,secureStorage:safeStorage
+});
 const ownsProfile=app.requestSingleInstanceLock();
 if(!ownsProfile)app.exit(0);
 else{
@@ -213,6 +262,8 @@ app.whenReady().then(async()=>{
   events();
   await win.loadFile(path.join(here,'index.html'));
   layout();
+  // Reuse the owner-approved grant only; never start a Task on boot.
+  void connectExistingCore(null,{automatic:true}).catch(()=>{});
   // Reuse the existing provider-health timer for Core read-only projection.
   // No GitHub writes, independent scheduler, GPT send or authority transfer.
   let polling=false;
@@ -224,18 +275,19 @@ app.whenReady().then(async()=>{
       catch(error){emit('Sessão GPT Web indisponível: '+String(error?.message||error).slice(0,120));}
       if(core.status().connected){
         try{
-          // One read-only monitor, same Core grant; never revoke a newer session.
           const refreshed=await core.monitorRefresh();
           if(refreshed)emit('Forge MCP: estado canônico revalidado.');
         }catch(error){
-          // monitorRefresh invalidates only the grant it monitored. A stale
-          // failure must not disconnect or report the replacement grant as down.
           if(core.status().connected)
             emit('Forge MCP: leitura antiga descartada; sessão atual preservada.');
           else
             emit('Forge MCP indisponível; envios bloqueados até reconectar: '+
               String(error?.message||error).slice(0,120));
         }
+      }else if(!explicitlyDisconnected&&protectedConnection.exists()){
+        // Reuse the existing 45-second health interval, not another scheduler.
+        // Only the Core validates grants. No GPT work is launched automatically.
+        await connectExistingCore(null,{automatic:true});
       }
     }finally{polling=false;}
   },45_000);

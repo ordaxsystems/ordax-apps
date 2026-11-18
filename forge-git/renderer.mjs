@@ -2,6 +2,7 @@ const $=id=>document.getElementById(id);
 const IDS=['forjador','agent-1','agent-2'];
 let state=null,active='forjador',connected=false,ready=[],busy=[],operation=false,sessions=new Map();
 let coreStatus={connected:false},coreProjection=null,receiptPanelProject=null;
+let reconnectChoiceInitialized=false;
 const nameOf=id=>({forjador:'Forjador','agent-1':'Agente 1','agent-2':'Agente 2'})[id]||id;
 function message(text){$('status').textContent=String(text||'');}
 function renderCore(){
@@ -9,11 +10,14 @@ function renderCore(){
   $('core-connect').disabled=operation;
   $('core-disconnect').disabled=operation||!activeCore;
   $('core-refresh').disabled=operation||!activeCore;
-  $('core-connection').textContent=activeCore
+  $('core-connection').textContent=(activeCore
     ?coreStatus?.providerDispatchAllowed===true
-      ?'Forge MCP conectado · envio inicial via confirmação nativa · token não persistido'
-      :'Forge MCP conectado · leitura e rascunho ativos; atualize o Forge nativo para habilitar o envio autorizado.'
-    :'Forge MCP desconectado: selecione e autorize a conexão local.';
+      ?'Forge MCP conectado · envio inicial sujeito somente à confirmação nativa.'
+      :'Forge MCP conectado · leitura e rascunho disponíveis; atualize o Forge nativo para habilitar o envio autorizado.'
+    :'Forge MCP desconectado: conecte uma vez e habilite a proteção Windows se desejar.')+
+    (coreStatus?.reconnectRemembered===true
+      ?'\nReconexão protegida salva neste Windows (o Core pode revogá-la).'
+      :'\nNenhuma reconexão local salva.');
   const selector=$('core-project');
   selector.replaceChildren();
   const projects=activeCore?(coreProjection?.projects||[]):[];
@@ -213,7 +217,13 @@ function apply(data){
   if(data.ready)ready=data.ready;
   if(data.busy)busy=data.busy;
   if(data.sessions)sessions=new Map(data.sessions);
-  if(Object.hasOwn(data,'coreStatus'))coreStatus=data.coreStatus||{connected:false};
+  if(Object.hasOwn(data,'coreStatus')){
+    coreStatus=data.coreStatus||{connected:false};
+    if(!reconnectChoiceInitialized&&Object.hasOwn(coreStatus,'reconnectRemembered')){
+      $('core-remember').checked=coreStatus.reconnectRemembered===true;
+      reconnectChoiceInitialized=true;
+    }
+  }
   if(Object.hasOwn(data,'coreProjection'))coreProjection=data.coreProjection;
   if(data.message)message(data.message);
   render();
@@ -222,7 +232,9 @@ $('core-connect').addEventListener('click',()=>action(async()=>{
   const endpoint=$('core-endpoint').value.trim();
   const token=$('core-token').value.trim();
   try{
-    await window.forgeGit.coreConnect({endpoint,token});
+    await window.forgeGit.coreConnect({
+      endpoint,token,remember:$('core-remember').checked===true
+    });
     apply(await window.forgeGit.state());
     message('Forge MCP conectado. Estado do projeto obtido do Core autorizado.');
   }finally{
@@ -313,7 +325,9 @@ $('core-dispatch').addEventListener('click',()=>action(async()=>{
   const content=$('instruction').value;
   if(!taskId||!Number.isSafeInteger(draftRevision))
     throw Error('Salve primeiro o rascunho da Task selecionada.');
-  if(!confirm('Solicitar ao Forge Core o envio único desta Task? A confirmação decisiva ocorrerá no aplicativo Forge. Um resultado incerto nunca será reenviado automaticamente.'))return;
+  // The owner already clicked this explicit action. The native Forge Core
+  // presents the sole authoritative confirmation, with exact Task/draft.
+  // Do not show a second, redundant renderer confirmation.
   message('Forge Core: confirmação nativa necessária; verificando Run e recibo.');
   let receipt;
   try{
