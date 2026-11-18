@@ -75,6 +75,7 @@ document.getElementById('settingsOpenProject')?.addEventListener('click',async()
 // Only the existing native Owner consent can grant terminal authority.
 // Surface its status on the closed project disclosure without another grant
 // button, prompt, state store or implicit permission change.
+let forgeDevelopmentGateRevision=0;
 function showForgeDevelopmentGate(gate=null) {
   const details=document.getElementById('forgeProjectAdvanced');
   const summary=details?.querySelector('summary');
@@ -90,6 +91,7 @@ function showForgeDevelopmentGate(gate=null) {
   else summary?.removeAttribute('aria-description');
 }
 async function refreshForgeDevelopmentAccess() {
+  const revision=++forgeDevelopmentGateRevision;
   const projectId=orchestrationUi?.getProjectId?.()||null;
   const status=document.getElementById('forgeDevelopmentAccessStatus');
   const approve=document.getElementById('forgeDevelopmentApprove');
@@ -100,7 +102,8 @@ async function refreshForgeDevelopmentAccess() {
   if(!projectId){status.textContent='Selecione um projeto.';return;}
   try {
     const access=await window.ordax.forgeDevelopmentStatus(projectId);
-    if(orchestrationUi?.getProjectId?.()!==projectId)return;
+    if(revision!==forgeDevelopmentGateRevision||
+       orchestrationUi?.getProjectId?.()!==projectId)return;
     showForgeDevelopmentGate(access.available?null:
       access.ownerBoundWorkspace?'approval-required':'workspace-required');
     approve.disabled=access.available||!access.ownerBoundWorkspace;
@@ -111,7 +114,8 @@ async function refreshForgeDevelopmentAccess() {
         ?'Terminal desativado. Ative uma vez para liberar comandos, Git e builds.'
         :'Vincule a pasta do projeto antes de habilitar comandos.';
   }catch {
-    if(orchestrationUi?.getProjectId?.()!==projectId)return;
+    if(revision!==forgeDevelopmentGateRevision||
+       orchestrationUi?.getProjectId?.()!==projectId)return;
     showForgeDevelopmentGate('unavailable');
     status.textContent='Não foi possível verificar a autorização.';
     approve.disabled=true;revoke.disabled=true;
