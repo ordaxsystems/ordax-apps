@@ -1,8 +1,15 @@
 # Forge GPT-first — execução canônica e Administrador de Projeto
 
 Status: **P0 GPT→Forge MCP externo e pelo executor GPT Web do Forge comprovados; P1 residência supervisionada comprovada; P2 agenda, retomada e failover físico entre sessões GPT comprovados; P3 paralelismo GPT, isolamento empacotado de agentes e Git/worktree/Integrador comprovados, com o aceite físico da pizzaria bloqueado por drift do catálogo remoto entregue às sessões GPT; P4 em execução progressiva**. Não anunciar aceite final da pizzaria sem as provas restantes. Owner único: `ordaxsystems/ordax-apps`, `forge`.
-Atualizado: 2026-11-17. **Precedência para direção Forge V3: este plano único > documentos históricos anteriores.** Para afirmações de entrega, código + testes + prova física prevalecem. `ORCHESTRATOR-CANONICAL-PRODUCT.md` permanece apenas como registro histórico do desenho de 01/11.
+Atualizado: 2026-11-18. **Precedência para direção Forge V3: este plano único > documentos históricos anteriores.** Para afirmações de entrega, código + testes + prova física prevalecem. `ORCHESTRATOR-CANONICAL-PRODUCT.md` permanece apenas como registro histórico do desenho de 01/11.
 
+
+## Diagnóstico do retorno offline Windows — 18/11/2026
+
+- **Observação física (não é aceite):** `DESKTOP-4UFL03B` respondeu pelo Desktop Commander, o processo da versão `0.2.0-alpha.42` iniciou, mas a instância remota `97f640fc-8254-4e5b-adb6-d266f59843d1` permaneceu offline no gateway. O SQLite operacional continha sessão de workspace ativa, aprovação MCP de aplicativo e identidade remota vinculada; o arquivo de sessão criptografado existia. A mera presença do arquivo não comprova que `safeStorage` consiga lê-lo no processo nativo.
+- **Rede e autenticação separadas:** `https://forge-mcp.ordax.com.br/mcp` respondeu 401 sem bearer, esperado; os registros Supabase mostram OAuth funcional, mas nenhuma correlação autenticada foi produzida entre esse tráfego e a instância Forge. Um diagnóstico temporário em perfil Chromium *isolado* falhou ao abrir a sessão — resultado inconclusivo, pois não usa a chave de criptografia do perfil canônico. Não apagar credenciais, grants, banco, Runs ou reemitir actions incertas por essa evidência.
+- **Correção de observabilidade na branch `fix/forge-product-session-fail-closed-diagnostics-20261118`:** distingue sessão ausente, armazenamento seguro indisponível, blob ilegível e claims inválidos, usando exclusivamente códigos de erro fixos sem expor tokens, nomes ou mensagens brutas do DPAPI. A interface indica login nativo quando necessário, ou o motivo de gateway offline e a próxima tentativa já agendada. Não cria outro cliente, store, broker ou executor; não altera a segurança do login PKCE.
+- **Validação local isolada:** 10/10 testes de sessão OAuth/gateway aprovados, incluindo novo caso de diagnóstico e ausência de vazamento da exceção privada; `node --check` nos três arquivos e `git diff --check` sem erros. **Gates físicos ainda pendentes:** branch integrada, binário Windows atualizado, diagnóstico `sessionError` observado no próprio app e vínculo remoto online verificado. A conexão atual não é declarada recuperada.
 
 ## Direção vigente — MCP-first e agentes resilientes (15/11/2026)
 

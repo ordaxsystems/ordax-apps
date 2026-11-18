@@ -27,6 +27,38 @@ function response(status,body){return new Response(JSON.stringify(body),{
   status,headers:{'content-type':'application/json'}
 });}
 
+test('sealed account status distinguishes missing, unsupported, unreadable and invalid sessions',t=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'forge-product-status-'));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const storage=safeStorage();
+  const make=secure=>createForgeProductSession({
+    userRoot:root,safeStorage:secure,platform:'win32'
+  });
+  const session=make(storage);
+  assert.equal(session.status().connected,false);
+  assert.equal(session.status().sessionError,null);
+
+  const unavailable=make({...storage,isEncryptionAvailable:()=>false});
+  assert.equal(unavailable.status().sessionError,'forge_product_secure_storage_unavailable');
+
+  const file=path.join(root,'config','forge-product-session.enc');
+  fs.mkdirSync(path.dirname(file),{recursive:true});
+  fs.writeFileSync(file,Buffer.from('unreadable'));
+  const locked=make({...storage,decryptString:()=>{throw Error('private_detail_not_for_ui');}});
+  assert.equal(locked.status().connected,false);
+  assert.equal(locked.status().sessionError,'forge_product_session_unreadable');
+  assert.doesNotMatch(JSON.stringify(locked.status()),/private_detail_not_for_ui/);
+
+  fs.writeFileSync(file,storage.encryptString('not-json'));
+  assert.equal(session.status().sessionError,'forge_product_session_invalid');
+  fs.writeFileSync(file,storage.encryptString(JSON.stringify({
+    access_token:jwt({client_id:FORGE_NATIVE_OAUTH_CLIENT_ID}),
+    refresh_token:'test-only-refresh',email:'owner@example.com'
+  })));
+  assert.equal(session.status().connected,true);
+  assert.equal(session.status().sessionError,null);
+});
+
 test('product session uses browser PKCE, seals refresh at rest and refreshes the exact Forge OAuth client',async t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'forge-product-session-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));

@@ -67,7 +67,8 @@ function syncControls(){
 
   if(productConnect){
     productConnect.hidden=account.connected;
-    productConnect.disabled=busy||!remoteUsable||account.connected||!trusted||account.authPending===true;
+    productConnect.disabled=busy||!remoteUsable||account.connected||!trusted||
+      account.authPending===true||account.sessionError==='forge_product_secure_storage_unavailable';
     productConnect.textContent=account.authPending===true?'Conectando no navegador…':'Entrar com Conta OrdaX';
   }
   if(productReconnect){
@@ -92,10 +93,16 @@ function renderRemote(){
     return;
   }
   if(!account.connected){
-    setRemoteState(account.authPending
+    const message=account.authPending
       ?'Conclua a entrada da Conta OrdaX no navegador para conectar esta instância.'
-      :'Conta OrdaX ainda não conectada. A entrada é feita no navegador e a sessão fica protegida pelo Windows.',
-      account.authPending?'pending':'blocked');
+      :account.sessionError==='forge_product_secure_storage_unavailable'
+        ?'O armazenamento seguro do Windows está indisponível. O Forge não pode guardar a sessão; verifique o perfil Windows.'
+        :account.sessionError==='forge_product_session_unreadable'
+          ?'A sessão protegida da Conta OrdaX não pôde ser lida neste Windows. Entre novamente para restaurar a conexão.'
+          :account.sessionError==='forge_product_session_invalid'
+            ?'A sessão salva não é válida para este Forge. Entre novamente pela Conta OrdaX para restaurar a conexão.'
+            :'Conta OrdaX ainda não conectada. A entrada é feita no navegador e a sessão fica protegida pelo Windows.';
+    setRemoteState(message,account.authPending?'pending':'blocked');
     return;
   }
   const identity=account.email||'Conta OrdaX';
@@ -105,7 +112,10 @@ function renderRemote(){
     setRemoteState(identity+' · gateway iniciando/reconectando'+
       (gateway.lastError?' ('+gateway.lastError+')':'')+'.','pending');
   }else{
-    setRemoteState(identity+' conectada, mas o gateway está offline. Use Reconectar gateway.','blocked');
+    setRemoteState(identity+' conectada, mas o gateway está offline.'+
+      (gateway.lastError?' Motivo: '+gateway.lastError+'.':'')+
+      (gateway.reconnectScheduled?' Nova tentativa automática agendada.':' Use Reconectar gateway.'),
+      'blocked');
   }
 }
 async function refreshMcp(){
