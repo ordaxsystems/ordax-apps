@@ -719,6 +719,22 @@ test('optional receipt lookup capability is never inferred from a forged or abse
   }),/forge_mcp_receipt_read_unavailable/);
 });
 
+// The existing health monitor reconnects after a network error. In this E2E
+// test, only the MCP initialization handshake may be retried: undici can reuse
+// a socket from the listener that was just closed/rebound to the same port.
+// Never retry draft writes, provider dispatch, or uncertain Run effects.
+async function connectReadOnlyAfterListenerRestart(client,credentials){
+  let lastNetworkError=null;
+  for(let i=0;i<3;i++){
+    try{return await client.connect(credentials);}
+    catch(error){
+      if(String(error?.message||error)!=='fetch failed')throw error;
+      lastNetworkError=error;
+    }
+  }
+  throw lastNetworkError;
+}
+
 test('protected owner grant survives native listener and Forge Git client restart without new consent or GPT send',async t=>{
   const step=async(label,task)=>{
     try{return await task();}
@@ -761,7 +777,7 @@ test('protected owner grant survives native listener and Forge Git client restar
   t.after(()=>successorClient.disconnect());
   const recovered=cache.recover();
   assert.deepEqual(recovered,{endpoint:initial.endpoint,token:initial.token});
-  await step('successor_connect',()=>successorClient.connect(recovered));
+  await step('successor_connect',()=>connectReadOnlyAfterListenerRestart(successorClient,recovered));
   const readBack=await step('successor_refresh',()=>successorClient.refresh(mission.projectId));
   assert.equal(successorClient.status().connected,true);
   assert.equal(readBack.selectedProjectId,mission.projectId);
@@ -785,7 +801,7 @@ test('protected owner grant survives native listener and Forge Git client restar
   let revokeConfirmed=false;
   for(let attempt=0;attempt<3;attempt++){
     try{
-      await revokedClient.connect(cache.recover());
+      await connectReadOnlyAfterListenerRestart(revokedClient,cache.recover());
       throw Error('revoked_owner_grant_unexpectedly_accepted');
     }catch(error){
       const reason=String(error?.message||error);
