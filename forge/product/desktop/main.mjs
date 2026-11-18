@@ -1896,6 +1896,21 @@ const forgeLocalMcp=createForgeLoopbackMcp({
   projectScope:projectId=>projectId===FORGE_APP_MCP_SCOPE
     ?forgeMcpTrusted.appScopeHash():forgeMcpTrusted.scopeHash(projectId),
   onProjectFileChanged:projectId=>emitRendererEvent('ordax:forge:project-file:changed',{projectId}),
+  // Reuse the app's active Owner grant. Pairing exposes only a public-key-
+  // encrypted copy of its existing bearer after explicit native approval.
+  // The ten-digit fingerprint must match the one shown inside Forge Git.
+  ownerPair:async({code},{isAuthorized})=>{
+    if(isAuthorized()!==true||!forgeMcpTrusted.isAppTrusted())
+      return false;
+    const approval=await confirmInActiveUi({
+      title:'Forge Git — vincular ao MCP local',
+      message:'Confirmar o vínculo com o Forge Git neste Windows?',
+      detail:'Compare este código com o exibido no Forge Git: '+code+
+        '\\n\\nConfirme somente se você iniciou o vínculo no Forge Git e ambos mostram o mesmo código. A credencial existente será entregue cifrada somente ao processo que possui a chave correspondente. Isso não inicia nenhuma Task ou Run.',
+      approveLabel:'Autorizar vínculo único',cancelLabel:'Cancelar'
+    });
+    return approval===true&&isAuthorized()===true&&forgeMcpTrusted.isAppTrusted();
+  },
   // Same Core, provider and SQLite as the native UI. This privileged route
   // is never an MCP tool and cannot be called with a project-only grant.
   ownerDispatch:async({projectId,taskId,content,draftRevision,requestId},{isAuthorized})=>{
