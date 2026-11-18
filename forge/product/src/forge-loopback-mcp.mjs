@@ -1,6 +1,7 @@
 import http from 'node:http';
 import {randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
 import {ORCHESTRATOR_TOOLS} from './forge-contract.mjs';
+import {inspectForgeGitPairRequest,sealExistingForgeMcpGrant} from './forge-git-owner-pair-crypto.mjs';
 
 export const FORGE_APP_MCP_SCOPE='forge_app';
 // One canonical App/ChatGPT projection. Provider-to-GPT dispatch remains
@@ -63,16 +64,18 @@ async function bodyJson(req) {
 // No remote listening, auto-connect, browser origins, persistence or OAuth claim.
 export function createForgeLoopbackMcp({createMcp,authorizeProject,
   projectScope=projectId=>projectId,clock=Date.now,onProjectFileChanged=()=>{},
-  ownerDispatch=null}={}) {
+  ownerDispatch=null,ownerPair=null}={}) {
   if(typeof createMcp!=='function'||typeof authorizeProject!=='function'||
      typeof projectScope!=='function'||typeof clock!=='function'||
      typeof onProjectFileChanged!=='function'||
-     (ownerDispatch!==null&&typeof ownerDispatch!=='function'))
+     (ownerDispatch!==null&&typeof ownerDispatch!=='function')||
+     (ownerPair!==null&&typeof ownerPair!=='function'))
     throw Error('forge_mcp_transport_ports_required');
   let server=null,port=null;
   let starting=false;
   const sessions=new Map(),grants=new Map();
   const ownerDispatchInFlight=new Set();
+  let ownerPairInFlight=false;
   let pendingInitializations=0;
   const bound=()=>server?.listening===true;
   const captureScope=projectId=>{
@@ -105,13 +108,52 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
     try{
       if(!active())return json(res,503,{error:'forge_mcp_disabled'});
       const ownerRoute=req.url==='/owner-dispatch';
-      if((!ownerRoute&&req.url!=='/mcp')||
+      const pairRoute=req.url==='/owner-pair';
+      if((!ownerRoute&&!pairRoute&&req.url!=='/mcp')||
          !['POST','DELETE','GET'].includes(req.method)||
-         (ownerRoute&&!['POST','GET'].includes(req.method)))
+         (ownerRoute&&!['POST','GET'].includes(req.method))||
+         (pairRoute&&req.method!=='POST'))
         return json(res,404,{error:'forge_mcp_route_unavailable'});
       // No browser origins: prevents web pages from using local owner powers.
       if(req.headers.origin!==undefined)return json(res,403,{error:'forge_mcp_browser_origin_denied'});
       if(req.headers.host!=='127.0.0.1:'+port)return json(res,403,{error:'forge_mcp_host_rejected'});
+      // The ONLY unauthenticated ingress is an explicit Owner-approved,
+      // ephemeral public-key handoff. It returns the *existing* bearer sealed
+      // to a key held only in Forge Git's trusted main process. No new grant,
+      // account, Core, broker, port or persistent queue is created.
+      if(pairRoute){
+        if(ownerPairInFlight)return json(res,409,{error:'forge_mcp_pair_in_progress'});
+        if(req.socket.remoteAddress!=='127.0.0.1'||
+           typeof ownerPair!=='function'||
+           req.headers['x-forge-git-pair']!=='1'||
+           req.headers['mcp-session-id']!==undefined)
+          return json(res,403,{error:'forge_mcp_pair_unavailable'});
+        if(typeof req.headers['content-type']!=='string'||
+           req.headers['content-type'].split(';')[0].trim().toLowerCase()!=='application/json')
+          return json(res,415,{error:'forge_mcp_json_required'});
+        if(!/^[0-9]+$/.test(req.headers['content-length']??'')||
+           Number(req.headers['content-length'])>2048)
+          return json(res,413,{error:'forge_mcp_pair_request_too_large'});
+        const appGrant=authorizedGrants().find(item=>item.projectId===FORGE_APP_MCP_SCOPE);
+        if(!appGrant||!authorizeProject(FORGE_APP_MCP_SCOPE))
+          return json(res,403,{error:'forge_mcp_pair_app_grant_required'});
+        let request,code;
+        try{
+          request=await bodyJson(req);
+          ({code}=inspectForgeGitPairRequest(request));
+        }catch{return json(res,400,{error:'forge_mcp_pair_request_invalid'});}
+        const isAuthorized=()=>bound()&&valid(appGrant)&&
+          authorizeProject(FORGE_APP_MCP_SCOPE);
+        if(!isAuthorized())return json(res,403,{error:'forge_mcp_pair_grant_changed'});
+        ownerPairInFlight=true;
+        try{
+          const approved=await ownerPair({code},{isAuthorized});
+          if(!approved)return json(res,403,{error:'forge_mcp_pair_owner_declined'});
+          if(!isAuthorized())return json(res,403,{error:'forge_mcp_pair_grant_changed'});
+          return json(res,200,sealExistingForgeMcpGrant(request,appGrant.token));
+        }catch{return json(res,409,{error:'forge_mcp_pair_unavailable'});}
+        finally{ownerPairInFlight=false;}
+      }
       const grant=authorizedGrants().find(item=>constantMatch(
         req.headers.authorization,'Bearer '+item.token));
       if(!grant)return json(res,401,{error:'forge_mcp_authorization_required'});
