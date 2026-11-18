@@ -22,8 +22,8 @@ const nextNavigationRetry=new Map();
 let win,store,login='',active='forjador';
 const workers=new Map(),busy=new Set(),ready=new Set(),sessionStates=new Map();
 const core=createForgeCoreReadClient();
-let protectedConnection=null,connectionBusy=false,explicitlyDisconnected=false,pairingBusy=false;
-const coreUiStatus=()=>({...core.status(),
+let protectedConnection=null,connectionBusy=false,explicitlyDisconnected=false,pairingBusy=false,pairingCode=null;
+const coreUiStatus=()=>({...core.status(),pairingCode,
   reconnectProtected:protectedConnection?.supported()===true,
   reconnectRemembered:protectedConnection?.exists()===true});
 
@@ -168,6 +168,7 @@ function events(){
     pairingBusy=true;
     try{
       const prepared=prepareForgeGitPairRequest();
+      pairingCode=prepared.code;
       emit('Compare no Forge nativo o código de vínculo '+prepared.code+
         '. Confirme somente se ele corresponde ao mostrado neste Forge Git.');
       const response=await fetch(local.replace(/\/mcp$/,'/owner-pair'),{
@@ -189,7 +190,7 @@ function events(){
       const result=await connectExistingCore({endpoint:local,token,remember:true});
       emit('Forge Git vinculado ao Forge Core sem copiar token. Reconexão protegida habilitada.');
       return {paired:true,status:result.status,projection:result.projection};
-    }finally{pairingBusy=false;}
+    }finally{pairingCode=null;pairingBusy=false;emit('');}
   });
   guarded('fg:core-refresh',async()=>{
     await core.ping();
