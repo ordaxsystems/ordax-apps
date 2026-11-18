@@ -13,6 +13,7 @@ const READ_TOOLS=Object.freeze([
   'forge_work_get','forge_work_messages'
 ]);
 const DRAFT_TOOL='forge_work_draft_set';
+const RECEIPT_TOOL='forge_command_get';
 const clone=value=>JSON.parse(JSON.stringify(value));
 
 export function validateForgeEndpoint(endpoint,token){
@@ -31,12 +32,13 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
   // A monitor read must not overwrite a more recent Task or draft action.
   let projectionRevision=0,refreshSequence=0,projectSelectionPending=0;
   let selectedProjectId=null,selectedTaskId=null,selectedHandoff=null;
-  let projection=null,prepared=null,nativeDispatchSupported=false;
+  let projection=null,prepared=null,nativeDispatchSupported=false,receiptLookupSupported=false;
   const dispatchedRevisions=new Set();
   const connected=()=>Boolean(auth&&session);
   const status=()=>({connected:connected(),source:'forge_local_mcp_authorized',
     loopbackOnly:true,credentialPersisted:false,
     limitedDraftWrite:true,
+    receiptLookupAllowed:connected()&&receiptLookupSupported,
     providerDispatchAllowed:connected()&&nativeDispatchSupported,
     dispatchBlockReason:connected()&&!nativeDispatchSupported
       ?'forge_native_dispatch_update_required':null,
@@ -80,11 +82,13 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
     projectSelectionPending=0; // New MCP sessions cannot inherit a stale UI selection.
     auth=null;session=null;projection=null;
     selectedProjectId=null;selectedTaskId=null;selectedHandoff=null;
-    prepared=null;nativeDispatchSupported=false;dispatchedRevisions.clear();
+    prepared=null;nativeDispatchSupported=false;receiptLookupSupported=false;
+    dispatchedRevisions.clear();
     void closeGrant(oldAuth,oldSession);
   }
   async function call(name,args={},mode='read'){
-    if(mode==='write'?name!==DRAFT_TOOL:!READ_TOOLS.includes(name))
+    if(mode==='write'?name!==DRAFT_TOOL:
+       !READ_TOOLS.includes(name)&&!(name===RECEIPT_TOOL&&receiptLookupSupported))
       throw Error('forge_core_operation_not_allowed');
     if(!connected())throw Error('forge_mcp_connection_required');
     const version=epoch,credentials=auth,sessionId=session;
@@ -139,6 +143,8 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
       }catch{dispatchCapable=false;}
       if(version!==epoch)throw Error('forge_mcp_connection_changed');
       auth=credentials;session=initialized;
+      receiptLookupSupported=tools.some(tool=>tool?.name===RECEIPT_TOOL&&
+        tool?.annotations?.readOnlyHint===true);
       nativeDispatchSupported=dispatchCapable;
       return status();
     }catch(error){
@@ -275,6 +281,37 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
     }finally{
       if(explicitProjectSelection&&epoch===selectionEpoch)--projectSelectionPending;
     }
+  }
+  // An owner can inspect only command IDs already surfaced by the current
+  // canonical project's handoff. This never retries or changes any Run.
+  async function inspectUnresolvedReceipt({commandId}={}){
+    if(!connected()||!projection?.selectedProjectId)
+      throw Error('forge_mcp_connection_required');
+    if(!receiptLookupSupported)
+      throw Error('forge_mcp_receipt_read_unavailable');
+    const recorded=Array.isArray(projection.handoff?.unresolvedCommands)
+      ?projection.handoff.unresolvedCommands.find(item=>item?.commandId===commandId)
+      :null;
+    if(typeof commandId!=='string'||!/^command_[0-9a-f-]{36}$/.test(commandId)||
+       !recorded||typeof recorded.operation!=='string')
+      throw Error('forge_mcp_receipt_not_in_selected_project');
+    const version=epoch,projectId=selectedProjectId;
+    const currentProjection=projection;
+    const value=await call(RECEIPT_TOOL,{commandId});
+    if(version!==epoch||selectedProjectId!==projectId||projection!==currentProjection)
+      throw Error('forge_mcp_connection_changed');
+    if(value?.commandId!==commandId||value?.operation!==recorded.operation||
+       !['succeeded','failed','uncertain','running'].includes(value.status))
+      throw Error('forge_mcp_receipt_readback_invalid');
+    return Object.freeze({
+      commandId,operation:recorded.operation,status:value.status,
+      requiresReconciliation:value.status==='uncertain'||value.status==='running',
+      checkedAt:new Date().toISOString(),
+      externalEffectsVerified:false,
+      // Observation is never a decision that the Task is accepted or that
+      // GitHub/files were changed.
+      readOnly:true
+    });
   }
   async function selectTask(taskId){
     if(!connected()||!projection?.selectedProjectId)
@@ -418,7 +455,8 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
     });
   }
   return Object.freeze({
-    connect,refresh,ping,monitorRefresh,selectTask,saveWorkDraft,dispatchWork,
+    connect,refresh,ping,monitorRefresh,selectTask,inspectUnresolvedReceipt,
+    saveWorkDraft,dispatchWork,
     disconnect:invalidate,status,
     projection:()=>projection?clone(projection):null
   });
