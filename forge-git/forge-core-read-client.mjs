@@ -28,6 +28,8 @@ export function validateForgeEndpoint(endpoint,token){
 export function createForgeCoreReadClient({fetchImpl=fetch}={}){
   if(typeof fetchImpl!=='function')throw Error('forge_mcp_fetch_unavailable');
   let auth=null,session=null,epoch=0,nextId=1;
+  // A monitor read must not overwrite a more recent Task or draft action.
+  let projectionRevision=0,refreshSequence=0;
   let selectedProjectId=null,selectedTaskId=null,selectedHandoff=null;
   let projection=null,prepared=null,nativeDispatchSupported=false;
   const dispatchedRevisions=new Set();
@@ -74,7 +76,8 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
   }
   function invalidate(){
     const oldAuth=auth,oldSession=session;
-    ++epoch;auth=null;session=null;projection=null;
+    ++epoch;++projectionRevision;++refreshSequence;
+    auth=null;session=null;projection=null;
     selectedProjectId=null;selectedTaskId=null;selectedHandoff=null;
     prepared=null;nativeDispatchSupported=false;dispatchedRevisions.clear();
     void closeGrant(oldAuth,oldSession);
@@ -193,7 +196,7 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
   }
   async function refresh(projectId=null){
     if(!connected())throw Error('forge_mcp_connection_required');
-    const version=epoch;
+    const version=epoch,revision=projectionRevision,request=++refreshSequence;
     const listed=await call('forge_projects_list');
     if(!Array.isArray(listed.projects))throw Error('forge_mcp_projects_invalid');
     const projects=listed.projects.filter(p=>PROJECT.test(p?.id||''))
@@ -232,6 +235,9 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
       works.some(w=>w.id===selectedTaskId)?selectedTaskId:null;
     const scoped=keepTask?await readScoped(chosen,keepTask):null;
     if(version!==epoch)throw Error('forge_mcp_connection_changed');
+    // Discard responses started before a newer refresh or explicit mutation.
+    if(request!==refreshSequence||revision!==projectionRevision)
+      return projection?clone(projection):null;
     selectedProjectId=chosen;selectedTaskId=keepTask;selectedHandoff=scoped;
     if(!keepTask||prepared?.taskId!==keepTask||
        prepared?.projectId!==chosen||
@@ -248,9 +254,11 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
        !projection.works.some(work=>work.id===taskId))
       throw Error('forge_mcp_task_not_authorized');
     const version=epoch,projectId=selectedProjectId;
+    ++projectionRevision;
     const scoped=await readScoped(projectId,taskId);
     if(version!==epoch||projectId!==selectedProjectId)
       throw Error('forge_mcp_connection_changed');
+    ++projectionRevision;
     selectedTaskId=taskId;selectedHandoff=scoped;
     if(prepared?.taskId!==taskId||
        prepared?.draftRevision!==scoped?.selectedTask?.draftRevision)prepared=null;
@@ -268,6 +276,7 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
        expectedRevision!==selectedHandoff.selectedTask?.draftRevision)
       throw Error('task_draft_revision_conflict');
     const version=epoch,projectId=selectedProjectId;
+    ++projectionRevision;
     const live=await readScoped(projectId,taskId);
     if(version!==epoch||projectId!==selectedProjectId||selectedTaskId!==taskId)
       throw Error('forge_mcp_connection_changed');
@@ -289,6 +298,7 @@ export function createForgeCoreReadClient({fetchImpl=fetch}={}){
     const after=await readScoped(projectId,taskId);
     if(after.selectedTask.draftRevision!==revision)
       throw Error('forge_mcp_draft_readback_uncertain');
+    ++projectionRevision;
     selectedHandoff=after;
     prepared={projectId,taskId,draftRevision:revision,
       contentSha256:saved.contentSha256};
