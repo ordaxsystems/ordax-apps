@@ -40,17 +40,16 @@ test('native Owner quarantine: immutable original, one reviewed receipt, scoped 
     acknowledgeUnknownEffects:true,requestId:'native_review_accepted_1',
     note:'O efeito continua desconhecido. Reconheço o risco e não vou repetir esse comando.'};
   await assert.rejects(f.invoke('command_close_unverified',input),/native_owner_required/);
-  f.context.nativeOwnerConfirmed=true;
-  const ack=await f.invoke('command_close_unverified',input);
+  const ack=f.service.closeUnverifiedCommand(f.context,input,{nativeOwnerConfirmed:true});
   assert.equal(ack.status,'succeeded');
   assert.equal(ack.result.disposition,'abandon_unverified');
   assert.equal(ack.result.originalStatus,'uncertain');
   assert.equal(ack.result.evidenceCommandId,'command_later_project_health');
   assert.equal(ack.result.externalEffectsVerified,false);
   assert.equal(ack.result.replayAllowed,false);
-  assert.deepEqual(await f.invoke('command_close_unverified',input),ack);
-  await assert.rejects(f.invoke('command_close_unverified',
-    {...input,requestId:'another_review'}),/already_closed/);
+  assert.deepEqual(f.service.closeUnverifiedCommand(f.context,input,{nativeOwnerConfirmed:true}),ack);
+  assert.throws(()=>f.service.closeUnverifiedCommand(f.context,
+    {...input,requestId:'another_review'},{nativeOwnerConfirmed:true}),/already_closed/);
   assert.deepEqual(f.store.db.prepare('SELECT * FROM lab_command_receipts WHERE id=?')
     .get('command_uncertain_target'),before);
   const original=await f.invoke('command_get',{commandId:'command_uncertain_target'});
@@ -75,14 +74,14 @@ test('uncertain sends, missing evidence, foreign project and MCP-origin acknowle
   const input={projectId:a.projectId,commandId:'command_missing_proof',
     note:'Resultado ainda desconhecido e sem prova independente suficiente para reclassificar.',
     acknowledgeUnknownEffects:true};
-  f.context.nativeOwnerConfirmed=true;
-  await assert.rejects(f.invoke('command_close_unverified',input),/independent_evidence_missing/);
-  await assert.rejects(f.invoke('command_close_unverified',
-    {...input,projectId:b.projectId}),/scope_or_status_invalid/);
-  await assert.rejects(f.invoke('command_close_unverified',
-    {...input,commandId:'command_provider_send'}),/scope_or_status_invalid/);
-  await assert.rejects(f.invoke('command_close_unverified',
-    {...input,acknowledgeUnknownEffects:false}),/acknowledgement_required/);
+  assert.throws(()=>f.service.closeUnverifiedCommand(f.context,input,
+    {nativeOwnerConfirmed:true}),/independent_evidence_missing/);
+  assert.throws(()=>f.service.closeUnverifiedCommand(f.context,
+    {...input,projectId:b.projectId},{nativeOwnerConfirmed:true}),/scope_or_status_invalid/);
+  assert.throws(()=>f.service.closeUnverifiedCommand(f.context,
+    {...input,commandId:'command_provider_send'},{nativeOwnerConfirmed:true}),/scope_or_status_invalid/);
+  assert.throws(()=>f.service.closeUnverifiedCommand(f.context,
+    {...input,acknowledgeUnknownEffects:false},{nativeOwnerConfirmed:true}),/acknowledgement_required/);
   assert.equal((await f.invoke('project_handoff',{projectId:a.projectId})).counts.unresolvedCommands,2);
   const mcp=createOrchestratorMcp({service:f.service,getContext:()=>f.context});
   await mcp.handle({jsonrpc:'2.0',id:1,method:'initialize',
