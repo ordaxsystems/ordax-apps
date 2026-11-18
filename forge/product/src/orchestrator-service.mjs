@@ -187,7 +187,6 @@ export class OrchestratorService {
           WHERE a.operation='command_close_unverified' AND a.status='succeeded'
             AND a.project_id=c.project_id
             AND a.workspace_session_id=c.workspace_session_id
-            AND a.actor_id=c.actor_id AND a.client_id=c.client_id
             AND CASE WHEN json_valid(a.result) THEN
               json_extract(a.result,'$.targetCommandId')=c.id
               AND json_extract(a.result,'$.originalInputHash')=c.input_hash
@@ -447,8 +446,9 @@ export class OrchestratorService {
   // This is a native-Owner-only, append-only review. It never changes the
   // original uncertain receipt, never replays its command and never certifies
   // historical external effects. A later success only proves current health.
-  closeUnverifiedCommand(context,input) {
-    if(context?.nativeOwnerConfirmed!==true)
+  closeUnverifiedCommand(context,raw,{nativeOwnerConfirmed=false}={}) {
+    const {input}=validateOrchestratorInput('command_close_unverified',raw);
+    if(nativeOwnerConfirmed!==true)
       throw Error('forge_command_review_native_owner_required');
     this.requireAccess(context,'command_close_unverified',input.projectId);
     if(input.acknowledgeUnknownEffects!==true)
@@ -464,9 +464,8 @@ export class OrchestratorService {
         .get(context.workspaceSessionId,context.actorId,context.clientId,input.requestId);
       if(existing)return this.reserve(context,'command_close_unverified',input).existing;
       const source=this.db.prepare(`SELECT * FROM lab_command_receipts
-        WHERE id=? AND project_id=? AND workspace_session_id=?
-          AND actor_id=? AND client_id=?`).get(input.commandId,input.projectId,
-          context.workspaceSessionId,context.actorId,context.clientId);
+        WHERE id=? AND project_id=? AND workspace_session_id=?`).get(input.commandId,
+          input.projectId,context.workspaceSessionId);
       if(!source||source.operation!=='project_command_run'||source.status!=='uncertain')
         throw Error('forge_command_review_scope_or_status_invalid');
       // Only the known terminal timeout path is eligible, not provider sends
@@ -480,10 +479,9 @@ export class OrchestratorService {
         .get(source.id))throw Error('forge_command_review_already_closed');
       const candidates=this.db.prepare(`SELECT id,result,updated_at
         FROM lab_command_receipts WHERE project_id=? AND workspace_session_id=?
-          AND actor_id=? AND client_id=? AND operation='project_command_run'
-          AND status='succeeded' AND updated_at>=?
-        ORDER BY rowid DESC LIMIT 40`).all(input.projectId,
-          context.workspaceSessionId,context.actorId,context.clientId,source.updated_at);
+          AND operation='project_command_run' AND status='succeeded'
+          AND updated_at>=? ORDER BY rowid DESC LIMIT 40`).all(input.projectId,
+          context.workspaceSessionId,source.updated_at);
       const proof=candidates.find(row=>{
         let value;
         try{value=JSON.parse(row.result||'null');}catch{return false;}
