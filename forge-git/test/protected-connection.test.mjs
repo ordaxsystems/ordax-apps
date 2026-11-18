@@ -81,7 +81,7 @@ test('non-Windows or unavailable secure storage fails closed, without plaintext 
   assert.deepEqual(readdirSync(dir),[]);
   const unavailable=createProtectedForgeConnection({
     directory:dir,platform:'win32',secureStorage:{
-      ...cryptoPort(),isEncryptionAvailable:()=>false
+      ...createTestSecureStoragePort(),isEncryptionAvailable:()=>false
     }
   });
   assert.equal(unavailable.supported(),false);
