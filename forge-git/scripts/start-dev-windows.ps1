@@ -3,7 +3,8 @@
 param(
   [switch]$CheckOnly,
   [switch]$InstallStartup,
-  [switch]$RemoveStartup
+  [switch]$RemoveStartup,
+  [string]$CoreExecutable = ''
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -13,6 +14,18 @@ if(([int][bool]$CheckOnly + [int][bool]$InstallStartup + [int][bool]$RemoveStart
 }
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $coreExe = Join-Path $env:LOCALAPPDATA 'Programs\OrdaX Forge\OrdaX Forge.exe'
+# A pinned DEV candidate may be needed while the previous Windows runtime
+# directory is still locked by an exited Electron child. Keep ONE live Core.
+# The override is process-local/startup-shortcut scoped, never a new owner.
+if($CoreExecutable){
+  $programsRoot = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs')) + [System.IO.Path]::DirectorySeparatorChar
+  $pinned = [System.IO.Path]::GetFullPath($CoreExecutable)
+  if(!$pinned.StartsWith($programsRoot,[StringComparison]::OrdinalIgnoreCase) -or
+     [System.IO.Path]::GetFileName($pinned) -cne 'OrdaX Forge.exe'){
+    throw 'forge_dev_core_executable_outside_local_programs'
+  }
+  $coreExe = $pinned
+}
 $installedGitExe = Join-Path $env:LOCALAPPDATA 'Programs\OrdaX Forge Git\OrdaX Forge Git.exe'
 $installedPortableGitExe = Join-Path $env:LOCALAPPDATA 'Programs\OrdaX Forge Git\OrdaX-Forge-Git-0.1.0.exe'
 $checkoutGitExe = Join-Path $root 'forge-git\dist\OrdaX-Forge-Git-0.1.0.exe'
@@ -52,6 +65,7 @@ if($InstallStartup -or $RemoveStartup){
   $shortcut = $shell.CreateShortcut($link)
   $shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
   $shortcut.Arguments = '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $scriptPath + '"'
+  if($CoreExecutable){$shortcut.Arguments += ' -CoreExecutable "' + $coreExe + '"'}
   $shortcut.WorkingDirectory = $root
   $shortcut.Description = 'OrdaX Forge + Forge Git - desenvolvimento local autorizado'
   $shortcut.Save()
