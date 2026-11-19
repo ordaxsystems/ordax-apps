@@ -2076,7 +2076,10 @@ export class OrchestratorService {
 
     const entries=[];
     for(const task of tasks){
-      this.assertDependenciesSatisfied(input.projectId,task.id);
+      // Queue the exact prepared GPT Work even when a prerequisite is still
+      // executing. The EXISTING dependency read model decides when this Work
+      // becomes eligible; a provider response alone never unlocks the child.
+      // There is no second queue, scheduler, Task, or automatic acceptance.
       if(this.db.prepare('SELECT 1 FROM messages WHERE task_id=? LIMIT 1').get(task.id)||
          this.db.prepare('SELECT 1 FROM runs WHERE task_id=? LIMIT 1').get(task.id)||
          this.db.prepare(`SELECT 1 FROM lab_command_receipt_scope
@@ -2109,13 +2112,32 @@ export class OrchestratorService {
     const admission=this.executorAdmission();
     if(admission.availableSlots<1)return {state:'executor_busy',availableSlots:0};
 
-    const launches=this.db.prepare(`SELECT id,project_id,result,created_at
-      FROM lab_command_receipts
-      WHERE workspace_session_id=? AND actor_id=? AND client_id=?
-        AND operation='work_parallel_launch' AND status='succeeded'
-      ORDER BY created_at,id LIMIT 32`)
+    // Select only launches with at least one child that has no command
+    // receipt. Completed historical launches must never occupy the first
+    // 32 rows and permanently starve later work after many mission cycles.
+    // Use the existing durable launch receipt as the only dispatch intent.
+    const launches=this.db.prepare(`SELECT l.id,l.project_id,l.result,l.created_at
+      FROM lab_command_receipts l
+      WHERE l.workspace_session_id=? AND l.actor_id=? AND l.client_id=?
+        AND l.operation='work_parallel_launch' AND l.status='succeeded'
+        AND EXISTS (
+          SELECT 1 FROM json_each(
+            CASE WHEN json_valid(l.result) THEN l.result ELSE '{"tasks":[]}' END,
+            '$.tasks'
+          ) child
+          WHERE json_type(child.value,'$.taskId')='text'
+            AND json_type(child.value,'$.requestId')='text'
+            AND NOT EXISTS (
+              SELECT 1 FROM lab_command_receipts sent
+              WHERE sent.workspace_session_id=l.workspace_session_id
+                AND sent.actor_id=l.actor_id AND sent.client_id=l.client_id
+                AND sent.request_id=json_extract(child.value,'$.requestId')
+            )
+        )
+      ORDER BY l.created_at,l.id`)
       .all(context.workspaceSessionId,context.actorId,context.clientId);
     const ready=[];
+    const planCache=new Map();
     for(const launch of launches){
       let result=null;try{result=JSON.parse(launch.result||'null');}catch{}
       if(!Array.isArray(result?.tasks)||!Array.isArray(result?.waitForRunIds)||
@@ -2124,6 +2146,16 @@ export class OrchestratorService {
       if(owner.status!=='ready'||owner.continuous_execution_enabled!==1)continue;
       if(result.waitForRunIds.some(runId=>this.db.prepare(
         "SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)))continue;
+      // Read readiness from the one canonical project DAG. Waiting children
+      // consume no GPT slot, so independent siblings and projects can run.
+      let workers=planCache.get(launch.project_id);
+      if(!workers){
+        try{
+          workers=new Map(this.projectPlan(launch.project_id,4)
+            .workers.map(worker=>[worker.taskId,worker]));
+        }catch{continue;}
+        planCache.set(launch.project_id,workers);
+      }
       for(const entry of result.tasks){
         if(ready.length>=admission.availableSlots)break;
         if(!entry||typeof entry.taskId!=='string'||typeof entry.requestId!=='string'||
@@ -2133,6 +2165,9 @@ export class OrchestratorService {
           WHERE workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
           .get(context.workspaceSessionId,context.actorId,context.clientId,entry.requestId);
         if(existing)continue;
+        const worker=workers.get(entry.taskId);
+        if(worker?.state!=='pending'||worker.dependsOn.some(
+          dependency=>workers.get(dependency)?.state!=='succeeded'))continue;
         ready.push({launch,entry});
       }
       if(ready.length>=admission.availableSlots)break;
