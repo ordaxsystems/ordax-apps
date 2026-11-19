@@ -300,6 +300,24 @@ app.whenReady().then(async()=>{
   });
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   win.webContents.on('will-navigate',e=>e.preventDefault());
+  // Paint the local shell before allocating GPT Chromium views. The provider
+  // can be slow under memory pressure without blocking the Core status panel.
+  for(const kind of ['resize','maximize','restore'])win.on(kind,layout);
+  win.on('closed',()=>{
+    // The visible shell is gone; release its attached GPT WebContentsView
+    // BEFORE the Electron quit boundary to avoid an invisible single-instance
+    // holder. No Task, Run or GPT send is performed.
+    win=null;
+    shuttingDown=true;
+    const result=releaseOwnedViews();
+    if(result.failures)console.error('forge_git_shutdown_cleanup_failed',result.failures);
+    // The owner window and all owned GPT views are already closed. Do not
+    // let a late renderer lifecycle hold an invisible single-instance owner.
+    app.exit(result.failures?1:0);
+  });
+  events();
+  await win.loadFile(path.join(here,'index.html'));
+  if(shuttingDown||!win||win.isDestroyed())return;
   for(const role of ROLES.filter(role=>role.id==='forjador')){
     const worker=new EmbeddedChatWorker({id:'fg-'+role.id,partition:'persist:ordax-forge-git-chatgpt'});
     workers.set(role.id,worker);
@@ -317,21 +335,6 @@ app.whenReady().then(async()=>{
     worker.view.webContents.on('did-navigate-in-page',saveChatUrl);
     win.contentView.addChildView(worker.view);
   }
-  for(const kind of ['resize','maximize','restore'])win.on(kind,layout);
-  win.on('closed',()=>{
-    // The visible shell is gone; release its attached GPT WebContentsView
-    // BEFORE the Electron quit boundary to avoid an invisible single-instance
-    // holder. No Task, Run or GPT send is performed.
-    win=null;
-    shuttingDown=true;
-    const result=releaseOwnedViews();
-    if(result.failures)console.error('forge_git_shutdown_cleanup_failed',result.failures);
-    // The owner window and all owned GPT views are already closed. Do not
-    // let a late renderer lifecycle hold an invisible single-instance owner.
-    app.exit(result.failures?1:0);
-  });
-  events();
-  await win.loadFile(path.join(here,'index.html'));
   layout();
   // DEV may pair automatically using the same existing encrypted Core grant;
   // production continues to require the native approval. Never send GPT on boot.

@@ -52,3 +52,14 @@ test('native owner window exits deterministically after the one cleanup gate',()
   assert.equal(main.includes('process.exit(0)'),false,
     'process termination remains owned by Electron, after resource cleanup');
 });
+
+test('Forge Git paints first-party shell before allocating GPT web views',()=>{
+  const main=readFileSync(new URL('../main.mjs',import.meta.url),'utf8');
+  const shell=main.indexOf("await win.loadFile(path.join(here,'index.html'))");
+  const workers=main.indexOf('const worker=new EmbeddedChatWorker(',shell);
+  assert.ok(shell>0&&workers>shell,'shell load must precede Chromium worker allocation');
+  assert.match(main.slice(shell,workers),
+    /if\(shuttingDown\|\|!win\|\|win\.isDestroyed\(\)\)return;/,
+    'late async load must not attach workers to a closed window');
+  assert.match(main.slice(shell,workers),/await win\.loadFile\(/);
+});
