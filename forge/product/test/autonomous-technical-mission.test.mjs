@@ -56,8 +56,8 @@ function fixture(t,{withHtmlProof=false,missingArtifactPort=false,maxExpectedSen
     authorize:({context:c})=>c===context});
   let seq=0;
   const call=(operation,input={})=>service.invoke(context,operation,{requestId:'req_'+(++seq),...input});
-  const setup=async()=>{
-    const projectId=(await call('project_create',{name:'Projeto de engenharia',objective:'Criar site'})).result.projectId;
+  const setup=async(name='Projeto de engenharia')=>{
+    const projectId=(await call('project_create',{name,objective:'Criar site'})).result.projectId;
     const orchestratorId=(await call('orchestrator_create',{projectId,name:'Forjador',mission:'Evoluir o projeto'})).result.orchestratorId;
     return {projectId,orchestratorId};
   };
@@ -168,5 +168,45 @@ test('dev autonomy starts from the real forjador_send path and continues without
   assert.notEqual(advanced.missionId,first.missionId);
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='forjador_send'").get().n,1,
     'automatic continuation must not create another owner command');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('DEV continuation ignores newer unrelated unready missions',async t=>{
+  const f=fixture(t,{maxExpectedSends:6});
+  const first=await f.setup('Projeto primeiro');
+  f.start(first,'continue_first','Crie um site para o projeto primeiro.');
+  const ready=await f.wait(first);
+  assert.equal(ready.state,'budget_exhausted');
+  const newer=await f.setup('Projeto novo');
+  const queued=f.start(newer,'start_second','Crie um site para o projeto novo.');
+  assert.equal(queued.status,'succeeded');
+  // The newer mission is ready but has not started its first GPT Run.
+  // Its existence must not starve a previously verified ready project.
+  const result=f.service.autonomous.advanceContinuousExecution(f.context);
+  assert.equal(result.state,'advanced');
+  assert.equal(result.automatic,true);
+  assert.equal(f.store.db.prepare(
+    'SELECT project_id FROM lab_autonomous_dialogues WHERE id=?'
+  ).get(result.missionId).project_id,first.projectId);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('DEV continuation ignores a running Run in an independent project',async t=>{
+  const f=fixture(t,{maxExpectedSends:6});
+  const first=await f.setup('Projeto livre');
+  f.start(first,'continue_unblocked','Crie um site para o projeto livre.');
+  const ready=await f.wait(first);
+  assert.equal(ready.state,'budget_exhausted');
+  const second=await f.setup('Projeto ocupado');
+  const work=(await f.service.invoke(f.context,'work_create',{
+    projectId:second.projectId,orchestratorId:second.orchestratorId,
+    title:'Trabalho independente',requestId:'unrelated_running_work'
+  })).result.taskId;
+  const inFlight=f.store.beginProviderRun(work,'Uma tarefa independente ainda em execução.');
+  assert.ok(inFlight.runId);
+  // A global SELECT from runs would previously block all DEV continuation.
+  const result=f.service.autonomous.advanceContinuousExecution(f.context);
+  assert.equal(result.state,'advanced');
+  assert.equal(f.store.db.prepare('SELECT status FROM runs WHERE id=?').get(inFlight.runId).status,'running');
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });

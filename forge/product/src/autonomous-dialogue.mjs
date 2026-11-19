@@ -485,13 +485,13 @@ export class AutonomousDialogue {
       return this.summary(existing);
     }
     if(this.db.prepare(`SELECT 1 FROM lab_autonomous_dialogues
-      WHERE workspace_session_id=? AND
+      WHERE workspace_session_id=? AND project_id=? AND orchestrator_id=? AND
         (state IN ('queued','planning_a','ready_a','sending_a','ready_b','planning_b',
         'ready_final','sending_b','planning_final','reviewing_a','ready_review_final',
         'reviewing_final','story_ready_synthesis') OR
         (mode='story' AND (state LIKE 'story_queued_%' OR state LIKE 'story_ready_%' OR
         state LIKE 'story_planning_%' OR state LIKE 'story_sending_%' OR state='story_synthesizing')))
-      LIMIT 1`).get(context.workspaceSessionId))
+      LIMIT 1`).get(context.workspaceSessionId,projectId,orchestratorId))
       throw Error('autonomous_mission_already_running');
     const id='autonomous_'+randomUUID(),now=this.store.now();
     const missionPolicy=mode==='technical'?technicalMissionPolicy(mission):null;
@@ -525,9 +525,9 @@ export class AutonomousDialogue {
     queueMicrotask(()=>{void this.tick(context).catch(()=>{});});
     return this.summary(this.get(id));
   }
-  // A second human authorization extends the *same* technical mission chain.
-  // One new ledger row represents one bounded two-send consent window; the
-  // previous Run, decision, Task and project remain the canonical sources.
+  // DEV continuation extends the same technical mission chain, without
+  // requiring a new owner confirmation per cycle. The previous verified Run,
+  // decision, Task and project remain the canonical sources.
   continueTechnical(context,{projectId,orchestratorId,sourceMissionId,requestId}) {
     this.service.requireAccess(context,'autonomous_dialogue_continue',projectId);
     const owner=this.service.orchestrator(projectId,orchestratorId);
@@ -551,8 +551,9 @@ export class AutonomousDialogue {
         AND project_id=? AND orchestrator_id=?`)
         .get(sourceMissionId,session.id,context.actorId,context.clientId,projectId,orchestratorId);
       const latest=this.db.prepare(`SELECT id FROM lab_autonomous_dialogues WHERE
-        workspace_session_id=? AND actor_id=? AND client_id=? ORDER BY rowid DESC LIMIT 1`)
-        .get(session.id,context.actorId,context.clientId);
+        workspace_session_id=? AND actor_id=? AND client_id=?
+          AND project_id=? AND orchestrator_id=? ORDER BY rowid DESC LIMIT 1`)
+        .get(session.id,context.actorId,context.clientId,projectId,orchestratorId);
       if(!previous||latest?.id!==sourceMissionId||previous.strategy!=='semantic'||
          previous.state!=='budget_exhausted'||!previous.task_b_id||!previous.review_b_json||
          !previous.question_final)
@@ -573,13 +574,14 @@ export class AutonomousDialogue {
          String(this.store.getTaskDraft(previous.task_b_id)?.draft||'')!=='')
         throw Error('autonomous_continuation_source_superseded');
       if(this.db.prepare(`SELECT 1 FROM lab_autonomous_dialogues WHERE
-        workspace_session_id=? AND (state IN ('queued','planning_a','ready_a',
+        workspace_session_id=? AND project_id=? AND orchestrator_id=? AND
+        (state IN ('queued','planning_a','ready_a',
           'sending_a','ready_b','planning_b','ready_final','sending_b',
           'planning_final','reviewing_a','ready_review_final','reviewing_final')
           OR (mode='story' AND (state LIKE 'story_queued_%' OR state LIKE 'story_ready_%'
             OR state LIKE 'story_planning_%' OR state LIKE 'story_sending_%'
             OR state='story_synthesizing')))
-        LIMIT 1`).get(session.id))
+        LIMIT 1`).get(session.id,projectId,orchestratorId))
         throw Error('autonomous_mission_already_running');
       const id='autonomous_'+randomUUID(),now=this.store.now();
       const taskId=decision.decision==='new_work'
@@ -1016,38 +1018,55 @@ export class AutonomousDialogue {
   advanceContinuousExecution(context){
     const session=this.store.getWorkspaceSession();
     if(session?.status!=='active'||session.id!==context?.workspaceSessionId)return {state:'idle'};
-    const row=this.db.prepare(`SELECT a.* FROM lab_autonomous_dialogues a
+    // Inspect the newest mission of EACH coordinator, not the newest mission
+    // globally. A blocked project must not starve independent DEV missions.
+    const candidates=this.db.prepare(`SELECT a.* FROM lab_autonomous_dialogues a
       JOIN lab_orchestrators o ON o.id=a.orchestrator_id AND o.project_id=a.project_id
       WHERE a.workspace_session_id=? AND a.actor_id=? AND a.client_id=?
         AND a.strategy='semantic' AND o.continuous_execution_enabled=1
-      ORDER BY a.rowid DESC LIMIT 1`).get(session.id,context.actorId,context.clientId);
-    if(!row||row.state!=='budget_exhausted'||this.summary(row)?.canContinue!==true)
-      return {state:'idle'};
-    // Model advice may request endless work; do not auto-schedule without a
-    // confirmed useful prior Run and a positive progress review. External
-    // changes remain unverified until an independent file/tool receipt exists.
-    let decision=null;
-    try{decision=JSON.parse(row.review_b_json||'null');}catch{}
-    if(decision?.acceptance?.status!=='answer_indicates_progress')
-      return {state:'awaiting_verified_progress',missionId:row.id};
-    if(this.db.prepare(`SELECT 1 FROM lab_command_active_unresolved
-      WHERE (project_id=? OR project_id IS NULL) AND status IN ('running','uncertain')
-      LIMIT 1`).get(row.project_id)||
-      this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get())
-      return {state:'reconciliation_required',missionId:row.id};
-    try{
-      const next=this.continueTechnical(context,{projectId:row.project_id,
-        orchestratorId:row.orchestrator_id,sourceMissionId:row.id,
-        requestId:'continuous_'+row.id});
-      return {state:'advanced',missionId:next.missionId,automatic:true};
-    }catch(error){
-      // Any authorization/identity/supersession failure revokes automatic
-      // continuation. Manual review can then decide whether to re-enable it.
-      this.db.prepare(`UPDATE lab_orchestrators SET continuous_execution_enabled=0
-        WHERE id=? AND project_id=?`).run(row.orchestrator_id,row.project_id);
-      this.notify();
-      return {state:'blocked',missionId:row.id,error:boundedError(error)};
+        AND a.rowid=(SELECT MAX(b.rowid) FROM lab_autonomous_dialogues b
+          WHERE b.workspace_session_id=a.workspace_session_id
+            AND b.actor_id=a.actor_id AND b.client_id=a.client_id
+            AND b.project_id=a.project_id AND b.orchestrator_id=a.orchestrator_id)
+      ORDER BY a.rowid ASC`).all(session.id,context.actorId,context.clientId);
+    let blocked=null;
+    for(const row of candidates){
+      if(row.state!=='budget_exhausted'||this.summary(row)?.canContinue!==true)continue;
+      // An advisory review cannot authorize unsupervised sends without
+      // a confirmed useful prior Run and a positive progress decision.
+      let decision=null;
+      try{decision=JSON.parse(row.review_b_json||'null');}catch{}
+      if(decision?.acceptance?.status!=='answer_indicates_progress'){
+        blocked??={state:'awaiting_verified_progress',missionId:row.id};
+        continue;
+      }
+      // Scope Running Runs to this project. Commands without project identity
+      // remain globally uncertain because their external effect is unknown.
+      const unresolved=this.db.prepare(`SELECT 1 FROM lab_command_active_unresolved
+        WHERE (project_id=? OR project_id IS NULL)
+          AND status IN ('running','uncertain') LIMIT 1`).get(row.project_id);
+      const running=this.db.prepare(`SELECT 1 FROM runs r
+        JOIN lab_task_bindings b ON b.task_id=r.task_id
+        WHERE b.project_id=? AND r.status='running' LIMIT 1`).get(row.project_id);
+      if(unresolved||running){
+        blocked??={state:'reconciliation_required',missionId:row.id};
+        continue;
+      }
+      try{
+        const next=this.continueTechnical(context,{projectId:row.project_id,
+          orchestratorId:row.orchestrator_id,sourceMissionId:row.id,
+          requestId:'continuous_'+row.id});
+        return {state:'advanced',missionId:next.missionId,automatic:true};
+      }catch(error){
+        // A concrete authorization/identity/supersession failure revokes this
+        // coordinator only. Healthy projects keep their autonomy enabled.
+        this.db.prepare(`UPDATE lab_orchestrators SET continuous_execution_enabled=0
+          WHERE id=? AND project_id=?`).run(row.orchestrator_id,row.project_id);
+        this.notify();
+        blocked??={state:'blocked',missionId:row.id,error:boundedError(error)};
+      }
     }
+    return blocked??{state:'idle'};
   }
   async tick(context){
     const session=this.store.getWorkspaceSession();
