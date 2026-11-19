@@ -138,6 +138,9 @@ const forgeProjectFiles=new ForgeProjectFiles({root:path.join(dataRoot,'project-
 
 const stagedLab=process.argv.includes('--ordax-lab-staged-approved');
 const forgeDevAutonomyEnabled=!stagedLab&&process.env.ORDAX_FORGE_DEV_AUTONOMY==='1';
+// Explicit, reversible local developer workflow. Production keeps consent.
+const forgeDevAutoPairMode=forgeDevAutonomyEnabled&&
+  process.env.ORDAX_FORGE_DEV_AUTO_PAIR==='1'&&!hostBrowserMode;
 const forgeSupervisorDir=path.join(userRoot,'supervisor');
 const forgeHeartbeatPath=path.join(forgeSupervisorDir,'forge-heartbeat.json');
 let forgeHeartbeatTimer=null;
@@ -1899,9 +1902,14 @@ const forgeLocalMcp=createForgeLoopbackMcp({
   // Reuse the app's active Owner grant. Pairing exposes only a public-key-
   // encrypted copy of its existing bearer after explicit native approval.
   // The ten-digit fingerprint must match the one shown inside Forge Git.
-  ownerPair:async({code},{isAuthorized})=>{
+  ownerPair:async({code,devAutoPairRequested=false},{isAuthorized})=>{
     if(isAuthorized()!==true||!forgeMcpTrusted.isAppTrusted())
       return false;
+    // Explicit local DEV session: reuse the already-trusted App grant without
+    // another dialog. Never enable this in the ordinary packaged launch.
+    if(devAutoPairRequested){
+      return forgeDevAutoPairMode&&isAuthorized()===true&&forgeMcpTrusted.isAppTrusted();
+    }
     const approval=await confirmInActiveUi({
       title:'Forge Git — vincular ao MCP local',
       message:'Confirmar o vínculo com o Forge Git neste Windows?',
@@ -1931,7 +1939,7 @@ const forgeLocalMcp=createForgeLoopbackMcp({
       return task;
     };
     const task=requireFreshDraft();
-    const approval=await confirmInActiveUi({
+    const approval=forgeDevAutoPairMode||await confirmInActiveUi({
       title:'Forge Core — autorizar execução',
       message:'Enviar a Task canônica ao GPT Web?',
       detail:'Projeto: '+projectId+'\nTask: '+taskId+
@@ -2055,7 +2063,7 @@ registerUiHandler('ordax:forge:development:approve',async(event,projectId)=>{
   if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_development_mcp_app_approval_required');
   if(!forgeLocalWorkspaces.status(projectId).verified)throw Error('forge_development_workspace_unverified');
   const scopeHash=forgeMcpTrusted.scopeHash(projectId);
-  const accepted=await confirmInActiveUi({
+  const accepted=forgeDevAutoPairMode||await confirmInActiveUi({
     title:'Autorizar desenvolvimento completo pelo Forge MCP',
     message:'Permitir que o GPT execute comandos, testes, builds e Git neste projeto?',
     detail:'Autorização única, revogável. O terminal abre na pasta vinculada, mas executa com as permissões da conta Windows e NÃO é um sandbox: comandos também podem acessar outras áreas do computador. Comandos e resultados podem constar nos recibos do Forge MCP; nunca inclua senhas ou segredos.',
@@ -2163,7 +2171,7 @@ registerUiHandler('ordax:forge:local-mcp:start',async event=>{
   if(hostBrowserMode)throw Error('forge_mcp_local_ui_only');
   orchestratorService.requireAccess(localOrchestratorContext,'projects_list');
   const consentScopeHash=forgeMcpTrusted.appScopeHash();
-  if(!forgeMcpTrusted.isAppTrusted()&&
+  if(!forgeMcpTrusted.isAppTrusted()&&!forgeDevAutoPairMode&&
       !await confirmInActiveUi({
     title:'Autorizar MCP do aplicativo Forge',
     message:'Autorizar uma conexão MCP para o Forge inteiro?',
@@ -2202,7 +2210,7 @@ registerUiHandler('ordax:forge:local-mcp:resume-enable',async event=>{
   if(!forgeMcpResume.supported())throw Error('forge_mcp_resume_windows_protection_unavailable');
   const grant=forgeLocalMcp.localGrant(FORGE_APP_MCP_SCOPE);
   if(!grant)throw Error('forge_mcp_resume_active_grant_required');
-  const approved=await confirmInActiveUi({
+  const approved=forgeDevAutoPairMode||await confirmInActiveUi({
     title:'Reconectar MCP do aplicativo Forge',
     message:'Reconectar automaticamente o MCP do aplicativo após reiniciar?',
     detail:'O token único do Forge fica cifrado pelo Windows no mesmo SQLite. Após reiniciar, uma conexão MCP autorizada poderá acessar os projetos e seus workspaces vinculados e verificados. Não inicia o túnel GPT e pode ser desativada ou revogada a qualquer momento.',
@@ -2414,10 +2422,19 @@ app.whenReady().then(async () => {
   // on this listener or on any local tunnel.
   if(!hostBrowserMode){
     const saved=forgeMcpResume.recoverApp();
-    if(saved){
+    if(saved||forgeDevAutoPairMode){
       try{
-        await forgeLocalMcp.start(FORGE_APP_MCP_SCOPE,
-          {listenPort:saved.port,resumeToken:saved.token});
+        if(forgeDevAutoPairMode&&!forgeMcpTrusted.isAppTrusted())
+          forgeMcpTrusted.trustApp({expectedScopeHash:forgeMcpTrusted.appScopeHash()});
+        const devPort=Number(process.env.ORDAX_FORGE_DEV_MCP_PORT||'56215');
+        if(forgeDevAutoPairMode&&(!Number.isInteger(devPort)||devPort<1024||devPort>65535))
+          throw Error('forge_dev_mcp_port_invalid');
+        await forgeLocalMcp.start(FORGE_APP_MCP_SCOPE,saved
+          ?{listenPort:saved.port,resumeToken:saved.token}
+          :{listenPort:devPort});
+        // Dev reuse is still DPAPI-sealed and bound to this same canonical Core.
+        if(forgeDevAutoPairMode&&forgeMcpResume.supported()&&!forgeMcpResume.enabledApp())
+          forgeMcpResume.enableApp(forgeLocalMcp.localGrant(FORGE_APP_MCP_SCOPE));
         forgeMcpResumeError=null;
       }catch{
         forgeMcpResumeError='forge_mcp_resume_port_or_authority_unavailable';
