@@ -210,3 +210,46 @@ test('DEV continuation ignores a running Run in an independent project',async t=
   assert.equal(f.store.db.prepare('SELECT status FROM runs WHERE id=?').get(inFlight.runId).status,'running');
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
+
+test('DEV paused coordinator cannot starve another ready project',async t=>{
+  const f=fixture(t,{maxExpectedSends:6});
+  const paused=await f.setup('Projeto pausado');
+  const first=f.start(paused,'paused_project_first','Crie um site para a missão pausada.');
+  assert.equal(first.status,'succeeded');
+  f.store.db.prepare("UPDATE lab_orchestrators SET status='paused' WHERE id=?")
+    .run(paused.orchestratorId);
+  const ready=await f.setup('Projeto independente pronto');
+  const second=f.start(ready,'ready_project_second','Crie um site para o projeto independente.');
+  assert.equal(second.status,'succeeded');
+  const finished=await f.wait(ready);
+  assert.equal(finished.state,'budget_exhausted',
+    'a paused older coordinator must not stop a ready project');
+  assert.equal(f.service.autonomous.status(f.context,paused).mission.state,'ready_a',
+    'paused mission remains durable and can resume');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) AS n FROM runs WHERE task_id=?')
+    .get(f.service.autonomous.status(f.context,paused).mission.taskAId).n,0,
+    'paused coordinator must not submit to the GPT provider');
+  assert.equal(f.service.autonomous.status(f.context,paused).continuousExecutionEnabled,true);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('transient provider unavailability defers continuation without revoking DEV intent',async t=>{
+  const f=fixture(t,{maxExpectedSends:6});
+  const owner=await f.setup('Projeto com provedor temporariamente indisponível');
+  f.start(owner,'temporary_provider_first','Crie um site e continue até terminar.');
+  const finished=await f.wait(owner);
+  assert.equal(finished.state,'budget_exhausted');
+  const original=f.service.autonomous.continueTechnical;
+  f.service.autonomous.continueTechnical=()=>{throw Error('autonomous_provider_unavailable');};
+  const deferred=f.service.autonomous.advanceContinuousExecution(f.context);
+  assert.equal(deferred.state,'deferred');
+  assert.equal(deferred.reason,'autonomous_provider_unavailable');
+  assert.equal(f.service.autonomous.status(f.context,owner).continuousExecutionEnabled,true);
+  assert.equal(f.service.autonomous.status(f.context,owner).mission.missionId,finished.missionId);
+  f.service.autonomous.continueTechnical=original;
+  const resumed=f.service.autonomous.advanceContinuousExecution(f.context);
+  assert.equal(resumed.state,'advanced');
+  assert.equal(resumed.automatic,true);
+  assert.notEqual(resumed.missionId,finished.missionId);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
