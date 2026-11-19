@@ -100,3 +100,25 @@ test('dev supervisor policy rejects invalid counters and runtimes',()=>{
   assert.throws(()=>forgeDevHeartbeatStale({now:1,launchedAt:2,heartbeatAt:null}),/heartbeat_invalid/);
   assert.throws(()=>forgeDevHeartbeatStale({now:2,launchedAt:1,heartbeatAt:-1}),/heartbeat_invalid/);
 });
+
+test('same DEV supervisor manages installed packaged Core without another scheduler',()=>{
+  const forgeRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
+  const supervisor=fs.readFileSync(path.join(forgeRoot,'scripts','dev-supervisor.mjs'),'utf8');
+  const launcher=fs.readFileSync(path.join(forgeRoot,'../forge-git/scripts/start-dev-windows.ps1'),'utf8');
+  assert.match(supervisor,/supervisorArgs\.indexOf\('--core-executable'\)/);
+  assert.match(supervisor,/packagedCore=packageIndex/);
+  assert.match(supervisor,/path\.basename\(packagedCore\)!=='OrdaX Forge\.exe'/);
+  assert.match(supervisor,/child=spawn\(packagedCore/);
+  assert.match(supervisor,/ORDAX_FORGE_SUPERVISOR_ENTRY:fileURLToPath\(import\.meta\.url\)/);
+  assert.match(supervisor,/ORDAX_FORGE_SUPERVISOR_CORE_EXECUTABLE:packagedCore/);
+  const main=fs.readFileSync(path.join(forgeRoot,'product/desktop/main.mjs'),'utf8');
+  assert.match(main,/process\.env\.ORDAX_FORGE_SUPERVISOR_ENTRY/);
+  assert.match(main,/process\.env\.ORDAX_FORGE_SUPERVISOR_CORE_EXECUTABLE/);
+  assert.match(main,/\['--core-executable',packagedCore\]/);
+  assert.match(supervisor,/forgeDevHeartbeatStale/);
+  assert.match(supervisor,/supervisorRestartDelayMs/);
+  assert.match(supervisor,/readLiveForgeDevSupervisorLock\(lockPath\)/);
+  assert.match(launcher,/Test-ForgeSupervisorOwner/);
+  assert.match(launcher,/--core-executable/);
+  assert.doesNotMatch(launcher,/Start-Process -FilePath \$coreExe/);
+});

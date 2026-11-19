@@ -43,6 +43,19 @@ if(!$CheckOnly -and !$RemoveStartup){
   if(!(Test-Path -LiteralPath $gitExe -PathType Leaf)){throw 'forge_dev_git_executable_missing'}
 }
 $scriptPath = (Resolve-Path -LiteralPath $PSCommandPath).Path
+$supervisorScript = Join-Path $root 'forge\scripts\dev-supervisor.mjs'
+$supervisorLock = Join-Path $env:LOCALAPPDATA 'OrdaX\Forge\supervisor\forge-dev-supervisor.lock.json'
+function Test-ForgeSupervisorOwner {
+  if(!(Test-Path -LiteralPath $supervisorLock -PathType Leaf)){return $false}
+  try {
+    $receipt = Get-Content -LiteralPath $supervisorLock -Raw | ConvertFrom-Json
+    $pidValue = [int]$receipt.pid
+    if($pidValue -lt 1){return $false}
+    $process = Get-CimInstance Win32_Process -Filter "ProcessId=$pidValue" -ErrorAction Stop
+    return [bool]($process -and $process.Name -eq 'node.exe' -and
+      $process.CommandLine -like '*dev-supervisor.mjs*')
+  }catch{return $false}
+}
 if($InstallStartup -or $RemoveStartup){
   $shell = New-Object -ComObject WScript.Shell
   if($RemoveStartup){
@@ -85,6 +98,7 @@ $gitWindows = @(Get-Process -Name 'OrdaX Forge Git' -ErrorAction SilentlyContinu
 $gitActive = $gitLaunchers.Count -gt 0 -or $gitWindows.Count -gt 0
 if($CheckOnly){
   Write-Output ('forge_dev_check coreRunning='+($coreProcesses.Count -gt 0)+
+    ' supervisorRunning='+(Test-ForgeSupervisorOwner)+
     ' gitRunning='+$gitActive+' coreBinary='+(Test-Path -LiteralPath $coreExe -PathType Leaf)+
     ' gitBinary='+(Test-Path -LiteralPath $gitExe -PathType Leaf)+
     ' startupInstalled='+(Test-Path -LiteralPath $link))
@@ -97,8 +111,19 @@ $env:ORDAX_FORGE_DEV_AUTO_PAIR = '1'
 $env:ORDAX_FORGE_DEV_MCP_PORT = '56215'
 $env:ORDAX_FORGE_DEV_MCP_ENDPOINT = 'http://127.0.0.1:56215/mcp'
 if(!$coreProcesses.Count){
-  [void](Start-Process -FilePath $coreExe -PassThru)
-  Write-Output 'forge_dev_native_started'
+  if(Test-ForgeSupervisorOwner){
+    Write-Output 'forge_dev_supervisor_existing'
+  }else{
+    if(!(Test-Path -LiteralPath $supervisorScript -PathType Leaf))
+      {throw 'forge_dev_supervisor_source_missing'}
+    $node = (Get-Command node.exe -ErrorAction Stop).Source
+    # The same canonical supervisor already owns crash/backoff/heartbeat.
+    # Launch this verified packaged Core under it; never create a second
+    # scheduler, background process manager or SQLite.
+    $supervisorArgs = '"' + $supervisorScript + '" --core-executable "' + $coreExe + '"'
+    [void](Start-Process -FilePath $node -ArgumentList $supervisorArgs -WorkingDirectory $root -PassThru)
+    Write-Output 'forge_dev_native_started'
+  }
 }else{
   Write-Output 'forge_dev_native_existing'
 }

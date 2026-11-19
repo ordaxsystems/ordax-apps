@@ -177,12 +177,17 @@ function showCanonicalWindow(){
 function canonicalLoginItem(){
   if(supervisedDevelopmentResident){
     const nodePath=process.env.ORDAX_FORGE_SUPERVISOR_NODE;
-    const supervisorEntry=path.resolve(root,'..','scripts','dev-supervisor.mjs');
+    const supervisorEntry=process.env.ORDAX_FORGE_SUPERVISOR_ENTRY||
+      path.resolve(root,'..','scripts','dev-supervisor.mjs');
+    const packagedCore=process.env.ORDAX_FORGE_SUPERVISOR_CORE_EXECUTABLE||'';
     if(typeof nodePath!=='string'||!path.isAbsolute(nodePath)||
        path.basename(nodePath).toLowerCase()!=='node.exe'||
-       !existsSync(nodePath)||!existsSync(supervisorEntry))
+       !existsSync(nodePath)||!path.isAbsolute(supervisorEntry)||
+       !existsSync(supervisorEntry)||
+       (packagedCore&&(!path.isAbsolute(packagedCore)||!existsSync(packagedCore))))
       throw Error('forge_supervisor_login_identity_unavailable');
-    return {path:nodePath,args:[supervisorEntry,'--background-start']};
+    return {path:nodePath,args:[supervisorEntry,'--background-start',
+      ...(packagedCore?['--core-executable',packagedCore]:[])]};
   }
   return {path:process.execPath,args:['--ordax-background-start']};
 }
