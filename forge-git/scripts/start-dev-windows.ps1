@@ -97,8 +97,8 @@ $gitWindows = @(Get-Process -Name 'OrdaX Forge Git' -ErrorAction SilentlyContinu
   Where-Object {-not $_.HasExited})
 $gitActive = $gitLaunchers.Count -gt 0 -or $gitWindows.Count -gt 0
 if($CheckOnly){
-  Write-Output ('forge_dev_check supervisorRunning='+(Test-ForgeSupervisorOwner)+
-    ' coreRunning='+($coreProcesses.Count -gt 0)+
+  Write-Output ('forge_dev_check coreRunning='+($coreProcesses.Count -gt 0)+
+    ' supervisorRunning='+(Test-ForgeSupervisorOwner)+
     ' gitRunning='+$gitActive+' coreBinary='+(Test-Path -LiteralPath $coreExe -PathType Leaf)+
     ' gitBinary='+(Test-Path -LiteralPath $gitExe -PathType Leaf)+
     ' startupInstalled='+(Test-Path -LiteralPath $link))
