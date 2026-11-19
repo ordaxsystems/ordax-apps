@@ -11,8 +11,23 @@ import {
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const supervisorArgs=process.argv.slice(2);
-const backgroundStart=supervisorArgs.length===1&&supervisorArgs[0]==='--background-start';
-if(supervisorArgs.length&&!backgroundStart)throw Error('usage: node scripts/dev-supervisor.mjs [--background-start]');
+const backgroundStart=supervisorArgs.includes('--background-start');
+const packageIndex=supervisorArgs.indexOf('--core-executable');
+if(supervisorArgs.filter(arg=>arg==='--background-start').length>1||
+  supervisorArgs.filter(arg=>arg==='--core-executable').length>1||
+  (packageIndex!==-1&&(packageIndex+1>=supervisorArgs.length||
+  supervisorArgs[packageIndex+1].startsWith('--')))||
+  supervisorArgs.length!==(backgroundStart?1:0)+(packageIndex!==-1?2:0))
+  throw Error('forge_dev_supervisor_arguments_invalid');
+const packagedCore=packageIndex===-1?null:path.resolve(supervisorArgs[packageIndex+1]);
+if(packagedCore){
+  if(process.platform!=='win32')throw Error('forge_dev_packaged_windows_only');
+  const base=path.resolve(process.env.LOCALAPPDATA||'', 'Programs')+path.sep;
+  if(!packagedCore.toLowerCase().startsWith(base.toLowerCase())||
+    path.basename(packagedCore)!=='OrdaX Forge.exe'||
+    !fs.statSync(packagedCore,{throwIfNoEntry:false})?.isFile())
+    throw Error('forge_dev_supervisor_core_executable_invalid');
+}
 const {stateDir,lockPath,statePath,heartbeatPath}=forgeDevSupervisorPaths();
 const launcher=path.join(root,'scripts','start-lab.mjs');
 fs.mkdirSync(stateDir,{recursive:true});
@@ -56,7 +71,8 @@ function state(status,extra={}){
   atomicJson(statePath,{
     schema:'ordax.forge.dev-supervisor/1',
     status,supervisorPid:process.pid,childPid:child?.pid||null,
-    failureCount,restartCount,updatedAt:Date.now(),...extra
+    failureCount,restartCount,updatedAt:Date.now(),
+    coreMode:packagedCore?'packaged':'checkout',...extra
   });
 }
 function launch(){
@@ -65,9 +81,18 @@ function launch(){
   hangTerminationPending=false;
   const env={...process.env,ORDAX_FORGE_DEV_AUTONOMY:'1',ORDAX_FORGE_SUPERVISOR_CHILD:'1',
     ORDAX_FORGE_SUPERVISOR_NODE:process.execPath};
-  child=spawn(process.execPath,[launcher,...(backgroundStart?['--background-start']:[])],{
-    cwd:root,env,stdio:'inherit',windowsHide:false
-  });
+  if(packagedCore){
+    // A single existing supervisor manages either checkout Electron or the
+    // packaged DEV Core. The canonical Store, GPT workers and heartbeat remain
+    // inside the one child process; this supervisor owns NO Task scheduler.
+    child=spawn(packagedCore,backgroundStart?['--ordax-background-start']:[],{
+      cwd:path.dirname(packagedCore),env,stdio:'ignore',windowsHide:false
+    });
+  }else{
+    child=spawn(process.execPath,[launcher,...(backgroundStart?['--background-start']:[])],{
+      cwd:root,env,stdio:'inherit',windowsHide:false
+    });
+  }
   state('running',{launchedAt:launchStartedAt});
   child.once('error',error=>{
     state('child_error',{error:String(error?.message||error).slice(0,160)});
