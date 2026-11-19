@@ -80,7 +80,9 @@ function launch(){
   launchStartedAt=Date.now();
   hangTerminationPending=false;
   const env={...process.env,ORDAX_FORGE_DEV_AUTONOMY:'1',ORDAX_FORGE_SUPERVISOR_CHILD:'1',
-    ORDAX_FORGE_SUPERVISOR_NODE:process.execPath};
+    ORDAX_FORGE_SUPERVISOR_NODE:process.execPath,
+    ORDAX_FORGE_SUPERVISOR_ENTRY:fileURLToPath(import.meta.url),
+    ...(packagedCore?{ORDAX_FORGE_SUPERVISOR_CORE_EXECUTABLE:packagedCore}:{})};
   if(packagedCore){
     // A single existing supervisor manages either checkout Electron or the
     // packaged DEV Core. The canonical Store, GPT workers and heartbeat remain
