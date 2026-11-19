@@ -43,3 +43,13 @@ test('DEV launcher prefers installed Forge Git and keeps source build as a fallb
   assert.match(script,/if\(!\$CheckOnly -and !\$RemoveStartup\)/);
   assert.match(script,/gitBinary='/);
 });
+
+test('pinned local Core executable survives Windows Startup without another host',()=>{
+  assert.match(script,/\[string\]\$CoreExecutable = ''/);
+  assert.match(script,/\$pinned = \[System\.IO\.Path\]::GetFullPath\(\$CoreExecutable\)/);
+  assert.match(script,/GetFileName\(\$pinned\) -cne 'OrdaX Forge\.exe'/);
+  assert.match(script,/forge_dev_core_executable_outside_local_programs/);
+  assert.match(script,/if\(\$CoreExecutable\)\{\$shortcut\.Arguments \+= ' -CoreExecutable "' \+ \$coreExe \+ '"'\}/);
+  assert.match(script,/\$foreignCore = @\(\$coreProcesses/);
+  assert.doesNotMatch(script,/setx|New-Service|sc\.exe|Stop-Process|taskkill/i);
+});
