@@ -3,15 +3,30 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {execFileSync} from 'node:child_process';
 import {Store} from '../src/store.mjs';
+import {ForgeProjectDevelopment} from '../src/forge-project-development.mjs';
+import {ForgeLocalWorkspaces} from '../src/forge-local-workspaces.mjs';
+import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
 
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}
 
-function fixture(t,{lanes=2}={}){
+function fixture(t,{lanes=2,withWorkspace=false}={}){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-parallel-agents-'));
+  const folder=path.join(dir,'repo');
+  if(withWorkspace){
+    fs.mkdirSync(folder);
+    const git=(...args)=>execFileSync('git',args,{cwd:folder,encoding:'utf8'});
+    git('init','-b','main');
+    git('config','user.email','forge-test@ordax.local');
+    git('config','user.name','Forge Test');
+    git('config','core.autocrlf','false');
+    fs.writeFileSync(path.join(folder,'README.md'),'base\\n');
+    git('add','README.md');git('commit','-m','initial');
+  }
   const store=new Store(path.join(dir,'forge.sqlite'));
   const context=Object.freeze({actorId:'owner',clientId:'desktop',
     workspaceSessionId:store.getWorkspaceSession().id});
@@ -32,8 +47,17 @@ function fixture(t,{lanes=2}={}){
       return hold.promise.finally(()=>{active--;});
     }
   };
+  const workspaces=withWorkspace?new ForgeLocalWorkspaces({store,documentsDirectory:dir}):null;
+  const trust=withWorkspace?new ForgeMcpOwnerTrust({store,appIdentity:dir,
+    scopeSignature:id=>{
+      const binding=workspaces.binding(id);
+      return binding?'owner-bound:'+binding.root+':'+binding.identity:'app-private:'+id;
+    }}):null;
+  const development=withWorkspace?new ForgeProjectDevelopment({
+    store,workspaces,ownerTrust:trust
+  }):null;
   const service=new OrchestratorService({
-    store,provider,continuousExecutionByDefault:true,
+    store,provider,development,continuousExecutionByDefault:true,
     authorize:({context:ctx})=>ctx===context
   });
   const call=(operation,input={})=>service.invoke(context,operation,{
@@ -47,7 +71,14 @@ function fixture(t,{lanes=2}={}){
       effectVerified:false,runId:item.runId});
   };
   t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true});});
-  return {store,service,context,call,starts,holds,complete,peak:()=>peak,active:()=>active};
+  const bindProject=projectId=>{
+    if(!withWorkspace)throw Error('workspace_not_configured_for_fixture');
+    workspaces.bindSelected(projectId,folder);
+    trust.trustApp();trust.trust(projectId);
+    development.approve(projectId,{expectedScopeHash:trust.scopeHash(projectId)});
+  };
+  return {store,service,context,call,starts,holds,complete,folder,bindProject,
+    peak:()=>peak,active:()=>active};
 }
 
 test('one durable launch fans out prepared Works only after the parent Run settles',async t=>{
