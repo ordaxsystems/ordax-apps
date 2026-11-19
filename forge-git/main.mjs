@@ -314,7 +314,9 @@ app.whenReady().then(async()=>{
     shuttingDown=true;
     const result=releaseOwnedViews();
     if(result.failures)console.error('forge_git_shutdown_cleanup_failed',result.failures);
-    app.quit();
+    // The owner window and all owned GPT views are already closed. Do not
+    // let a late renderer lifecycle hold an invisible single-instance owner.
+    app.exit(result.failures?1:0);
   });
   events();
   await win.loadFile(path.join(here,'index.html'));
