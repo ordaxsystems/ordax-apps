@@ -42,32 +42,50 @@ function appendBounded(buffer,chunk){
 }
 
 export class ForgeProjectDevelopment {
-  constructor({store,workspaces,ownerTrust}={}){
+  constructor({store,workspaces,ownerTrust,devAutonomy=false}={}){
     if(!store?.db||typeof workspaces?.status!=='function'||
        typeof ownerTrust?.isTrusted!=='function')
       throw Error('forge_development_owner_ports_required');
     this.store=store;this.db=store.db;
     this.workspaces=workspaces;this.ownerTrust=ownerTrust;
+    // Process-local DEV policy is supplied only by the trusted native host.
+    // Project scope and App trust are still independently verified.
+    this.devAutonomy=devAutonomy===true;
     // Separate from historical MCP read-only approvals; old grants must
     // NEVER silently become full Windows command execution.
     this.db.exec('CREATE TABLE IF NOT EXISTS forge_project_development_approvals('+
       'project_id TEXT PRIMARY KEY REFERENCES lab_projects(id) ON DELETE CASCADE,'+
       'workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),'+
       'scope_hash TEXT NOT NULL,approved_at TEXT NOT NULL)');
+    // Keep explicit revocation durable across DEV restarts without a second
+    // approval store. Existing installations receive one additive column.
+    const approvalColumns=this.db.prepare('PRAGMA table_info(forge_project_development_approvals)').all();
+    if(!approvalColumns.some(column=>column.name==='revoked_at'))
+      this.db.exec('ALTER TABLE forge_project_development_approvals ADD COLUMN revoked_at TEXT');
   }
   status(projectId,{taskId=null}={}){
     const scope=this.workspaces.status(projectId);
     const bound=scope.configured===true&&scope.verified===true;
     const session=this.store.getWorkspaceSession();
-    const approved=bound&&this.ownerTrust.isAppTrusted()&&Boolean(
-      this.db.prepare('SELECT 1 FROM forge_project_development_approvals WHERE project_id=? AND workspace_session_id=? AND scope_hash=?')
-        .get(projectId,session.id,this.ownerTrust.scopeHash(projectId)));
+    const appTrusted=bound&&this.ownerTrust.isAppTrusted();
+    const row=appTrusted?this.db.prepare(
+      'SELECT scope_hash,revoked_at FROM forge_project_development_approvals WHERE project_id=? AND workspace_session_id=?'
+    ).get(projectId,session.id):null;
+    const explicitlyRevoked=Boolean(row?.revoked_at);
+    const nativeApproved=appTrusted&&!explicitlyRevoked&&
+      row?.scope_hash===this.ownerTrust.scopeHash(projectId);
+    // No extra click in local, process-scoped DEV once the Owner's App and
+    // physical project workspace are already verified. Read-only inspection
+    // performs no DB mutation; explicit revoke remains authoritative.
+    const devAuthorized=this.devAutonomy&&appTrusted&&!explicitlyRevoked;
+    const approved=Boolean(nativeApproved||devAuthorized);
     let worktree=null;
     if(taskId!==null)worktree=this.workspaces.taskWorktree(projectId,taskId);
     return {schema:'ordax.forge.project-development/1',projectId,
       ...(taskId?{taskId}:{}),
       available:approved,ownerBoundWorkspace:bound,
-      ownerApproved:approved,permission:approved?'full_windows_user':'not_authorized',
+      ownerApproved:approved,devAutoAuthorized:Boolean(devAuthorized&&!nativeApproved),
+      permission:approved?'full_windows_user':'not_authorized',
       nativeProcessExecution:approved,workspaceIsSandbox:false,
       effectReceipts:'canonical_app_sqlite',rootPathExposed:false,
       taskWorkspace:taskId?worktree?.status==='active'
@@ -84,15 +102,25 @@ export class ForgeProjectDevelopment {
     if(expectedScopeHash!==null&&currentHash!==expectedScopeHash)
       throw Error('forge_development_scope_changed');
     const session=this.store.getWorkspaceSession();
-    this.db.prepare('INSERT INTO forge_project_development_approvals(project_id,workspace_session_id,scope_hash,approved_at) VALUES(?,?,?,?) '+
-      'ON CONFLICT(project_id) DO UPDATE SET workspace_session_id=excluded.workspace_session_id,scope_hash=excluded.scope_hash,approved_at=excluded.approved_at')
+    this.db.prepare('INSERT INTO forge_project_development_approvals(project_id,workspace_session_id,scope_hash,approved_at,revoked_at) VALUES(?,?,?,?,NULL) '+
+      'ON CONFLICT(project_id) DO UPDATE SET workspace_session_id=excluded.workspace_session_id,scope_hash=excluded.scope_hash,approved_at=excluded.approved_at,revoked_at=NULL')
       .run(projectId,session.id,currentHash,this.store.now());
     return this.status(projectId);
   }
   revoke(projectId){
-    this.workspaces.status(projectId);
-    this.db.prepare('DELETE FROM forge_project_development_approvals WHERE project_id=? AND workspace_session_id=?')
-      .run(projectId,this.store.getWorkspaceSession().id);
+    const scope=this.workspaces.status(projectId);
+    const session=this.store.getWorkspaceSession();
+    const scopeHash=scope.configured&&scope.verified
+      ?this.ownerTrust.scopeHash(projectId):'unbound';
+    const now=this.store.now();
+    // A negative decision must not be silently undone by DEV auto access,
+    // including after restart or a workspace rebind. Re-approve explicitly.
+    this.db.prepare(`INSERT INTO forge_project_development_approvals
+      (project_id,workspace_session_id,scope_hash,approved_at,revoked_at)
+      VALUES(?,?,?,?,?) ON CONFLICT(project_id) DO UPDATE SET
+      workspace_session_id=excluded.workspace_session_id,
+      scope_hash=excluded.scope_hash,revoked_at=excluded.revoked_at`)
+      .run(projectId,session.id,scopeHash,now,now);
     return this.status(projectId);
   }
   requiresTaskScope(projectId){
