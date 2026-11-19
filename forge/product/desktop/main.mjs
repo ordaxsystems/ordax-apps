@@ -2100,7 +2100,11 @@ registerUiHandler('ordax:forge:command:close-unverified',async(event,projectId,c
     throw Error('forge_command_review_scope_or_status_invalid');
   if(!store.db.prepare('SELECT 1 FROM lab_command_active_unresolved WHERE id=?').get(commandId))
     throw Error('forge_command_review_already_closed');
-  const accepted=await confirmInActiveUi({
+  // Reuse the already granted one-time DEV owner authority. This is still
+  // trusted native renderer IPC only: external MCP cannot invoke this handler,
+  // and the existing Core still requires later independent terminal evidence
+  // before appending an acknowledgement with unknown effects.
+  const accepted=forgeDevAutoPairMode||await confirmInActiveUi({
     title:'Revisar comando com resultado desconhecido',
     message:'Reconhecer este comando interrompido sem afirmar que funcionou?',
     detail:'Comando '+commandId+'\\nSolicitação '+row.request_id+

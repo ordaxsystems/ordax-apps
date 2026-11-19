@@ -20,7 +20,7 @@ const uiHtml = fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
 const e2eLock = fs.readFileSync(path.join(root,'scripts','e2e-lock.cjs'),'utf8');
 const liveText = fs.readFileSync(path.join(root,'scripts','live-ui-text-smoke.cjs'),'utf8');
 
-test('unknown terminal result can only be acknowledged by native Owner after a scoped confirm',()=>{
+test('unknown terminal review reuses pre-granted DEV Owner intent; production still confirms natively',()=>{
   const preload=fs.readFileSync(path.join(root,'desktop','preload.cjs'),'utf8');
   const mcp=fs.readFileSync(path.join(root,'src','orchestrator-mcp.mjs'),'utf8');
   const service=fs.readFileSync(path.join(root,'src','orchestrator-service.mjs'),'utf8');
@@ -40,7 +40,12 @@ test('unknown terminal result can only be acknowledged by native Owner after a s
   const area=main.slice(main.indexOf(entry),main.indexOf("// Local MCP is explicitly enabled",main.indexOf(entry)));
   assert.match(area,/requireTrustedSupervisorRenderer\(event\)/);
   assert.match(area,/if\(hostBrowserMode\)throw Error\('forge_command_review_native_only'\)/);
-  assert.match(area,/await confirmInActiveUi\(\{/);
+  assert.match(area,/const accepted=forgeDevAutoPairMode\|\|await confirmInActiveUi\(\{/);
+  assert.match(main,/const forgeDevAutoPairMode=forgeDevAutonomyEnabled&&/);
+  assert.match(main,/process\.env\.ORDAX_FORGE_DEV_AUTO_PAIR==='1'/);
+  assert.match(service,/forge_command_review_independent_evidence_missing/);
+  assert.match(service,/acknowledgedUnknownEffects:true,externalEffectsVerified:false/);
+  assert.match(service,/originalReceiptPreserved:true,replayAllowed:false/);
   assert.match(area,/if\(!accepted\)return \{cancelled:true\}/);
   assert.match(area,/closeUnverifiedCommand\(localOrchestratorContext,\{/);
   assert.match(area,/\},\{nativeOwnerConfirmed:true\}\)/);
