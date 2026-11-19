@@ -1445,7 +1445,9 @@ const forgeMcpTrusted=new ForgeMcpOwnerTrust({store,
 // One native capability port; project consent is bound to the already verified
 // workspace identity in the EXISTING Forge SQLite, not a new permission store.
 const forgeProjectDevelopment=new ForgeProjectDevelopment({
-  store,workspaces:forgeLocalWorkspaces,ownerTrust:forgeMcpTrusted
+  store,workspaces:forgeLocalWorkspaces,ownerTrust:forgeMcpTrusted,
+  // Explicit process-local DEV startup; production keeps native Owner approval.
+  devAutonomy:forgeDevAutoPairMode
 });
 
 const orchestratorKernel=createOrchestratorKernel({
