@@ -441,3 +441,58 @@ test('Integrator aborts a conflicting Task merge and restores main without auto-
   assert.equal(f.workspaces.taskWorktree(f.projectId,taskB).status,'active');
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
+
+test('DEV local grants project commands with verified App and workspace, while revoke and normal mode stay effective',async t=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'forge-dev-local-autogrant-'));
+  const folder=path.join(dir,'workspace');fs.mkdirSync(folder);
+  const store=new Store(':memory:');
+  t.after(()=>{store.close();fs.rmSync(dir,{force:true,recursive:true});});
+  const context={actorId:'owner',clientId:'desktop',
+    workspaceSessionId:store.getWorkspaceSession().id};
+  const workspaces=new ForgeLocalWorkspaces({store,documentsDirectory:dir});
+  const trust=new ForgeMcpOwnerTrust({store,appIdentity:dir,
+    scopeSignature:id=>{
+      const binding=workspaces.binding(id);
+      return binding?'owner-bound:'+binding.root+':'+binding.identity:'app-private:'+id;
+    }});
+  const dev=new ForgeProjectDevelopment({store,workspaces,ownerTrust:trust,devAutonomy:true});
+  const normal=new ForgeProjectDevelopment({store,workspaces,ownerTrust:trust});
+  const svc=new OrchestratorService({store,development:dev,
+    authorize:({context:who})=>who===context});
+  const project=(await svc.invoke(context,'project_create',{
+    name:'Dev owner project',requestId:'dev_autogrant_project'
+  })).result.projectId;
+  assert.equal(dev.status(project).available,false,'unbound projects never acquire shell');
+  workspaces.bindSelected(project,folder);
+  assert.equal(dev.status(project).available,false,'a physical folder alone is insufficient');
+  trust.trustApp();
+  assert.equal(trust.isTrusted(project),false,'no project-specific legacy MCP grant was created');
+  assert.equal(dev.status(project).available,true);
+  assert.equal(dev.status(project).devAutoAuthorized,true);
+  assert.equal(normal.status(project).available,false,'a normal process cannot inherit DEV privileges');
+  const run=await svc.invoke(context,'project_command_run',{
+    projectId:project,requestId:'dev_autogrant_command',
+    command:'node -e "console.log(31415)"',timeoutMs:15000
+  });
+  assert.equal(run.status,'succeeded');
+  assert.equal(run.result.stdout.trim(),'31415');
+  assert.equal(run.result.exitCode,0);
+  assert.equal(store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+  dev.revoke(project);
+  assert.equal(dev.status(project).available,false);
+  assert.equal(dev.status(project).devAutoAuthorized,false);
+  await assert.rejects(svc.invoke(context,'project_command_run',{
+    projectId:project,requestId:'dev_autogrant_after_revoke',
+    command:'echo SHOULD_NOT_RUN',timeoutMs:15000
+  }),/forge_development_owner_approval_required/);
+  const restarted=new ForgeProjectDevelopment({
+    store,workspaces,ownerTrust:trust,devAutonomy:true
+  });
+  assert.equal(restarted.status(project).available,false,'revocation persists across DEV restarts');
+  restarted.approve(project,{expectedScopeHash:trust.scopeHash(project)});
+  assert.equal(restarted.status(project).available,true);
+  assert.equal(normal.status(project).available,true,'explicit approval also works in normal mode');
+  trust.revokeApp();
+  assert.equal(restarted.status(project).available,false,'App revocation wins in DEV');
+  assert.equal(store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
