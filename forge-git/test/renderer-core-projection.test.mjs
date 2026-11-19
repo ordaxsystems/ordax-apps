@@ -257,4 +257,23 @@ test('renderer never presents legacy JSON as canonical project state and masks t
   assert.equal(el('core-command-check').disabled,true);
   assert.doesNotMatch(el('core-receipt-status').textContent,/Estado registrado: uncertain/,
     'switching projects must clear the other project receipt result');
+
+  observer({coreStatus:{...enabledStatus,devAutoPair:true,
+    providerDispatchAllowed:true,reconnectRemembered:true},
+    coreProjection:{...pendingProjection,selectedProjectId:'project_A'}});
+  assert.equal(el('core-manual-auth').hidden,true,
+    'Dev hides manual token and pairing controls');
+  assert.equal(el('core-connect').hidden,true);
+  assert.equal(el('core-dev-state').hidden,false);
+  assert.match(el('core-dev-state').textContent,/conectado automaticamente/);
+  assert.match(el('core-connection').textContent,/Dev sem confirmação nativa/);
+  assert.equal(el('core-dispatch').textContent,'Executar Task via Forge Core');
+  assert.match(el('core-dispatch-explain').textContent,/sem popup no modo Dev/);
+  observer({coreStatus:{connected:false,devAutoPair:true}});
+  assert.match(el('core-connection').textContent,/reconexão automática habilitada/);
+  observer({coreStatus:{connected:false}});
+  assert.equal(el('core-manual-auth').hidden,false,
+    'production retains explicit native authorization');
+  assert.equal(el('core-connect').hidden,false);
+  assert.equal(el('core-dev-state').hidden,true);
 });

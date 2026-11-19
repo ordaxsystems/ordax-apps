@@ -3,11 +3,27 @@ const IDS=['forjador'];
 let state=null,active='forjador',connected=false,ready=[],busy=[],operation=false,sessions=new Map();
 let coreStatus={connected:false},coreProjection=null,receiptPanelProject=null;
 let reconnectChoiceInitialized=false;
+const standardDispatchExplanation=$('core-dispatch-explain').textContent;
 const nameOf=id=>id==='forjador'?'Forjador':id;
 function message(text){$('status').textContent=String(text||'');}
 function renderCore(){
   const activeCore=coreStatus?.connected===true;
-  $('core-connect').disabled=operation;
+  const dev=coreStatus?.devAutoPair===true;
+  $('core-manual-auth').hidden=dev;
+  $('core-connect').hidden=dev;
+  $('core-dev-state').hidden=!dev;
+  $('core-dev-state').textContent=dev
+    ?activeCore
+      ?'Modo Dev ativo · Forge Core conectado automaticamente, sem códigos, tokens ou aprovações repetidas.'
+      :'Modo Dev ativo · procurando o Forge Core local para conectar automaticamente.'
+    :'';
+  $('core-dispatch').textContent=dev
+    ?'Executar Task via Forge Core'
+    :'Executar Task via Forge Core (confirmação nativa)';
+  $('core-dispatch-explain').textContent=dev
+    ?'Visualização GPT Web. Prepare a Task no Core para executar sem popup no modo Dev. O Core continua criando Runs e recibos e bloqueia o reenvio de efeitos incertos. Mensagens digitadas diretamente no navegador não são Runs canônicos.'
+    :standardDispatchExplanation;
+  $('core-connect').disabled=operation||activeCore;
   $('core-pair').disabled=operation||activeCore||coreStatus?.reconnectProtected!==true;
   const code=coreStatus?.pairingCode;
   const pairedCode=typeof code==='string'&&/^[A-F0-9]{10}$/.test(code)?code:null;
@@ -19,9 +35,13 @@ function renderCore(){
   $('core-refresh').disabled=operation||!activeCore;
   $('core-connection').textContent=(activeCore
     ?coreStatus?.providerDispatchAllowed===true
-      ?'Forge MCP conectado · envio inicial sujeito somente à confirmação nativa.'
+      ?dev
+        ?'Forge MCP conectado · modo Dev sem confirmação nativa de envio inicial.'
+        :'Forge MCP conectado · envio inicial sujeito somente à confirmação nativa.'
       :'Forge MCP conectado · leitura e rascunho disponíveis; atualize o Forge nativo para habilitar o envio autorizado.'
-    :'Forge MCP desconectado: conecte uma vez e habilite a proteção Windows se desejar.')+
+    :dev
+      ?'Forge MCP Dev: aguardando o Core local; reconexão automática habilitada.'
+      :'Forge MCP desconectado: conecte uma vez e habilite a proteção Windows se desejar.')+
     (coreStatus?.reconnectRemembered===true
       ?'\nReconexão protegida salva neste Windows (o Core pode revogá-la).'
       :'\nNenhuma reconexão local salva.');

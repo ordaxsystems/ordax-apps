@@ -42,6 +42,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 <header><div><h1>Forge Git</h1><p>GPT Web · transporte do Forge MCP</p></div><div class="brand">FG</div></header>
 <section>
 <h2>Forge MCP · estado canônico</h2>
+<p id="core-dev-state" class="status" hidden>Modo Dev: conexão automática com o Forge Core.</p>
+<div id="core-manual-auth">
 <p>Para vincular sem copiar tokens, informe apenas o endereço do MCP local do Forge e clique em <strong>Vincular com autorização nativa</strong>. Compare o código nas duas janelas e confirme uma vez no Forge. O token existente será transferido cifrado e salvo somente no armazenamento protegido deste Windows.</p>
 <label for="core-endpoint">Endpoint local do Forge</label>
 <input id="core-endpoint" type="url" placeholder="http://127.0.0.1:PORTA/mcp" autocomplete="off" spellcheck="false">
@@ -55,6 +57,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 Manter conexão protegida neste Windows e reconectar automaticamente
 </label>
 <p>O Forge Core continua controlando acesso e revogação. Para funcionar após reiniciar também o Forge nativo, ative uma vez a opção de reconexão segura do MCP nas configurações dele. Nenhum projeto ou Run é autorizado pelo armazenamento desta conexão.</p>
+</div>
 <div class="grid" style="margin-top:9px">
 <button id="core-connect" class="primary" type="button">Conectar MCP</button>
 <button id="core-disconnect" type="button">Desconectar</button>
@@ -85,7 +88,7 @@ Manter conexão protegida neste Windows e reconectar automaticamente
 </section>
 <section>
 <h2>Conversa ativa: <span id="role">Forjador</span></h2>
-<p>Visualização GPT Web. O envio direto foi bloqueado porque não cria Run no Core. Prepare uma Task no painel e autorize a execução pelo Forge Core nativo; a confirmação ocorrerá na janela do Forge, usando o mesmo Run e recibo canônicos. Nunca repita um envio incerto. Mensagens digitadas manualmente no navegador não são Runs canônicos.</p>
+<p id="core-dispatch-explain">Visualização GPT Web. O envio direto foi bloqueado porque não cria Run no Core. Prepare uma Task no painel e autorize a execução pelo Forge Core nativo; a confirmação ocorrerá na janela do Forge, usando o mesmo Run e recibo canônicos. Nunca repita um envio incerto. Mensagens digitadas manualmente no navegador não são Runs canônicos.</p>
 <label for="instruction">Missão ou mensagem</label>
 <textarea id="instruction" placeholder="Continue trabalhando no projeto autorizado pelo Forge MCP."></textarea>
 <button id="send" class="full" type="button" disabled>Envio direto bloqueado — use Forge Core</button>
