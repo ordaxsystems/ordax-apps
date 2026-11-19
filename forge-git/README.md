@@ -31,6 +31,8 @@ O modo Dev dispensa os popups de vínculo e de envio inicial **somente na aplica
 
 Para manter o modo DEV após reiniciar ou entrar novamente no Windows, use o inicializador canônico `forge-git/scripts/start-dev-windows.ps1`. Ele abre o Core instalado e prefere o Forge Git empacotado em `%LOCALAPPDATA%\\Programs\\OrdaX Forge Git\\OrdaX Forge Git.exe`; se o wrapper portátil existir no mesmo diretório, também pode usá-lo. O binário `forge-git/dist` continua disponível como alternativa do checkout. O diagnóstico `-CheckOnly` e a remoção do atalho funcionam mesmo quando um executável estiver ausente. Reutiliza processos existentes sem duplicar Core, SQLite ou scheduler. As opções DEV ficam somente nos processos filhos; não alteram o ambiente global do Windows.
 
+Quando o Windows mantiver bloqueado o diretório antigo do Core, o mesmo inicializador aceita `-CoreExecutable "C:\\Users\\ordax\\AppData\\Local\\Programs\\<pacote DEV validado>\\OrdaX Forge.exe"` para fixar temporariamente o binário testado no atalho de inicialização. O caminho deve estar em `%LOCALAPPDATA%\\Programs` e não cria segunda instância; após liberar o diretório antigo, promover o pacote pode ser feito sem trocar o Store. Não usar variáveis globais do Windows.
+
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File forge-git/scripts/start-dev-windows.ps1 -CheckOnly
 powershell -NoProfile -ExecutionPolicy Bypass -File forge-git/scripts/start-dev-windows.ps1 -InstallStartup
