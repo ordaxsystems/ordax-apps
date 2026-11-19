@@ -150,7 +150,9 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
         if(ownerPairInFlight)return json(res,409,{error:'forge_mcp_pair_in_progress'});
         ownerPairInFlight=true;
         try{
-          const approved=await ownerPair({code},{isAuthorized});
+          const approved=await ownerPair({code,
+            devAutoPairRequested:req.headers['x-forge-git-dev-auto-pair']==='1'},
+            {isAuthorized});
           if(!approved)return json(res,403,{error:'forge_mcp_pair_owner_declined'});
           if(!isAuthorized())return json(res,403,{error:'forge_mcp_pair_grant_changed'});
           return json(res,200,sealExistingForgeMcpGrant(request,appGrant.token));

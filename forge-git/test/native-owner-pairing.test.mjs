@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {Store} from '../../forge/product/src/store.mjs';
@@ -118,6 +118,39 @@ test('browser origin, non-app grants and explicit Owner decline cannot obtain a 
   const excluded=await requestPair(other.endpoint,request);
   assert.equal(excluded.status,403);
   assert.equal(approvals,1);
+});
+
+test('explicit DEV pairing header is forwarded; the Core still requires a live App grant',async t=>{
+  const observed=[];
+  const f=fixture(t,{ownerPair:async({devAutoPairRequested},{isAuthorized})=>{
+    observed.push(devAutoPairRequested);
+    return devAutoPairRequested===true&&isAuthorized();
+  }});
+  const ready=await f.transport.start(FORGE_APP_MCP_SCOPE);
+  const manual=prepareForgeGitPairRequest();
+  const denied=await requestPair(ready.endpoint,manual.request);
+  assert.equal(denied.status,403);
+  const dev=prepareForgeGitPairRequest();
+  const ok=await requestPair(ready.endpoint,dev.request,{'X-Forge-Git-Dev-Auto-Pair':'1'});
+  assert.equal(ok.status,200);
+  assert.equal(unsealForgeGitPairResponse(dev,await ok.json()),ready.token);
+  assert.deepEqual(observed,[false,true]);
+  await f.transport.stop();
+  const unavailable=await fetch(ready.endpoint.replace(/\/mcp$/,'/owner-pair'),{
+    method:'POST',headers:{'Content-Type':'application/json',
+      'X-Forge-Git-Pair':'1','X-Forge-Git-Dev-Auto-Pair':'1'},
+    body:JSON.stringify(dev.request)
+  }).catch(()=>null);
+  assert.ok(unavailable===null||unavailable.status!==200);
+});
+
+test('native app enables silent DEV pairing only behind the two explicit flags',()=>{
+  const main=readFileSync(new URL('../../forge/product/desktop/main.mjs',import.meta.url),'utf8');
+  assert.match(main,/const forgeDevAutoPairMode=forgeDevAutonomyEnabled&&/);
+  assert.match(main,/if\(devAutoPairRequested\)[\s\S]*?return forgeDevAutoPairMode&&/);
+  assert.match(main,/const approval=forgeDevAutoPairMode\|\|await confirmInActiveUi/);
+  assert.match(main,/if\(saved\|\|forgeDevAutoPairMode\)/);
+  assert.match(main,/if\(approval!==true\)throw Error\('forge_owner_dispatch_not_approved'\)/);
 });
 
 test('a stale Owner approval can never return a bearer after grant revocation',async t=>{

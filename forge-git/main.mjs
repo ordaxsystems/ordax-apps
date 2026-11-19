@@ -28,7 +28,13 @@ const releaseOwnedViews=createForgeGitShutdown({
   stopWatcher:()=>{if(watcher){clearInterval(watcher);watcher=null;}}
 });
 let protectedConnection=null,connectionBusy=false,explicitlyDisconnected=false,pairingBusy=false,pairingCode=null;
-const coreUiStatus=()=>({...core.status(),pairingCode,
+// Explicit local Windows DEV mode only; normal builds keep the Owner dialog.
+const devAutoPair=process.platform==='win32'&&
+  process.env.ORDAX_FORGE_DEV_AUTONOMY==='1'&&
+  process.env.ORDAX_FORGE_DEV_AUTO_PAIR==='1';
+const devEndpoint=devAutoPair?validateForgeLoopbackEndpoint(
+  process.env.ORDAX_FORGE_DEV_MCP_ENDPOINT||'http://127.0.0.1:56215/mcp'):null;
+const coreUiStatus=()=>({...core.status(),pairingCode,devAutoPair,
   reconnectProtected:protectedConnection?.supported()===true,
   reconnectRemembered:protectedConnection?.exists()===true});
 
@@ -159,6 +165,44 @@ async function connectExistingCore(options,{automatic=false}={}){
     }
   }finally{connectionBusy=false;}
 }
+async function pairExistingCore({endpoint}={}, {automatic=false}={}){
+  if(automatic&&(explicitlyDisconnected||shuttingDown||protectedConnection.exists()))return false;
+  if(pairingBusy||connectionBusy||core.status().connected){
+    if(automatic)return false;
+    throw Error('forge_mcp_pair_connection_busy');
+  }
+  if(!protectedConnection.supported())
+    throw Error('forge_git_windows_dpapi_unavailable');
+  const local=validateForgeLoopbackEndpoint(endpoint);
+  pairingBusy=true;
+  try{
+    const prepared=prepareForgeGitPairRequest();
+    if(!automatic){
+      pairingCode=prepared.code;
+      emit('Compare no Forge nativo o código de vínculo '+prepared.code+
+        '. Confirme somente se ele corresponde ao mostrado neste Forge Git.');
+    }
+    const response=await fetch(local.replace(/\/mcp$/,'/owner-pair'),{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-Forge-Git-Pair':'1',
+        ...(automatic&&devAutoPair?{'X-Forge-Git-Dev-Auto-Pair':'1'}:{})},
+      body:JSON.stringify(prepared.request),
+      signal:AbortSignal.timeout(automatic?6000:90_000)
+    });
+    if(response.status!==200)
+      throw Error('forge_mcp_pair_rejected_http_'+response.status);
+    const raw=await response.text();
+    if(raw.length>2000)throw Error('forge_mcp_pair_response_too_large');
+    let envelope;
+    try{envelope=JSON.parse(raw);}
+    catch{throw Error('forge_mcp_pair_response_invalid');}
+    const token=unsealForgeGitPairResponse(prepared,envelope);
+    const result=await connectExistingCore({endpoint:local,token,remember:true});
+    emit(automatic?'Forge Git DEV conectado automaticamente ao Core local.':
+      'Forge Git vinculado ao Forge Core sem copiar token. Reconexão protegida habilitada.');
+    return {paired:true,status:result.status,projection:result.projection};
+  }finally{pairingCode=null;pairingBusy=false;emit('');}
+}
 function events(){
   guarded('fg:state',()=>({snapshot:store.snapshot(),active,ready:[...ready],busy:[...busy],sessions:[...sessionStates],
     coreStatus:coreUiStatus(),coreProjection:core.projection()}));
@@ -166,39 +210,7 @@ function events(){
     if(pairingBusy)throw Error('forge_mcp_pair_in_progress');
     return connectExistingCore(options);
   });
-  guarded('fg:core-pair',async({endpoint}={})=>{
-    if(pairingBusy||connectionBusy||core.status().connected)
-      throw Error('forge_mcp_pair_connection_busy');
-    if(!protectedConnection.supported())
-      throw Error('forge_git_windows_dpapi_unavailable');
-    const local=validateForgeLoopbackEndpoint(endpoint);
-    pairingBusy=true;
-    try{
-      const prepared=prepareForgeGitPairRequest();
-      pairingCode=prepared.code;
-      emit('Compare no Forge nativo o código de vínculo '+prepared.code+
-        '. Confirme somente se ele corresponde ao mostrado neste Forge Git.');
-      const response=await fetch(local.replace(/\/mcp$/,'/owner-pair'),{
-        method:'POST',
-        headers:{'Content-Type':'application/json','X-Forge-Git-Pair':'1'},
-        body:JSON.stringify(prepared.request),
-        signal:AbortSignal.timeout(90_000)
-      });
-      if(response.status!==200)
-        throw Error('forge_mcp_pair_rejected_http_'+response.status);
-      const raw=await response.text();
-      if(raw.length>2000)throw Error('forge_mcp_pair_response_too_large');
-      let envelope;
-      try{envelope=JSON.parse(raw);}
-      catch{throw Error('forge_mcp_pair_response_invalid');}
-      const token=unsealForgeGitPairResponse(prepared,envelope);
-      // A sealed transfer is NOT authorization. The same strict MCP catalog
-      // and canonical project readback must pass before saving DPAPI locally.
-      const result=await connectExistingCore({endpoint:local,token,remember:true});
-      emit('Forge Git vinculado ao Forge Core sem copiar token. Reconexão protegida habilitada.');
-      return {paired:true,status:result.status,projection:result.projection};
-    }finally{pairingCode=null;pairingBusy=false;emit('');}
-  });
+  guarded('fg:core-pair',pairExistingCore);
   guarded('fg:core-refresh',async()=>{
     await core.ping();
     const projection=await core.refresh();
@@ -321,8 +333,12 @@ app.whenReady().then(async()=>{
   events();
   await win.loadFile(path.join(here,'index.html'));
   layout();
-  // Reuse the owner-approved grant only; never start a Task on boot.
-  void connectExistingCore(null,{automatic:true}).catch(()=>{});
+  // DEV may pair automatically using the same existing encrypted Core grant;
+  // production continues to require the native approval. Never send GPT on boot.
+  void connectExistingCore(null,{automatic:true}).then(connected=>{
+    if(!connected&&devAutoPair&&!explicitlyDisconnected)
+      void pairExistingCore({endpoint:devEndpoint},{automatic:true}).catch(()=>{});
+  }).catch(()=>{});
   // Reuse the existing provider-health timer for Core read-only projection.
   // No GitHub writes, independent scheduler, GPT send or authority transfer.
   let polling=false;
@@ -346,8 +362,9 @@ app.whenReady().then(async()=>{
         }
       }else if(!explicitlyDisconnected&&protectedConnection.exists()){
         // Reuse the existing 45-second health interval, not another scheduler.
-        // Only the Core validates grants. No GPT work is launched automatically.
         await connectExistingCore(null,{automatic:true});
+      }else if(devAutoPair&&!explicitlyDisconnected&&!pairingBusy){
+        await pairExistingCore({endpoint:devEndpoint},{automatic:true}).catch(()=>{});
       }
     }finally{polling=false;}
   },45_000);
