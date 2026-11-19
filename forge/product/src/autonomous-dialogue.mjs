@@ -485,13 +485,13 @@ export class AutonomousDialogue {
       return this.summary(existing);
     }
     if(this.db.prepare(`SELECT 1 FROM lab_autonomous_dialogues
-      WHERE workspace_session_id=? AND
+      WHERE workspace_session_id=? AND project_id=? AND orchestrator_id=? AND
         (state IN ('queued','planning_a','ready_a','sending_a','ready_b','planning_b',
         'ready_final','sending_b','planning_final','reviewing_a','ready_review_final',
         'reviewing_final','story_ready_synthesis') OR
         (mode='story' AND (state LIKE 'story_queued_%' OR state LIKE 'story_ready_%' OR
         state LIKE 'story_planning_%' OR state LIKE 'story_sending_%' OR state='story_synthesizing')))
-      LIMIT 1`).get(context.workspaceSessionId))
+      LIMIT 1`).get(context.workspaceSessionId,projectId,orchestratorId))
       throw Error('autonomous_mission_already_running');
     const id='autonomous_'+randomUUID(),now=this.store.now();
     const missionPolicy=mode==='technical'?technicalMissionPolicy(mission):null;
@@ -525,9 +525,9 @@ export class AutonomousDialogue {
     queueMicrotask(()=>{void this.tick(context).catch(()=>{});});
     return this.summary(this.get(id));
   }
-  // A second human authorization extends the *same* technical mission chain.
-  // One new ledger row represents one bounded two-send consent window; the
-  // previous Run, decision, Task and project remain the canonical sources.
+  // DEV continuation extends the same technical mission chain, without
+  // requiring a new owner confirmation per cycle. The previous verified Run,
+  // decision, Task and project remain the canonical sources.
   continueTechnical(context,{projectId,orchestratorId,sourceMissionId,requestId}) {
     this.service.requireAccess(context,'autonomous_dialogue_continue',projectId);
     const owner=this.service.orchestrator(projectId,orchestratorId);
@@ -551,8 +551,9 @@ export class AutonomousDialogue {
         AND project_id=? AND orchestrator_id=?`)
         .get(sourceMissionId,session.id,context.actorId,context.clientId,projectId,orchestratorId);
       const latest=this.db.prepare(`SELECT id FROM lab_autonomous_dialogues WHERE
-        workspace_session_id=? AND actor_id=? AND client_id=? ORDER BY rowid DESC LIMIT 1`)
-        .get(session.id,context.actorId,context.clientId);
+        workspace_session_id=? AND actor_id=? AND client_id=?
+          AND project_id=? AND orchestrator_id=? ORDER BY rowid DESC LIMIT 1`)
+        .get(session.id,context.actorId,context.clientId,projectId,orchestratorId);
       if(!previous||latest?.id!==sourceMissionId||previous.strategy!=='semantic'||
          previous.state!=='budget_exhausted'||!previous.task_b_id||!previous.review_b_json||
          !previous.question_final)
@@ -573,13 +574,14 @@ export class AutonomousDialogue {
          String(this.store.getTaskDraft(previous.task_b_id)?.draft||'')!=='')
         throw Error('autonomous_continuation_source_superseded');
       if(this.db.prepare(`SELECT 1 FROM lab_autonomous_dialogues WHERE
-        workspace_session_id=? AND (state IN ('queued','planning_a','ready_a',
+        workspace_session_id=? AND project_id=? AND orchestrator_id=? AND
+        (state IN ('queued','planning_a','ready_a',
           'sending_a','ready_b','planning_b','ready_final','sending_b',
           'planning_final','reviewing_a','ready_review_final','reviewing_final')
           OR (mode='story' AND (state LIKE 'story_queued_%' OR state LIKE 'story_ready_%'
             OR state LIKE 'story_planning_%' OR state LIKE 'story_sending_%'
             OR state='story_synthesizing')))
-        LIMIT 1`).get(session.id))
+        LIMIT 1`).get(session.id,projectId,orchestratorId))
         throw Error('autonomous_mission_already_running');
       const id='autonomous_'+randomUUID(),now=this.store.now();
       const taskId=decision.decision==='new_work'
