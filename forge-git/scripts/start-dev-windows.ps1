@@ -13,10 +13,19 @@ if(([int][bool]$CheckOnly + [int][bool]$InstallStartup + [int][bool]$RemoveStart
 }
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $coreExe = Join-Path $env:LOCALAPPDATA 'Programs\OrdaX Forge\OrdaX Forge.exe'
-$gitExe = Join-Path $root 'forge-git\dist\OrdaX-Forge-Git-0.1.0.exe'
+$installedGitExe = Join-Path $env:LOCALAPPDATA 'Programs\OrdaX Forge Git\OrdaX-Forge-Git-0.1.0.exe'
+$checkoutGitExe = Join-Path $root 'forge-git\dist\OrdaX-Forge-Git-0.1.0.exe'
+# Prefer the stable DEV portable installation; keep the canonical checkout
+# build as a fallback. One executable, one Core, no duplicate host.
+$gitExe = if(Test-Path -LiteralPath $installedGitExe -PathType Leaf){
+  $installedGitExe
+}else{$checkoutGitExe}
 $link = Join-Path ([Environment]::GetFolderPath('Startup')) 'OrdaX Forge Dev.lnk'
-if(!(Test-Path -LiteralPath $coreExe -PathType Leaf)){throw 'forge_dev_native_executable_missing'}
-if(!(Test-Path -LiteralPath $gitExe -PathType Leaf)){throw 'forge_dev_git_executable_missing'}
+# Read-only status and removal must work even if a binary is absent.
+if(!$CheckOnly -and !$RemoveStartup){
+  if(!(Test-Path -LiteralPath $coreExe -PathType Leaf)){throw 'forge_dev_native_executable_missing'}
+  if(!(Test-Path -LiteralPath $gitExe -PathType Leaf)){throw 'forge_dev_git_executable_missing'}
+}
 $scriptPath = (Resolve-Path -LiteralPath $PSCommandPath).Path
 if($InstallStartup -or $RemoveStartup){
   $shell = New-Object -ComObject WScript.Shell
@@ -46,18 +55,22 @@ if($InstallStartup -or $RemoveStartup){
   Write-Output 'forge_dev_startup_installed'
   exit 0
 }
-$coreProcesses = @(Get-Process -Name 'OrdaX Forge' -ErrorAction SilentlyContinue)
+$coreProcesses = @(Get-Process -Name 'OrdaX Forge' -ErrorAction SilentlyContinue |
+  Where-Object {-not $_.HasExited})
 $foreignCore = @($coreProcesses | Where-Object {$_.Path -and $_.Path -ne $coreExe})
 if($foreignCore.Count){throw 'forge_dev_foreign_core_already_running'}
-$gitLaunchers = @(Get-Process -Name 'OrdaX-Forge-Git-0.1.0' -ErrorAction SilentlyContinue)
+$gitLaunchers = @(Get-Process -Name 'OrdaX-Forge-Git-0.1.0' -ErrorAction SilentlyContinue |
+  Where-Object {-not $_.HasExited})
 $foreignGit = @($gitLaunchers | Where-Object {$_.Path -and $_.Path -ne $gitExe})
 if($foreignGit.Count){throw 'forge_dev_foreign_git_already_running'}
 $gitWindows = @(Get-Process -Name 'OrdaX Forge Git' -ErrorAction SilentlyContinue |
-  Where-Object {$_.MainWindowHandle -ne [IntPtr]::Zero})
+  Where-Object {-not $_.HasExited})
 $gitActive = $gitLaunchers.Count -gt 0 -or $gitWindows.Count -gt 0
 if($CheckOnly){
   Write-Output ('forge_dev_check coreRunning='+($coreProcesses.Count -gt 0)+
-    ' gitRunning='+$gitActive+' startupInstalled='+(Test-Path -LiteralPath $link))
+    ' gitRunning='+$gitActive+' coreBinary='+(Test-Path -LiteralPath $coreExe -PathType Leaf)+
+    ' gitBinary='+(Test-Path -LiteralPath $gitExe -PathType Leaf)+
+    ' startupInstalled='+(Test-Path -LiteralPath $link))
   exit 0
 }
 # Inherit process-local DEV policy into both binaries without changing
