@@ -256,13 +256,13 @@ test('DAG launch keeps dependent GPT Work queued until a real integrated Git acc
   const branch=path.join(f.folder,'.forge-worktrees',implementation);
   fs.mkdirSync(path.join(branch,'test'),{recursive:true});
   fs.writeFileSync(path.join(branch,'test','feature.test.mjs'),
-    "import test from 'node:test'; import assert from 'node:assert/strict'; test('build',()=>assert.equal(2+2,4));\\n");
+    "import test from 'node:test'; import assert from 'node:assert/strict'; test('build',()=>assert.equal(2+2,4));\n");
   execFileSync('git',['add','test/feature.test.mjs'],{cwd:branch});
   execFileSync('git',['commit','-m','verified implementation'],{cwd:branch});
   const scopedReview=await f.call('project_worktree_review',{projectId,taskId:implementation});
   const verified=await f.call('project_worktree_verify',{projectId,taskId:implementation,
     command:'node --test test/feature.test.mjs',timeoutMs:30000});
-  assert.equal(verified.status,'succeeded');
+  assert.equal(verified.status,'succeeded',JSON.stringify(verified.result));
   assert.equal(verified.result.verified,true);
   const integrated=await f.call('project_worktree_integrate',{
     projectId,taskId:implementation,
