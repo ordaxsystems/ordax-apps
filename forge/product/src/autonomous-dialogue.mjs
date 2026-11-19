@@ -820,11 +820,15 @@ export class AutonomousDialogue {
       return {state:'blocked_workspace'};
     // Historical queued missions are retained, but never select or starve
     // a current mission. The same applies to a different owner/client.
-    const row=this.db.prepare(`SELECT * FROM lab_autonomous_dialogues
-      WHERE workspace_session_id=? AND actor_id=? AND client_id=? AND
-        (state IN ('queued','ready_a','ready_b','ready_final','ready_review_final','story_ready_synthesis')
-        OR (mode='story' AND (state LIKE 'story_queued_%' OR state LIKE 'story_ready_%')))
-      ORDER BY created_at,id LIMIT 1`).get(context.workspaceSessionId,context.actorId,context.clientId);
+    // Only READY coordinators participate in dispatch. A paused project
+    // retains its pending mission, but cannot starve unrelated projects.
+    const row=this.db.prepare(`SELECT a.* FROM lab_autonomous_dialogues a
+      JOIN lab_orchestrators o ON o.id=a.orchestrator_id AND o.project_id=a.project_id
+      WHERE a.workspace_session_id=? AND a.actor_id=? AND a.client_id=?
+        AND o.status='ready' AND
+        (a.state IN ('queued','ready_a','ready_b','ready_final','ready_review_final','story_ready_synthesis')
+        OR (a.mode='story' AND (a.state LIKE 'story_queued_%' OR a.state LIKE 'story_ready_%')))
+      ORDER BY a.created_at,a.id LIMIT 1`).get(context.workspaceSessionId,context.actorId,context.clientId);
     if(!row)return {state:'idle'};
     this.assertMissionSession(context,row,{allowPaused:true});
     if(this.service.orchestrator(row.project_id,row.orchestrator_id).status!=='ready')return {state:'paused'};
@@ -1023,7 +1027,7 @@ export class AutonomousDialogue {
     const candidates=this.db.prepare(`SELECT a.* FROM lab_autonomous_dialogues a
       JOIN lab_orchestrators o ON o.id=a.orchestrator_id AND o.project_id=a.project_id
       WHERE a.workspace_session_id=? AND a.actor_id=? AND a.client_id=?
-        AND a.strategy='semantic' AND o.continuous_execution_enabled=1
+        AND a.strategy='semantic' AND o.status='ready' AND o.continuous_execution_enabled=1
         AND a.rowid=(SELECT MAX(b.rowid) FROM lab_autonomous_dialogues b
           WHERE b.workspace_session_id=a.workspace_session_id
             AND b.actor_id=a.actor_id AND b.client_id=a.client_id
@@ -1058,12 +1062,20 @@ export class AutonomousDialogue {
           requestId:'continuous_'+row.id});
         return {state:'advanced',missionId:next.missionId,automatic:true};
       }catch(error){
-        // A concrete authorization/identity/supersession failure revokes this
-        // coordinator only. Healthy projects keep their autonomy enabled.
+        const reason=boundedError(error);
+        // An unavailable provider or concurrent mission is a recoverable
+        // scheduling condition, not a revocation of the Owner's DEV intent.
+        // The next existing host tick retries after availability changes.
+        if(['autonomous_provider_unavailable','autonomous_owner_paused',
+          'orchestrator_paused','autonomous_mission_already_running'].includes(reason)){
+          blocked??={state:'deferred',missionId:row.id,reason};
+          continue;
+        }
+        // True source/identity/permission conflicts remain fail-closed.
         this.db.prepare(`UPDATE lab_orchestrators SET continuous_execution_enabled=0
           WHERE id=? AND project_id=?`).run(row.orchestrator_id,row.project_id);
         this.notify();
-        blocked??={state:'blocked',missionId:row.id,error:boundedError(error)};
+        blocked??={state:'blocked',missionId:row.id,error:reason};
       }
     }
     return blocked??{state:'idle'};
