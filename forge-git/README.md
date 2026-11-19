@@ -29,6 +29,17 @@ Para a implantação de desenvolvimento no **mesmo Windows**, execute **ambos** 
 
 O modo Dev dispensa os popups de vínculo e de envio inicial **somente na aplicação nativa**, sem dispensar grant de aplicativo, validação de escopo, identidade de Task, CAS de rascunho, fencing, recibos nem bloqueios de resultados incertos. A rota HTTP continua restrita a loopback, rejeita origens de navegador e nunca devolve bearer em texto aberto; a resposta é RSA-OAEP para o processo Forge Git e o cache local permanece cifrado via DPAPI. Qualquer outro uso deve continuar em modo normal, com consentimento nativo. Desconectar ou revogar no Core continua válido. O novo binário Core é necessário: não habilite DEV silencioso somente no Forge Git apontando para um Core antigo, pois o pedido será recusado.
 
+Para manter o modo DEV após reiniciar ou entrar novamente no Windows, use o inicializador canônico `forge-git/scripts/start-dev-windows.ps1`. Ele abre o Core instalado e o portátil Forge Git de `forge-git/dist`, reutilizando processos existentes sem duplicar o Core, SQLite ou scheduler. As opções DEV ficam somente nos processos filhos; não alteram o ambiente global do Windows.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File forge-git/scripts/start-dev-windows.ps1 -CheckOnly
+powershell -NoProfile -ExecutionPolicy Bypass -File forge-git/scripts/start-dev-windows.ps1 -InstallStartup
+# Para remover futuramente o início automático:
+powershell -NoProfile -ExecutionPolicy Bypass -File forge-git/scripts/start-dev-windows.ps1 -RemoveStartup
+```
+
+O atalho é criado somente na pasta **Inicializar do usuário**, não como serviço. Iniciar o Forge normalmente continua usando a política de produção; uma instância já aberta não é encerrada nem reconfigurada sem necessidade.
+
 ## Limite de migração
 
 O arquivo anterior `forge-git-project.json` permanece compatível para consultar registros antigos e preservar a URL observada da única conversa GPT exibida. O Forge Git **não cria mais esse arquivo em novas instalações durante a inicialização**; somente uma URL real de conversa justifica persistência. Métodos legados de criar turnos, agendar ciclos, reconhecer avisos, gerar fatos Git e coordenar continuidade foram removidos. Antigos agentes e avisos permanecem arquivados, imutáveis e sem autoridade. O arquivo **não** seleciona Tasks, renova leases nem decide continuidade. O painel de leitura canônica já substitui a antiga apresentação como fonte de verdade de projetos/tarefas. O envio **inicial** de uma Task já pode ser solicitado ao Core pelo canal local com confirmação nativa. Mensagens adicionais, rotação/failover, reconciliação de resultados incertos e continuidade entre sessões ainda pertencem ao Forge Core nativo; o Forge Git não os repete. A projeção de PRs ao vivo e a homologação física de substituição de conversas ainda não estão concluídas; não equiparar um recibo de resposta GPT a efeito GitHub ou publicação certificada. Não eliminar esse arquivo antes de conciliar conversas e efeitos preexistentes.
