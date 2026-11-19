@@ -53,3 +53,15 @@ test('pinned local Core executable survives Windows Startup without another host
   assert.match(script,/\$foreignCore = @\(\$coreProcesses/);
   assert.doesNotMatch(script,/setx|New-Service|sc\.exe|Stop-Process|taskkill/i);
 });
+
+test('packaged DEV Core is started only by the existing supervised lifecycle',()=>{
+  assert.match(script,/forge\\scripts\\dev-supervisor\.mjs/);
+  assert.match(script,/forge-dev-supervisor\.lock\.json/);
+  assert.match(script,/function Test-ForgeSupervisorOwner/);
+  assert.match(script,/process\.Name -eq 'node\.exe'/);
+  assert.match(script,/\$supervisorArgs = /);
+  assert.match(script,/--core-executable/);
+  assert.match(script,/forge_dev_supervisor_existing/);
+  assert.doesNotMatch(script,/Start-Process -FilePath \$coreExe/);
+  assert.doesNotMatch(script,/New-Service|schtasks|Register-ScheduledTask|Start-Job/i);
+});
