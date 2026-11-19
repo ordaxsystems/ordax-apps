@@ -109,6 +109,12 @@ test('same DEV supervisor manages installed packaged Core without another schedu
   assert.match(supervisor,/packagedCore=packageIndex/);
   assert.match(supervisor,/path\.basename\(packagedCore\)!=='OrdaX Forge\.exe'/);
   assert.match(supervisor,/child=spawn\(packagedCore/);
+  assert.match(supervisor,/ORDAX_FORGE_SUPERVISOR_ENTRY:fileURLToPath\(import\.meta\.url\)/);
+  assert.match(supervisor,/ORDAX_FORGE_SUPERVISOR_CORE_EXECUTABLE:packagedCore/);
+  const main=fs.readFileSync(path.join(forgeRoot,'product/desktop/main.mjs'),'utf8');
+  assert.match(main,/process\.env\.ORDAX_FORGE_SUPERVISOR_ENTRY/);
+  assert.match(main,/process\.env\.ORDAX_FORGE_SUPERVISOR_CORE_EXECUTABLE/);
+  assert.match(main,/\['--core-executable',packagedCore\]/);
   assert.match(supervisor,/forgeDevHeartbeatStale/);
   assert.match(supervisor,/supervisorRestartDelayMs/);
   assert.match(supervisor,/readLiveForgeDevSupervisorLock\(lockPath\)/);
