@@ -13,12 +13,15 @@ if(([int][bool]$CheckOnly + [int][bool]$InstallStartup + [int][bool]$RemoveStart
 }
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $coreExe = Join-Path $env:LOCALAPPDATA 'Programs\OrdaX Forge\OrdaX Forge.exe'
-$installedGitExe = Join-Path $env:LOCALAPPDATA 'Programs\OrdaX Forge Git\OrdaX-Forge-Git-0.1.0.exe'
+$installedGitExe = Join-Path $env:LOCALAPPDATA 'Programs\OrdaX Forge Git\OrdaX Forge Git.exe'
+$installedPortableGitExe = Join-Path $env:LOCALAPPDATA 'Programs\OrdaX Forge Git\OrdaX-Forge-Git-0.1.0.exe'
 $checkoutGitExe = Join-Path $root 'forge-git\dist\OrdaX-Forge-Git-0.1.0.exe'
-# Prefer the stable DEV portable installation; keep the canonical checkout
-# build as a fallback. One executable, one Core, no duplicate host.
+# Prefer the actual unpacked Windows runtime when the portable wrapper is
+# unavailable. Both are the same single Forge Git frontend, never a new Core.
 $gitExe = if(Test-Path -LiteralPath $installedGitExe -PathType Leaf){
   $installedGitExe
+}elseif(Test-Path -LiteralPath $installedPortableGitExe -PathType Leaf){
+  $installedPortableGitExe
 }else{$checkoutGitExe}
 $link = Join-Path ([Environment]::GetFolderPath('Startup')) 'OrdaX Forge Dev.lnk'
 # Read-only status and removal must work even if a binary is absent.

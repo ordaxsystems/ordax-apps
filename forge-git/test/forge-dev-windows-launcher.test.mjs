@@ -36,7 +36,9 @@ test('single owner Startup shortcut is inspectable and reversible without launch
 test('DEV launcher prefers installed Forge Git and keeps source build as a fallback',()=>{
   assert.match(script,/Programs\\OrdaX Forge Git\\OrdaX-Forge-Git-0\.1\.0\.exe/);
   assert.match(script,/\$gitExe = if\(Test-Path -LiteralPath \$installedGitExe -PathType Leaf\)/);
-  assert.match(script,/\$installedGitExe\s*\n\}else\{\$checkoutGitExe\}/);
+  assert.match(script,/Programs\\OrdaX Forge Git\\OrdaX Forge Git\.exe/);
+  assert.match(script,/\$installedGitExe\s*\n\}elseif\(Test-Path -LiteralPath \$installedPortableGitExe -PathType Leaf\)/);
+  assert.match(script,/\$installedPortableGitExe\s*\n\}else\{\$checkoutGitExe\}/);
   assert.match(script,/Where-Object \{-not \$_\.HasExited\}/);
   assert.match(script,/if\(!\$CheckOnly -and !\$RemoveStartup\)/);
   assert.match(script,/gitBinary='/);
