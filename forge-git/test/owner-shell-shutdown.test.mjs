@@ -43,12 +43,12 @@ test('shutdown is fail-closed and releases all views even when one throws',()=>{
   assert.equal(workers.size,0);
 });
 
-test('native owner window uses the one shutdown gate on explicit close and quit',()=>{
+test('native owner window exits deterministically after the one cleanup gate',()=>{
   const main=readFileSync(new URL('../main.mjs',import.meta.url),'utf8');
-  assert.match(main,/win\.on\('closed',[\s\S]*?releaseOwnedViews\(\)[\s\S]*?app\.quit\(\)/);
+  assert.match(main,/win\.on\('closed',[\s\S]*?releaseOwnedViews\(\)[\s\S]*?app\.exit\(result\.failures\?1:0\)/);
   assert.match(main,/app\.on\('before-quit',[\s\S]*?releaseOwnedViews\(\)/);
   assert.ok(main.includes('if(!ownsProfile)app.exit(0)'),
     'duplicate instances still leave without opening another profile');
   assert.equal(main.includes('process.exit(0)'),false,
-    'the live shell uses the normal Electron quit lifecycle');
+    'process termination remains owned by Electron, after resource cleanup');
 });
