@@ -120,5 +120,14 @@ test('same DEV supervisor manages installed packaged Core without another schedu
   assert.match(supervisor,/readLiveForgeDevSupervisorLock\(lockPath\)/);
   assert.match(launcher,/Test-ForgeSupervisorOwner/);
   assert.match(launcher,/--core-executable/);
+  assert.match(launcher,/ExpectedCorePath/);
+  assert.match(launcher,/forge_dev_supervisor_core_mismatch/);
+  assert.match(launcher,/forge_dev_supervisor_foreign_owner/);
+  assert.match(launcher,/forge_dev_core_without_canonical_supervisor/);
+  assert.match(launcher,/forge_dev_core_recovering_under_canonical_supervisor/);
+  assert.match(launcher,/gitCheckoutMain/);
+  assert.match(launcher,/supervisorMatchesCore/);
+  assert.match(launcher,/\[switch\]\$InstallStartup/);
+  assert.match(launcher,/\[switch\]\$RemoveStartup/);
   assert.doesNotMatch(launcher,/Start-Process -FilePath \$coreExe/);
 });

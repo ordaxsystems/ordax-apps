@@ -46,15 +46,30 @@ $scriptPath = (Resolve-Path -LiteralPath $PSCommandPath).Path
 $supervisorScript = Join-Path $root 'forge\scripts\dev-supervisor.mjs'
 $supervisorLock = Join-Path $env:LOCALAPPDATA 'OrdaX\Forge\supervisor\forge-dev-supervisor.lock.json'
 function Test-ForgeSupervisorOwner {
+  param([Parameter(Mandatory=$true)][string]$ExpectedCorePath)
   if(!(Test-Path -LiteralPath $supervisorLock -PathType Leaf)){return $false}
   try {
     $receipt = Get-Content -LiteralPath $supervisorLock -Raw | ConvertFrom-Json
     $pidValue = [int]$receipt.pid
     if($pidValue -lt 1){return $false}
     $process = Get-CimInstance Win32_Process -Filter "ProcessId=$pidValue" -ErrorAction Stop
-    return [bool]($process -and $process.Name -eq 'node.exe' -and
-      $process.CommandLine -like '*dev-supervisor.mjs*')
-  }catch{return $false}
+    if(!$process){return $false}
+    if(!($process.Name -eq 'node.exe') -or
+       $process.CommandLine -notlike ('*'+$supervisorScript+'*')){
+      throw 'forge_dev_supervisor_foreign_owner'
+    }
+    # The lock alone does not prove which packaged Core is supervised.
+    # Require the exact quoted --core-executable argument, not a loose path substring.
+    $expectedArg='(^|\s)--core-executable\s+"'+[regex]::Escape($ExpectedCorePath)+'"(?=\s|$)'
+    if($process.CommandLine -notmatch $expectedArg){
+      throw 'forge_dev_supervisor_core_mismatch'
+    }
+    return $true
+  }catch{
+    if($_.Exception.Message -in @('forge_dev_supervisor_foreign_owner',
+                                  'forge_dev_supervisor_core_mismatch')){throw}
+    return $false
+  }
 }
 if($InstallStartup -or $RemoveStartup){
   $shell = New-Object -ComObject WScript.Shell
@@ -85,6 +100,7 @@ if($InstallStartup -or $RemoveStartup){
   Write-Output 'forge_dev_startup_installed'
   exit 0
 }
+$supervisorMatchesCore = Test-ForgeSupervisorOwner -ExpectedCorePath $coreExe
 $coreProcesses = @(Get-Process -Name 'OrdaX Forge' -ErrorAction SilentlyContinue |
   Where-Object {-not $_.HasExited})
 $foreignCore = @($coreProcesses | Where-Object {$_.Path -and $_.Path -ne $coreExe})
@@ -95,14 +111,28 @@ $foreignGit = @($gitLaunchers | Where-Object {$_.Path -and $_.Path -ne $gitExe})
 if($foreignGit.Count){throw 'forge_dev_foreign_git_already_running'}
 $gitWindows = @(Get-Process -Name 'OrdaX Forge Git' -ErrorAction SilentlyContinue |
   Where-Object {-not $_.HasExited})
-$gitActive = $gitLaunchers.Count -gt 0 -or $gitWindows.Count -gt 0
+# The checkout DEV frontend is also Electron, not a renamed Forge Git binary.
+# Ignore renderer/utility subprocesses and recognize only the canonical main.
+$gitRoot = Join-Path $root 'forge-git'
+$gitCheckoutMain = @(Get-CimInstance Win32_Process -Filter "Name = 'electron.exe'" -ErrorAction SilentlyContinue |
+  Where-Object {
+    $_.CommandLine -and $_.CommandLine -notmatch '(?:^|\s)--type=' -and
+    $_.CommandLine.IndexOf($gitRoot,[StringComparison]::OrdinalIgnoreCase) -ge 0
+  })
+$gitActive = $gitLaunchers.Count -gt 0 -or $gitWindows.Count -gt 0 -or
+  $gitCheckoutMain.Count -gt 0
 if($CheckOnly){
   Write-Output ('forge_dev_check coreRunning='+($coreProcesses.Count -gt 0)+
-    ' supervisorRunning='+(Test-ForgeSupervisorOwner)+
+    ' supervisorRunning='+$supervisorMatchesCore+
+    ' supervisorMatchesCore='+$supervisorMatchesCore+
     ' gitRunning='+$gitActive+' coreBinary='+(Test-Path -LiteralPath $coreExe -PathType Leaf)+
     ' gitBinary='+(Test-Path -LiteralPath $gitExe -PathType Leaf)+
     ' startupInstalled='+(Test-Path -LiteralPath $link))
   exit 0
+}
+# A manually launched Core with no matching Supervisor is not this DEV lifecycle.
+if($coreProcesses.Count -and !$supervisorMatchesCore){
+  throw 'forge_dev_core_without_canonical_supervisor'
 }
 # Inherit process-local DEV policy into both binaries without changing
 # persistent per-user/machine environment variables: no production drift.
@@ -111,8 +141,9 @@ $env:ORDAX_FORGE_DEV_AUTO_PAIR = '1'
 $env:ORDAX_FORGE_DEV_MCP_PORT = '56215'
 $env:ORDAX_FORGE_DEV_MCP_ENDPOINT = 'http://127.0.0.1:56215/mcp'
 if(!$coreProcesses.Count){
-  if(Test-ForgeSupervisorOwner){
+  if($supervisorMatchesCore){
     Write-Output 'forge_dev_supervisor_existing'
+    Write-Output 'forge_dev_core_recovering_under_canonical_supervisor'
   }else{
     if(!(Test-Path -LiteralPath $supervisorScript -PathType Leaf))
       {throw 'forge_dev_supervisor_source_missing'}
