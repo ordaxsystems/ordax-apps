@@ -1049,7 +1049,7 @@ test('new missions are local drafts and never silently start a GPT work conversa
   assert.match(packagedSmoke,/conversationCards!==2/);
   assert.match(packagedSmoke,/phase='work_list_refresh'/);
   assert.match(packagedSmoke,/phase='coordinator_reopen'/);
-  assert.match(packagedSmoke,/taskTitle'\)\.textContent==='Frente criada pelo MCP'/);
+  assert.match(packagedSmoke,/taskTitle'\)\.textContent==='Frente registrada pelo App'/);
   assert.match(packagedSmoke,/cleanupReasons\.has\(error\?\.message\)/);
   assert.match(packagedSmoke,/app_orchestration_scenario_failed/);
   assert.match(packagedSmoke,/phase:reportedPhase,reason/);

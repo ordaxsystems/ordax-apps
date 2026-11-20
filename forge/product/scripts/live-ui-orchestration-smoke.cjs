@@ -174,14 +174,14 @@ let cleanupFailurePhase=null;
         analysisMode:(await window.ordax.orchestratorInvoke('status')).analysisMode,
         scopedWorkCount:document.querySelectorAll('#orchestratorWorks .work-card').length,
         analysisDisabled:document.getElementById('analyzeWorks')?.disabled===true,
-        prepareEnabled:document.getElementById('prepareWork')?.disabled===false
+        prepareBlocked:document.getElementById('prepareWork')?.disabled===true
       };
     })()`);
     if(!gptOnly?.keyRoutesAbsent||!gptOnly?.modelRoutesAbsent||
       !gptOnly.gptWebLoginPresent||!gptOnly.keyInputAbsent||
       gptOnly.provider!=='chatgpt_web'||gptOnly.legacyConfigured!==false||
       !gptOnly.groqFlagAbsent||!gptOnly.analysisAvailable||gptOnly.analysisMode!=='app_owned'||
-      gptOnly.scopedWorkCount!==0||!gptOnly.analysisDisabled||!gptOnly.prepareEnabled)
+      gptOnly.scopedWorkCount!==0||!gptOnly.analysisDisabled||!gptOnly.prepareBlocked)
       throw Error('retired_model_api_exposed');
     phase='mcp_work_create';
     const summary=await evaluate(`(async()=>{
@@ -194,9 +194,18 @@ let cleanupFailurePhase=null;
       await api.orchestratorMcp({jsonrpc:'2.0',method:'notifications/initialized'});
       const catalog=await api.orchestratorMcp({jsonrpc:'2.0',id:2,method:'tools/list'});
       const command={jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'forge_work_create',arguments:{
-        requestId:'app-only-work-once',projectId:p,orchestratorId:o,title:'Frente criada pelo MCP'}}};
-      const first=await api.orchestratorMcp(command);
-      const repeated=await api.orchestratorMcp({...command,id:4});
+        requestId:'app-only-work-once',projectId:p,orchestratorId:o,title:'Frente registrada pelo App'}}};
+      // A passive renderer must not invoke mutating MCP tools through its
+      // protocol inspector. The user-editable Work record is created by the
+      // existing App storage operation; GPT execution remains MCP-only.
+      let rendererMcpWriteBlocked=false;
+      try { await api.orchestratorMcp(command); }
+      catch(error){rendererMcpWriteBlocked=String(error?.message||error)
+        .includes('forge_passive_app_mcp_only');}
+      const storedInput={requestId:'app-only-work-once',projectId:p,orchestratorId:o,
+        title:'Frente registrada pelo App'};
+      const first=await api.orchestratorInvoke('work_create',storedInput);
+      const repeated=await api.orchestratorInvoke('work_create',storedInput);
       const works=await api.orchestratorInvoke('work_list',{projectId:p});
       const orchs=await api.orchestratorInvoke('orchestrators_list',{projectId:p});
       const messages=await api.orchestratorInvoke('work_messages',{projectId:p,taskId:orchs.orchestrators[0].chat_task_id});
@@ -205,20 +214,20 @@ let cleanupFailurePhase=null;
       return {projectId:p,toolCount:catalog.result.tools.length,
         continuationAvailable:catalog.result.tools.some(t=>t.name==='forge_continuity_status'&&t.annotations?.readOnlyHint===true)&&
           catalog.result.tools.some(t=>t.name==='forge_continuity_proposals_set'&&t.annotations?.readOnlyHint===false),
-        commandSucceeded:first.result.structuredContent.status==='succeeded',
-        idempotent:JSON.stringify(first.result)===JSON.stringify(repeated.result),
+        commandSucceeded:first.status==='succeeded',rendererMcpWriteBlocked,
+        idempotent:JSON.stringify(first)===JSON.stringify(repeated),
         workCount:works.works.length,workId:works.works[0]?.id,coordinatorMessages:messages.messages.length,
         missionDraftPreserved:missionTask?.draft==='Criar missão isolada sem enviar ao provedor'&&missionTask?.draft_revision===1};
     })()`);
     // Native Forjador sends stay UI-only; MCP cannot recursively send to GPT.
-    if(summary.projectId!==projectId||summary.toolCount!==ORCHESTRATOR_TOOLS.filter(tool=>tool.operation!=='forjador_send').length||!summary.continuationAvailable||!summary.commandSucceeded||
+    if(summary.projectId!==projectId||summary.toolCount!==ORCHESTRATOR_TOOLS.filter(tool=>tool.operation!=='forjador_send').length||!summary.continuationAvailable||!summary.commandSucceeded||!summary.rendererMcpWriteBlocked||
       !summary.idempotent||summary.workCount!==2||!summary.missionDraftPreserved||summary.coordinatorMessages!==0)
       throw Error('native_mcp_state_mismatch');
     phase='work_list_refresh';
-    await wait("[...document.querySelectorAll('#tasks .task strong')].some(n=>n.textContent==='Frente criada pelo MCP')");
+    await wait("[...document.querySelectorAll('#tasks .task strong')].some(n=>n.textContent==='Frente registrada pelo App')");
     phase='work_open';
-    await evaluate(`([...document.querySelectorAll('#tasks .task')].find(row=>row.querySelector('strong')?.textContent==='Frente criada pelo MCP')?.click())`);
-    await wait("!document.getElementById('taskPanel').classList.contains('hidden') && document.getElementById('orchestrationPanel').hidden && document.getElementById('taskTitle').textContent==='Frente criada pelo MCP'");
+    await evaluate(`([...document.querySelectorAll('#tasks .task')].find(row=>row.querySelector('strong')?.textContent==='Frente registrada pelo App')?.click())`);
+    await wait("!document.getElementById('taskPanel').classList.contains('hidden') && document.getElementById('orchestrationPanel').hidden && document.getElementById('taskTitle').textContent==='Frente registrada pelo App'");
     phase='coordinator_reopen';
     await evaluate(`document.querySelector('#orchestratorNavList button.active').click()`);
     await wait("!document.getElementById('orchestrationPanel').hidden && document.getElementById('taskPanel').classList.contains('hidden')");
@@ -234,7 +243,7 @@ let cleanupFailurePhase=null;
       analysisDisabled:document.getElementById('analyzeWorks').disabled}))()`);
     phase='final_layout_verify';
     if(layoutResult.openedWork!=='Frente criada pela interface'||layoutResult.conversationCards!==2||
-      layoutResult.analysisDisabled!==false)
+      layoutResult.analysisDisabled!==true)
       throw Error('work_conversation_layout_failed');
     phase='project_switch_real';
     // On the same packaged Electron profile, create a second project with
@@ -304,7 +313,7 @@ let cleanupFailurePhase=null;
     })()`);
     if(!Array.isArray(restored?.first)||restored.first.length!==3||
       !restored.first.includes('Primeira frente')||
-      !restored.first.includes('Frente criada pelo MCP')||
+      !restored.first.includes('Frente registrada pelo App')||
       !restored.first.includes('Frente criada pela interface')||!restored.otherVisible)
       throw Error('project_switch_lost_scoped_work');
     successReport={schema:'ordax.lab.orchestration-app-e2e.v1',ok:true,

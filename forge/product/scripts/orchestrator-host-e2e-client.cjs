@@ -82,7 +82,7 @@ async function verifyHostFixture({child,root,profile,exchange}) {
       throw Error('host_shared_project_missing');
     const works=await exchange(request('work_list',{projectId}));
     const workRows=works.result?.works||[];
-    const mcpWork=workRows.find(work=>work.title==='Frente criada pelo MCP');
+    const mcpWork=workRows.find(work=>work.title==='Frente registrada pelo App');
     if(works.ok!==true||workRows.length!==3||!mcpWork||
       !workRows.some(work=>work.title==='Primeira frente')||
       !workRows.some(work=>work.title==='Frente criada pela interface'))

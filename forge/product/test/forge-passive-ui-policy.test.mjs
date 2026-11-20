@@ -11,6 +11,8 @@ test('App native renderer can read canonical data, but not execute GPT, agents o
     assert.doesNotThrow(()=>assertPassiveUiOperation(tool.operation),tool.operation);
   for(const name of PASSIVE_UI_STORAGE_OPERATIONS)
     assert.doesNotThrow(()=>assertPassiveUiOperation(name),name);
+  assert.doesNotThrow(()=>assertPassiveUiOperation('mission_create'),
+    'creating a project with a mission draft is storage, never GPT execution');
   for(const blocked of ['work_send','forjador_send','proposal_send','project_command_run',
     'project_file_write','project_worktree_verify','project_worktree_integrate',
     'work_parallel_launch','work_accept','autonomous_continuous_set',

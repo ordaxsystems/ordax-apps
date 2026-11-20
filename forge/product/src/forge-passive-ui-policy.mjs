@@ -4,7 +4,7 @@ import {ORCHESTRATOR_TOOLS} from './forge-contract.mjs';
 // authority. Forge MCP remains the sole caller of model, task effect and
 // terminal operations. These mutations only persist user-edited records.
 export const PASSIVE_UI_STORAGE_OPERATIONS=Object.freeze([
-  'project_create','project_quick_create','project_rename',
+  'project_create','project_quick_create','mission_create','project_rename',
   'project_repository_set','orchestrator_create','orchestrator_pause',
   'work_create','work_batch_create','work_draft_set','work_dependency_set'
 ]);
