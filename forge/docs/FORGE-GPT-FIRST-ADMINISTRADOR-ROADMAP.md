@@ -17,6 +17,204 @@ Status: **P0 GPT→Forge MCP externo e pelo executor GPT Web do Forge comprovado
 Atualizado: 2026-11-19. **Precedência para direção Forge V3: este plano único > documentos históricos anteriores.** Para afirmações de entrega, código + testes + prova física prevalecem. `ORCHESTRATOR-CANONICAL-PRODUCT.md` permanece apenas como registro histórico do desenho de 01/11.
 
 
+## Evolução planejada — Forge MCP coordena múltiplos chats; Forge App persiste e exibe (20/11/2026)
+
+> **Decisão do Owner — planejamento, não implementação.** Aplicar ao Forge o princípio definido para o OrdaX Host Local: **GPT decide e escreve; Forge MCP executa operações de memória e coordenação; aplicativo Forge guarda e mostra o estado**. Vários chats GPT devem compartilhar contexto e indicar quais tarefas estão em andamento, evitando trabalho duplicado. Esta seção amplia **o roadmap único vigente**, sem criar novo produto, segunda fonte de verdade, banco, scheduler ou servidor MCP.
+
+### A. Fronteira técnica: o que é Forge MCP e o que é Forge App
+
+~~~text
+GPT Web A ─┐
+GPT Web B ─┼──> Forge MCP — ferramentas e lógica operacional explícita
+GPT Web C ─┘                │
+                            ├─ consultar/escrever memórias do projeto
+                            ├─ registrar sessões e atividades
+                            ├─ reservar escopos de trabalhos existentes
+                            ├─ atualizar progresso e liberar claims
+                            └─ consultar Tasks/Runs, recibos e handoffs
+                                         │
+                             Forge Core / Aplicativo
+                            (uma instância existente)
+                                         │
+                             SQLite canônico único
+                        projeto / Task / Run / memória /
+                             sessão / claim / recibo
+                                         │
+                         Forge UI (Forge Git como cliente)
+                            visualização do mesmo estado
+~~~
+
+- **GPT/cliente:** raciocínio, planejamento, conteúdo das memórias, escolha de tarefas e decisões. **MCP é protocolo + código de ferramentas, não um segundo modelo de IA.**
+- **Forge MCP:** fornece as operações que o GPT chama para memória, consulta, atividade e coordenação. Sua implementação pode permanecer integrada ao processo do **Core existente**: separar responsabilidades **não exige** outro servidor, banco ou aplicativo.
+- **Forge App/Core:** persiste dados, atende ao MCP e à UI e mantém os mecanismos técnicos necessários para conexão de provedores, Runs, recibos, transações, recuperação e acesso a recursos. Para **esta nova camada**, não interpreta conteúdo nem cria memórias ou escolhe trabalhos espontaneamente.
+- **Forge Git:** permanece transporte/visualização subordinado ao mesmo Core. Não recebe Store, MCP, agendador ou executor paralelo.
+- **OrdaX MCP/Host Local:** continuam produtos separados. **Não** direcionar os dois aplicativos ao mesmo arquivo SQLite nem introduzir dependência obrigatória entre eles. Qualquer integração futura exigirá contrato explícito e owner correto.
+
+**Importante:** o Core atualmente também coordena execução e continuidade. Não eliminá-las prematuramente: as decisões do GPT/MCP devem substituir as regras inteligentes gradualmente, com provas reais; o despacho técnico de Runs e a prevenção de replay permanecem necessários. A arquitetura-alvo não autoriza excluir funções que mantêm o Forge operacional.
+
+### B. Estado real existente — reaproveitar, não reconstruir
+
+| Capacidade | Fonte já presente em \`ordax-apps\` | Evolução necessária |
+|---|---|---|
+| Um catálogo App/IPC/MCP | \`forge/product/src/forge-contract.mjs\` | Acrescentar somente ferramentas ausentes |
+| Servidor MCP local | \`forge/product/src/forge-loopback-mcp.mjs\` | Reusar sessão/transporte/grants |
+| Projetos, Tasks, Runs, recibos | \`forge/product/src/orchestrator-service.mjs\` e Store SQLite | Manter IDs canônicos e integrar claims |
+| Memória de projeto, notas e sugestões | \`forge/product/src/forge-project-memory-view.mjs\` | Adicionar escrita explícita pelo GPT sem segundo store |
+| Handoff e decisões de continuidade | \`forge/product/src/forge-project-handoff-view.mjs\` | Compartilhar com novos chats |
+| Dependências e paralelismo | \`forge/product/src/work-plan-read-model.mjs\` | Reutilizar Tasks/planos existentes |
+| Instruções do executor GPT | \`forge/product/src/forge-executor-context.mjs\` | Acrescentar protocolo de consulta/claim/retomada |
+| Interface Forge | \`forge/product/desktop/orchestrator-ui.mjs\` | Mostrar sessões, memória, claims e última atividade |
+| Cliente Forge Git | \`forge-git/forge-core-read-client.mjs\` | Somente leitura/projeção do Core quando necessária |
+
+O catálogo atual já possui \`forge_project_memory\`, \`forge_project_memory_propose\`, \`forge_project_handoff\`, \`forge_work_create\`, \`forge_work_list\`, \`forge_work_get\`, \`forge_work_plan\`, \`forge_work_dependency_set\` e \`forge_work_parallel_launch\`. Isso **não é prova** de que chats GPT independentes possam assumir escopos exclusivos ou gravar memórias livremente. \`project_memory_propose\` cria candidato editorial, não memória aceita automaticamente nem prova de ação externa.
+
+**Status de referência consultado em 20/11/2026:** Forge App \`0.2.0-alpha.42\` online, pool GPT Web com quatro workers prontos e nenhum Run ativo naquela consulta. É um retrato de capacidade do executor, **não** homologação do sistema multichat desejado.
+
+### C. Memória escrita pelo MCP/GPT, persistência passiva do App
+
+**Regra:** o GPT decide *o quê*, *por quê* e *quando* memorizar. Uma ferramenta MCP recebe projeto, conteúdo, origem e revisão; o Core somente persiste/retorna o registro. Não colocar IA, sumarizador, extração sem solicitação, vetores nem classificação no aplicativo.
+
+Ferramentas candidatas, **apenas se o código atual não possuir equivalentes**:
+
+- \`forge_memory_save\`: registrar nota \`agent_authored\` explicitamente solicitada por um GPT.
+- \`forge_memory_search\`: consulta por projeto, palavras-chave e filtros simples.
+- \`forge_memory_get\`: leitura por ID.
+- \`forge_memory_update\`: revisão explícita com CAS.
+- \`forge_memory_delete\`: remoção solicitada, com recibo.
+
+Usar o esquema canônico \`project_memory_items\` e suas relações reais; verificar migrations e constraints antes de modificar. **Não criar \`memories.sqlite\`, novos serviços, outro modelo de memória ou tabela duplicada.** Se uma coluna de origem ou revisão faltar, adicionar o mínimo compatível à Store existente. Preservar a trilha editorial de \`project_memory_propose\`, mas permitir no DEV um registro direto escrito pelo GPT, marcado como **declaração do agente**, sem criar um novo gate editorial artificial. Nota de agente **nunca** significa arquivo, commit ou deploy verificado.
+
+**Exemplo de intenção:** Chat A grava “o projeto X validou Node 22 para o build”. Chat B consulta \`forge_memory_search\` e recebe o conteúdo com \`memoryId\`, \`projectId\`, \`sourceSessionId\`, \`taskId\` e \`updatedAt\`. O Forge App não entende Node e não reescreve o texto.
+
+### D. Identificação de chats e registro de atividade
+
+Uma **conversa GPT** não é equivalente a uma sessão HTTP do MCP nem a um Run. O cliente pode não fornecer o identificador estável da conversa; não inferir identidade por aba, janela ou usuário.
+
+Definir \`agentSessionId\` persistente gerado pelo Forge MCP, associado a \`projectId\` e opcionalmente \`taskId\`/Run existente. Identidade lógica mínima:
+
+~~~json
+{
+  "agentSessionId": "uuid",
+  "projectId": "project_...",
+  "taskId": "task_... (opcional)",
+  "agentLabel": "Chat A",
+  "origin": "forge_embedded|forge_mcp_external",
+  "state": "active|paused|finished",
+  "startedAt": "ISO-8601",
+  "lastActivityAt": "ISO-8601"
+}
+~~~
+
+Ferramentas candidatas: \`forge_agent_session_start\`, \`forge_agent_session_touch\`, \`forge_agent_session_end\`, \`forge_agent_sessions_list\`. Primeiro mapear sessões e recibos já existentes; não duplicar \`workspace_session\`, Runs ou sessões MCP transportadas.
+
+**O que “ativo” significa:** houve atividade **registrada pelo MCP** recentemente. Isso não prova que o GPT continua pensando entre chamadas. Exibir “atividade recente”, “sem atualização” ou “Run em execução confirmado” conforme dados reais, sem falsos estados online.
+
+### E. Coordenação multichat sem duplicar tarefas
+
+A unidade de trabalho continua sendo a **Task atual do Forge**; acrescentar apenas uma **reserva de escopo** (\`claim\`) associada a essa Task. Não duplicar \`forge_work_create\` nem bloquear o projeto inteiro.
+
+~~~text
+Projeto: sistema-financeiro
+  Chat A → scopeKey=auth       → reservado
+  Chat B → scopeKey=dashboard  → reservado, em paralelo
+  Chat C → scopeKey=auth       → conflito, encontra Chat A
+~~~
+
+Operações candidatas: \`forge_work_claim\`, \`forge_work_activity\`, \`forge_work_release\`, \`forge_work_finish\`; leitura por \`forge_work_list/get\` existentes. \`claim\` registra responsável; **não** despacha automaticamente GPT, cria Run, inicia integração Git nem autoriza o uso de ferramentas.
+
+**Atomicidade mínima indispensável:** dois chats podem ler “escopo livre” simultaneamente; a decisão de exclusividade deve usar transação SQLite no Core com chave única \`projectId:scopeKey\`, \`INSERT ... ON CONFLICT\` ou CAS por revisão/geração. O MCP cuida da decisão de negócio, o SQLite evita dois vencedores. Reusar esquema/lease existente quando possível, em vez de inventar outro. \`requestId\` estável impede que retry crie dois claims, duas memórias ou dois Runs.
+
+Metadados mínimos de claim: \`projectId\`, \`scopeKey\`, \`taskId\`, \`ownerAgentSessionId\`, \`leaseExpiresAt\`, \`generation\`, \`lastActivityAt\` e \`requestId\`. Um lease expirado **não** prova fim da tarefa. Antes de transferir a reserva, consultar handoff, Run e recibos: status \`running\` ou \`uncertain\` impede repetir efeitos sem reconciliação. Na V1, a exclusão é por **chave exata de escopo**; conflitos entre arquivos ou escopos semanticamente sobrepostos ficam para evolução posterior.
+
+### F. Fluxo de trabalho de vários chats
+
+1. **Chat A:** \`forge_discover\` → \`forge_project_memory\` → \`forge_project_handoff\` → inicia sessão → \`forge_work_list\` → assume \`auth\` → usa as ferramentas do Forge MCP para implementar → atualiza progresso e memória.
+2. **Chat B:** consulta o mesmo projeto, encontra \`auth\` ocupado e assume \`dashboard\`, sem impedir trabalho paralelo.
+3. **Chat C:** tenta \`auth\`, recebe conflito com Task, responsável, status e hora de atividade. O GPT escolhe outra frente ou aguarda; **não** duplica trabalho.
+4. **Interrupção:** falta de atividade vira “sem atualização”. Outro chat só pode retomar após conferir Run, recibos e progresso, mantendo a Task canônica.
+5. **Conclusão:** GPT grava resultado, nota de memória quando útil, encerra o trabalho e libera claim. Integrador e aceite seguem os contratos físicos existentes.
+
+A orientação de “consultar trabalhos antes de começar” deve constar no protocolo MCP do executor, mas **não** presumir que todos os clientes sigam prompts automaticamente. É a transação atômica do claim que decide concorrência real.
+
+### G. Aplicativo Forge: painel de acompanhamento, não inteligência
+
+No painel nativo existente, apresentar **projeto → sessões GPT → trabalhos/escopos → responsável → progresso → última atividade → memórias**. Forge Git pode consumir a **mesma projeção de leitura do Core**; não criar seu próprio ledger de tarefas.
+
+| Estado apresentado | Base observável |
+|---|---|
+| Atividade recente | \`lastActivityAt\` registrado |
+| Execução confirmada | Run/recibo atual em execução |
+| Sem atualização | claim aberto, mas sem chamadas recentes |
+| Pendente de reconciliação | comando/efeito incerto |
+| Ocioso | sem Runs ativos ou atividade recente, conforme Core |
+| Concluído | Task/resultado registrados e verificáveis |
+
+O App não inicia tarefas, não escreve memórias nem envia prompts automaticamente como consequência de abrir a tela. Manter estado de UI como **projeção** da Store, nunca segundo SSOT.
+
+### H. Inatividade e possível “despertar” do chat — futuro, não agora
+
+Preparar dados de atividade, trabalhos pendentes e um eventual evento declarativo de notificação. Futuramente, **um cliente que comprove suporte** poderá mostrar: “Há um trabalho pendente no projeto X. Deseja retomá-lo?”. **Um servidor MCP sozinho não consegue garantir o envio de nova mensagem para uma conversa arbitrária do ChatGPT Web.** Não implementar scheduler, navegador oculto ou novo serviço prometendo tal capacidade, nem confundir recurso MCP com possibilidade de iniciar um turno por conta própria.
+
+### I. Entregas em evolução rápida (sem refatoração total antecipada)
+
+**F0 — Baseline mínimo e owner da alteração**
+- [ ] Ler \`AGENTS.md\`, esta seção e os pontos afetados da Store, contrato, serviço, MCP e testes.
+- [ ] Localizar tabelas atuais de Tasks, Runs, \`project_memory_items\`, sessões, recebimentos e claims/leases; só criar campos ou tabelas ausentes.
+- [ ] Verificar versão instalada e não confundir capacidades do catálogo com E2E GPT→MCP comprovado.
+
+**F1 — Memória explícita compartilhada (primeira entrega funcional)**
+- [ ] Expor operações MCP de gravação/consulta/atualização de memória no catálogo único.
+- [ ] Persistir no SQLite existente com \`agentSessionId\`, \`projectId\`, \`taskId\` e proveniência.
+- [ ] Provar Chat A gravando, Chat B lendo e reinício do app mantendo o registro.
+
+**F2 — Sessões e claims concorrentes**
+- [ ] Criar/reusar identificação estável de sessões de agentes.
+- [ ] Implementar reserva atômica por escopo vinculado à Task atual; conflitos legíveis ao GPT.
+- [ ] Renovar atividade por chamadas MCP, não por suposição de pensamento.
+- [ ] Provar duas reservas diferentes em paralelo; na mesma chave um único vencedor; transferência só após reconciliação.
+
+**F3 — UX observacional**
+- [ ] Projetar dados na interface atual \`forge/product/desktop/orchestrator-ui.mjs\`, sem outra página/aplicativo responsável pelo estado.
+- [ ] Se necessário, mostrar a mesma projeção no Forge Git por \`forge-core-read-client.mjs\`, sem estado independente.
+- [ ] Não criar automações de escrita, execução ou envio vinculadas ao dashboard.
+
+**F4 — Continuidade e reativação condicionada**
+- [ ] Retomada por nova conversa usando Task, memória e recibos existentes.
+- [ ] Refinar escopos sobrepostos somente se conflito real demonstrar necessidade.
+- [ ] Considerar notificações apenas quando houver cliente compatível e autorização real.
+- [ ] Segurança mais ampla do produto comercial fica para outra etapa; **não remover** integridade do banco, grants vigentes e proteção contra replay no DEV.
+
+### J. Aceitação objetiva
+
+| Cenário | Prova esperada |
+|---|---|
+| Chat A salva e Chat B lê uma memória do mesmo projeto | ID/conteúdo/proveniência iguais, sem copiar histórico manualmente |
+| Forge reinicia | memória, trabalho e sessão continuam consultáveis |
+| Dois chats assumem simultaneamente \`projeto:auth\` | apenas um claim concedido |
+| Dois chats assumem \`auth\` e \`dashboard\` | ambos conseguem trabalhar |
+| Chat interrompido sem heartbeat | “sem atualização”, nunca “concluído” presumido |
+| Run com efeito incerto e claim expirado | nada é reexecutado até reconciliar |
+| Repetir a mesma operação com \`requestId\` | não duplica efeito nem claim |
+| Novo chat conhece apenas \`taskId\` | recupera contexto e não recria Task |
+| UI aberta sem chats ativos | estado ocioso informativo, sem iniciar execução |
+| GPT chama ferramenta MCP real e grava artefato | recibo de execução e releitura física; resposta textual não substitui prova |
+
+**Definition of Done:** código no owner certo, testes proporcionais, E2E físico com duas sessões GPT independentes, persistência após reinício, recibos corretos, nenhum segundo banco/MCP/worker/scheduler e nenhuma regressão na execução existente. Se a prova cobriu apenas SQLite, registrar “persistência verificada” e **não** “colaboração multichat concluída”.
+
+### K. Arquivos candidatos e orientação para a próxima implementação
+
+- \`forge/product/src/forge-contract.mjs\`: nomes/esquemas das ferramentas novas.
+- \`forge/product/src/orchestrator-service.mjs\`: funções e recibos canônicos, mantendo autoridade da Store.
+- \`forge/product/src/forge-project-memory-view.mjs\`: projeção de memória existente; extensão de leitura.
+- \`forge/product/src/forge-loopback-mcp.mjs\`: projeção/transporte das novas operações no único MCP.
+- \`forge/product/src/forge-executor-context.mjs\`: instruções GPT de consulta, claim e liberação.
+- Migrations/Store já existentes: campos mínimos de sessão e claim **somente quando ausentes**.
+- \`forge/product/desktop/orchestrator-ui.mjs\`: painel observacional.
+- Testes de contrato, memória, concorrência e E2E na suíte já existente de \`forge/product/test\`.
+
+**Ordem concreta:** implementar F1 e validar; seguir F2 sem novo motor; então F3. Atualizar **esta seção** com resultados reais, não criar outro roadmap. \`main\` é SSOT do **código** e o SQLite existente é SSOT dos **dados**; não misturar esses conceitos. O plano descreve intenção até que testes e recibos confirmem a execução.
+
+
 ## Diagnóstico do retorno offline Windows — 18/11/2026
 
 - **Observação física (não é aceite):** `DESKTOP-4UFL03B` respondeu pelo Desktop Commander, o processo da versão `0.2.0-alpha.42` iniciou, mas a instância remota `97f640fc-8254-4e5b-adb6-d266f59843d1` permaneceu offline no gateway. O SQLite operacional continha sessão de workspace ativa, aprovação MCP de aplicativo e identidade remota vinculada; o arquivo de sessão criptografado existia. A mera presença do arquivo não comprova que `safeStorage` consiga lê-lo no processo nativo.
