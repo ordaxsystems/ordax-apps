@@ -39,3 +39,16 @@ test('project navigation remains GPT-first, not a legacy Groq-fronted layout',()
   assert.match(html,/id="taskBackToForjador"/);
   assert.match(html,/id="rightPaneTabs"/);
 });
+
+test('latest Task navigation fences stale coordinator transitions and saved drafts',()=>{
+  const ui=read('ui.js'),nav=read('orchestrator-ui.mjs');
+  assert.match(ui,/onShowCoordinator:async\(\)=>\{\s*document\.body\.classList\.add\('orchestrator-focus'\)/);
+  assert.match(ui,/const routeEpoch=\+\+navigationEpoch/);
+  assert.match(ui,/await flushDraft\(\);\s*if\(routeEpoch!==navigationEpoch\)return false/);
+  assert.match(ui,/await selectRightPane\('execution'\);\s*if\(routeEpoch!==navigationEpoch\)return false/);
+  assert.match(nav,/let coordinatorRouteGeneration=0/);
+  assert.match(nav,/const route=\+\+coordinatorRouteGeneration/);
+  assert.match(nav,/const applied=await onShowCoordinator\(\)/);
+  assert.match(nav,/if\(applied===false\|\|!coordinatorOpen\|\|route!==coordinatorRouteGeneration\)return/);
+  assert.match(nav,/hide\(\)\{coordinatorOpen=false;coordinatorRouteGeneration\+\+/);
+});

@@ -2006,16 +2006,21 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
   onShowCoordinator:async()=>{
     document.body.classList.add('orchestrator-focus');
     document.body.classList.remove('forge-task-focus');
+    // Reserve navigation before asynchronous work. A newer Task selection
+    // must win if draft persistence or right-pane activation finishes later.
+    const routeEpoch=++navigationEpoch;
     setWorkspaceRoute('coordinator');
     $('#orchestratorWorkRail').hidden=false;
-    // Persist the selected Task draft before leaving its scope. A delayed
-    // save must never race the next administrator/Task restoration.
-    await flushDraft();await selectRightPane('execution');
+    await flushDraft();
+    if(routeEpoch!==navigationEpoch)return false;
+    await selectRightPane('execution');
+    if(routeEpoch!==navigationEpoch)return false;
     // Responsive views must not open the operation rail over the admin chat.
     if(window.matchMedia('(max-width:1024px)').matches)
       $('#contextRail').classList.remove('open');
-    currentTaskId=null;currentTask=null;navigationEpoch++;syncComposerAvailability();
+    currentTaskId=null;currentTask=null;syncComposerAvailability();
     $('#taskPanel').classList.add('hidden');$('#empty').classList.add('hidden');
+    return true;
   }
 });
 const savedNavigation=workspace?.metadata?.navigation;
