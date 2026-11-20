@@ -238,11 +238,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   function syncCoordinatorActions() {
     const selected=orchestrators.find(item=>item.id===orchestratorId);
     const selectedReady=Boolean(selected)&&selected.status!=='paused';
-    $('coordinatorSend').disabled=!orchestratorChatAvailable||!selectedReady||analysisBusy||coordinatorSubmitting||!coordinatorDraftCommitAvailable;
-    $('analyzeWorks').disabled=!analysisAvailable||!selectedReady||workCount===0||analysisBusy||preflightBusy||coordinatorSubmitting;
+    $('coordinatorSend').disabled=true; // MCP-only GPT sends
+    $('analyzeWorks').disabled=true; // GPT decides, not the App
     $('inspectProjectAccess').disabled=!projectId||!selected||analysisBusy||preflightBusy||coordinatorSubmitting;
-    $('prepareWork').disabled=!analysisAvailable||!selectedReady||analysisBusy||coordinatorSubmitting||!coordinatorDraftCommitAvailable;
-    $('coordinatorPrompt').disabled=coordinatorSubmitting||!chatTaskId;
+    $('prepareWork').disabled=true; // MCP-only coordination
+    $('coordinatorPrompt').disabled=true; // App displays conversation history
   }
   function setCoordinatorDraftState(text='') {
     const compatibility=coordinatorDraftCommitAvailable?'':
@@ -1122,11 +1122,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(p!==projectId||o!==orchestratorId)return;
     const canDisable=result.enabled===true;
     const canEnable=engineStatus?.analysisAvailable===true;
-    $('continuityToggle').disabled=!canDisable&&!canEnable;
+    $('continuityToggle').disabled=true; // Passive UI does not schedule analysis
     $('continuityToggle').title=!canDisable&&!canEnable
       ?'A análise local do Forge não está disponível.'
       :'';
-    $('continuityProposalsToggle').disabled=!result.enabled;
+    $('continuityProposalsToggle').disabled=true; // MCP coordinates next work
     $('continuityProposalsToggle').dataset.enabled=String(result.nextProposals.enabled);
     $('continuityProposalsToggle').textContent=result.nextProposals.enabled?'Desativar propostas automáticas':'Propor próximas frentes automaticamente';
     $('continuityToggle').dataset.enabled=String(result.enabled);
@@ -1210,7 +1210,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const continuousEnabled=result?.continuousExecutionEnabled===true;
     const appOwnedTechnicalReviewAvailable=result?.appOwnedTechnicalReviewAvailable===true;
     const continuousButton=$('autonomousContinuousToggle');
-    continuousButton.disabled=!projectId||!orchestratorId;
+    continuousButton.disabled=true; // App never schedules autonomous cycles
     continuousButton.textContent=continuousEnabled
       ?'Desativar continuidade automática':'Ativar continuidade automática da missão';
     $('autonomousContinuousState').textContent=continuousEnabled
@@ -1319,10 +1319,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     }
     reviews.hidden=reviews.childElementCount===0;
     const continueButton=$('continueAutonomousTechnical');
-    continueButton.hidden=currentJob?.canContinue!==true;
-    continueButton.disabled=continueButton.hidden||
-      (!analysisAvailable&&!appOwnedTechnicalReviewAvailable)||
-      !gptWebTransportAvailable||analysisBusy||coordinatorSubmitting||preflightBusy;
+    continueButton.hidden=true; // App presents past cycles, never resumes one
+    continueButton.disabled=true;
   }
   async function renderCoordinator() {
     if(!projectId||!chatTaskId)return;

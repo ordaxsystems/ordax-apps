@@ -783,15 +783,15 @@ let lastProviderStatus = null;
 let lastProviderPoolSession = null;
 function syncComposerAvailability() {
   // Editor stays enabled: local draft text is NOT a ChatGPT submission.
-  const allowed = composeAvailability.allowed===true && Boolean(currentTaskId) && !submittingTaskIds.has(currentTaskId);
+  // Passive App: drafts are stored locally, but GPT execution belongs to MCP.
+  const allowed = false;
   const hostMode=window.ordaxHost?.hostMode===true;
   $('#send').disabled = !allowed;
   $('#send').title = allowed ? 'Enviar ao ChatGPT' :
     (COMPOSE_STATUS_MESSAGES[composeAvailability.reason] || COMPOSE_STATUS_MESSAGES.unverified);
   $('#composer').dataset.sendReady = allowed ? 'true' : 'false';
   $('#composerConnection').dataset.state = composeAvailability.reason;
-  $('#composerConnectionText').textContent =
-    COMPOSE_STATUS_MESSAGES[composeAvailability.reason] || COMPOSE_STATUS_MESSAGES.unverified;
+  $('#composerConnectionText').textContent = 'Modo passivo: esta interface exibe as tarefas. Solicite execuções ao Forge MCP.';
   // The Forjador layout hides the small sidebar provider card. Surface the
   // SAME canonical login/readiness gate at the top of every project screen.
   const gate=$('#forgeProviderGate');

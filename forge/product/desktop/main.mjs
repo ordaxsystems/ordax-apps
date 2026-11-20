@@ -14,6 +14,7 @@ import {withForjadorMcpMention,mentionWasRequested,providerMcpMention} from '../
 import {requiresMcpForProjectPrompt,requireSelectedMcpForPrompt} from '../src/provider-mcp-selection.mjs';
 import { createProviderAwareTaskOpener, createTaskUiHandlers } from '../src/task-ui-handlers.mjs';
 import { ORCHESTRATOR_TOOLS } from '../src/forge-contract.mjs';
+import {assertPassiveUiOperation,assertPassiveUiMcpMessage} from '../src/forge-passive-ui-policy.mjs';
 import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,resolveOrchestratorRuntimeTransport,openOrchestratorRuntimeStreams } from '../src/orchestrator-runtime-bridge.mjs';
 import { observePostCommitNavigation } from '../src/provider-post-commit-navigation.mjs';
 
@@ -1387,28 +1388,16 @@ registerUiHandler('ordax:chat:visible', (event, visible) => {
   layoutViews();
   return chatVisible&&Boolean(providerViewBounds);
 });
-registerUiHandler('ordax:tasks:send', async (event, { taskId, content, newSession = false, draftRevision = null, requestId = null }) => {
+registerUiHandler('ordax:tasks:send',event=>{
   requireTrustedSupervisorRenderer(event);
-  const prompt = String(content || '').trim();
-  if (!prompt) throw new Error('content_required');
-  const binding=store.db.prepare('SELECT project_id FROM lab_task_bindings WHERE task_id=?').get(String(taskId));
-  if(binding) {
-    if(newSession)throw Error('orchestrator_explicit_rotation_required');
-    const receipt=await orchestratorService.invoke(localOrchestratorContext,'work_send',{
-      projectId:binding.project_id,taskId:String(taskId),content:prompt,
-      requestId:requestId||randomUUID(),...(draftRevision!==null?{draftRevision}:{})});
-    if(receipt.status==='failed')throw Error(receipt.result?.failureCode||'orchestrator_provider_not_submitted');
-    if(receipt.status!=='succeeded')throw Error('orchestrator_reconciliation_required');
-    return {task:getTaskView(taskId),command:receipt};
-  }
-  return enqueueExecution(String(taskId),runWorker => runTask(String(taskId), prompt, { newSession: Boolean(newSession), draftRevision },runWorker));
+  // A renderer cannot submit GPT work; only the Forge MCP executor may do so.
+  throw Error('forge_passive_app_mcp_only');
 });
-
 
 // GPT Web is the sole execution model. The supervisor's legacy action
 // ledger remains readable for reconciliation, but no external AI can plan.
-const coordinatorChatStatus=()=>({enabled:Boolean(worker),configured:Boolean(worker),
-  provider:'chatgpt_web',executionSurface:'electron'});
+const coordinatorChatStatus=()=>({enabled:false,configured:Boolean(worker),
+  provider:'chatgpt_web',executionSurface:'forge_mcp'});
 
 // Only the Lab's trusted local UI or authenticated host session can invoke supervisor IPC.
 function requireTrustedSupervisorRenderer(event) {
@@ -1836,12 +1825,24 @@ function attachDefaultWorkspaceToProjectCreation(operation,output,{exposePath=fa
   };
   return {...output,result:{...output.result,workspaceSetup:projected}};
 }
+function announcePersistedMcpMutation(operation,args,output){
+  // A notification only asks the passive view to reread SQLite. It does
+  // not certify a filesystem effect and must not change the MCP receipt.
+  try{
+    const tool=ORCHESTRATOR_TOOLS.find(item=>item.operation===operation);
+    if(tool&&!tool.readOnly&&output?.status==='succeeded')
+      emitRendererEvent('ordax:orchestrator:changed',{
+        projectId:args?.projectId??null,source:'forge_mcp'
+      });
+  }catch{}
+}
 const forgeRemoteMcp=createOrchestratorMcp({
   service:orchestratorService,getContext:()=>localOrchestratorContext,
   version:app.getVersion(),allowedOperations:FORGE_APP_MCP_OPERATIONS,
-  afterToolInvoke:({operation,output,transportReceipt})=>{
+  afterToolInvoke:({operation,args,output,transportReceipt})=>{
     try{observeMcpFileWrite({store,operation,output,ingress:'remote_gateway',
       transportReceipt});}catch{}
+    announcePersistedMcpMutation(operation,args,output);
     return attachDefaultWorkspaceToProjectCreation(operation,output);
   },
   authorizeFileRead:requestedProjectId=>{
@@ -1884,8 +1885,9 @@ const forgeLocalMcp=createForgeLoopbackMcp({
   createMcp:({projectId,allowedOperations})=>createOrchestratorMcp({
     service:orchestratorService,getContext:()=>localOrchestratorContext,
     version:app.getVersion(),allowedProjectId:projectId,allowedOperations,
-    afterToolInvoke:({operation,output})=>{
+    afterToolInvoke:({operation,args,output})=>{
       try{observeMcpFileWrite({store,operation,output,ingress:'owner_loopback'});}catch{}
+      announcePersistedMcpMutation(operation,args,output);
       return attachDefaultWorkspaceToProjectCreation(operation,output);
     },
     authorizeFileRead:requestedProjectId=>{
@@ -2251,13 +2253,9 @@ registerUiHandler('ordax:forge:local-mcp:stop',async event=>{
 registerUiHandler('ordax:orchestrator:invoke',async(event,payload)=>{
   requireTrustedSupervisorRenderer(event);
   const scope=payload?.operation==='project_delete'?projectAssetCleanupScope(payload?.input?.projectId):null;
-  let receipt=null;
-  if(forgeDevAutonomyEnabled&&payload?.operation==='forjador_send')
-    receipt=orchestratorService.startDevAutonomousForjador(
-      localOrchestratorContext,payload?.input??{}
-    );
-  if(!receipt)
-    receipt=await orchestratorService.invoke(localOrchestratorContext,payload?.operation,payload?.input??{});
+  assertPassiveUiOperation(payload?.operation);
+  const receipt=await orchestratorService.invoke(
+    localOrchestratorContext,payload.operation,payload?.input??{});
   let result=withDeletedProjectAssetCleanup(receipt,scope);
   // One verified-file notification refreshes the existing Files and Preview
   // panels after a successful write, without sending any bytes or bearer data.
@@ -2275,6 +2273,7 @@ registerUiHandler('ordax:orchestrator:invoke',async(event,payload)=>{
 // Local protocol conformance/host integration entrypoint, never arbitrary eval.
 registerUiHandler('ordax:orchestrator:mcp',async(event,message)=>{
   requireTrustedSupervisorRenderer(event);
+  assertPassiveUiMcpMessage(message);
   const deleting=message?.method==='tools/call'&&message?.params?.name==='forge_project_delete';
   const scope=deleting?projectAssetCleanupScope(message?.params?.arguments?.projectId):null;
   let result=await localOrchestratorMcp.handle(message);
@@ -2327,11 +2326,8 @@ async function finalizeReconciledSiteDelivery(taskId,{captureMissing=false}={}){
   orchestratorService.recordSiteDelivery({
     taskId,runId:run.id,verified,sha256:verified?current.sha256:null
   });
-  const resumed=orchestratorService.autonomous.resumeReconciledTechnical(localOrchestratorContext);
+  // Reconciliation only records the previously observed result. MCP controls continuation.
   notifyOrchestratorChanged();
-  if(resumed)queueMicrotask(()=>{
-    void orchestratorService.autonomous.tick(localOrchestratorContext).catch(()=>{});
-  });
   return verified;
 }
 
@@ -2489,16 +2485,8 @@ app.whenReady().then(async () => {
           }
         } catch {} finally {providerRecoveryInFlight=false;}
       }
-      try {
-        const parallel=await orchestratorService.tickParallelDispatch(localOrchestratorContext);
-        if(parallel.state==='dispatched')notifyOrchestratorChanged();
-        const autonomous=await orchestratorService.autonomous.tick(localOrchestratorContext);
-        if(autonomous.state==='advanced'||autonomous.state==='blocked'||autonomous.state==='reconciliation_required')notifyOrchestratorChanged();
-        // Never compete with an active autonomous mission for the same GPT executor.
-        if(['advanced','busy','executor_busy'].includes(autonomous.state))return;
-        const result=await orchestratorService.continuation.tick(localOrchestratorContext);
-        if(result.state==='analyzed'||result.state==='reconciliation_required')notifyOrchestratorChanged();
-      } catch {}
+      // Passive App: no timer-triggered task dispatch, autonomous planning,
+      // or background GPT execution. MCP calls own those transitions.
     })().catch(()=>{});
   },10000);
 }).catch(()=>{
