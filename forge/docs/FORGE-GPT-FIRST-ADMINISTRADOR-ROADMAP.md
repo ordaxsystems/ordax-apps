@@ -1,5 +1,21 @@
 # Forge GPT-first — execução canônica e Administrador de Projeto
 
+## Decisão superveniente do Owner — Forge App estritamente passivo (20/11/2026)
+
+**Precedência sobre o mandato de 19/11 e sobre qualquer frase histórica conflitante deste roadmap:** o modelo final do **aplicativo Forge deve ser igual ao modelo previsto para o OrdaX Host Local**: **GPT raciocina e solicita; Forge MCP implementa ferramentas e executa o trabalho; Forge App somente persiste e apresenta os dados**. Esta decisão substitui a leitura anterior segundo a qual o aplicativo continuaria como agente, despachante, agendador ou executor de missões.
+
+**O aplicativo Forge NÃO deverá:** chamar GPT autonomamente, iniciar ou executar Tasks/Runs, enviar prompts ao provedor, manter worker pool de execução de projetos, abrir/rodar terminal para trabalhar em projetos, programar ciclos de missão, decidir continuidade, escolher agentes, gerar/resumir memórias, tomar posse de escopos por decisão própria ou disparar notificações para chats. **O aplicativo PODE e DEVE:** manter o SQLite canônico existente, operações físicas de gravação/leitura, transações atômicas/CAS, armazenamento de estados, recibos persistidos recebidos do MCP, projeções e painel visual, além do mínimo de infraestrutura técnica para servir armazenamento local. “Passivo” não significa “sem processo de software”: persistir e mostrar dados exige E/S; significa **sem execução ou lógica de tarefas/agentes dentro do App**.
+
+**O Forge MCP e seu executor** ficam responsáveis pelas operações de domínio (inclusive sessão, memória, claim), invocação de ferramentas de arquivos/terminal, comunicação com o provedor GPT, despacho de Runs solicitados, reconciliação e retomada quando o cliente/executor autorizado tiver capacidade real. Um servidor MCP não é um modelo de IA; ele oferece e implementa ferramentas chamadas pelo GPT. Se for preciso deslocar código de execução hoje embutido no Core/Electron para um componente runtime associado ao Forge MCP, **extrair/mover o owner**, não criar dois executores, dois MCPs ou duas Store. Durante o cutover, a infraestrutura histórica pode funcionar temporariamente, mas **não** representa a arquitetura final nem permite anunciar o App como passivo.
+
+**Contrato de aceitação obrigatório:** com o aplicativo Forge aberto, sem nenhuma chamada/ordem do MCP, ele **não** dispara GPT, terminal, agent Run ou nova Task. Quando o MCP executa uma ação, publica um recibo/dado no armazenamento canônico do App; o App apenas grava e mostra. Se o executor MCP estiver indisponível, o App ainda deve conseguir **consultar e exibir** os últimos dados, sem tentar executar a tarefa ele próprio. O MCP mantém a titularidade da execução mesmo quando o Forge Git está aberto. Preservar recibos/integridade existentes, sem adicionar validações avançadas como pré-requisito para este objetivo DEV.
+
+**Ordem de migração:** (1) inventariar pontos atuais do Core que chamam provedor, terminal ou agendador; (2) prover no Forge MCP as operações equivalentes usando os contratos e dados existentes; (3) redirecionar o fluxo GPT → MCP → armazenamento Forge e provar E2E sem execução originada na UI; (4) retirar das rotas do App a autoridade de executar/decidir; (5) manter o painel somente de leitura e a recuperação de estado. Evitar etapa de “duplicar para depois trocar”: fazer substituição por caminho canônico, com um único dispatcher ativo em cada momento.
+
+Esta é a **arquitetura-alvo e critério de conclusão** das fases de memória e colaboração multichat abaixo. Onde elas mencionam o Core como executor, ler **“estado atual a migrar”**, não decisão final.
+
+---
+
 ## Mandato do Owner — DEV livre, funcionamento primeiro (19/11/2026)
 
 **REGRA VIGENTE PARA O FORGE EM DESENVOLVIMENTO, com precedência sobre restrições internas históricas de UX e de fluxo neste documento.** A prioridade é fazer o **Forge MCP/Core + Forge Git + GPT Web** executar missões reais, delegar a conversas subordinadas, continuar automaticamente e concluir entregas, sem intervenções repetitivas. Somente após essa prova funcional avançar para acabamento e política comercial. **Esta decisão é diretriz de produto, não alegação de que cada item já funciona.**
@@ -46,11 +62,11 @@ GPT Web C ─┘                │
 
 - **GPT/cliente:** raciocínio, planejamento, conteúdo das memórias, escolha de tarefas e decisões. **MCP é protocolo + código de ferramentas, não um segundo modelo de IA.**
 - **Forge MCP:** fornece as operações que o GPT chama para memória, consulta, atividade e coordenação. Sua implementação pode permanecer integrada ao processo do **Core existente**: separar responsabilidades **não exige** outro servidor, banco ou aplicativo.
-- **Forge App/Core:** persiste dados, atende ao MCP e à UI e mantém os mecanismos técnicos necessários para conexão de provedores, Runs, recibos, transações, recuperação e acesso a recursos. Para **esta nova camada**, não interpreta conteúdo nem cria memórias ou escolhe trabalhos espontaneamente.
+- **Forge App/Core (alvo final):** somente armazena e consulta dados (SQLite, recibos, sessões, Tasks, memórias) e os exibe na UI. **Não** executa Runs, não conversa com o provedor, não opera terminal/arquivos de projetos, não coordena agentes e não escolhe trabalhos. A infraestrutura de execução hoje embutida no Core deve ser transferida ao executor do Forge MCP.
 - **Forge Git:** permanece transporte/visualização subordinado ao mesmo Core. Não recebe Store, MCP, agendador ou executor paralelo.
 - **OrdaX MCP/Host Local:** continuam produtos separados. **Não** direcionar os dois aplicativos ao mesmo arquivo SQLite nem introduzir dependência obrigatória entre eles. Qualquer integração futura exigirá contrato explícito e owner correto.
 
-**Importante:** o Core atualmente também coordena execução e continuidade. Não eliminá-las prematuramente: as decisões do GPT/MCP devem substituir as regras inteligentes gradualmente, com provas reais; o despacho técnico de Runs e a prevenção de replay permanecem necessários. A arquitetura-alvo não autoriza excluir funções que mantêm o Forge operacional.
+**Distinção atual × alvo:** hoje o Core ainda coordena execução, provider e continuidade. Esse é o **legado funcional a migrar**, não uma responsabilidade permanente do App. Preservar os dados, a integridade SQLite e os recibos, mas **deslocar despacho, worker pool, ciclos de missão e execução para o Forge MCP/executor** por cutover canônico, sem dois despachantes concorrentes.
 
 ### B. Estado real existente — reaproveitar, não reconstruir
 
@@ -173,12 +189,13 @@ Preparar dados de atividade, trabalhos pendentes e um eventual evento declarativ
 - [ ] Renovar atividade por chamadas MCP, não por suposição de pensamento.
 - [ ] Provar duas reservas diferentes em paralelo; na mesma chave um único vencedor; transferência só após reconciliação.
 
-**F3 — UX observacional**
+**F3 — Migração da execução para Forge MCP + UX observacional**
+- [ ] Transferir chamadas de provedor, despacho, execução e recuperação de trabalho hoje no App/Core para o único executor do Forge MCP; desligar o caminho de execução do App depois de confirmar o cutover.
 - [ ] Projetar dados na interface atual `forge/product/desktop/orchestrator-ui.mjs`, sem outra página/aplicativo responsável pelo estado.
 - [ ] Se necessário, mostrar a mesma projeção no Forge Git por `forge-core-read-client.mjs`, sem estado independente.
-- [ ] Não criar automações de escrita, execução ou envio vinculadas ao dashboard.
+- [ ] Provar que o App aberto e ocioso **não** cria, inicia, despacha ou executa tarefas nem envia prompts; somente lê/grava dados explicitamente recebidos.
 
-**F4 — Continuidade e reativação condicionada**
+**F4 — Continuidade via MCP e reativação condicionada**
 - [ ] Retomada por nova conversa usando Task, memória e recibos existentes.
 - [ ] Refinar escopos sobrepostos somente se conflito real demonstrar necessidade.
 - [ ] Considerar notificações apenas quando houver cliente compatível e autorização real.
@@ -197,9 +214,11 @@ Preparar dados de atividade, trabalhos pendentes e um eventual evento declarativ
 | Repetir a mesma operação com `requestId` | não duplica efeito nem claim |
 | Novo chat conhece apenas `taskId` | recupera contexto e não recria Task |
 | UI aberta sem chats ativos | estado ocioso informativo, sem iniciar execução |
+| Forge App aberto sem qualquer chamada MCP | nenhum GPT send, processo de projeto, Run ou Task iniciado pelo App |
+| MCP indisponível, Forge App aberto | banco e painel continuam acessíveis; nenhuma execução substituta pelo App |
 | GPT chama ferramenta MCP real e grava artefato | recibo de execução e releitura física; resposta textual não substitui prova |
 
-**Definition of Done:** código no owner certo, testes proporcionais, E2E físico com duas sessões GPT independentes, persistência após reinício, recibos corretos, nenhum segundo banco/MCP/worker/scheduler e nenhuma regressão na execução existente. Se a prova cobriu apenas SQLite, registrar “persistência verificada” e **não** “colaboração multichat concluída”.
+**Definition of Done:** **Forge App sem lógica ou autoridade de execução de projetos**, com persistência/UI apenas; **Forge MCP como único executor e coordenador de ferramentas**, código no owner certo, testes proporcionais, E2E físico com duas sessões GPT independentes, persistência após reinício, recibos corretos, nenhum segundo banco/MCP/worker/scheduler e nenhum efeito duplicado. Se a prova cobriu apenas SQLite, registrar “persistência verificada” e **não** “colaboração multichat concluída”.
 
 ### K. Arquivos candidatos e orientação para a próxima implementação
 
@@ -212,7 +231,7 @@ Preparar dados de atividade, trabalhos pendentes e um eventual evento declarativ
 - `forge/product/desktop/orchestrator-ui.mjs`: painel observacional.
 - Testes de contrato, memória, concorrência e E2E na suíte já existente de `forge/product/test`.
 
-**Ordem concreta:** implementar F1 e validar; seguir F2 sem novo motor; então F3. Atualizar **esta seção** com resultados reais, não criar outro roadmap. `main` é SSOT do **código** e o SQLite existente é SSOT dos **dados**; não misturar esses conceitos. O plano descreve intenção até que testes e recibos confirmem a execução.
+**Ordem concreta:** implementar F1 e validar; seguir F2 sem novo motor; então **F3 para retirar a execução do App e mantê-la somente no MCP, acompanhada da UI observacional**. Atualizar **esta seção** com resultados reais, não criar outro roadmap. `main` é SSOT do **código** e o SQLite existente é SSOT dos **dados**; não misturar esses conceitos. O plano descreve intenção até que testes e recibos confirmem a execução.
 
 
 ## Diagnóstico do retorno offline Windows — 18/11/2026
