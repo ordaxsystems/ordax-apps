@@ -80,7 +80,7 @@ const definitions = [
   ['orchestrator_prepare','Create one review-only local work proposal directly from the recorded user text. No model call and no GPT submission.',{projectId:id,orchestratorId:id,content:text(4000),draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','orchestratorId','content'],false],
   ['proposals_list','Read pending work proposals for the selected coordinator.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
   ['proposal_review','Approve creation of one local work with a saved draft, or reject it. Never submits to GPT.',{projectId:id,orchestratorId:id,actionId:id,approved:{type:'boolean'}},['projectId','orchestratorId','actionId','approved'],false],
-  ['proposal_send','After native confirmation, submit the current draft of one prepared work through the existing executor. First send only; uncertain sends never replay.',{projectId:id,orchestratorId:id,actionId:id,draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','orchestratorId','actionId','draftRevision'],false],
+  ['proposal_send','After native confirmation, submit the current draft of one prepared work through the existing executor. First send only; uncertain sends never replay.',{projectId:id,orchestratorId:id,actionId:id,...claimProof,draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','orchestratorId','actionId','draftRevision'],false],
   ['command_get','Inspect a previously accepted command without repeating it.',{commandId:id},['commandId'],true]
 ];
 export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,description,properties,required,readOnly]) => ({

@@ -7,7 +7,7 @@ import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
-import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
+import {ORCHESTRATOR_TOOLS,validateOrchestratorInput} from '../src/forge-contract.mjs';
 
 function fixture(t){
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'forge-claim-'));
@@ -263,4 +263,16 @@ test('Claim turnover fences the old generation and leaves canonical SQLite intac
     claimToken:b.result.claimToken,claimGeneration:b.result.claim.generation
   })).status,'succeeded');
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('Native-approved proposal sends can carry current Task claim proof without widening transport authority',()=>{
+  const params={requestId:'proposal_claim_1',projectId:'project_example',
+    orchestratorId:'orchestrator_example',actionId:'action_example',
+    draftRevision:1,claimToken:'A'.repeat(43),claimGeneration:9};
+  const {input}=validateOrchestratorInput('proposal_send',params);
+  assert.equal(input.claimToken,params.claimToken);
+  assert.equal(input.claimGeneration,9);
+  assert.throws(()=>validateOrchestratorInput('proposal_send',{
+    ...params,claimToken:'invalid'
+  }),/orchestrator_invalid_input/);
 });
