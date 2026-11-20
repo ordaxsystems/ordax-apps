@@ -3,10 +3,35 @@
  * This is NOT a receipt store or a second executor. Never cancel or retry an
  * already started external effect; the existing Store reconciles those Runs.
  */
+export const MAX_PROVIDER_LANES=32;
+
+// Size the existing provider pool once at Core startup. Never resize lanes
+// while a GPT send or Run is active; the canonical scheduler owns admission.
+export function resolveProviderWorkerCount({requested='auto',cpuCount,totalMemoryBytes,freeMemoryBytes=totalMemoryBytes}={}) {
+  if(!Number.isSafeInteger(cpuCount)||cpuCount<1||
+    !Number.isFinite(totalMemoryBytes)||totalMemoryBytes<=0||
+    !Number.isFinite(freeMemoryBytes)||freeMemoryBytes<0||freeMemoryBytes>totalMemoryBytes)
+    throw Error('provider_worker_capacity_invalid');
+  const GiB=1024**3;
+  // Reserve OS/application memory; each Chromium worker gets its own budget.
+  const ramBudget=Math.max(1,Math.floor((totalMemoryBytes-4*GiB)/(1.5*GiB)));
+  const physicalBudget=Math.max(1,Math.min(MAX_PROVIDER_LANES,cpuCount*2,ramBudget));
+  // The first four lanes (or fewer on small hosts) are the established Core baseline.
+  // Grow beyond it only with observed free RAM above a 2 GiB safety reserve.
+  const freeGrowthBudget=Math.max(0,Math.floor((freeMemoryBytes-2*GiB)/(1.5*GiB)));
+  const allowedLanes=Math.min(physicalBudget,Math.min(4,physicalBudget)+freeGrowthBudget);
+  if(requested===null||requested===undefined||requested===''||requested==='auto')
+    return allowedLanes;
+  const count=Number(requested);
+  if(!Number.isSafeInteger(count)||count<1)
+    throw Error('provider_worker_count_invalid');
+  return Math.min(count,allowedLanes);
+}
+
 export function createProviderExecutionScheduler({
   lanes,maxQueued=64,maxQueueWaitMs=10*60_000,clock=Date.now
 }={}) {
-  if(!Array.isArray(lanes)||lanes.length<1||lanes.length>32||
+  if(!Array.isArray(lanes)||lanes.length<1||lanes.length>MAX_PROVIDER_LANES||
     lanes.some(lane=>!lane||typeof lane.id!=='string'||!lane.id||
       !lane.worker||typeof lane.worker!=='object')||
     new Set(lanes.map(lane=>lane.id)).size!==lanes.length||
