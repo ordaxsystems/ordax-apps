@@ -1075,7 +1075,7 @@ test('drafts are scoped to a Task, revision-guarded and saved without entering p
   assert.match(ui, /draftCache/);
   assert.match(ui, /flushDraft/);
   assert.match(ui, /if \(id !== currentTaskId\) await flushDraft\(\);/);
-  assert.match(ui, /await flushDraft\(\);await selectRightPane\('execution'\);/);
+  assert.match(ui, /await flushDraft\(\);\s*if\(routeEpoch!==navigationEpoch\)return false;\s*await selectRightPane\('execution'\);\s*if\(routeEpoch!==navigationEpoch\)return false;/);
   assert.match(ui, /navigationEpoch/);
   assert.match(ui, /draftRevision/);
   assert.match(html, /draftState/);
@@ -1294,7 +1294,7 @@ test('Forjador uses GPT Web and exposes no legacy coordinator-chat route',()=>{
   assert.match(uiHtml,/Enviar ao GPT/);
   assert.match(ui,/setWorkspaceRoute\('coordinator'\)/);
   assert.match(ui,/setWorkspaceRoute\('gpt'\)/);
-  assert.match(ui,/flushDraft\(\);await selectRightPane\('execution'\)/);
+  assert.match(ui,/await flushDraft\(\);\s*if\(routeEpoch!==navigationEpoch\)return false;\s*await selectRightPane\('execution'\);\s*if\(routeEpoch!==navigationEpoch\)return false;/);
   assert.match(ui,/await selectRightPane\('provider'\)/);
   assert.match(orchestratorUi,/orchestratorChatAvailable=gptWebTransportAvailable/);
   assert.doesNotMatch(orchestratorUi,/orchestratorChatAvailable=analysisAvailable/);
