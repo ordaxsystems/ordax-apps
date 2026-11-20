@@ -54,7 +54,7 @@ function Test-ForgeSupervisorOwner {
     if($pidValue -lt 1){return $false}
     $process = Get-CimInstance Win32_Process -Filter "ProcessId=$pidValue" -ErrorAction Stop
     if(!$process){return $false}
-    if($process.Name -ne 'node.exe' -or
+    if(!($process.Name -eq 'node.exe') -or
        $process.CommandLine -notlike ('*'+$supervisorScript+'*')){
       throw 'forge_dev_supervisor_foreign_owner'
     }
