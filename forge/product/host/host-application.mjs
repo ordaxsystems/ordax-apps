@@ -5,6 +5,7 @@ import {Store,MESSAGE_PAGE_SIZE} from '../src/store.mjs';
 import {createOrchestratorKernel} from '../src/orchestrator-kernel.mjs';
 import {createTaskUiHandlers} from '../src/task-ui-handlers.mjs';
 import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
+import {assertPassiveUiOperation,assertPassiveUiMcpMessage} from '../src/forge-passive-ui-policy.mjs';
 import {createHostBrowserServer} from './host-browser-server.mjs';
 
 const MIME_EXT=new Map([['image/png','png'],['image/jpeg','jpg'],['image/webp','webp'],['image/gif','gif'],['image/avif','avif']]);
@@ -71,11 +72,16 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
   const notify=()=>hostServer?.publish('orchestrator-changed',{});
 
   add('ordax:orchestrator:invoke',async(_event,payload)=>{
-    const result=await service.invoke(context,payload?.operation,payload?.input??{});
+    // Apply the exact native App rule to the browser Host, not a second
+    // executor policy. Only the authenticated MCP ingress may run effects.
+    assertPassiveUiOperation(payload?.operation);
+    const result=await service.invoke(context,payload.operation,payload?.input??{});
     if(ORCHESTRATOR_TOOLS.some(tool=>tool.operation===payload?.operation&&!tool.readOnly))notify();
     return result;
   });
   add('ordax:orchestrator:mcp',async(_event,message)=>{
+    // The browser UI cannot tunnel mutating tools/call envelopes.
+    assertPassiveUiMcpMessage(message);
     const result=await mcp.handle(message);
     const operation=message?.method==='tools/call'
       ?ORCHESTRATOR_TOOLS.find(tool=>tool.name===message.params?.name)?.operation:null;

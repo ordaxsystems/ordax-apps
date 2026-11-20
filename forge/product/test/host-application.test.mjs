@@ -66,6 +66,35 @@ test('Node host runs the shared project and task services over its authenticated
   assert.equal(blockedSend.status,400);
   assert.equal((await blockedSend.json()).error,'provider_transport_unavailable_on_host');
 
+  // A browser session is not an MCP executor. Test both HTTP entrypoints
+  // against the real Store before restart, not a policy-only mock.
+  const before=application.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts').get().n;
+  const effect=await fetch(`${origin}/api/invoke`,{method:'POST',
+    headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookie},
+    body:JSON.stringify({method:'orchestratorInvoke',args:['project_command_run',{
+      projectId,taskId:linkedWork.id,command:'echo should-not-run',requestId:'host_forbidden_effect'
+    }]})});
+  assert.equal(effect.status,400);
+  assert.equal((await effect.json()).error,'forge_passive_app_mcp_only');
+  const mcpBypass=await fetch(`${origin}/api/invoke`,{method:'POST',
+    headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookie},
+    body:JSON.stringify({method:'orchestratorMcp',args:[{
+      jsonrpc:'2.0',id:18,method:'tools/call',
+      params:{name:'forge_project_command_run',arguments:{
+        projectId,taskId:linkedWork.id,command:'echo should-not-run',requestId:'host_forbidden_mcp'
+      }}
+    }]})});
+  assert.equal(mcpBypass.status,400);
+  assert.equal((await mcpBypass.json()).error,'forge_passive_app_mcp_only');
+  const readOnlyMcp=await invoke('orchestratorMcp',[{
+    jsonrpc:'2.0',id:19,method:'initialize',params:{
+      protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'host-read-only',version:'1'}
+    }
+  }]);
+  assert.equal(readOnlyMcp.result.protocolVersion,'2025-06-18');
+  assert.equal(application.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts').get().n,before);
+  assert.equal(application.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+
   await server.close();server=null;
   application.close();application=null;
   application=createHostApplication({productRoot,dataRoot,environment:{}});
