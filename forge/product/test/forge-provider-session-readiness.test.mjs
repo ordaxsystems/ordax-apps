@@ -108,14 +108,14 @@ test('actual Forjador renderer gate visibly reports logout and blocks sending',(
   assert.match($('#forgeProviderGateText').textContent,/workers pedindo login/);
   vm.runInContext("lastProviderPoolSession={sendReady:true,totalWorkers:4,readyWorkers:4,loginRequired:false,reason:'ready'};syncComposerAvailability();",context);
   assert.equal($('#forgeProviderGate').hidden,true);
-  assert.equal($('#send').disabled,false);
+  assert.equal($('#send').disabled,true,'Forge App never sends GPT directly');
   vm.runInContext("lastProviderPoolSession={sendReady:false,totalWorkers:4,readyWorkers:3,loginRequired:false,reason:'busy'};syncComposerAvailability();",context);
   assert.equal($('#forgeProviderGate').hidden,true,'three safe lanes do not trigger a false all-workers-login banner');
-  assert.equal($('#send').disabled,false);
+  assert.equal($('#send').disabled,true,'Forge App never sends GPT directly');
   vm.runInContext("submittingTaskIds.add('task_example');syncComposerAvailability();",context);
   assert.equal($('#send').disabled,true,'same Task is single-flight');
   vm.runInContext("currentTaskId='task_other';syncComposerAvailability();",context);
-  assert.equal($('#send').disabled,false,'another Task can use an idle lane');
+  assert.equal($('#send').disabled,true,'Only MCP can execute an independent Task');
   vm.runInContext("window.ordaxHost.hostMode=true;composeAvailability={allowed:false,reason:'host_auth_unavailable'};syncComposerAvailability();",context);
   assert.equal($('#forgeProviderGate').hidden,false);
   assert.equal($('#forgeProviderGateLogin').hidden,true);
