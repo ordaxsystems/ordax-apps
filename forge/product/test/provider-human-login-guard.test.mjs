@@ -75,7 +75,7 @@ test('Forjador uses the existing authenticated GPT gate, not just a visible comp
   const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
   assert.match(forge,/providerComposeAvailability\(observedGptHealth,\{hostMode:nodeHost\}\)/);
   assert.match(forge,/orchestratorChatAvailable=gptWebTransportAvailable&&available\.allowed===true/);
-  assert.match(forge,/\$\('coordinatorSend'\)\.disabled=!orchestratorChatAvailable/);
+  assert.match(forge,/\$\('coordinatorSend'\)\.disabled=true/);
   assert.match(forge,/setProviderHealth:health=>/);
   assert.match(ui,/orchestrationUi\?\.setProviderHealth\?\.\(status\)/);
   assert.doesNotMatch(forge,/orchestratorChatAvailable=gptWebTransportAvailable;/);

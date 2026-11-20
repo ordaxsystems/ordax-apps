@@ -145,6 +145,31 @@ test('An occupied Task denies conflicting draft, terminal and file mutations whi
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
+test('Real MCP tool path can execute a claimed Task while passive UI stays blocked',async t=>{
+  const f=fixture(t),p=await setup(f);
+  const held=await acquire(f,'gpt-chat',p.projectId,p.auth,'GPT externo');
+  let calls=0;
+  f.service.development={run:async input=>{
+    calls++;
+    assert.equal(input.taskId,p.auth);
+    assert.equal(input.command,'echo from-mcp');
+    return {completed:true,exitCode:0,commandOutcome:'exit_zero'};
+  }};
+  const mcp=createOrchestratorMcp({service:f.service,getContext:()=>f.context('gpt-chat')});
+  await mcp.handle({jsonrpc:'2.0',id:1,method:'initialize',
+    params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'gpt-chat',version:'1'}}});
+  await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
+  const result=await mcp.handle({jsonrpc:'2.0',id:2,method:'tools/call',
+    params:{name:'forge_project_command_run',arguments:{
+      requestId:'mcp_effect_1',projectId:p.projectId,taskId:p.auth,
+      command:'echo from-mcp',claimToken:held.result.claimToken,
+      claimGeneration:held.result.claim.generation}}});
+  assert.equal(result.result?.structuredContent?.status,'succeeded');
+  assert.equal(result.result.structuredContent.result.exitCode,0);
+  assert.equal(calls,1);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
 test('MCP JSON-RPC surfaces claim tools without exposing deprecated autonomous controls',async t=>{
   const f=fixture(t),p=await setup(f);
   assert.equal(FORGE_APP_MCP_OPERATIONS.length,64);

@@ -30,9 +30,9 @@ test('GPT Web readiness is independent of removed model API credentials',()=>{
   assert.equal(f.hasModelEnableHandler,false);
   assert.equal(Object.hasOwn(f.status(),'groqConfigured'),false);
   f.setWebWorker(true);
-  assert.equal(f.status().enabled,true);
+  assert.equal(f.status().enabled,false,'GPT execution belongs to MCP');
   assert.equal(f.status().configured,true);
-  assert.equal(f.status().executionSurface,'electron');
+  assert.equal(f.status().executionSurface,'forge_mcp');
   assert.throws(()=>f.status({}),/denied/);
   f.setWebWorker(false);
   assert.equal(f.status().enabled,false);

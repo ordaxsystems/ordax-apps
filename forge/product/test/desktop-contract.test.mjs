@@ -368,17 +368,17 @@ test('autonomous mission recovery exposes scoped existing Tasks without a duplic
   assert.match(source,/reviews\.hidden=reviews\.childElementCount===0/);
   assert.doesNotMatch(uiHtml,/startAutonomous(?:Technical|Dialogue|Story)|orchestratorExperiments/);
   assert.doesNotMatch(source,/launchAutonomousMission|command\('autonomous_dialogue_start'/);
-  assert.match(main,/payload\?\.operation==='forjador_send'/);
-  assert.match(main,/startDevAutonomousForjador/);
+  assert.doesNotMatch(main,/payload\?\.operation==='forjador_send'/);
+  assert.doesNotMatch(main,/startDevAutonomousForjador/);
 });
 test('technical continuation accepts the app-owned review policy and still checks fresh GPT readiness',()=>{
   const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const autonomy=fs.readFileSync(path.join(root,'src','autonomous-dialogue.mjs'),'utf8');
   assert.equal((uiHtml.match(/id="continueAutonomousTechnical"/g)||[]).length,1);
   assert.match(uiHtml,/id="continueAutonomousTechnical"[^>]*hidden disabled/);
-  assert.match(source,/continueButton\.hidden=currentJob\?\.canContinue!==true/);
+  assert.match(source,/continueButton\.hidden=true/);
   assert.match(source,/appOwnedTechnicalReviewAvailable=result\?\.appOwnedTechnicalReviewAvailable===true/);
-  assert.match(source,/\(!analysisAvailable&&!appOwnedTechnicalReviewAvailable\)/);
+  assert.doesNotMatch(source,/\(!analysisAvailable&&!appOwnedTechnicalReviewAvailable\)/);
   assert.match(autonomy,/appOwnedTechnicalReviewAvailable:this\.service\.continuousExecutionByDefault===true/);
   const handler=source.slice(source.indexOf("$('continueAutonomousTechnical').addEventListener"));
   assert.match(handler,/snapshot\?\.mission\?\.canContinue!==true/);
@@ -1049,7 +1049,7 @@ test('new missions are local drafts and never silently start a GPT work conversa
   assert.match(packagedSmoke,/conversationCards!==2/);
   assert.match(packagedSmoke,/phase='work_list_refresh'/);
   assert.match(packagedSmoke,/phase='coordinator_reopen'/);
-  assert.match(packagedSmoke,/taskTitle'\)\.textContent==='Frente criada pelo MCP'/);
+  assert.match(packagedSmoke,/taskTitle'\)\.textContent==='Frente registrada pelo App'/);
   assert.match(packagedSmoke,/cleanupReasons\.has\(error\?\.message\)/);
   assert.match(packagedSmoke,/app_orchestration_scenario_failed/);
   assert.match(packagedSmoke,/phase:reportedPhase,reason/);
@@ -1291,7 +1291,7 @@ test('Forjador uses GPT Web and exposes no legacy coordinator-chat route',()=>{
   assert.match(uiHtml,/id="coordinatorComposer"/);
   assert.match(uiHtml,/id="composer"/);
   assert.match(uiHtml,/id="coordinatorSend"[^>]*>Enviar</);
-  assert.match(uiHtml,/Enviar ao GPT/);
+  assert.match(uiHtml,/Via Forge MCP/);
   assert.match(ui,/setWorkspaceRoute\('coordinator'\)/);
   assert.match(ui,/setWorkspaceRoute\('gpt'\)/);
   assert.match(ui,/await flushDraft\(\);\s*if\(routeEpoch!==navigationEpoch\)return false;\s*await selectRightPane\('execution'\);\s*if\(routeEpoch!==navigationEpoch\)return false;/);
@@ -1318,9 +1318,9 @@ test('Forjador UI admits a single GPT send or optional proposal while an async d
   const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const admission=source.slice(source.indexOf('function syncCoordinatorActions()'),
     source.indexOf('function setCoordinatorDraftState('));
-  assert.match(admission,/\$\('coordinatorSend'\)\.disabled=[^\n]*coordinatorSubmitting/);
-  assert.match(admission,/\$\('analyzeWorks'\)\.disabled=[^\n]*coordinatorSubmitting/);
-  assert.match(admission,/\$\('prepareWork'\)\.disabled=[^\n]*coordinatorSubmitting/);
+  assert.match(admission,/\$\('coordinatorSend'\)\.disabled=true/);
+  assert.match(admission,/\$\('analyzeWorks'\)\.disabled=true/);
+  assert.match(admission,/\$\('prepareWork'\)\.disabled=true/);
   const chat=source.slice(source.indexOf("\$('coordinatorComposer')\.addEventListener('submit'"),
     source.indexOf("\$('analyzeWorks')\.addEventListener('click'"));
   assert.match(chat,/if\(coordinatorSubmitting\|\|analysisBusy\|\|\$\('coordinatorSend'\)\.disabled\)return/);

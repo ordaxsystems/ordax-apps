@@ -139,7 +139,7 @@ test('reconciled site delivery at boot verifies disk bytes and only informs the 
   assert.match(source,/provider\.response\.reconciled/);
   assert.match(source,/verifyLocalHtmlArtifact\(real\)\.sha256===current\.sha256/);
   assert.match(source,/recordSiteDelivery\(\{/);
-  assert.match(source,/resumeReconciledTechnical\(localOrchestratorContext\)/);
+  assert.doesNotMatch(source,/resumeReconciledTechnical\(localOrchestratorContext\)/);
   assert.match(source,/captureMissing:false/);
   assert.doesNotMatch(source.slice(source.indexOf('async function finalizeReconciledSiteDelivery'),
     source.indexOf('function notifyOrchestratorChanged')),

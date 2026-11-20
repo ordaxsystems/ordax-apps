@@ -135,12 +135,12 @@ test('invalid worker configuration and malformed Task IDs are rejected',async()=
   assert.equal(scheduler.snapshot().pendingTasks,0);
 });
 
-test('host calls the SAME scheduler from UI task sends, Groq supervisor and orchestrator provider',()=>{
+test('MCP provider uses the existing scheduler, not direct UI sends',()=>{
   const here=path.dirname(fileURLToPath(import.meta.url));
   const main=fs.readFileSync(path.join(here,'../desktop/main.mjs'),'utf8');
   assert.doesNotMatch(main,/executionTail/);
   assert.match(main,/createProviderExecutionScheduler/);
-  assert.match(main,/enqueueExecution\(String\(taskId\),/);
+  assert.match(main,/forge_passive_app_mcp_only/);
   assert.match(main,/enqueueExecution\(taskId,/);
   assert.match(main,/registeredScheduler\.close/);
   assert.doesNotMatch(main,/provider_lane_identity_mismatch/);
