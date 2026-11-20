@@ -785,7 +785,23 @@ export class OrchestratorService {
     return this.transaction(()=>{
       const reserved=this.reserve(context,operation,input);
       if(reserved.existing)return reserved.existing;
-      if(operation==='work_draft_set')this.workClaims.assertTaskMutation(context,input);
+      if(['work_draft_set','work_dependency_set','conversation_rotate',
+          'work_failover_prepare','project_memory_propose'].includes(operation))
+        this.workClaims.assertTaskMutation(context,input);
+      if(operation==='work_parallel_launch') {
+        // Each targeted Task is separately leased. Prove every occupied
+        // Task before recording a project-wide launch intent.
+        const proofs=new Map();
+        for(const proof of input.claimProofs||[]) {
+          if(proofs.has(proof.taskId)||!input.taskIds.includes(proof.taskId))
+            throw Error('forge_work_claim_proofs_invalid');
+          proofs.set(proof.taskId,proof);
+        }
+        for(const taskId of input.taskIds)
+          this.workClaims.assertTaskMutation(context,{
+            projectId:input.projectId,taskId,...(proofs.get(taskId)||{})
+          });
+      }
       const result=operation==='project_memory_propose'
         ?(this.task(input.projectId,input.taskId),this.store.memoryCandidates.proposeFromAssistant(input.taskId,input))
         :operation==='proposal_review'?this.reviewProposal(context,input)
@@ -810,6 +826,7 @@ export class OrchestratorService {
   async prepareProjectWorktree(context,input){
     if(!this.development)throw Error('forge_development_unavailable');
     this.task(input.projectId,input.taskId,'work');
+    this.workClaims.assertTaskMutation(context,input);
     const reserved=this.transaction(()=>this.reserve(context,'project_worktree_prepare',input));
     if(reserved.existing)return reserved.existing;
     try{
@@ -844,6 +861,7 @@ export class OrchestratorService {
   async verifyProjectWorktree(context,input){
     if(!this.development)throw Error('forge_development_unavailable');
     this.task(input.projectId,input.taskId,'work');
+    this.workClaims.assertTaskMutation(context,input);
     const reserved=this.transaction(()=>this.reserve(context,'project_worktree_verify',input));
     if(reserved.existing)return reserved.existing;
     try{
@@ -894,6 +912,7 @@ export class OrchestratorService {
   async integrateProjectWorktree(context,input){
     if(!this.development)throw Error('forge_development_unavailable');
     this.task(input.projectId,input.taskId,'work');
+    this.workClaims.assertTaskMutation(context,input);
     const reserved=this.transaction(()=>this.reserve(context,'project_worktree_integrate',input));
     if(reserved.existing)return reserved.existing;
     try{
@@ -933,6 +952,7 @@ export class OrchestratorService {
   async acceptIntegratedWork(context,input){
     if(!this.development)throw Error('forge_development_unavailable');
     this.task(input.projectId,input.taskId,'work');
+    this.workClaims.assertTaskMutation(context,input);
     const session=context.workspaceSessionId;
     const latest=()=>this.db.prepare(
       'SELECT t.id,t.status AS taskStatus,'+
@@ -2442,7 +2462,12 @@ export class OrchestratorService {
     const task=isWorkSend?this.task(input.projectId,sendInput.taskId,'work'):
       this.task(input.projectId,orch.chat_task_id,'orchestrator');
     const owner=orch||this.orchestrator(input.projectId,task.orchestrator_id);
-    if(isWorkSend)this.assertDependenciesSatisfied(input.projectId,task.id);
+    if(isWorkSend) {
+      // A direct Work send or a proposal send cannot bypass the live lease.
+      // Existing idempotent receipts returned above remain read-only.
+      this.workClaims.assertTaskMutation(context,{...input,taskId:task.id});
+      this.assertDependenciesSatisfied(input.projectId,task.id);
+    }
     if(isForjadorSend){
       this.assertProviderTaskAvailable(task.id,{allowCoordinator:true});
       if(sendInput.draftRevision!=null){

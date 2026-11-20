@@ -7,7 +7,7 @@ import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
-import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
+import {ORCHESTRATOR_TOOLS,validateOrchestratorInput} from '../src/forge-contract.mjs';
 
 function fixture(t){
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'forge-claim-'));
@@ -188,4 +188,91 @@ test('MCP JSON-RPC surfaces claim tools without exposing deprecated autonomous c
   assert.equal(claimed.result.structuredContent.status,'succeeded');
   assert.equal(claimed.result.structuredContent.result.status,'acquired');
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+
+test('Live Task claims fence all Task-scoped lifecycle mutations, not only terminal and drafts',async t=>{
+  const f=fixture(t),p=await setup(f);
+  const acquired=await acquire(f,'gpt-a',p.projectId,p.auth,'GPT A');
+  const proof={claimToken:acquired.result.claimToken,
+    claimGeneration:acquired.result.claim.generation};
+  let physicalEffects=0,providerSends=0;
+  f.service.development={
+    prepareWorktree:async()=>{physicalEffects++;return {status:'prepared'};},
+    verifyWorktree:async()=>{physicalEffects++;return {verified:true};},
+    integrateWorktree:async()=>{physicalEffects++;return {integrated:true};},
+    status:()=>({available:true})
+  };
+  f.service.provider={
+    available:()=>true,busy:()=>false,
+    send:async()=>{providerSends++;return {responseObserved:true};}
+  };
+  const sameTask=[
+    ['project_worktree_prepare',{}],
+    ['project_worktree_verify',{command:'node --version'}],
+    ['project_worktree_integrate',{expectedBranchHeadSha:'a'.repeat(40),
+      expectedMainHeadSha:'b'.repeat(40),verificationReceiptIds:['receipt_example']}],
+    ['work_accept',{integrationReceiptId:'receipt_example',
+      expectedIntegratedHeadSha:'c'.repeat(40),testCommand:'node --version'}],
+    ['work_dependency_set',{dependsOn:[p.ui]}],
+    ['conversation_rotate',{}],
+    ['work_failover_prepare',{}],
+    ['project_memory_propose',{sourceMessageId:'message_example',category:'decision',
+      key:'test',content:'unauthorized memory',evidence:'Persisted excerpt'}],
+    ['work_send',{content:'Do not send to GPT'}]
+  ];
+  for(const [operation,extra] of sameTask){
+    await assert.rejects(f.call('gpt-b',operation,{
+      projectId:p.projectId,taskId:p.auth,...extra
+    }),/forge_work_claim_not_owned/,operation);
+  }
+  await assert.rejects(f.call('gpt-b','work_parallel_launch',{
+    projectId:p.projectId,taskIds:[p.auth,p.ui]
+  }),/forge_work_claim_not_owned/);
+  await assert.rejects(f.call('gpt-b','work_parallel_launch',{
+    projectId:p.projectId,taskIds:[p.auth,p.ui],
+    claimProofs:[{taskId:p.auth,claimToken:'B'.repeat(43),
+      claimGeneration:acquired.result.claim.generation}]
+  }),/forge_work_claim_not_owned/);
+  assert.equal(physicalEffects,0);
+  assert.equal(providerSends,0);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_work_dependencies WHERE task_id=?")
+    .get(p.auth).n,0);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+  // The same claimed Task is mutable by the holder; another Task remains independent.
+  assert.equal((await f.call('gpt-a','work_dependency_set',{
+    projectId:p.projectId,taskId:p.auth,dependsOn:[p.ui],...proof})).status,'succeeded');
+  assert.equal((await f.call('gpt-b','work_dependency_set',{
+    projectId:p.projectId,taskId:p.ui,dependsOn:[]})).status,'succeeded');
+});
+
+test('Claim turnover fences the old generation and leaves canonical SQLite intact',async t=>{
+  const f=fixture(t),p=await setup(f);
+  const a=await acquire(f,'gpt-a',p.projectId,p.auth,'GPT A');
+  const proof={claimToken:a.result.claimToken,claimGeneration:a.result.claim.generation};
+  await f.call('gpt-a','work_claim',{projectId:p.projectId,taskId:p.auth,action:'release',
+    claimToken:proof.claimToken,generation:proof.claimGeneration});
+  const b=await acquire(f,'gpt-b',p.projectId,p.auth,'GPT B');
+  assert.equal(b.result.status,'acquired');
+  assert.equal(b.result.claim.generation,2);
+  await assert.rejects(f.call('gpt-a','work_dependency_set',{
+    projectId:p.projectId,taskId:p.auth,dependsOn:[],...proof
+  }),/forge_work_claim_not_owned/);
+  assert.equal((await f.call('gpt-b','work_dependency_set',{
+    projectId:p.projectId,taskId:p.auth,dependsOn:[],
+    claimToken:b.result.claimToken,claimGeneration:b.result.claim.generation
+  })).status,'succeeded');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('Native-approved proposal sends can carry current Task claim proof without widening transport authority',()=>{
+  const params={requestId:'proposal_claim_1',projectId:'project_example',
+    orchestratorId:'orchestrator_example',actionId:'action_example',
+    draftRevision:1,claimToken:'A'.repeat(43),claimGeneration:9};
+  const {input}=validateOrchestratorInput('proposal_send',params);
+  assert.equal(input.claimToken,params.claimToken);
+  assert.equal(input.claimGeneration,9);
+  assert.throws(()=>validateOrchestratorInput('proposal_send',{
+    ...params,claimToken:'invalid'
+  }),/orchestrator_invalid_input/);
 });
