@@ -1448,15 +1448,20 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       card.append(title,reason,draft,note,accept,reject);cards.append(card);
     }
   }
+  let coordinatorRouteGeneration=0;
   async function showCoordinator() {
     if(!chatTaskId)return;
+    const route=++coordinatorRouteGeneration;
     coordinatorOpen=true;
     document.body.classList.remove('orchestrator-rail-open');$('contextRail').classList.remove('open');
     $('openWorks').setAttribute('aria-expanded','false');
     $('coordinatorRailToggle').setAttribute('aria-expanded','false');
     $('orchestrationPanel').hidden=false;$('orchestratorWorkRail').hidden=false;
-    await onShowCoordinator();
+    // Never let an older coordinator transition overwrite a newer Task view.
+    const applied=await onShowCoordinator();
+    if(applied===false||!coordinatorOpen||route!==coordinatorRouteGeneration)return;
     await onNavigationChange?.({view:'coordinator',projectId,orchestratorId,taskId:null});
+    if(!coordinatorOpen||route!==coordinatorRouteGeneration)return;
     await renderCoordinator();
   }
   function error() {status('Não foi possível confirmar a operação. Consulte o estado antes de repetir.');}
@@ -2056,7 +2061,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     getOrchestratorId:()=>orchestratorId,
     showCoordinator,
     refreshStatus:()=>refreshApiStatus(),
-    hide(){coordinatorOpen=false;$('orchestrationPanel').hidden=true;},
+    hide(){coordinatorOpen=false;coordinatorRouteGeneration++;$('orchestrationPanel').hidden=true;},
     refresh:refreshWorks
   });
 }
