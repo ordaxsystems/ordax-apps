@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createProviderExecutionScheduler} from '../src/provider-execution-scheduler.mjs';
+import {createProviderExecutionScheduler,resolveProviderWorkerCount,MAX_PROVIDER_LANES} from '../src/provider-execution-scheduler.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -12,6 +12,22 @@ function deferred(){
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const lane=(id)=>({id,worker:{id}});
+
+test('worker pool uses hardware budget rather than the old fixed four/eight slots',()=>{
+  const GiB=1024**3;
+  assert.equal(resolveProviderWorkerCount({cpuCount:8,totalMemoryBytes:16*GiB}),8);
+  assert.equal(resolveProviderWorkerCount({cpuCount:4,totalMemoryBytes:8*GiB}),2);
+  assert.equal(resolveProviderWorkerCount({requested:'6',cpuCount:8,totalMemoryBytes:16*GiB}),6);
+  assert.equal(resolveProviderWorkerCount({cpuCount:4,totalMemoryBytes:16*GiB,freeMemoryBytes:1.59*GiB}),4,
+    'low free RAM must not trigger an unsafe expansion above the working four-lane baseline');
+  assert.equal(resolveProviderWorkerCount({requested:8,cpuCount:4,totalMemoryBytes:16*GiB,freeMemoryBytes:1.59*GiB}),4);
+  assert.equal(resolveProviderWorkerCount({cpuCount:8,totalMemoryBytes:16*GiB,freeMemoryBytes:5*GiB}),6);
+  assert.throws(()=>resolveProviderWorkerCount({cpuCount:4,totalMemoryBytes:16*GiB,freeMemoryBytes:17*GiB}),/provider_worker_capacity_invalid/);
+  assert.equal(resolveProviderWorkerCount({requested:24,cpuCount:32,totalMemoryBytes:64*GiB}),24);
+  assert.equal(resolveProviderWorkerCount({requested:99,cpuCount:32,totalMemoryBytes:128*GiB}),MAX_PROVIDER_LANES);
+  assert.throws(()=>resolveProviderWorkerCount({requested:'invalid',cpuCount:8,totalMemoryBytes:16*GiB}),/provider_worker_count_invalid/);
+  assert.equal(createProviderExecutionScheduler({lanes:Array.from({length:12},(_,i)=>lane('agent-'+i))}).snapshot().lanes,12);
+});
 
 test('single configured lane preserves FIFO, never overlapping provider effects',async()=>{
   const scheduler=createProviderExecutionScheduler({lanes:[lane('primary')]});

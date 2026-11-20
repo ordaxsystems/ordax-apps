@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, protocol, net, dialog, safeStorage, Tray, Menu, shell } from 'electron';
-import path from 'node:path';import {existsSync} from 'node:fs';import {listLocalSupervisorRecoverable} from '../supervisor/recovery.mjs';
+import path from 'node:path';import os from 'node:os';import {existsSync} from 'node:fs';import {listLocalSupervisorRecoverable} from '../supervisor/recovery.mjs';
 import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile.mjs';
 import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
 import { bindObservedSubmittedConversation } from '../src/provider-submitted-conversation.mjs';
@@ -40,7 +40,7 @@ import {inspectForgeAppUiDom} from '../src/forge-app-ui-dom.mjs';
 import {boundedForgeViewImage,captureForgeProjectHtml} from './forge-view-capture.mjs';
 import { createProviderViewRegistry } from '../src/provider-view-registry.mjs';
 import { backgroundResidencyAllowed,backgroundStartupAllowed,backgroundModeRequested } from '../src/background-residency-policy.mjs';
-import { createProviderExecutionScheduler } from '../src/provider-execution-scheduler.mjs';
+import { createProviderExecutionScheduler,resolveProviderWorkerCount } from '../src/provider-execution-scheduler.mjs';
 import { normalizeProviderViewBounds, providerAppPanelUsable } from '../src/provider-view-bounds.mjs';
 import { createProviderProvisionalRecorder } from '../src/provider-provisional-recorder.mjs';
 import { resolveLabUserRoot, labProfileFingerprint } from '../src/lab-profile-binding.mjs';
@@ -280,10 +280,11 @@ let providerHostWindow=null;
 const providerViewParents=new Map();
 let worker; // Primary provider view exposed in the human UI.
 let providerWorkers=[];
-const providerWorkerCount=(()=>{
-  const raw=Number(process.env.ORDAX_FORGE_PROVIDER_WORKERS||4);
-  return Number.isSafeInteger(raw)?Math.max(1,Math.min(8,raw)):4;
-})();
+const providerWorkerCount=resolveProviderWorkerCount({
+  requested:process.env.ORDAX_FORGE_PROVIDER_WORKERS,
+  cpuCount:os.availableParallelism(),totalMemoryBytes:os.totalmem(),
+  freeMemoryBytes:os.freemem()
+});
 let interactiveHtmlPreview=null;
 const providerViews=createProviderViewRegistry();
 let windowCreationPromise=null;
