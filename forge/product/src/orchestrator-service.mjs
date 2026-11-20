@@ -23,6 +23,7 @@ import {ProjectRepository} from './project-repository.mjs';
 import {workExecutionSummary} from './work-execution-summary.mjs';
 import {projectWorkPlan} from './work-plan-read-model.mjs';
 import {forgeVerifiedWorkAcceptances} from './forge-work-acceptance-evidence.mjs';
+import {ForgeWorkClaims} from './forge-work-claims.mjs';
 import {appendRemoteRepositoryInstructions,normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
 
 function missionProjectName(mission) {
@@ -145,6 +146,7 @@ export class OrchestratorService {
         UNIQUE(workspace_session_id,actor_id,client_id,request_id)
       );
     `);
+    this.workClaims=new ForgeWorkClaims(store);
     const receiptSchema=this.db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='lab_command_receipts'").get()?.sql||'';
     // Legacy table migration renames the referenced table. Drop only its
     // derived VIEW before that migration so SQLite cannot retain a dangling
@@ -748,6 +750,16 @@ export class OrchestratorService {
         workspaceSessionId:context.workspaceSessionId,confirmName:input.confirmName});
       return this.finish(reserved.commandId,result);
     });
+    if(['work_claim','work_progress','work_memory_set'].includes(operation))return this.transaction(()=>{
+      // The MCP command receipt and Task claim/memory update commit together.
+      this.task(input.projectId,input.taskId,'work');
+      const reserved=this.reserve(context,operation,input);
+      if(reserved.existing)return reserved.existing;
+      const result=operation==='work_claim'?this.workClaims.claim(context,input)
+        :operation==='work_progress'?this.workClaims.progress(context,input)
+        :this.workClaims.memory(context,input);
+      return this.finish(reserved.commandId,result);
+    });
     if(operation==='project_file_write')return this.writeProjectFile(context,input);
     if(operation==='project_development_status')return this.development?.status(input.projectId,{taskId:input.taskId??null})??{projectId:input.projectId,available:false,reason:'native_owner_port_unavailable'};
     if(operation==='project_worktree_prepare')return this.prepareProjectWorktree(context,input);
@@ -773,6 +785,7 @@ export class OrchestratorService {
     return this.transaction(()=>{
       const reserved=this.reserve(context,operation,input);
       if(reserved.existing)return reserved.existing;
+      if(operation==='work_draft_set')this.workClaims.assertTaskMutation(context,input);
       const result=operation==='project_memory_propose'
         ?(this.task(input.projectId,input.taskId),this.store.memoryCandidates.proposeFromAssistant(input.taskId,input))
         :operation==='proposal_review'?this.reviewProposal(context,input)
@@ -1053,13 +1066,15 @@ export class OrchestratorService {
     if(reserved.existing)return reserved.existing;
     try {
       this.requireAccess(context,'project_command_run',input.projectId);
-      const result=await this.development.run(input);
+      this.workClaims.assertTaskMutation(context,input);
+      const {claimToken,claimGeneration,...commandInput}=input;
+      const result=await this.development.run(commandInput);
       return this.transaction(()=>this.finish(reserved.commandId,result));
     }catch(error) {
       const deterministic=new Set(['forge_development_owner_approval_required',
         'forge_development_command_invalid','forge_development_directory_invalid',
         'forge_workspace_missing_or_moved','forge_workspace_project_unavailable',
-        'forge_worktree_task_unprepared']);
+        'forge_worktree_task_unprepared','forge_work_claim_not_owned','forge_work_claim_renew_required']);
       try{this.transaction(()=>this.finish(reserved.commandId,{
         reason:deterministic.has(error?.message)?error.message:'forge_development_command_outcome_uncertain',
         externalEffectsVerified:false},deterministic.has(error?.message)?'failed':'uncertain'));}
@@ -1078,6 +1093,7 @@ export class OrchestratorService {
     try {
       this.requireAccess(context,'project_file_write',input.projectId);
       const taskId=this.scopedTaskId(input);
+      this.workClaims.assertTaskMutation(context,input);
       const proof=this.files.write(input.projectId,input.path,input.content,
         input.expectedSha256??null,taskId);
       return this.transaction(()=>this.finish(reserved.commandId,proof));
@@ -1087,7 +1103,8 @@ export class OrchestratorService {
         'forge_file_version_conflict','forge_file_not_found','forge_file_reparse_denied',
         'forge_file_internal_path_denied','forge_workspace_binding_required',
         'forge_worktree_task_unprepared','forge_task_workspace_required',
-        'orchestrator_task_unavailable']);
+        'orchestrator_task_unavailable',
+        'forge_work_claim_not_owned','forge_work_claim_renew_required']);
       const reason=deterministic.has(error?.message)?error.message:'forge_file_effect_uncertain';
       try{this.transaction(()=>this.finish(reserved.commandId,
         {reason,path:input.path,verified:false},
@@ -1325,7 +1342,8 @@ export class OrchestratorService {
           heartbeat_at:work.latest_heartbeat_at
         }],input.projectId)}])[0],
         dependsOn:this.db.prepare('SELECT prerequisite_id FROM lab_work_dependencies WHERE project_id=? AND task_id=? ORDER BY prerequisite_id')
-          .all(input.projectId,work.id).map(row=>row.prerequisite_id)
+          .all(input.projectId,work.id).map(row=>row.prerequisite_id),
+        claim:this.workClaims.snapshot(input.projectId,work.id,context.workspaceSessionId)
       }))};
     if(operation==='work_get') {
       const task=this.task(input.projectId,input.taskId);
@@ -1337,6 +1355,7 @@ export class OrchestratorService {
       const runs=this.db.prepare(`SELECT id,status,started_at,completed_at,heartbeat_at
         FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 10`).all(task.id);
       return {...task,draftState,runs,
+        claim:this.workClaims.snapshot(input.projectId,task.id,context.workspaceSessionId),
         latestRunReview:task.kind==='work'&&runs[0]?.status==='succeeded'
           ?this.runReviewReceipt(context,input.projectId,runs[0].id):null,
         conversations:this.store.listConversations(task.id).slice(-50),

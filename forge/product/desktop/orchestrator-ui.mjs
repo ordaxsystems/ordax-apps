@@ -734,6 +734,17 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       runState.textContent='Execução · '+observed;
       runState.className='work-run-evidence';
       evidence.append(runState);
+      // Passive projection of the canonical MCP Task claim. Never dispatches a
+      // provider, acquires a claim or infers a verified ChatGPT identity.
+      if(work.claim){
+        const claimed=document.createElement('small');
+        claimed.className='work-run-evidence';
+        const state=work.claim.state==='occupied'?'ocupada':
+          work.claim.state==='expired'?'expirada':'liberada';
+        claimed.textContent='Chat · '+work.claim.chatLabel+' · reserva '+state+
+          (work.claim.lastProgress?' · '+String(work.claim.lastProgress).slice(0,160):'');
+        evidence.append(claimed);
+      }
       if(Array.isArray(work.dependsOn)&&work.dependsOn.length){
         const dependencies=document.createElement('small');
         dependencies.className='work-run-evidence';
