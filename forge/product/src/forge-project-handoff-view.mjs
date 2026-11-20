@@ -38,6 +38,18 @@ export function forgeProjectHandoffView(store,projectId,{taskId=null}={}) {
     status,updated_at AS recordedAt
     FROM forge_task_worktrees WHERE project_id=? AND workspace_session_id=?
     ORDER BY updated_at DESC,task_id LIMIT 256`).all(projectId,session):[];
+  const claimTable=db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='lab_work_claims'").get();
+  const claims=new Map((claimTable?db.prepare(`SELECT task_id AS taskId,chat_label AS chatLabel,
+    status,generation,lease_until AS leaseUntil,last_progress AS lastProgress,
+    heartbeat_at AS heartbeatAt
+    FROM lab_work_claims WHERE project_id=? AND workspace_session_id=?`)
+    .all(projectId,session):[]).map(row=>{
+      const expired=row.status==='active'&&Date.parse(row.leaseUntil)<=Date.now();
+      return [row.taskId,{chatLabel:row.chatLabel,generation:row.generation,
+        state:row.status==='released'?'released':expired?'expired':'occupied',
+        heartbeatAt:row.heartbeatAt,leaseUntil:row.leaseUntil,lastProgress:row.lastProgress,
+        chatIdentityVerified:false,externalEffectVerified:false}];
+    }));
   const acceptedWorks=forgeVerifiedWorkAcceptances(db,projectId,session);
   const branches=new Map(worktreeRows.map(row=>[row.taskId,{
     branchName:row.branchName,baseHeadSha:row.baseHeadSha,
@@ -100,7 +112,7 @@ export function forgeProjectHandoffView(store,projectId,{taskId=null}={}) {
   const recentFileWrites=forgeProjectFileReceiptView(store,projectId,{limit:8});
   const selectedTask=task?{
     taskId:task.id,title:task.title,kind:task.kind,localStatus:task.status,
-    orchestratorId:task.orchestratorId,
+    orchestratorId:task.orchestratorId,claim:claims.get(task.id)||null,
     draft:excerpt(task.draft,1600),draftRevision:task.draftRevision
   }:null;
   return {
@@ -111,7 +123,8 @@ export function forgeProjectHandoffView(store,projectId,{taskId=null}={}) {
       providerMessagesAreNotArtifactProof:true,physicalFilesInspected:false,
       acceptanceCriteriaVerified:false,semanticReviewPerformed:false},
     counts,
-    tasks:tasks.map(row=>({...row,branchEvidence:branches.get(row.taskId)||null,
+    tasks:tasks.map(row=>({...row,claim:claims.get(row.taskId)||null,
+      branchEvidence:branches.get(row.taskId)||null,
       physicalArtifactVerified:false,
       completionVerified:acceptedWorks.has(row.taskId),
       acceptanceEvidence:acceptedWorks.get(row.taskId)||null})),

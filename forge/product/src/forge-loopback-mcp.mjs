@@ -16,7 +16,11 @@ const APP_MCP_EXCLUDED=new Set([
   // Project observation is only an intent flag today: there is no external
   // observation executor to authorize. Keep it in the owner App IPC, not in
   // the bounded public GPT MCP catalog. work_accept uses the reclaimed slot.
-  'project_observation_set'
+  'project_observation_set',
+  // The passive App must not offer autonomous dialogue scheduling through the
+  // public GPT catalog. Reuse these three bounded slots for Task coordination.
+  'autonomous_dialogue_status','autonomous_continuous_set','autonomous_dialogue_continue',
+  'continuity_proposals_set'
 ]);
 export const FORGE_APP_MCP_OPERATIONS=Object.freeze(ORCHESTRATOR_TOOLS
   .map(tool=>tool.operation).filter(op=>!APP_MCP_EXCLUDED.has(op)));
