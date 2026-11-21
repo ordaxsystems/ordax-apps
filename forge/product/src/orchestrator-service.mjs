@@ -1156,12 +1156,24 @@ export class OrchestratorService {
         WHERE b.project_id=? ORDER BY r.rowid DESC LIMIT 1`).get(input.projectId);
       const total=this.db.prepare(`SELECT COUNT(*) AS n FROM lab_task_bindings
         WHERE project_id=? AND kind='work'`).get(input.projectId).n;
-      return {...forgeProjectContext({projectId:input.projectId,project,
+      const dedicated=readDedicatedForgeProject(this.store)!==null;
+      const view=forgeProjectContext({projectId:input.projectId,project,
         workspace:this.workspace.status(context,input.projectId),workCount:total,
-        latestRunStatus:last?.status||null}),
+        latestRunStatus:last?.status||null});
+      return {...view,
+        ...(dedicated?{limitations:{...view.limitations,
+          physicalFileAccess:'ordax_mcp_repository_scoped_grant_required'}}:{}),
         projectMissions:forgeProjectMissionsView(this.store,input.projectId),
-        development:this.development?.status(input.projectId)??{available:false,reason:'native_owner_port_unavailable'},
-        appPrivateFiles:this.files?.status(input.projectId)||{available:false,mode:'capability_unavailable'}};
+        development:dedicated?{projectId:input.projectId,available:false,
+          nativeProcessExecution:false,
+          reason:'dedicated_repository_owner_port_required'}:
+          this.development?.status(input.projectId)??
+            {available:false,reason:'native_owner_port_unavailable'},
+        appPrivateFiles:dedicated?{available:false,verified:false,
+          mode:'requires_repository_scoped_mcp',readAvailable:false,
+          writeAvailable:false}:
+          this.files?.status(input.projectId)||
+            {available:false,mode:'capability_unavailable'}};
     }
     if(operation==='project_memory')return forgeProjectMemoryView(this.store,input.projectId);
     if(operation==='project_administrator_snapshot')return forgeProjectAdministratorView(this.store,input.projectId);

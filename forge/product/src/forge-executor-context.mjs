@@ -69,6 +69,7 @@ export function forgeMcpDiscovery(projectContext) {
   const privateFiles=projectContext.appPrivateFiles||{};
   const privateMode=privateFiles.mode==='app_isolated_workspace';
   const ownerBound=privateFiles.mode==='forge_project_workspace'&&privateFiles.verified===true;
+  const dedicated=projectContext.development?.reason==='dedicated_repository_owner_port_required';
   return {
     schema:'ordax.forge.mcp-discovery/1',
     source:'authorized_forge_live_project_context',
@@ -104,8 +105,12 @@ export function forgeMcpDiscovery(projectContext) {
     },
     limitations:{
       remoteGPTConnection:'not_verified_by_this_read_model',
-      externalFilesystem:ownerBound?'only_the_one_verified_owner_bound_project_folder':'not_available_without_native_owner_binding',
-      shell:projectContext.development?.available===true?'owner_approved_full_windows_user':'requires_one_time_native_owner_approval',
+      externalFilesystem:dedicated?'ordax_mcp_repository_scoped_grant_required':
+        ownerBound?'only_the_one_verified_owner_bound_project_folder':
+          'not_available_without_native_owner_binding',
+      shell:dedicated?'ordax_mcp_repository_scoped_grant_required':
+        projectContext.development?.available===true?'owner_approved_full_windows_user':
+          'requires_one_time_native_owner_approval',
       publication:'not_implicit'
     }
   };

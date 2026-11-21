@@ -79,6 +79,14 @@ test('dedicated MCP rejects old one-root Git, terminal and file operations befor
     const dev=await kernel.service.invoke(kernel.context,'project_development_status',{
       projectId:scope.projectId});
     assert.equal(dev.nativeProcessExecution,false);
+    const discovered=await kernel.service.invoke(kernel.context,'forge_discover',{
+      projectId:scope.projectId
+    });
+    assert.equal(discovered.development.available,false);
+    assert.equal(discovered.limitations.shell,'ordax_mcp_repository_scoped_grant_required');
+    assert.equal(discovered.limitations.externalFilesystem,
+      'ordax_mcp_repository_scoped_grant_required');
+    assert.equal(discovered.workspace.projectFileReadAvailable,false);
     const advertised=dedicatedForgeMcpOperations(store,FORGE_APP_MCP_OPERATIONS);
     for(const operation of ['project_file_read','project_file_write',
       'project_worktree_prepare','project_worktree_integrate','project_command_run',
