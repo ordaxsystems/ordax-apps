@@ -18,11 +18,11 @@ import {ForgeProjectFiles} from '../src/forge-project-files.mjs';
 import {ForgeLocalWorkspaces,resolveForgeWorkspaceDocumentsDirectory} from '../src/forge-local-workspaces.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {readForgeGitMemory} from '../src/forge-git-memory-view.mjs';
-import {createForgeLoopbackMcp,FORGE_APP_MCP_SCOPE,FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
+import {createForgeLoopbackMcp,FORGE_APP_MCP_SCOPE} from '../src/forge-loopback-mcp.mjs';
 import {observeMcpToolCall} from '../src/forge-mcp-observation.mjs';
 import {ForgeProjectDevelopment} from '../src/forge-project-development.mjs';
 import {createForgeProductSession} from '../src/forge-product-session.mjs';
-import {ForgeRemoteGatewayClient} from '../src/forge-remote-gateway-client.mjs';
+import {createForgeRemoteMcpOwner} from '../src/forge-remote-mcp-owner.mjs';
 import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
 import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
 import {canonicalProviderChatUrl} from '../src/conversation-policy.mjs';
@@ -1305,12 +1305,10 @@ function announcePersistedMcpMutation(operation,args,output){
       });
   }catch{}
 }
-const forgeRemoteMcp=createOrchestratorMcp({
-  service:orchestratorService,getContext:()=>localOrchestratorContext,
-  version:app.getVersion(),allowedOperations:FORGE_APP_MCP_OPERATIONS,
-  afterToolInvoke:({operation,args,output,transportReceipt})=>{
-    try{observeMcpToolCall({store,operation,output,ingress:'remote_gateway',
-      transportReceipt});}catch{}
+const forgeRemoteOwner=createForgeRemoteMcpOwner({
+  store,service:orchestratorService,getContext:()=>localOrchestratorContext,
+  ownerTrust:forgeMcpTrusted,session:forgeProductSession,version:app.getVersion(),
+  onMutation:({operation,args,output})=>{
     announcePersistedMcpMutation(operation,args,output);
     return attachDefaultWorkspaceToProjectCreation(operation,output);
   },
@@ -1319,34 +1317,7 @@ const forgeRemoteMcp=createOrchestratorMcp({
     catch{return false;}
   }
 });
-let forgeRemoteMcpSeq=10_000;
-const forgeRemoteMcpReady=(async()=>{
-  const initialized=await forgeRemoteMcp.handle({
-    jsonrpc:'2.0',id:++forgeRemoteMcpSeq,method:'initialize',
-    params:{protocolVersion:'2025-11-25',capabilities:{},
-      clientInfo:{name:'ordax-forge-remote-gateway',version:app.getVersion()}}
-  });
-  if(!initialized?.result?.protocolVersion)
-    throw Error('forge_remote_mcp_initialize_failed');
-  await forgeRemoteMcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
-  return true;
-})();
-async function invokeForgeRemoteMcp(method,params={},transportReceipt=null){
-  await forgeRemoteMcpReady;
-  if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_mcp_app_untrusted');
-  const response=await forgeRemoteMcp.handle({
-    jsonrpc:'2.0',id:++forgeRemoteMcpSeq,method,params
-  },transportReceipt);
-  if(!response||response.error)throw Error('forge_remote_local_mcp_error');
-  return response;
-}
-const forgeRemoteGateway=new ForgeRemoteGatewayClient({
-  store,session:forgeProductSession,appVersion:app.getVersion(),
-  catalogProvider:async()=>(await invokeForgeRemoteMcp('tools/list',{})).result.tools,
-  toolInvoker:(name,args,gatewayStarted)=>invokeForgeRemoteMcp(
-    'tools/call',{name,arguments:args},gatewayStarted),
-  bindOwnerIdentity:value=>forgeMcpTrusted.bindRemoteOwnerIdentity(value)
-});
+const forgeRemoteGateway=forgeRemoteOwner.gateway;
 const forgeMcpResume=new ForgeMcpSecureResume({store,ownerTrust:forgeMcpTrusted,
   secureStorage:safeStorage});
 let forgeMcpResumeError=null;

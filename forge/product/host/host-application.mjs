@@ -7,6 +7,8 @@ import {createTaskUiHandlers} from '../src/task-ui-handlers.mjs';
 import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
 import {assertPassiveUiOperation,assertPassiveUiMcpMessage} from '../src/forge-passive-ui-policy.mjs';
 import {createHostBrowserServer} from './host-browser-server.mjs';
+import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
+import {createForgeRemoteMcpOwner,FORGE_NODE_REMOTE_MCP_OPERATIONS} from '../src/forge-remote-mcp-owner.mjs';
 
 const MIME_EXT=new Map([['image/png','png'],['image/jpeg','jpg'],['image/webp','webp'],['image/gif','gif'],['image/avif','avif']]);
 const providerUnavailable=()=>{throw Error('provider_transport_unavailable_on_host');};
@@ -17,7 +19,7 @@ const providerUnavailable=()=>{throw Error('provider_transport_unavailable_on_ho
  * create a provider executor, workspace authority, grant store, or Runtime.
  */
 export function createHostApplication({productRoot,dataRoot,environment=process.env,fetchImpl=globalThis.fetch,
-  credentialStore}={}) {
+  credentialStore,remoteSession=null,remoteFetchImpl=fetchImpl}={}) {
   if(typeof productRoot!=='string'||!path.isAbsolute(productRoot)||
     typeof dataRoot!=='string'||!path.isAbsolute(dataRoot))throw Error('host_application_roots_required');
   const resolvedProductRoot=path.resolve(productRoot);
@@ -58,6 +60,28 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
     handlers.set(channel,handler);
   };
   const notify=()=>hostServer?.publish('orchestrator-changed',{});
+  // Independent Core can host the EXISTING remote gateway when a trusted
+  // native launcher provides the same sealed-credential session port.
+  // Neither environment variables nor browser IPC may supply credentials.
+  // The default plain Node Host remains disconnected (fail-closed).
+  const remoteOwnerTrust=remoteSession===null?null:new ForgeMcpOwnerTrust({
+    store,appIdentity:path.dirname(resolvedDataRoot),
+    scopeSignature:projectId=>'app-private:'+projectId
+  });
+  const remoteVersion=remoteSession===null?null:
+    JSON.parse(fs.readFileSync(path.join(resolvedProductRoot,'package.json'),'utf8')).version;
+  if(remoteSession!==null&&(typeof remoteVersion!=='string'||remoteVersion.length>80))
+    throw Error('forge_node_product_version_invalid');
+  const remote=remoteSession===null?null:createForgeRemoteMcpOwner({
+    store,service,getContext:()=>context,ownerTrust:remoteOwnerTrust,
+    session:remoteSession,version:remoteVersion,
+    allowedOperations:FORGE_NODE_REMOTE_MCP_OPERATIONS,
+    authorizeFileRead:()=>false,fetchImpl:remoteFetchImpl,
+    onMutation:({operation,output})=>{
+      if(ORCHESTRATOR_TOOLS.some(tool=>tool.operation===operation&&!tool.readOnly))notify();
+      return output;
+    }
+  });
 
   add('ordax:orchestrator:invoke',async(_event,payload)=>{
     // Apply the exact native App rule to the browser Host, not a second
@@ -126,5 +150,14 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
     return server;
   };
   return Object.freeze({store,service,context,assetsRoot,invoke,createServer,
-    close(){hostServer=null;store.close();}});
+    remoteGateway:remote?.gateway??null,
+    async startRemoteGateway(){
+      if(!remote)throw Error('forge_node_secure_session_port_unavailable');
+      return remote.start();
+    },
+    async stopRemoteGateway(){return remote?.stop()??null;},
+    close(){
+      if(remote?.gateway.status().running)throw Error('forge_node_gateway_shutdown_required');
+      hostServer=null;store.close();
+    }});
 }

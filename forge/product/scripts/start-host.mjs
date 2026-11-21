@@ -17,6 +17,9 @@ const shutdown=()=>{
   if(stopping)return stopping;
   stopping=(async()=>{
     await server?.close();
+    // When this Node process becomes the authenticated gateway owner, stop
+    // remote claiming/reporting BEFORE closing the unique SQLite Core.
+    await application?.stopRemoteGateway();
     application?.close();
     await releaseLock();
   })();
