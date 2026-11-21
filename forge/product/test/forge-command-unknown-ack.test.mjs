@@ -153,6 +153,11 @@ test('native Owner can quarantine interrupted work acceptance without inventing 
   assert.equal(ack.result.replayAllowed,false);
   assert.equal((await f.invoke('project_handoff',{projectId:p.projectId,taskId:work.taskId}))
     .counts.unresolvedCommands,0);
+  const original=await f.invoke('command_get',{commandId:'command_accept_uncertain'});
+  assert.equal(original.requiresReconciliation,false);
+  assert.equal(original.reviewedUnknownOutcome,true);
+  assert.equal(original.externalEffectsVerified,false);
+  assert.equal(original.replayAllowed,false);
   assert.deepEqual(f.store.db.prepare('SELECT * FROM lab_command_receipts WHERE id=?')
     .get('command_accept_uncertain'),before);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');

@@ -380,9 +380,9 @@ export class OrchestratorService {
       if(row.status!=='uncertain')throw Error('orchestrator_receipt_result_invalid');
       result={reason:'receipt_result_unreadable'};
     }
-    const outstanding=row.status==='uncertain'&&row.operation==='project_command_run'
+    const outstanding=row.status==='uncertain'
       ?Boolean(this.db.prepare('SELECT 1 FROM lab_command_active_unresolved WHERE id=?')
-        .get(row.id)):row.status==='uncertain';
+        .get(row.id)):false;
     return {commandId:row.id,operation:row.operation,status:row.status,
       requiresReconciliation:outstanding,
       ...(row.status==='uncertain'&&!outstanding?{
