@@ -1,5 +1,6 @@
 import {forgeProjectMemoryView} from './forge-project-memory-view.mjs';
 import {forgeProjectFileReceiptView} from './forge-project-file-receipts.mjs';
+import {forgeVerifiedWorkAcceptances} from './forge-work-acceptance-evidence.mjs';
 
 // A project-wide, bounded read of real app evidence for the optional GPT Admin.
 // This does NOT run a model, read external files, or decide that work is done.
@@ -27,6 +28,7 @@ export function forgeProjectAdministratorView(store,projectId) {
     .get(projectId,projectId,projectId);
   const memory=forgeProjectMemoryView(store,projectId,{maxItems:16,maxRuns:8});
   const recentFileWrites=forgeProjectFileReceiptView(store,projectId,{limit:12});
+  const acceptedWorks=forgeVerifiedWorkAcceptances(db,projectId,store.getWorkspaceSession().id);
   return {
     schema:'ordax.forge.project-administrator/1',project,
     provenance:{source:'canonical_app_sqlite',externalFilesInspected:false,
@@ -35,7 +37,9 @@ export function forgeProjectAdministratorView(store,projectId) {
     totals:{...totals,messages:memory.counts.messages,runs:memory.counts.runs,
       acceptedNotes:memory.counts.canonicalMemories,pendingNotes:memory.counts.pendingSuggestions},
     works:works.map(row=>({...row,
-      providerReplyIsCompletionProof:false,physicalArtifactVerified:false})),
+      providerReplyIsCompletionProof:false,physicalArtifactVerified:false,
+      completionVerified:acceptedWorks.has(row.taskId),
+      acceptanceEvidence:acceptedWorks.get(row.taskId)||null})),
     unresolvedCommands:unresolved,
     recentFileWriteReceipts:recentFileWrites.items,
     memory:{accepted:memory.canonical,pending:memory.suggested},

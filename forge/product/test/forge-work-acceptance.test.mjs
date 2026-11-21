@@ -172,6 +172,13 @@ test('Task acceptance requires real native test on integrated main, persists in 
   assert.equal(task.acceptanceEvidence.gatewayAgentInstanceId,gateway.gatewayAgentInstanceId);
   assert.equal(task.acceptanceEvidence.gptRunIdentityVerified,false);
   assert.equal(task.acceptanceEvidence.chatIdentityVerified,false);
+  const administrator=await f.invoke('project_administrator_snapshot',{projectId:p});
+  const adminTask=administrator.works.find(x=>x.taskId===taskId);
+  assert.equal(adminTask.completionVerified,true);
+  assert.equal(adminTask.acceptanceEvidence.scope,'verified_integrated_git_milestone');
+  assert.equal(adminTask.acceptanceEvidence.receiptId,task.acceptanceEvidence.receiptId);
+  assert.equal(adminTask.physicalArtifactVerified,false);
+  assert.equal(adminTask.acceptanceEvidence.currentGitHeadVerified,false);
   assert.equal(f.getStore().db.prepare('PRAGMA quick_check').get().quick_check,'ok');
   f.reopen();
   const persisted=(await f.invoke('work_plan',{projectId:p})).plan;
