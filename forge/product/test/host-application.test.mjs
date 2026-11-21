@@ -63,8 +63,10 @@ test('Node host runs the shared project and task services over its authenticated
   assert.equal(provider.unavailable_reason,'gpt_web_executor_requires_desktop');
   const blockedSend=await fetch(`${origin}/api/invoke`,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookie},
     body:JSON.stringify({method:'send',args:[{taskId:draft.id,content:'Implemente a loja.'}]})});
-  assert.equal(blockedSend.status,400);
-  assert.equal((await blockedSend.json()).error,'provider_transport_unavailable_on_host');
+  // The passive Host does not expose a send method at all. Treat 404 as
+  // proof that the removed legacy transport cannot be invoked by the browser.
+  assert.equal(blockedSend.status,404);
+  assert.equal((await blockedSend.json()).error,'method_not_available');
 
   // A browser session is not an MCP executor. Test both HTTP entrypoints
   // against the real Store before restart, not a policy-only mock.

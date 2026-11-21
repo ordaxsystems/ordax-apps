@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { Store, MESSAGE_PAGE_SIZE } from '../src/store.mjs';
+import {acquireHostProfileLock} from '../src/forge-core-profile-lock.mjs';
 import {ForgeProjectFiles} from '../src/forge-project-files.mjs';
 import {ForgeLocalWorkspaces,resolveForgeWorkspaceDocumentsDirectory} from '../src/forge-local-workspaces.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
@@ -104,6 +105,9 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'ordax-asset', privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ]);
 
+// Cross-process owner gate: Node Host and Electron must never open this
+// canonical SQLite profile as two independent Core authorities.
+const releaseForgeProfileLock=await acquireHostProfileLock(dataRoot);
 const store = new Store(path.join(dataRoot, 'ordax-forge.sqlite'));
 // Canonical project path lives in the existing SQLite, not another store.
 // Real user workspaces use the Windows-known Documents directory; existing
@@ -1930,16 +1934,35 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit',()=>{quittingIntentionally=true;});
-app.on('will-quit', () => {
-  if(backgroundTray){backgroundTray.destroy();backgroundTray=null;}
-  if(forgeHeartbeatTimer){clearInterval(forgeHeartbeatTimer);forgeHeartbeatTimer=null;}
-  writeForgeHeartbeat('stopping');
-  if(continuationTimer)clearInterval(continuationTimer);
-  void hostBrowserServer?.close();
-  void forgeRemoteGateway.stop().catch(()=>{});
-  void forgeLocalMcp.stop();
-  closeRuntimeOrchestratorPipe?.();
-  store.close();
+let forgeCoreShutdown=null,forgeCoreShutdownComplete=false;
+app.on('will-quit', event=>{
+  // Do not release ownership until the MCP listeners and the ONLY Store
+  // have closed. A second Node Host may acquire the profile afterwards.
+  if(forgeCoreShutdownComplete)return;
+  event.preventDefault();
+  if(forgeCoreShutdown)return;
+  forgeCoreShutdown=(async()=>{
+    if(backgroundTray){backgroundTray.destroy();backgroundTray=null;}
+    if(forgeHeartbeatTimer){clearInterval(forgeHeartbeatTimer);forgeHeartbeatTimer=null;}
+    writeForgeHeartbeat('stopping');
+    if(continuationTimer)clearInterval(continuationTimer);
+    await hostBrowserServer?.close();
+    await forgeRemoteGateway.stop().catch(()=>{});
+    await forgeLocalMcp.stop();
+    closeRuntimeOrchestratorPipe?.();
+    store.close();
+    await releaseForgeProfileLock();
+    forgeCoreShutdownComplete=true;
+    app.quit();
+  })();
+  void forgeCoreShutdown.catch(error=>{
+    // Preserve fail-closed ownership if shutdown is uncertain. OS process
+    // death makes stale-PID recovery possible on the next startup.
+    try{fs.appendFileSync(path.join(userRoot,'startup-error.log'),
+      JSON.stringify({at:new Date().toISOString(),
+        detail:'forge_core_shutdown_failed: '+String(error?.message||error)})+'\n');}catch{}
+    app.exit(1);
+  });
 });
 
 app.on('activate', () => {
