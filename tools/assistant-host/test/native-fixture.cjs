@@ -91,6 +91,9 @@ app.whenReady().then(async () => {
         if (body.action === 'blender.live_start') result.data = { readiness_state: 'ready', started: true };
         if (body.action === 'blender.live_object_transform') result.data = { object: { name: body.arguments.object_name || 'Cube', ordax_object_id: body.arguments.ordax_object_id || 'ordax_object_42' }, transform_applied: true };
         if (body.action === 'blender.live_add_modifier') result.data = { object: { name: body.arguments.object_name || 'Cube' }, modifier: { name: body.arguments.name, type: body.arguments.type }, added: true };
+        if (body.action === 'blender.live_boolean_cut_preview') result.data = { preview_id: ('preview_' + body.arguments.name.toLowerCase().replace(/[^a-z0-9]+/g,'_')).slice(0,64), workflow_name: body.arguments.name, state: 'preview', profiles: body.arguments.profiles, object: { name: body.arguments.object_name || 'Cube' } };
+        if (body.action === 'blender.live_boolean_cut_commit') result.data = { preview_id: body.arguments.preview_id, state: 'committed', object: { name: 'Cube' } };
+        if (body.action === 'blender.live_boolean_cut_cancel') result.data = { preview_id: body.arguments.preview_id, state: 'cancelled', object: { name: 'Cube' } };
         if (body.action === 'blender.live_create_primitive') result.data = { object: { name: body.arguments.name, type: 'MESH' }, primitive: body.arguments.primitive };
         if (body.action === 'blender.live_material_apply') result.data = { object: { name: body.arguments.object_name || 'Cube' }, material: body.arguments.material_name };
         if (body.action === 'blender.live_save') result.data = { saved: true, file: body.arguments.target_path || 'current.blend' };
@@ -445,6 +448,26 @@ app.whenReady().then(async () => {
     await until('!document.getElementById("studioBlenderReviewArea").hidden && !document.getElementById("studioBlenderApply").disabled');
     await window.webContents.executeJavaScript('document.getElementById("studioBlenderApply").click()');
     await until('document.getElementById("studioBlenderResult").textContent.includes("FixtureBevel") && document.getElementById("studioBlenderReviewArea").hidden');
+    await window.webContents.executeJavaScript('document.getElementById("studioBlenderBooleanName").value="Fixture Commit Cut";document.getElementById("studioBlenderBooleanDimensions").value="2, 3, 1";document.getElementById("studioBlenderBooleanOffset").value="0.5, 0, -1";document.getElementById("studioBlenderBooleanPreviewReview").click()');
+    await until('!document.getElementById("studioBlenderReviewArea").hidden');
+    assert.equal(remoteCalls.filter(c=>c.action==='blender.live_boolean_cut_preview').length,0);
+    await window.webContents.executeJavaScript('document.getElementById("studioBlenderApply").click()');
+    await until('document.getElementById("studioBlenderBooleanState").textContent.includes("Fixture Commit Cut") && !document.getElementById("studioBlenderBooleanCommitReview").disabled');
+    await window.webContents.executeJavaScript('document.getElementById("studioBlenderBooleanCommitReview").click()');
+    await until('!document.getElementById("studioBlenderReviewArea").hidden');
+    assert.equal(remoteCalls.filter(c=>c.action==='blender.live_boolean_cut_commit').length,0);
+    await window.webContents.executeJavaScript('document.getElementById("studioBlenderApply").click()');
+    await until('document.getElementById("studioBlenderResult").textContent.includes("committed") && document.getElementById("studioBlenderBooleanState").textContent.includes("Nenhum preview")');
+
+    await window.webContents.executeJavaScript('document.getElementById("studioBlenderBooleanName").value="Fixture Cancel Cut";document.getElementById("studioBlenderBooleanPreviewReview").click()');
+    await until('!document.getElementById("studioBlenderReviewArea").hidden');
+    await window.webContents.executeJavaScript('document.getElementById("studioBlenderApply").click()');
+    await until('document.getElementById("studioBlenderBooleanState").textContent.includes("Fixture Cancel Cut") && !document.getElementById("studioBlenderBooleanCancelReview").disabled');
+    await window.webContents.executeJavaScript('document.getElementById("studioBlenderBooleanCancelReview").click()');
+    await until('!document.getElementById("studioBlenderReviewArea").hidden');
+    assert.equal(remoteCalls.filter(c=>c.action==='blender.live_boolean_cut_cancel').length,0);
+    await window.webContents.executeJavaScript('document.getElementById("studioBlenderApply").click()');
+    await until('document.getElementById("studioBlenderResult").textContent.includes("cancelled") && document.getElementById("studioBlenderBooleanState").textContent.includes("Nenhum preview")');
     await window.webContents.executeJavaScript('document.getElementById("studioBlenderPrimitiveName").value="FixtureCube";document.getElementById("studioBlenderCreateReview").click()');
     await until('!document.getElementById("studioBlenderReviewArea").hidden');
     assert.equal(remoteCalls.filter(c=>c.action==='blender.live_create_primitive').length,0);
@@ -469,6 +492,11 @@ app.whenReady().then(async () => {
     assert.equal(bevelCall.arguments.type,'BEVEL');
     assert.equal(bevelCall.arguments.width,0.125);
     assert.equal(bevelCall.arguments.segments,3);
+    const booleanPreviews=remoteCalls.filter(c=>c.action==='blender.live_boolean_cut_preview');
+    assert.equal(booleanPreviews.length,2);
+    assert.deepEqual(booleanPreviews[0].arguments.profiles,[{type:'box',dimensions:[2,3,1],offset:[0.5,0,-1],rotation_euler:[0,0,0]}]);
+    assert.equal(remoteCalls.filter(c=>c.action==='blender.live_boolean_cut_commit').length,1);
+    assert.equal(remoteCalls.filter(c=>c.action==='blender.live_boolean_cut_cancel').length,1);
     assert.equal(remoteCalls.find(c=>c.action==='blender.live_create_primitive').arguments.primitive,'cube');
     assert.equal(remoteCalls.find(c=>c.action==='blender.live_material_apply').arguments.material_name,'FixtureRed');
     assert.equal(remoteCalls.find(c=>c.action==='blender.live_save').arguments.target_path,'scenes/fixture.blend');
