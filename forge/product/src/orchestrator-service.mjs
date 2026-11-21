@@ -1245,7 +1245,9 @@ export class OrchestratorService {
     if(operation==='orchestrators_list')return {orchestrators:this.db.prepare(
       'SELECT * FROM lab_orchestrators WHERE project_id=? ORDER BY created_at,id LIMIT 100').all(input.projectId)};
     if(operation==='work_plan')return {plan:this.projectPlan(input.projectId,input.maxParallel||4)};
-    if(operation==='work_list')return {works:this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,
+    if(operation==='work_list'){
+      const accepted=forgeVerifiedWorkAcceptances(this.db,input.projectId,context.workspaceSessionId);
+      return {works:this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,
       b.orchestrator_id,(SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments,
       (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_run_status,
       (SELECT r.started_at FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_started_at,
@@ -1263,8 +1265,11 @@ export class OrchestratorService {
         }],input.projectId)}])[0],
         dependsOn:this.db.prepare('SELECT prerequisite_id FROM lab_work_dependencies WHERE project_id=? AND task_id=? ORDER BY prerequisite_id')
           .all(input.projectId,work.id).map(row=>row.prerequisite_id),
-        claim:this.workClaims.snapshot(input.projectId,work.id,context.workspaceSessionId)
+        claim:this.workClaims.snapshot(input.projectId,work.id,context.workspaceSessionId),
+        acceptanceEvidence:accepted.get(work.id)||null,
+        completionVerified:accepted.has(work.id)
       }))};
+    }
     if(operation==='work_get') {
       const task=this.task(input.projectId,input.taskId);
       // Expose only revision/readiness, never the unsubmitted prompt. Agents

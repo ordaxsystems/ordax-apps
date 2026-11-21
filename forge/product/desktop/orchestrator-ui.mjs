@@ -403,7 +403,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('executionOverviewDescription').textContent=overview.description;
     const state=active?.state||'idle';
     const stateLabels={
-      idle:'Sem missão',queued:'Preparando',ready_a:'Aguardando GPT',
+      idle:'Passivo',queued:'Preparando',ready_a:'Aguardando GPT',
       sending_a:'Enviando ao GPT',ready_b:'Revisando GPT',reviewing_a:'Revisão legada indisponível',
       ready_final:'Aguardando GPT',sending_b:'Enviando ao GPT',
       ready_review_final:'Revisando GPT',reviewing_final:'Revisão legada indisponível',
@@ -416,14 +416,14 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     badge.dataset.state=['sending_a','sending_b','reviewing_a','reviewing_final'].includes(state)
       ?'running':['verification_required','reconciliation_required','budget_exhausted'].includes(state)
         ?'attention':state==='blocked'?'blocked':'idle';
-    const title=active?.mission?.trim()||'Nenhuma missão técnica registrada';
+    const title=active?.mission?.trim()||'Forge MCP em modo passivo';
     $('executionMissionTitle').textContent=title.length>140?title.slice(0,137)+'…':title;
     $('executionMissionDetail').textContent=active?.state==='reconciliation_required'
       ?'A revisão de acompanhamento precisa de reconciliação. Confira os recibos existentes; nenhum envio será repetido automaticamente.'
       :active?.state==='verification_required'
         ?'Resposta recebida. Confira os arquivos disponíveis na prévia; testes e publicação exigem validação separada.'
         :active?'Missão vinculada ao projeto. Nenhuma ação adicional é autorizada por sugestões internas.'
-          :'Acompanhe aqui tarefas e resultados confirmados.';
+          :'O aplicativo apenas apresenta estado. Decisões, claims e progresso vêm dos chats GPT pelo Forge MCP.';
     const workList=$('executionWorkList');workList.replaceChildren();
     const priority={running:0,attention:1,ready:2,completed:3};
     const ordered=[...works].sort((a,b)=>
@@ -439,23 +439,26 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       button.type='button';button.className='execution-work-item';
       button.dataset.state=state;button.setAttribute('role','listitem');
       const icon=document.createElement('span');icon.className='execution-work-symbol';
-      icon.textContent=state==='running'?'◉':state==='attention'?'!':'◇';
+      icon.textContent=work.acceptanceEvidence?'✓':state==='running'?'◉':state==='attention'?'!':'◇';
       const copy=document.createElement('span');copy.className='execution-work-copy';
       const title=document.createElement('strong');title.textContent=work.title;
       const info=document.createElement('small');
-      info.textContent=work.claim?.state==='occupied'
-        ?'Chat '+work.claim.chatLabel+' · '+(work.claim.lastProgress
-          ?String(work.claim.lastProgress).slice(0,120)
-          :'reserva ativa no Forge MCP')
-        :work.latest_run_status==='succeeded'?'Run GPT concluído · confira os arquivos na prévia':
-          work.running_runs>0?'Run GPT em andamento':
-          work.execution?.observed==='reconciliation_required'?'Envio incerto · reconciliar':
-          work.provider_segments>0?'Conversa registrada no projeto':'Ainda sem resposta GPT';
+      info.textContent=work.acceptanceEvidence
+        ?'Aceite verificado no Git local · '+String(work.acceptanceEvidence.testedMainHeadSha||'').slice(0,8)
+        :work.claim?.state==='occupied'
+          ?'Chat '+work.claim.chatLabel+' · '+(work.claim.lastProgress
+            ?String(work.claim.lastProgress).slice(0,120)
+            :'reserva ativa no Forge MCP')
+          :work.latest_run_status==='succeeded'?'Run GPT concluído · aceite ainda não registrado':
+            work.running_runs>0?'Run GPT em andamento':
+            work.execution?.observed==='reconciliation_required'?'Envio incerto · reconciliar':
+            work.provider_segments>0?'Conversa registrada no projeto':'Ainda sem resposta GPT';
       copy.append(title,info);
       const label=document.createElement('span');label.className='execution-work-state';
-      label.textContent=work.claim?.state==='occupied'?'Reservada':
-        state==='running'?'Em execução':
-          state==='attention'?'Revisar':state==='completed'?'Run concluído':'Aguardando';
+      label.textContent=work.acceptanceEvidence?'Aceita':
+        work.claim?.state==='occupied'?'Reservada':
+          state==='running'?'Em execução':
+            state==='attention'?'Revisar':state==='completed'?'Concluída':'Aguardando';
       button.append(icon,copy,label);
       button.addEventListener('click',async()=>{
         if(scope!==executionScope())return;

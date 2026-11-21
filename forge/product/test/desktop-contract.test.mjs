@@ -527,8 +527,13 @@ test('command centre uses one real project projection without fictional agents o
   assert.match(ui,/executionWorkScope===scope\?visibleWorkItems:\[\]/);
   assert.match(ui,/executionMissionScope===scope\?executionMission:null/);
   assert.match(ui,/workClassForPlan\(work\)/);
-  assert.match(ui,/Run GPT concluído · confira os arquivos na prévia/);
-  assert.doesNotMatch(ui,/Resposta GPT registrada · efeito não verificado/);
+  assert.match(ui,/work\.acceptanceEvidence\?'Aceita'/);
+  assert.match(ui,/Aceite verificado no Git local/);
+  assert.match(ui,/Run GPT concluído · aceite ainda não registrado/);
+  assert.match(html,/Forge MCP em modo passivo/);
+  assert.match(html,/claims ativos/);
+  assert.match(html,/Sessões MCP observadas/);
+  assert.doesNotMatch(ui,/Run GPT concluído · confira os arquivos na prévia|Resposta GPT registrada · efeito não verificado/);
   assert.match(ui,/Resultado externo/iu);
   assert.match(ui,/openMissionNavigation\('attention',\$\('openEvidence'\)\)/);
   assert.match(ui,/openMissionNavigation\('all',\$\('openHistory'\)\)/);
