@@ -664,6 +664,7 @@ test('command centre uses one real project projection without fictional agents o
   const shell=fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
   for(const id of ['executionOverview','executionMissionBadge','executionMissionTitle',
     'executionAuthorityState','executionClaimedCount','executionWorkList','executionActivity',
+    'executionSessionSummary','executionSessionList','executionMemorySummary','executionMemoryList',
     'executionOpenWorks','refreshExecutionOverview',
     'openHistory','openEvidence','projectPulseDisclosure']){
     assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,
@@ -675,6 +676,12 @@ test('command centre uses one real project projection without fictional agents o
   assert.match(html,/class="execution-autonomy-controls" hidden aria-hidden="true"/);
   assert.match(ui,/work\.claim\?\.state==='occupied'/);
   assert.match(ui,/executionClaimedCount/);
+  assert.match(ui,/function renderExecutionSessions\(works,scope\)/);
+  assert.match(ui,/function renderExecutionMemory\(\)/);
+  assert.match(ui,/call\('project_memory',\{projectId:p\}\)\.catch\(\(\)=>null\)/);
+  assert.match(ui,/executionMemoryScope===executionScope\(\)\?executionMemory:null/);
+  assert.match(html,/Rótulos de chat são declarados pelo cliente MCP e não atestam identidade do ChatGPT/);
+  assert.match(html,/Memória editorial orienta continuidade; não comprova arquivos, testes, publicação ou outros efeitos externos/);
   assert.match(ui,/executionWorkScope===scope\?visibleWorkItems:\[\]/);
   assert.match(ui,/executionMissionScope===scope\?executionMission:null/);
   assert.match(ui,/workClassForPlan\(work\)/);

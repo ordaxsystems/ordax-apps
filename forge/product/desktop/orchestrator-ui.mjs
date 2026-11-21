@@ -400,7 +400,77 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   // It never creates a virtual agent, an estimated progress percentage or a
   // second execution ledger. A succeeded GPT Run is not a verified code change.
   let executionMission=null,executionMissionScope='',executionWorkScope='';
+  let executionMemory=null,executionMemoryScope='';
   const executionScope=()=>[projectId,orchestratorId].join(':');
+  const executionMemoryCategoryLabels={entity:'Entidade',structure:'Estrutura',fact:'Fato',decision:'Decisão',constraint:'Restrição',goal:'Objetivo',open_loop:'Pendência',reference:'Referência'};
+  function renderExecutionSessions(works,scope){
+    const list=$('executionSessionList'),summary=$('executionSessionSummary');
+    if(!list||!summary)return;
+    list.replaceChildren();
+    const sessions=[...works].filter(work=>work.claim||work.provider_segments>0)
+      .sort((a,b)=>(b.claim?.state==='occupied')-(a.claim?.state==='occupied')||(b.provider_segments||0)-(a.provider_segments||0));
+    const occupied=sessions.filter(work=>work.claim?.state==='occupied').length;
+    summary.textContent=sessions.length?occupied+' ativa'+(occupied===1?'':'s')+' · '+sessions.length+' registrada'+(sessions.length===1?'':'s'):'0 observadas';
+    summary.dataset.state=occupied?'active':'idle';
+    if(!sessions.length){
+      const empty=document.createElement('p');empty.className='execution-empty';
+      empty.textContent='Nenhuma conversa ou reserva registrada neste projeto.';list.append(empty);return;
+    }
+    for(const work of sessions.slice(0,6)){
+      const button=document.createElement('button');button.type='button';button.className='execution-observation-item';
+      button.setAttribute('role','listitem');button.dataset.state=work.claim?.state==='occupied'?'active':'history';
+      const copy=document.createElement('span');copy.className='execution-observation-copy';
+      const title=document.createElement('strong');title.textContent=work.title;
+      const detail=document.createElement('small');
+      detail.textContent=work.claim?.state==='occupied'
+        ?'Chat declarado: '+work.claim.chatLabel+' · reserva ativa'+(work.claim.lastProgress?' · '+String(work.claim.lastProgress).slice(0,110):'')
+        :(work.provider_segments||0)+' conversa'+(work.provider_segments===1?'':'s')+' persistida'+(work.provider_segments===1?'':'s');
+      const state=document.createElement('span');state.className='execution-observation-state';
+      state.textContent=work.claim?.state==='occupied'?'Ativa':'Histórico';
+      copy.append(title,detail);button.append(copy,state);
+      button.addEventListener('click',async()=>{
+        if(scope!==executionScope())return;
+        try{coordinatorOpen=false;await onOpenWork(work.id);}
+        catch{status('Não foi possível abrir o histórico desta frente.');}
+      });
+      list.append(button);
+    }
+  }
+  function renderExecutionMemory(){
+    const list=$('executionMemoryList'),summary=$('executionMemorySummary');
+    if(!list||!summary)return;
+    list.replaceChildren();
+    const memory=executionMemoryScope===executionScope()?executionMemory:null;
+    if(!memory){
+      summary.textContent=projectId?'Leitura indisponível':'Sem projeto';summary.dataset.state='idle';
+      const empty=document.createElement('p');empty.className='execution-empty';
+      empty.textContent=projectId?'A memória canônica não pôde ser lida agora.':'Selecione um projeto para consultar a memória compartilhada.';
+      list.append(empty);return;
+    }
+    const canonical=Array.isArray(memory.canonical)?memory.canonical:[];
+    const suggested=Array.isArray(memory.suggested)?memory.suggested:[];
+    const canonicalTotal=Number(memory.counts?.canonicalMemories??canonical.length)||0;
+    const pending=Number(memory.counts?.pendingSuggestions??suggested.length)||0;
+    summary.textContent=canonicalTotal+' canônica'+(canonicalTotal===1?'':'s')+(pending?' · '+pending+' pendente'+(pending===1?'':'s'):'');
+    summary.dataset.state=pending?'attention':canonical.length?'active':'idle';
+    if(!canonical.length){
+      const empty=document.createElement('p');empty.className='execution-empty';
+      empty.textContent=pending?'Há sugestões aguardando revisão; nenhuma foi promovida automaticamente.':'Nenhuma memória canônica registrada neste projeto.';
+      list.append(empty);return;
+    }
+    for(const item of canonical.slice(0,5)){
+      const article=document.createElement('article');article.className='execution-memory-item';article.setAttribute('role','listitem');
+      const head=document.createElement('div');head.className='execution-memory-head';
+      const kind=document.createElement('span');kind.className='execution-memory-kind';kind.textContent=executionMemoryCategoryLabels[item.category]||item.category||'Memória';
+      const key=document.createElement('strong');key.textContent=item.key||'Item sem chave';head.append(kind,key);
+      const content=document.createElement('p');content.textContent=String(item.content||'');
+      const meta=document.createElement('small');meta.textContent='Editorial · efeito externo '+(item.verifiedExternalEffect===true?'verificado':'não verificado');
+      article.append(head,content,meta);list.append(article);
+    }
+    if(canonicalTotal>5){
+      const more=document.createElement('p');more.className='execution-observation-note';more.textContent='+'+(canonicalTotal-5)+' item(ns) canônicos no mesmo armazenamento.';list.append(more);
+    }
+  }
   function renderExecutionMonitor() {
     const scope=executionScope(),works=executionWorkScope===scope?visibleWorkItems:[];
     const mission=executionMissionScope===scope?executionMission:null;
@@ -486,6 +556,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       });
       workList.append(button);
     }
+    renderExecutionSessions(works,scope);
+    renderExecutionMemory();
     const timeline=$('executionActivity');timeline.replaceChildren();
     const entries=[];
     if(active)entries.push(['Missão registrada',stateLabels[state]||state]);
@@ -1100,11 +1172,12 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   });
   async function refreshWorks() {
     const generation=++epoch,p=projectId,o=orchestratorId;
-    if(!p) {workCount=0;executionWorkScope='';renderDependencyEditor([],null);renderWorks([]);renderExecutionMonitor();await onScopeChange(null);syncCoordinatorActions();return;}
-    const [result,planning,allResult]=await Promise.all([
+    if(!p) {workCount=0;executionWorkScope='';executionMemoryScope='';executionMemory=null;renderDependencyEditor([],null);renderWorks([]);renderExecutionMonitor();await onScopeChange(null);syncCoordinatorActions();return;}
+    const [result,planning,allResult,memory]=await Promise.all([
       call('work_list',{projectId:p,...(o?{orchestratorId:o}:{})}),
       call('work_plan',{projectId:p,maxParallel:4}).catch(()=>null),
-      o?call('work_list',{projectId:p}).catch(()=>null):Promise.resolve(null)
+      o?call('work_list',{projectId:p}).catch(()=>null):Promise.resolve(null),
+      call('project_memory',{projectId:p}).catch(()=>null)
     ]);
     if(generation!==epoch||p!==projectId||o!==orchestratorId)return;
     const works=result.works;
@@ -1114,7 +1187,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('openEvidence').disabled=!projectId||!orchestratorId;
     const editableDependencies=renderDependencyEditor(allResult?.works||result.works,planning?.plan||null);
     renderWorks(works,planning?.plan||null,editableDependencies);
-    executionWorkScope=executionScope();renderExecutionMonitor();
+    executionWorkScope=executionScope();
+    executionMemory=memory?.schema==='ordax.forge.project-memory/1'&&memory.projectId===p?memory:null;
+    executionMemoryScope=executionScope();renderExecutionMonitor();
     await onScopeChange(new Set(works.map(w=>w.id)));
     if(generation!==epoch||p!==projectId||o!==orchestratorId)return;
     syncCoordinatorActions();
