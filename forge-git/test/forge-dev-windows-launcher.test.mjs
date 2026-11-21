@@ -54,6 +54,20 @@ test('pinned local Core executable survives Windows Startup without another host
   assert.doesNotMatch(script,/setx|New-Service|sc\.exe|Stop-Process|taskkill/i);
 });
 
+test('remote DEV startup relays through the logged-in Windows shell without another lifecycle',()=>{
+  assert.match(script,/\[switch\]\$FromWindowsStartup/);
+  assert.match(script,/\$shortcut\.Arguments \+= ' -FromWindowsStartup'/);
+  assert.match(script,/if\(!\$FromWindowsStartup -and \(!\$coreProcesses\.Count -or !\$gitActive\)\)/);
+  assert.match(script,/forge_dev_startup_shortcut_required/);
+  assert.match(script,/\$existing\.Arguments -cne \$expectedArgs/);
+  assert.match(script,/forge_dev_startup_shortcut_mismatch/);
+  assert.match(script,/Get-Process -Name explorer/);
+  assert.match(script,/forge_dev_interactive_shell_unavailable/);
+  assert.match(script,/Start-Process -FilePath \(Join-Path \$env:SystemRoot 'explorer\.exe'\)/);
+  assert.match(script,/forge_dev_windows_shell_handoff_requested/);
+  assert.doesNotMatch(script,/Register-ScheduledTask|New-ScheduledTask|Start-Job|New-Service|sc\.exe/i);
+});
+
 test('packaged DEV Core is started only by the existing supervised lifecycle',()=>{
   assert.match(script,/forge\\scripts\\dev-supervisor\.mjs/);
   assert.match(script,/forge-dev-supervisor\.lock\.json/);
