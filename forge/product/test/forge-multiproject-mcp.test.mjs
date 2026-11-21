@@ -8,6 +8,7 @@ import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {ForgeProjectFiles} from '../src/forge-project-files.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {createForgeLoopbackMcp,FORGE_APP_MCP_SCOPE,FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
+import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
 
 function fixture(t) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'forge-multi-mcp-'));
@@ -242,8 +243,14 @@ test('one app MCP token discovers projects and writes only verified owner folder
   assert.equal(tools.includes('forge_project_create'),false);
   assert.equal(tools.includes('forge_project_quick_create'),false);
   assert.equal(tools.includes('forge_project_auto_title'),false);
-  assert.equal(FORGE_APP_MCP_OPERATIONS.length,64);
-  assert.ok(tools.length<=64);
+  assert.ok(FORGE_APP_MCP_OPERATIONS.length<=64);
+  assert.ok(tools.length<=FORGE_APP_MCP_OPERATIONS.length,
+    'runtime capability filtering may hide unavailable owner ports');
+  const operationByToolName=new Map(ORCHESTRATOR_TOOLS.map(tool=>[tool.name,tool.operation]));
+  for(const name of tools)
+    assert.ok(FORGE_APP_MCP_OPERATIONS.includes(operationByToolName.get(name)),name);
+  assert.ok(tools.includes('forge_project_activity'),
+    'persisted activity/idle projection is available without adding a scheduler');
   assert.ok(tools.includes('forge_project_delete'), 'owner-authorized MCP can delete a confirmed project');
   assert.ok(!tools.includes('forge_forjador_send'), 'GPT cannot recursively dispatch itself');
   assert.ok(!tools.includes('forge_project_observation_set'),

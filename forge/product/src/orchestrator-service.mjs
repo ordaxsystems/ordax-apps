@@ -11,6 +11,7 @@ import {forgeProjectContext,forgeMcpDiscovery} from './forge-executor-context.mj
 import {forgeProjectMemoryView} from './forge-project-memory-view.mjs';
 import {forgeProjectAdministratorView} from './forge-project-administrator-view.mjs';
 import {forgeProjectHandoffView} from './forge-project-handoff-view.mjs';
+import {forgeProjectActivityView} from './forge-project-activity-view.mjs';
 import {forgeContinuationDecision} from './forge-continuation-decision.mjs';
 import {forgeProjectMissionsView} from './forge-project-missions-view.mjs';
 import {UNTITLED_FORGE_PROJECT,suggestForgeProjectTitle} from './project-auto-title.mjs';
@@ -1117,6 +1118,7 @@ export class OrchestratorService {
     }
     if(operation==='project_memory')return forgeProjectMemoryView(this.store,input.projectId);
     if(operation==='project_administrator_snapshot')return forgeProjectAdministratorView(this.store,input.projectId);
+    if(operation==='project_activity')return forgeProjectActivityView(this.store,input.projectId);
     if(operation==='project_files_status'){
       const taskId=this.scopedTaskId(input);
       return this.files?.status(input.projectId,taskId)||{
