@@ -91,6 +91,11 @@ test('cold start preserves project selection but presents Orchestrator before an
   assert.match(ui,/async start\(\{restoreNavigation=null\}=\{\}\)/);
   assert.match(ui,/projectId=projects\.some\(project=>project\.id===saved\?\.projectId\)/);
   assert.match(ui,/if\(saved\?\.projectId===projectId\)orchestratorId=saved\.orchestratorId\|\|null/);
+  assert.match(ui,/await refreshApiStatus\(\)\.catch\(\(\)=>null\)/);
+  const projectSelection=ui.indexOf('projectId=projects.some(project=>project.id===saved?.projectId)');
+  const statusProjection=ui.indexOf('await refreshApiStatus().catch(()=>null)',projectSelection);
+  assert.ok(projectSelection>=0&&statusProjection>projectSelection,
+    'cold start must restore the canonical project before optional status projection');
   assert.match(ui,/if\(items\.length&&chatTaskId\)await showCoordinator\(\)/);
   assert.doesNotMatch(ui,/shouldRestoreTask=saved\?\.view==='task'/);
   assert.match(renderer,/orchestrationUi\.start\(\{restoreNavigation:savedNavigation\}\)/);

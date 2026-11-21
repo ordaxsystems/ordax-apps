@@ -148,9 +148,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   function syncCoordinatorActions() {
     const selected=orchestrators.find(item=>item.id===orchestratorId);
-    const selectedReady=Boolean(selected)&&selected.status!=='paused';
     $('coordinatorSend').disabled=true; // MCP-only GPT sends
-    $('inspectProjectAccess').disabled=!projectId||!selected||analysisBusy||preflightBusy||coordinatorSubmitting;
+    $('inspectProjectAccess').disabled=!projectId||!selected||preflightBusy||coordinatorSubmitting;
     $('coordinatorPrompt').disabled=true; // App displays conversation history
   }
   function setCoordinatorDraftState(text='') {
@@ -265,7 +264,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const otherProjects=projects.filter(project=>project.id!==projectId);
     const repository=current?.repository_url?'GitHub vinculado por URL · leitura não verificada':'Repositório GitHub ainda não vinculado';
     $('activeProjectDetail').textContent=current?.name==='Novo projeto'
-      ?'Conversa vazia · faça seu primeiro pedido ao Forjador.'
+      ?'Projeto vazio · crie uma tarefa quando houver trabalho real.'
       :current?repository:'Crie seu primeiro projeto usando Novo projeto.';
     // One canonical Store supplies the active project and switchable others.
     // Previously created projects are first-class, never hidden as legacy.
@@ -1503,7 +1502,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   return Object.freeze({
     async start({restoreNavigation=null}={}){const projects=await refreshProjects();
-      await refreshApiStatus();
       const saved=restoreNavigation?.schema==='ordax.workspace-navigation.v1'?restoreNavigation:null;
       projectId=projects.some(project=>project.id===saved?.projectId)
         ?saved.projectId:projects[0]?.id||null;
@@ -1511,6 +1509,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       if(saved?.projectId===projectId)orchestratorId=saved.orchestratorId||null;
       renderProjectNavigation(projects);
       syncProjectRepository();
+      // Project restoration must not depend on a secondary status projection.
+      // If status is temporarily unavailable, keep the canonical project visible
+      // and continue with project/orchestrator reads instead of falling back to
+      // the empty onboarding screen.
+      await refreshApiStatus().catch(()=>null);
       const items=await refreshOrchestrators();
       // The administrative Orchestrator is the canonical landing workspace.
       // Persisted GPT Task identity stays in SQLite and its scoped Work list,
