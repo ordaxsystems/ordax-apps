@@ -25,7 +25,7 @@ import {createForgeProductSession} from '../src/forge-product-session.mjs';
 import {createForgeRemoteMcpOwner} from '../src/forge-remote-mcp-owner.mjs';
 import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
 import {forgeOwnerWorkspaceScope} from '../src/forge-owner-workspace-scope.mjs';
-import {activateDedicatedForgeProject,dedicatedForgeMcpOperations} from '../src/forge-dedicated-project.mjs';
+import {activateDedicatedForgeProject,dedicatedForgeMcpOperations,readDedicatedForgeProject} from '../src/forge-dedicated-project.mjs';
 import {createForgeOrdaxRepositoryCatalog} from '../src/forge-ordax-repository-catalog.mjs';
 import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
 import {canonicalProviderChatUrl} from '../src/conversation-policy.mjs';
@@ -640,6 +640,7 @@ ipcMain.on('ordax:worker:stream', (event, snapshot) => {
 
 const sharedTaskHandlers=createTaskUiHandlers({
   store,decorateTask,decorateMessages,getTaskView,isRunActive:()=>primaryProviderRunActive(),
+  dedicatedProjectId:()=>readDedicatedForgeProject(store)?.projectId??null,
   onOpenTask:createProviderAwareTaskOpener({
     isChatVisible:()=>chatVisible,
     showConversation:url=>worker.showConversation(url),
@@ -762,6 +763,7 @@ async function captureConfirmedHtmlArtifact(requestedId,{
 }
 registerUiHandler('ordax:tasks:html-artifact:save',async(event,requestedId)=>{
   requireTrustedSupervisorRenderer(event);
+  if(readDedicatedForgeProject(store))throw Error('forge_dedicated_app_mcp_only');
   return captureConfirmedHtmlArtifact(requestedId);
 });
 registerUiHandler('ordax:tasks:html-artifact:reveal',(event,payload={})=>{
@@ -1421,6 +1423,7 @@ registerUiHandler('ordax:forge:workspace:status',(event,projectId)=>{
 registerUiHandler('ordax:forge:workspace:create',(event,projectId)=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_workspace_native_ui_only');
+  if(readDedicatedForgeProject(store))throw Error('forge_dedicated_repository_executor_required');
   orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
   return forgeLocalWorkspaces.createDefault(projectId);
 });
@@ -1428,6 +1431,7 @@ registerUiHandler('ordax:forge:workspace:choose',async(event,projectId)=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_workspace_native_ui_only');
   orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
+  if(readDedicatedForgeProject(store))throw Error('forge_dedicated_repository_executor_required');
   const current=forgeLocalWorkspaces.status(projectId);
   if(current.configured)throw Error('forge_workspace_already_bound');
   const chosen=await dialog.showOpenDialog(win,{
@@ -1452,6 +1456,7 @@ registerUiHandler('ordax:forge:workspace:migrate',async(event,projectId)=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_workspace_native_ui_only');
   orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
+  if(readDedicatedForgeProject(store))throw Error('forge_dedicated_repository_executor_required');
   const status=forgeLocalWorkspaces.status(projectId);
   if(status.configured||!status.legacyMigrationRequired)
     throw Error('forge_workspace_migration_not_applicable');
@@ -1472,12 +1477,16 @@ registerUiHandler('ordax:forge:development:status',(event,projectId)=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_development_native_ui_only');
   orchestratorService.requireAccess(localOrchestratorContext,'project_development_status',projectId);
+  if(readDedicatedForgeProject(store))return {
+    projectId,available:false,nativeProcessExecution:false,
+    reason:'dedicated_repository_owner_port_required'};
   return forgeProjectDevelopment.status(projectId);
 });
 registerUiHandler('ordax:forge:development:approve',async(event,projectId)=>{
   requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw Error('forge_development_native_ui_only');
   orchestratorService.requireAccess(localOrchestratorContext,'project_development_status',projectId);
+  if(readDedicatedForgeProject(store))throw Error('forge_dedicated_repository_executor_required');
   if(!forgeMcpTrusted.isAppTrusted())throw Error('forge_development_mcp_app_approval_required');
   if(!forgeLocalWorkspaces.status(projectId).verified)throw Error('forge_development_workspace_unverified');
   const scopeHash=forgeMcpTrusted.scopeHash(projectId);
@@ -1662,7 +1671,7 @@ registerUiHandler('ordax:forge:local-mcp:stop',async event=>{
 registerUiHandler('ordax:orchestrator:invoke',async(event,payload)=>{
   requireTrustedSupervisorRenderer(event);
   const scope=payload?.operation==='project_delete'?projectAssetCleanupScope(payload?.input?.projectId):null;
-  assertPassiveUiOperation(payload?.operation);
+  assertPassiveUiOperation(payload?.operation,{dedicatedProject:readDedicatedForgeProject(store)!==null});
   const receipt=await orchestratorService.invoke(
     localOrchestratorContext,payload.operation,payload?.input??{});
   let result=withDeletedProjectAssetCleanup(receipt,scope);
@@ -1793,6 +1802,7 @@ registerUiHandler('ordax:supervisor:status',event=>{
 });
 registerUiHandler('ordax:tasks:supervisor-role:set',(event,payload)=>{
   requireTrustedSupervisorRenderer(event);
+  if(readDedicatedForgeProject(store))throw Error('forge_dedicated_app_mcp_only');
   return store.setTaskSupervisorRole(String(payload?.taskId||''),payload?.role);
 });
 registerUiHandler('ordax:supervisor:recoverable', (event,payload) => {

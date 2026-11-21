@@ -1151,11 +1151,15 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     dedicatedProject=result.projectScope?.mode==='dedicated';
     for(const id of ['addProject','quickNewProject','renameProjectButton',
        'deleteProjectButton','projectSetup','projectRenameSetup',
-       'projectDeleteSetup','projectRepositoryForm']){
+       'projectDeleteSetup','projectRepositoryForm',
+       'newScopedWorkButton','newScopedWorkDetails','batchWorkDetails',
+       'forgeDevelopmentAccess','forgeWorkspacePanel']){
       const node=$(id);
       if(!node)continue;
       if(id==='projectSetup'||id==='projectRenameSetup'||id==='projectDeleteSetup')
         node.open=false;
+      if(dedicatedProject&&'open' in node&&
+         ['newScopedWorkDetails','batchWorkDetails'].includes(id))node.open=false;
       node.hidden=dedicatedProject;
     }
     $('projectSelect').disabled=dedicatedProject;

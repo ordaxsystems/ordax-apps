@@ -10,7 +10,7 @@ import {createHostBrowserServer} from './host-browser-server.mjs';
 import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
 import {createForgeRemoteMcpOwner,FORGE_NODE_REMOTE_MCP_OPERATIONS,FORGE_NODE_NATIVE_REMOTE_MCP_OPERATIONS} from '../src/forge-remote-mcp-owner.mjs';
 import {createForgeNodeNativeOwnerPorts} from '../src/forge-node-native-owner-ports.mjs';
-import {activateDedicatedForgeProject} from '../src/forge-dedicated-project.mjs';
+import {activateDedicatedForgeProject,readDedicatedForgeProject} from '../src/forge-dedicated-project.mjs';
 import {createForgeOrdaxRepositoryCatalog} from '../src/forge-ordax-repository-catalog.mjs';
 
 const MIME_EXT=new Map([['image/png','png'],['image/jpeg','jpg'],['image/webp','webp'],['image/gif','gif'],['image/avif','avif']]);
@@ -73,7 +73,8 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
     assets:(message.assets||[]).map(asset=>({...asset,url:assetUrl(asset.id)}))}));
   const decorateTask=task=>task?{...task,messages:decorateMessages(task.messages||[])}:null;
   const getTaskView=id=>decorateTask(store.getTask(String(id),{messageLimit:MESSAGE_PAGE_SIZE}));
-  const handlers=createTaskUiHandlers({store,decorateTask,decorateMessages,getTaskView});
+  const handlers=createTaskUiHandlers({store,decorateTask,decorateMessages,getTaskView,
+    dedicatedProjectId:()=>readDedicatedForgeProject(store)?.projectId??null});
   const add=(channel,handler)=>{
     if(handlers.has(channel))throw Error('host_handler_duplicate');
     handlers.set(channel,handler);
@@ -107,7 +108,7 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
   add('ordax:orchestrator:invoke',async(_event,payload)=>{
     // Apply the exact native App rule to the browser Host, not a second
     // executor policy. Only the authenticated MCP ingress may run effects.
-    assertPassiveUiOperation(payload?.operation);
+    assertPassiveUiOperation(payload?.operation,{dedicatedProject:readDedicatedForgeProject(store)!==null});
     const result=await service.invoke(context,payload.operation,payload?.input??{});
     if(ORCHESTRATOR_TOOLS.some(tool=>tool.operation===payload?.operation&&!tool.readOnly))notify();
     return result;
@@ -150,8 +151,10 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
   add('ordax:supervisor:status',async()=>({
     enabled:false,configured:false,provider:'chatgpt_web',environment:'node_host',version:'node-host'
   }));
-  add('ordax:tasks:supervisor-role:set',(_event,payload)=>
-    store.setTaskSupervisorRole(String(payload?.taskId||''),payload?.role));
+  add('ordax:tasks:supervisor-role:set',(_event,payload)=>{
+    if(readDedicatedForgeProject(store))throw Error('forge_dedicated_app_mcp_only');
+    return store.setTaskSupervisorRole(String(payload?.taskId||''),payload?.role);
+  });
   add('ordax:supervisor:recoverable',(_event,payload)=>({items:[],taskId:payload?.taskId||null,
     reason:'host_supervisor_not_configured'}));
   for(const channel of ['ordax:supervisor:plan','ordax:supervisor:inspect','ordax:supervisor:approve','ordax:supervisor:dispatch'])

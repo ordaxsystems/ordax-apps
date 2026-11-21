@@ -9,6 +9,18 @@ const FORBIDDEN=new Set([
   'project_delete','project_rename','project_auto_title',
   'project_repository_set','project_observation_set'
 ]);
+// The original Forge native development port is scoped to exactly one
+// project root. It CANNOT claim the eight independent OrdaX repository
+// owners merely because they share a single project/Task coordinator.
+// Execution stays with authorized OrdaX MCP tools until a per-repository
+// owner-verified port and receipt contract exists. Do not route a Task to
+// whichever unrelated Git root happens to be selected in the native UI.
+const SINGLE_REPOSITORY_PORTS=new Set([
+  'project_files_list','project_file_read','project_file_write',
+  'project_worktree_prepare','project_worktree_review',
+  'project_worktree_verify','project_worktree_integrate',
+  'project_command_run','work_accept','repository_observe'
+]);
 export function readDedicatedForgeProject(store){
   const session=store?.getWorkspaceSession?.();
   const state=session?.metadata?.forgeDedicatedProject;
@@ -62,11 +74,14 @@ export function enforceDedicatedForgeProject(store,operation,input){
   if(!scope)return null;
   if(FORBIDDEN.has(operation))
     throw Error('forge_dedicated_project_operation_unavailable');
+  if(SINGLE_REPOSITORY_PORTS.has(operation))
+    throw Error('forge_dedicated_repository_executor_required');
   if(input?.projectId!=null&&input.projectId!==scope.projectId)
     throw Error('forge_dedicated_project_scope_denied');
   return scope;
 }
 export function dedicatedForgeMcpOperations(store,operations){
   const scope=readDedicatedForgeProject(store);
-  return scope?operations.filter(op=>!FORBIDDEN.has(op)):operations;
+  return scope?operations.filter(op=>!FORBIDDEN.has(op)&&
+    !SINGLE_REPOSITORY_PORTS.has(op)):operations;
 }

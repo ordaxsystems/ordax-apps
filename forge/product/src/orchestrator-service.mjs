@@ -734,7 +734,12 @@ export class OrchestratorService {
       });
     });
     if(operation==='project_file_write')return this.writeProjectFile(context,input);
-    if(operation==='project_development_status')return this.development?.status(input.projectId,{taskId:input.taskId??null})??{projectId:input.projectId,available:false,reason:'native_owner_port_unavailable'};
+    if(operation==='project_development_status')
+      return readDedicatedForgeProject(this.store)
+        ?{projectId:input.projectId,available:false,nativeProcessExecution:false,
+          reason:'dedicated_repository_owner_port_required'}
+        :this.development?.status(input.projectId,{taskId:input.taskId??null})??
+          {projectId:input.projectId,available:false,reason:'native_owner_port_unavailable'};
     if(operation==='project_worktree_prepare')return this.prepareProjectWorktree(context,input);
     if(operation==='project_worktree_review')return this.reviewProjectWorktree(context,input);
     if(operation==='project_worktree_verify')return this.verifyProjectWorktree(context,input);
@@ -1185,6 +1190,10 @@ export class OrchestratorService {
         repositories:[],executionAuthorized:false};
     }
     if(operation==='project_files_status'){
+      if(readDedicatedForgeProject(this.store))return {
+        projectId:input.projectId,available:false,
+        reason:'dedicated_repository_owner_port_required',
+        mode:'requires_repository_scoped_mcp'};
       const taskId=this.scopedTaskId(input);
       return this.files?.status(input.projectId,taskId)||{
         projectId:input.projectId,available:false,mode:'capability_unavailable'};

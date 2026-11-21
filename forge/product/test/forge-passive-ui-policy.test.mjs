@@ -30,6 +30,12 @@ test('App native renderer can read canonical data, but not execute GPT, agents o
     assert.equal(ORCHESTRATOR_TOOLS.some(tool=>tool.operation===operation),true,
       operation+' remains Forge MCP capability');
   assert.throws(()=>assertPassiveUiOperation('unknown'),/forge_passive_ui_operation_unknown/);
+  for(const operation of PASSIVE_UI_STORAGE_OPERATIONS){
+    assert.throws(()=>assertPassiveUiOperation(operation,{dedicatedProject:true}),
+      /forge_dedicated_app_mcp_only/,operation);
+  }
+  assert.doesNotThrow(()=>assertPassiveUiOperation('projects_list',{dedicatedProject:true}));
+  assert.doesNotThrow(()=>assertPassiveUiOperation('work_repositories',{dedicatedProject:true}));
 });
 
 test('MCP protocol bridge from renderer cannot bypass the passive UI boundary',()=>{
@@ -46,7 +52,7 @@ test('Electron App kernel has no GPT dispatch route, worker pool or autonomous c
   const root=fileURLToPath(new URL('../desktop/main.mjs',import.meta.url));
   const main=fs.readFileSync(root,'utf8');
   const worker=fs.readFileSync(fileURLToPath(new URL('../desktop/embedded-worker.mjs',import.meta.url)),'utf8');
-  assert.match(main,/assertPassiveUiOperation\(payload\?\.operation\)/);
+  assert.match(main,/assertPassiveUiOperation\(payload\?\.operation,\{dedicatedProject:/);
   assert.match(main,/assertPassiveUiMcpMessage\(message\)/);
   assert.doesNotMatch(main,/createOrchestratorKernel\(\{[\s\S]{0,1600}\bprovider\s*:/);
   assert.doesNotMatch(main,/ownerDispatch/);

@@ -12,9 +12,14 @@ const STORAGE=new Set(PASSIVE_UI_STORAGE_OPERATIONS);
 const TOOL_BY_OPERATION=new Map(ORCHESTRATOR_TOOLS.map(tool=>[tool.operation,tool]));
 const TOOL_BY_NAME=new Map(ORCHESTRATOR_TOOLS.map(tool=>[tool.name,tool]));
 
-export function assertPassiveUiOperation(operation) {
+export function assertPassiveUiOperation(operation,{dedicatedProject=false}={}) {
   const tool=TOOL_BY_OPERATION.get(operation);
   if(!tool)throw Error('forge_passive_ui_operation_unknown');
+  // In this installation the App only displays canonical OrdaX OS state.
+  // Tasks, drafts, dependencies, claims and work all enter through Forge MCP,
+  // not through a renderer IPC shortcut to the same Store.
+  if(dedicatedProject===true&&!tool.readOnly)
+    throw Error('forge_dedicated_app_mcp_only');
   if(tool.readOnly||STORAGE.has(operation))return;
   throw Error('forge_passive_app_mcp_only');
 }

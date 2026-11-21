@@ -56,9 +56,12 @@ export function createTaskUiHandlers({
   decorateMessages=messages=>messages,
   getTaskView=id=>decorateTask(store.getTask(String(id))),
   isRunActive=()=>false,
-  onOpenTask=null
+  onOpenTask=null,
+  dedicatedProjectId=()=>null
 }={}) {
-  if(!store?.getTask||!store?.listTasks)throw Error('task_ui_store_required');
+  if(!store?.getTask||!store?.listTasks||
+    typeof dedicatedProjectId!=='function')
+    throw Error('task_ui_store_required');
   const handlers=new Map();
   handlers.set('ordax:workspace:get',()=>store.getWorkspaceSession());
   handlers.set('ordax:workspace:navigation:set',(_event,payload={})=>{
@@ -144,5 +147,47 @@ export function createTaskUiHandlers({
     store.memoryCandidates.review(String(taskId),String(candidateId),String(action),changes||{});
     return getTaskView(taskId);
   });
+  // A dedicated Forge App is a passive presentation arm of Forge MCP.
+  // Reuse this one shared handler map for Electron and Node Host; no second
+  // task mutator or shadow DB is allowed through renderer IPC. Human review
+  // remains an explicit, narrowly scoped native decision.
+  const rendererMutations=new Set([
+    'ordax:tasks:create','ordax:tasks:rename','ordax:tasks:draft:set',
+    'ordax:tasks:rotate-conversation','ordax:tasks:memory:upsert',
+    'ordax:tasks:memory:archive','ordax:tasks:memory:candidates:scan'
+  ]);
+  const scopedTaskChannels=new Set([
+    'ordax:tasks:get','ordax:tasks:draft:get','ordax:tasks:messages:page',
+    'ordax:tasks:open','ordax:tasks:resume-capsule',
+    'ordax:tasks:memory:candidates:review'
+  ]);
+  function requireTaskInProject(taskId,projectId){
+    if(typeof taskId!=='string'||!taskId||
+      store.db.prepare('SELECT project_id FROM lab_task_bindings WHERE task_id=?')
+        .get(taskId)?.project_id!==projectId)
+      throw Error('forge_dedicated_project_scope_denied');
+  }
+  for(const [channel,handler] of handlers){
+    handlers.set(channel,(event,...args)=>{
+      const projectId=dedicatedProjectId();
+      if(!projectId)return handler(event,...args);
+      if(rendererMutations.has(channel))
+        throw Error('forge_dedicated_app_mcp_only');
+      if(channel==='ordax:tasks:list')
+        return handler(event,...args).filter(task=>task.lab_binding?.project_id===projectId);
+      if(channel==='ordax:workspace:navigation:set'){
+        const nav=args[0];
+        if(nav?.projectId!=null&&nav.projectId!==projectId)
+          throw Error('forge_dedicated_project_scope_denied');
+        if(nav?.taskId)requireTaskInProject(nav.taskId,projectId);
+      }
+      if(scopedTaskChannels.has(channel)){
+        const first=args[0];
+        const taskId=typeof first==='string'?first:first?.taskId;
+        requireTaskInProject(taskId,projectId);
+      }
+      return handler(event,...args);
+    });
+  }
   return handlers;
 }
