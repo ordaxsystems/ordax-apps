@@ -1206,6 +1206,37 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       }
       section.append(list);
     }
+    const mcpHeading=document.createElement('h3');
+    mcpHeading.textContent='OrdaX MCP · autorização do Forge';
+    section.append(mcpHeading);
+    const mcpState=document.createElement('p');
+    mcpState.textContent='Verificando a sessão OAuth e os grants da Platform…';
+    section.append(mcpState);
+    // The App only renders a bounded read from the Owner Core. The native
+    // OAuth token and raw grant groups never enter the renderer.
+    void call('ordax_devices',{projectId:currentProjectId}).then(result=>{
+      if(currentProjectId!==projectId||!dedicatedProject||!section.isConnected)return;
+      if(result?.available!==true){
+        mcpState.textContent='OrdaX MCP não autorizado para consulta nesta sessão do Forge ('+
+          String(result?.reason||'indisponível').slice(0,110)+
+          '). A autorização é feita em Permissões MCP do OrdaX.';
+        return;
+      }
+      const devices=Array.isArray(result.devices)?result.devices:[];
+      const ready=devices.filter(item=>item.repositoryCatalogReadGranted===true).length;
+      mcpState.textContent='Dispositivos visíveis ao OAuth nativo do Forge: '+
+        devices.length+' · Catálogo autorizado: '+ready+
+        '. Nenhum dispositivo foi selecionado e nenhuma execução foi habilitada.';
+      if(ready!==devices.length){
+        const notice=document.createElement('p');
+        notice.textContent='Permissão necessária para o catálogo: repository-catalog-read. '+
+          'Autorize o cliente Forge em Permissões MCP do OrdaX, se desejar habilitar essa leitura.';
+        section.append(notice);
+      }
+    }).catch(()=>{
+      if(currentProjectId===projectId&&section.isConnected)
+        mcpState.textContent='A consulta ao OrdaX MCP falhou. Nenhuma permissão foi presumida.';
+    });
   }
 
   async function refreshOrchestrators() {

@@ -12,6 +12,7 @@ import {createForgeRemoteMcpOwner,FORGE_NODE_REMOTE_MCP_OPERATIONS,FORGE_NODE_NA
 import {createForgeNodeNativeOwnerPorts} from '../src/forge-node-native-owner-ports.mjs';
 import {activateDedicatedForgeProject,readDedicatedForgeProject} from '../src/forge-dedicated-project.mjs';
 import {createForgeOrdaxRepositoryCatalog} from '../src/forge-ordax-repository-catalog.mjs';
+import {createForgeOrdaxProductMcp} from '../src/forge-ordax-product-mcp.mjs';
 
 const MIME_EXT=new Map([['image/png','png'],['image/jpeg','jpg'],['image/webp','webp'],['image/gif','gif'],['image/avif','avif']]);
 const providerUnavailable=()=>{throw Error('provider_transport_unavailable_on_host');};
@@ -64,6 +65,9 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
     activateDedicatedForgeProject(service);
     service.repositoryCatalogPort=createForgeOrdaxRepositoryCatalog({
       documentsDirectory:nativeOwner.documentsDirectory
+    });
+    service.ordaxProductMcp=createForgeOrdaxProductMcp({
+      session:remoteSession,fetchImpl:remoteFetchImpl
     });
   }
   service.recoverInterruptedCommands();

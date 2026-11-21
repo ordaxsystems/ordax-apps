@@ -72,6 +72,19 @@ test('dedicated project is atomic, idempotent and hides archived projects withou
   assert.equal(store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
   assert.equal(readDedicatedForgeProject(store).projectId,dedicated.projectId);
 
+  svc.ordaxProductMcp={devices:async()=>({
+    schema:'ordax.forge.native-product-mcp/1',available:true,
+    requiredProfile:'repository-catalog-read',
+    devices:[{deviceId:'14cef8f4-3c06-4b1b-9e3a-42c74ef7dec5',
+      repositoryCatalogReadGranted:false,executionAuthorized:false}],
+    executionAuthorized:false
+  })};
+  const nativeMcp=await svc.invoke(ctx,'ordax_devices',{projectId:dedicated.projectId});
+  assert.equal(nativeMcp.available,true);
+  assert.equal(nativeMcp.devices[0].repositoryCatalogReadGranted,false);
+  assert.equal(nativeMcp.executionAuthorized,false);
+  await assert.rejects(svc.invoke(ctx,'ordax_devices',{projectId:oldId}),
+    /forge_dedicated_project_scope_denied/);
   svc.repositoryCatalogPort={read:()=>({schema:'ordax.forge.repository-catalog/1',
     available:true,checkedOrigin:true,repositories:[
       {repo:'ordaxsystems/ordax-os',capability:'catalog_only'},
@@ -113,6 +126,7 @@ test('dedicated project is atomic, idempotent and hides archived projects withou
   }),/forge_task_repository_scope_already_set/);
   const remoteOps=dedicatedForgeMcpOperations(store,FORGE_APP_MCP_OPERATIONS);
   assert.ok(remoteOps.includes('project_repositories'));
+  assert.ok(remoteOps.includes('ordax_devices'));
   assert.ok(remoteOps.includes('work_repositories_set'));
   for(const operation of ['mission_create','project_rename','project_delete'])
     assert.equal(remoteOps.includes(operation),false);

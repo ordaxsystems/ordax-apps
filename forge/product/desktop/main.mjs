@@ -27,6 +27,7 @@ import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
 import {forgeOwnerWorkspaceScope} from '../src/forge-owner-workspace-scope.mjs';
 import {activateDedicatedForgeProject,dedicatedForgeMcpOperations,readDedicatedForgeProject} from '../src/forge-dedicated-project.mjs';
 import {createForgeOrdaxRepositoryCatalog} from '../src/forge-ordax-repository-catalog.mjs';
+import {createForgeOrdaxProductMcp} from '../src/forge-ordax-product-mcp.mjs';
 import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
 import {canonicalProviderChatUrl} from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
@@ -1018,6 +1019,9 @@ if(!stagedProfile){
   activateDedicatedForgeProject(orchestratorService);
   orchestratorService.repositoryCatalogPort=createForgeOrdaxRepositoryCatalog({
     documentsDirectory:app.getPath('documents')
+  });
+  orchestratorService.ordaxProductMcp=createForgeOrdaxProductMcp({
+    session:forgeProductSession
   });
 }
 // Read the exact Forge Git checkpoint; no second store or external writes.

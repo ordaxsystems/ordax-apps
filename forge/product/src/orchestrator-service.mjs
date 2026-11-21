@@ -178,6 +178,7 @@ export class OrchestratorService {
     this.files=fileBroker;
     this.development=development;
     this.repository=new ProjectRepository({port:repositoryPort});
+    this.ordaxProductMcp=null;
   }
 
   transaction(operation) {
@@ -1190,6 +1191,17 @@ export class OrchestratorService {
         ).all(input.taskId).map(item=>item.repository),
         executionAuthorized:false,filesystemAccessGranted:false,
         multiRepositoryWorktreeExecutionAvailable:false};
+    }
+    if(operation==='ordax_devices'){
+      const scope=readDedicatedForgeProject(this.store);
+      if(!scope||scope.projectId!==input.projectId)
+        throw Error('forge_dedicated_project_required');
+      return this.ordaxProductMcp?.devices()??{
+        schema:'ordax.forge.native-product-mcp/1',available:false,
+        reason:'forge_native_oauth_port_unavailable',
+        executionAuthorized:false,deviceBindingCreated:false,
+        requiredProfile:'repository-catalog-read',devices:[]
+      };
     }
     if(operation==='project_repositories'){
       const scope=readDedicatedForgeProject(this.store);
