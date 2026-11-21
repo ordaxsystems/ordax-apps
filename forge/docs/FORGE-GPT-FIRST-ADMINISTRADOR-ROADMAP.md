@@ -939,3 +939,11 @@ A homologação Windows inicial da PR #628 identificou uma dependência antiga d
 - **Coordenação visível:** o painel projeta reservas canônicas de Task já existentes, conta chats com claim `occupied`, mostra o rótulo declarado do chat e o último progresso persistido, além de Runs ativos e itens que exigem revisão. Não cria agente, porcentagem, ledger ou identidade paralela.
 - **Fonte única:** os novos indicadores reutilizam `work_list`/projeções atuais e o mesmo SQLite; nenhuma tabela, endpoint, MCP, Store ou executor foi criado.
 - **Prova local:** `git diff --check` e `node --check forge/product/desktop/orchestrator-ui.mjs` aprovados. `node --test forge/product/test/desktop-contract.test.mjs`: **68/68 aprovados**, incluindo contrato explícito para autoridade MCP, claim observado e ausência de executor visual novo. Ainda não foi iniciado segundo Core nem realizado build do pacote para esta mudança de layout.
+
+### Incremento 7 — memória e sessões no painel passivo (21/11/2026)
+
+- **Base canônica atualizada:** após a PR #633 passar Foundation + Windows/Isolation e ser integrada em `badb43c8`, a branch `feat/forge-passive-memory-sessions-20261121` foi rebaseada sobre essa `main`, sem duplicar o commit anterior.
+- **Sessões/chats:** a interface deriva a lista exclusivamente de `work_list`, claims e `provider_segments` já carregados. Reserva `occupied` aparece como sessão ativa; histórico de conversa aparece como persistido. O rótulo do chat é identificado como declaração do cliente MCP, não identidade atestada do ChatGPT.
+- **Memória compartilhada:** o mesmo refresh de trabalhos faz uma leitura `project_memory` fail-soft e apresenta memória canônica/pedidos pendentes. Itens são rotulados como editoriais e não são tratados como prova de arquivos, testes, publicação ou outro efeito externo. Nenhuma edição, aprovação ou promoção automática foi acrescentada ao painel.
+- **Sem fonte paralela:** nenhum endpoint, tabela, Store, poller, MCP ou executor novo. A UI reutiliza `ordax.forge.project-memory/1` e o SQLite canônico já usado pelo Forge MCP.
+- **Prova local:** `git diff --check`, `node --check forge/product/desktop/orchestrator-ui.mjs` e `node --test forge/product/test/desktop-contract.test.mjs` aprovados, **68/68**. O incremento pode seguir em PR própria sobre a `main` já integrada, sem alterar a instalação operacional nesta etapa.

@@ -1917,6 +1917,31 @@ body.orchestrator-focus.forge-task-focus #send{background:#087e6c;color:#fff}
 .execution-work-item .execution-work-state{color:#647c6e}
 .execution-work-item[data-state="running"] .execution-work-state{color:#087d64}
 .execution-work-item[data-state="attention"] .execution-work-state{color:#a57429}
+.execution-section-status{
+  padding:4px 7px;border:1px solid #dce8e1;border-radius:999px;background:#f7faf8;
+  color:#71857a;font-size:9px;font-weight:700;white-space:nowrap
+}
+.execution-section-status[data-state="active"]{border-color:#b8dec9;background:#e7f5ed;color:#0b765d}
+.execution-section-status[data-state="attention"]{border-color:#ead5a8;background:#fff6e5;color:#8d621b}
+.execution-observation-section{padding-top:2px}
+.execution-observation-list{display:grid;gap:7px;min-width:0}
+.execution-observation-item{
+  width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:9px;
+  padding:10px 11px;border:1px solid #dce9e0;border-radius:11px;background:#fff;text-align:left;cursor:pointer
+}
+.execution-observation-item:hover{background:#f1f8f4;border-color:#add4bf}
+.execution-observation-copy{display:grid;gap:3px;min-width:0}
+.execution-observation-copy strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#284536;font-size:11px}
+.execution-observation-copy small{color:#6d8377;font-size:10px;line-height:1.4}
+.execution-observation-state{color:#72857a;font-size:9px;font-weight:750;white-space:nowrap}
+.execution-observation-item[data-state="active"] .execution-observation-state{color:#087c63}
+.execution-memory-item{display:grid;gap:7px;padding:11px;border:1px solid #dfeae3;border-radius:11px;background:#fff}
+.execution-memory-head{display:flex;align-items:center;gap:7px;min-width:0}
+.execution-memory-head strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#294738;font-size:11px}
+.execution-memory-kind{padding:3px 6px;border-radius:999px;background:#e7f4ec;color:#0d7660;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+.execution-memory-item p{margin:0;color:#5f786b;font-size:10px;line-height:1.5;overflow-wrap:anywhere}
+.execution-memory-item small,.execution-observation-note{color:#83948b;font-size:9px;line-height:1.45}
+.execution-observation-note{margin:0}
 .execution-empty{border-color:#d6e3db;background:#fff}
 .execution-activity{border-color:#deebe3}
 .execution-activity li:before{background:#0b8e72;box-shadow:0 0 0 3px #e8f6ee}
