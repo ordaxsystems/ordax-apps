@@ -521,6 +521,7 @@ test('command centre uses one real project projection without fictional agents o
   assert.doesNotMatch(ui,/Nenhuma atividade registrada/);
   assert.match(css,/\.coordinator-project-overview\{/);
   assert.match(css,/\.coordinator-project-task\{/);
+  assert.match(css,/\.execution-work-item\.coordinator-project-task\{[^}]*grid-template-columns:minmax\(0,1fr\) auto/);
   assert.match(html,/Execução pertence ao Forge MCP/);
   assert.match(html,/O aplicativo persiste e apresenta o estado/);
   assert.doesNotMatch(html,/execution-autonomy-controls|autonomousContinuousToggle|continueAutonomousTechnical/);
