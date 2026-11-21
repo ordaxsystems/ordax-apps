@@ -330,11 +330,22 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const copy=document.createElement('span');copy.className='execution-observation-copy';
       const title=document.createElement('strong');title.textContent=work.title;
       const detail=document.createElement('small');
-      detail.textContent=work.claim?.state==='occupied'
-        ?'Chat declarado: '+work.claim.chatLabel+' · reserva ativa'+(work.claim.lastProgress?' · '+String(work.claim.lastProgress).slice(0,110):'')
-        :(work.provider_segments||0)+' conversa'+(work.provider_segments===1?'':'s')+' persistida'+(work.provider_segments===1?'':'s');
+      if(work.claim){
+        const transport=work.claim.mcpToolCallObserved===true
+          ?work.claim.mcpIngress==='remote_gateway'?'MCP remoto observado':'MCP local observado'
+          :'Claim registrado no SQLite';
+        const identity=work.claim.chatIdentityVerified===true
+          ?'identidade do chat atestada':'identidade do chat não atestada';
+        detail.textContent=transport+' · '+identity+' · rótulo: '+work.claim.chatLabel+
+          (work.claim.state==='occupied'&&work.claim.lastProgress
+            ?' · '+String(work.claim.lastProgress).slice(0,100):'');
+      }else{
+        detail.textContent=(work.provider_segments||0)+' conversa'+(work.provider_segments===1?'':'s')+
+          ' persistida'+(work.provider_segments===1?'':'s');
+      }
       const state=document.createElement('span');state.className='execution-observation-state';
-      state.textContent=work.claim?.state==='occupied'?'Ativa':'Histórico';
+      state.textContent=work.claim?.state==='occupied'?'Claim ativo':
+        work.claim?.mcpToolCallObserved===true?'MCP observado':'Histórico';
       copy.append(title,detail);button.append(copy,state);
       button.addEventListener('click',async()=>{
         if(scope!==executionScope())return;

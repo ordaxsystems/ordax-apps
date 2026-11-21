@@ -19,6 +19,7 @@ import {ProjectRepository} from './project-repository.mjs';
 import {workExecutionSummary} from './work-execution-summary.mjs';
 import {projectWorkPlan} from './work-plan-read-model.mjs';
 import {forgeVerifiedWorkAcceptances} from './forge-work-acceptance-evidence.mjs';
+import {forgeMcpWorkObservation} from './forge-mcp-observation.mjs';
 import {ForgeWorkClaims} from './forge-work-claims.mjs';
 import {normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
 
@@ -1257,18 +1258,30 @@ export class OrchestratorService {
       WHERE b.project_id=? AND b.kind='work' AND (? IS NULL OR b.orchestrator_id=?)
       AND t.workspace_session_id=? ORDER BY t.updated_at DESC,t.id LIMIT 200`)
       .all(input.projectId,input.orchestratorId||null,input.orchestratorId||null,context.workspaceSessionId)
-      .map(work=>({
-        ...work,
-        execution:workExecutionSummary([{...work,monitor:this.monitor(work,[{
-          status:work.latest_run_status,started_at:work.latest_started_at,
-          heartbeat_at:work.latest_heartbeat_at
-        }],input.projectId)}])[0],
-        dependsOn:this.db.prepare('SELECT prerequisite_id FROM lab_work_dependencies WHERE project_id=? AND task_id=? ORDER BY prerequisite_id')
-          .all(input.projectId,work.id).map(row=>row.prerequisite_id),
-        claim:this.workClaims.snapshot(input.projectId,work.id,context.workspaceSessionId),
-        acceptanceEvidence:accepted.get(work.id)||null,
-        completionVerified:accepted.has(work.id)
-      }))};
+      .map(work=>{
+        const claim=this.workClaims.snapshot(input.projectId,work.id,context.workspaceSessionId);
+        const observed=claim?forgeMcpWorkObservation(this.db,{
+          projectId:input.projectId,taskId:work.id,operation:'work_claim',
+          claimGeneration:claim.generation
+        }):null;
+        const claimObservation=observed||{
+          mcpToolCallObserved:false,mcpIngress:null,gatewayLeaseStartObserved:false,
+          gatewayRequestId:null,gatewayAttemptId:null,gatewayAgentInstanceId:null,
+          gptRunIdentityVerified:false,chatIdentityVerified:false
+        };
+        return {
+          ...work,
+          execution:workExecutionSummary([{...work,monitor:this.monitor(work,[{
+            status:work.latest_run_status,started_at:work.latest_started_at,
+            heartbeat_at:work.latest_heartbeat_at
+          }],input.projectId)}])[0],
+          dependsOn:this.db.prepare('SELECT prerequisite_id FROM lab_work_dependencies WHERE project_id=? AND task_id=? ORDER BY prerequisite_id')
+            .all(input.projectId,work.id).map(row=>row.prerequisite_id),
+          claim:claim?{...claim,...claimObservation}:null,
+          acceptanceEvidence:accepted.get(work.id)||null,
+          completionVerified:accepted.has(work.id)
+        };
+      })};
     }
     if(operation==='work_get') {
       const task=this.task(input.projectId,input.taskId);

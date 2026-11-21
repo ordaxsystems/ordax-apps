@@ -519,6 +519,10 @@ test('command centre uses one real project projection without fictional agents o
   assert.match(ui,/work\.claim\?\.state==='occupied'/);
   assert.match(ui,/executionClaimedCount/);
   assert.match(ui,/function renderExecutionSessions\(works,scope\)/);
+  assert.match(ui,/MCP remoto observado/);
+  assert.match(ui,/identidade do chat não atestada/);
+  assert.match(ui,/work\.claim\.chatIdentityVerified===true/);
+  assert.match(ui,/work\.claim\.mcpToolCallObserved===true/);
   assert.match(ui,/function renderExecutionMemory\(\)/);
   assert.match(ui,/call\('project_memory',\{projectId:p\}\)\.catch\(\(\)=>null\)/);
   assert.match(ui,/executionMemoryScope===executionScope\(\)\?executionMemory:null/);
