@@ -86,7 +86,7 @@ export function createForgeRemoteMcpOwner({
  * to ports unavailable in a plain Node Host and are NOT advertised remotely.
  */
 const NODE_SQLITE_OPERATIONS=new Set([
-  'status','projects_list','forge_discover','project_context','project_repositories','ordax_devices','ordax_execution_preflight',
+  'status','projects_list','forge_discover','project_context','project_repositories','ordax_devices','ordax_native_session_open','ordax_execution_preflight',
   'project_memory','project_memory_propose','project_administrator_snapshot',
   'project_handoff','project_activity','project_preflight',
   'mission_create','project_rename',

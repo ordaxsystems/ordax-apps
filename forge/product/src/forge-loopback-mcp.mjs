@@ -10,6 +10,9 @@ export const FORGE_APP_MCP_SCOPE='forge_app';
 // App-internal storage/UI mechanics, not overlapping MCP entrypoints.
 const APP_MCP_EXCLUDED=new Set([
   'project_create','project_quick_create','project_auto_title',
+  // Rename is App-local historical project metadata, not an external MCP
+  // administration action. Dedicated OrdaX OS is fixed to one project.
+  'project_rename',
   // Project observation is only an intent flag today: there is no external
   // observation executor to authorize. Keep it in the owner App IPC, not in
   // the bounded public GPT MCP catalog. work_accept uses the reclaimed slot.

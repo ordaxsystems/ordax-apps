@@ -532,6 +532,44 @@ export class OrchestratorService {
       return view;
     }
     this.requireAccess(context,operation,input.projectId||null);
+    if(operation==='ordax_native_session_open'){
+      const dedicated=readDedicatedForgeProject(this.store);
+      if(!dedicated||dedicated.projectId!==input.projectId)
+        throw Error('forge_dedicated_project_required');
+      // A session challenge may be queued but is NEVER a device grant or an
+      // execution command. Only a Task claim holder may request it. The Core
+      // owns the sealed OAuth token and private nonce; no App IPC can call it.
+      const reserved=this.transaction(()=>{
+        this.task(input.projectId,input.taskId,'work');
+        this.workClaims.assertTaskMutation(context,input);
+        return this.reserve(context,operation,input);
+      });
+      if(reserved.existing)return reserved.existing;
+      let result;
+      try{
+        result=await this.ordaxProductMcp?.openNativeSession()??{
+          schema:'ordax.forge.native-session/1',ready:false,
+          reason:'forge_native_oauth_port_unavailable',
+          executionAuthorized:false,actionDispatched:false
+        };
+      }catch{
+        result={schema:'ordax.forge.native-session/1',ready:false,
+          reason:'ordax_native_session_outcome_unconfirmed',
+          outcomeUnconfirmed:true,executionAuthorized:false,
+          actionDispatched:false};
+      }
+      if(result?.actionDispatched!==false||
+         result?.executionAuthorized!==false||
+         typeof result?.reason!=='string'){
+        result={schema:'ordax.forge.native-session/1',ready:false,
+          reason:'ordax_native_session_invalid_response',
+          outcomeUnconfirmed:true,executionAuthorized:false,
+          actionDispatched:false};
+      }
+      const status=result.outcomeUnconfirmed===true?'uncertain':
+        result.ready===true?'succeeded':'failed';
+      return this.transaction(()=>this.finish(reserved.commandId,result,status));
+    }
     if(operation==='app_ui_inspect'){
       if(typeof this.viewPort?.ui!=='function')throw Error('forge_app_ui_unavailable');
       const result=await this.viewPort.ui(operation,input);
