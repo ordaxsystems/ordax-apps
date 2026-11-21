@@ -315,11 +315,18 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const list=$('executionSessionList'),summary=$('executionSessionSummary');
     if(!list||!summary)return;
     list.replaceChildren();
+    const priority={occupied:0,expired:1,released:2};
     const sessions=[...works].filter(work=>work.claim||work.provider_segments>0)
-      .sort((a,b)=>(b.claim?.state==='occupied')-(a.claim?.state==='occupied')||(b.provider_segments||0)-(a.provider_segments||0));
+      .sort((a,b)=>(priority[a.claim?.state]??3)-(priority[b.claim?.state]??3)||
+        (b.provider_segments||0)-(a.provider_segments||0));
     const occupied=sessions.filter(work=>work.claim?.state==='occupied').length;
+    const expired=sessions.filter(work=>work.claim?.state==='expired').length;
     // Claims reserve Tasks; they do not prove a GPT chat is online or executing.
-    summary.textContent=sessions.length?occupied+' reserva'+(occupied===1?'':'s')+' vigente'+(occupied===1?'':'s')+' · '+sessions.length+' frente'+(sessions.length===1?'':'s')+' observada'+(sessions.length===1?'':'s'):'0 frentes observadas';
+    summary.textContent=sessions.length
+      ?occupied+' reserva'+(occupied===1?'':'s')+' vigente'+(occupied===1?'':'s')+
+        (expired?' · '+expired+' expirada'+(expired===1?'':'s'):'')+
+        ' · '+sessions.length+' frente'+(sessions.length===1?'':'s')+' registrada'+(sessions.length===1?'':'s')
+      :'0 frentes registradas';
     summary.dataset.state=occupied?'active':'idle';
     if(!sessions.length){
       const empty=document.createElement('p');empty.className='execution-empty';
@@ -327,7 +334,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     }
     for(const work of sessions.slice(0,6)){
       const button=document.createElement('button');button.type='button';button.className='execution-observation-item';
-      button.setAttribute('role','listitem');button.dataset.state=work.claim?.state==='occupied'?'active':'history';
+      button.setAttribute('role','listitem');
+      button.dataset.state=work.claim?.state==='occupied'?'active':
+        work.claim?.state==='expired'?'attention':'history';
       const copy=document.createElement('span');copy.className='execution-observation-copy';
       const title=document.createElement('strong');title.textContent=work.title;
       const detail=document.createElement('small');
@@ -344,17 +353,21 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         const freshness=work.claim.state==='occupied'&&Number.isFinite(heartbeat)
           ?Date.now()-heartbeat<=5*60_000?' · atividade recente':' · sem atualização recente'
           :'';
+        const generation=Number.isInteger(work.claim.generation)
+          ?' · geração '+work.claim.generation:'';
+        const checkpoint=work.claim.lastProgress
+          ?' · último checkpoint declarado: '+String(work.claim.lastProgress).slice(0,110):'';
         detail.textContent=transport+' · '+identity+' · rótulo declarado: '+work.claim.chatLabel+
-          recorded+freshness+
-          (work.claim.state==='occupied'&&work.claim.lastProgress
-            ?' · '+String(work.claim.lastProgress).slice(0,100):'');
+          generation+recorded+freshness+checkpoint;
       }else{
         detail.textContent=(work.provider_segments||0)+' conversa'+(work.provider_segments===1?'':'s')+
           ' persistida'+(work.provider_segments===1?'':'s');
       }
       const state=document.createElement('span');state.className='execution-observation-state';
       state.textContent=work.claim?.state==='occupied'?'Reserva vigente':
-        work.claim?.mcpToolCallObserved===true?'MCP observado':'Histórico';
+        work.claim?.state==='expired'?'Reserva expirada':
+        work.claim?.state==='released'?'Reserva liberada':
+        work.provider_segments>0?'Conversa registrada':'Histórico';
       copy.append(title,detail);button.append(copy,state);
       button.addEventListener('click',async()=>{
         if(scope!==executionScope())return;
@@ -414,7 +427,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('executionReviewCount').textContent=String(stats.attention);
     const authority=$('executionAuthorityState');
     authority.textContent=stats.claimed
-      ?stats.claimed+' chat'+(stats.claimed===1?'':'s')+' com reserva ativa'
+      ?stats.claimed+' tarefa'+(stats.claimed===1?'':'s')+' com reserva vigente'
       :stats.running?'Run observado no projeto'
         :stats.attention?'Aguardando revisão':'Sem chat reservado';
     authority.dataset.state=stats.claimed||stats.running?'active':stats.attention?'attention':'idle';
@@ -469,6 +482,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
           ?'Chat '+work.claim.chatLabel+' · '+(work.claim.lastProgress
             ?String(work.claim.lastProgress).slice(0,120)
             :'reserva ativa no Forge MCP')
+          :work.claim?.state==='expired'
+            ?'Reserva expirou · conferir recibos antes de retomar'
+          :work.claim?.state==='released'
+            ?'Reserva liberada · último progresso permanece registrado'
           :work.latest_run_status==='succeeded'?'Run GPT concluído · aceite ainda não registrado':
             work.running_runs>0?'Run GPT em andamento':
             work.execution?.observed==='reconciliation_required'?'Envio incerto · reconciliar':
@@ -477,6 +494,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const label=document.createElement('span');label.className='execution-work-state';
       label.textContent=work.acceptanceEvidence?'Aceita':
         work.claim?.state==='occupied'?'Reservada':
+          work.claim?.state==='expired'?'Expirada':
+          work.claim?.state==='released'?'Liberada':
           state==='running'?'Em execução':
             state==='attention'?'Revisar':state==='completed'?'Concluída':'Aguardando';
       button.append(icon,copy,label);
@@ -494,9 +513,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(active)entries.push(['Missão registrada',stateLabels[state]||state]);
     if(active?.decision)entries.push(['Revisão registrada',
       'As sugestões internas não autorizam novas tarefas. Consulte a execução existente.']);
-    for(const work of ordered.filter(w=>w.claim?.state==='occupied').slice(0,3)){
-      entries.push([work.title,'Reserva ativa · '+work.claim.chatLabel+
-        (work.claim.lastProgress?' · '+String(work.claim.lastProgress).slice(0,140):'')]);
+    for(const work of ordered.filter(w=>w.claim).slice(0,4)){
+      const label=work.claim.state==='occupied'?'Reserva vigente':
+        work.claim.state==='expired'?'Reserva expirada':
+        work.claim.state==='released'?'Reserva liberada':'Histórico de reserva';
+      entries.push([work.title,label+' · rótulo declarado: '+work.claim.chatLabel+
+        (work.claim.lastProgress?' · checkpoint não verificado: '+
+          String(work.claim.lastProgress).slice(0,140):'')]);
     }
     for(const work of ordered.filter(w=>(w.latest_run_status||w.running_runs>0)&&w.claim?.state!=='occupied').slice(0,3)){
       entries.push([work.title,work.running_runs>0?'Run GPT em andamento':

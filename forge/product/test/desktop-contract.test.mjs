@@ -523,6 +523,15 @@ test('command centre uses one real project projection without fictional agents o
   assert.match(ui,/última atividade registrada/);
   assert.match(ui,/sem atualização recente/);
   assert.match(ui,/rótulo declarado/);
+  assert.match(ui,/Reserva expirada/);
+  assert.match(ui,/Reserva liberada/);
+  assert.match(ui,/último checkpoint declarado/);
+  assert.match(ui,/checkpoint não verificado/);
+  assert.match(ui,/geração/);
+  assert.match(ui,/conferir recibos antes de retomar/);
+  assert.match(ui,/tarefa'\+\(stats\.claimed===1\?'':'s'\)\+' com reserva vigente/);
+  assert.match(html,/Reservas e histórico MCP/);
+  assert.match(html,/Reservas indicam posse de tarefa, não execução ativa do GPT/);
   assert.doesNotMatch(ui,/state\.textContent=work\.claim\?\.state==='occupied'\?'Claim ativo'/);
   assert.match(ui,/MCP remoto observado/);
   assert.match(ui,/identidade do chat não atestada/);
@@ -531,7 +540,7 @@ test('command centre uses one real project projection without fictional agents o
   assert.match(ui,/function renderExecutionMemory\(\)/);
   assert.match(ui,/call\('project_memory',\{projectId:p\}\)\.catch\(\(\)=>null\)/);
   assert.match(ui,/executionMemoryScope===executionScope\(\)\?executionMemory:null/);
-  assert.match(html,/Rótulos de chat são declarados pelo cliente MCP e não atestam identidade do ChatGPT/);
+  assert.match(html,/Rótulos e checkpoints são declarações do cliente MCP, não provas de identidade ou efeitos externos/);
   assert.match(html,/Memória editorial orienta continuidade; não comprova arquivos, testes, publicação ou outros efeitos externos/);
   assert.match(ui,/executionWorkScope===scope\?visibleWorkItems:\[\]/);
   assert.match(ui,/executionMissionScope===scope\?executionMission:null/);
@@ -540,8 +549,8 @@ test('command centre uses one real project projection without fictional agents o
   assert.match(ui,/Aceite verificado no Git local/);
   assert.match(ui,/Run GPT concluído · aceite ainda não registrado/);
   assert.match(html,/Forge MCP em modo passivo/);
-  assert.match(html,/claims ativos/);
-  assert.match(html,/Sessões MCP observadas/);
+  assert.match(html,/reservas vigentes/);
+  assert.match(html,/Reservas e histórico MCP/);
   assert.doesNotMatch(ui,/Run GPT concluído · confira os arquivos na prévia|Resposta GPT registrada · efeito não verificado/);
   assert.match(ui,/Resultado externo/iu);
   assert.match(ui,/openMissionNavigation\('attention',\$\('openEvidence'\)\)/);
