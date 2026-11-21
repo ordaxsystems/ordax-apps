@@ -1472,9 +1472,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const empty=document.createElement('div');empty.className='coordinator-empty forge-welcome';
       const mark=document.createElement('span');mark.className='forge-welcome-mark';
       mark.textContent='◇';mark.setAttribute('aria-hidden','true');
-      const title=document.createElement('strong');title.textContent='O que vamos criar hoje?';
+      const title=document.createElement('strong');title.textContent='Nenhuma atividade registrada';
       const copy=document.createElement('p');
-      copy.textContent='Conte sua ideia ao Forjador ou comece com uma sugestão.';
+      copy.textContent='Quando um chat GPT usar o Forge MCP neste projeto, decisões, progresso e resultados persistidos aparecerão aqui.';
       const choices=document.createElement('div');choices.className='forge-welcome-choices';
       for(const [label,suggestion] of [
         ['Criar um site','Crie um site para minha ideia.'],
@@ -1493,7 +1493,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         });
         choices.append(button);
       }
-      empty.append(mark,title,copy,choices);box.append(empty);
+      empty.append(mark,title,copy);box.append(empty);
     }
     for(const message of page.messages) {
       const article=document.createElement('article');article.className='coordinator-message';

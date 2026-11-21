@@ -158,19 +158,19 @@
         <span id="forgeProviderGateText">Verificando o login do GPT Web antes de liberar os agentes.</span>
         <button id="forgeProviderGateLogin" type="button" class="mini-secondary" hidden>Abrir GPT Web</button>
       </div>
-      <section id="orchestrationPanel" class="orchestration-panel" hidden aria-label="Conversa com o Forjador">
+      <section id="orchestrationPanel" class="orchestration-panel" hidden aria-label="Atividade e coordenação persistida do projeto">
         <header class="coordinator-head">
-          <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><span class="route-kicker" id="coordinatorRouteLabel">FORJADOR</span><h2 id="orchestratorTitle">Conversa</h2><p id="orchestratorMission"></p></div></div>
+          <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><span class="route-kicker" id="coordinatorRouteLabel">ATIVIDADE DO PROJETO</span><h2 id="orchestratorTitle">Atividade</h2><p id="orchestratorMission"></p></div></div>
           <div class="coordinator-head-actions">
             <details id="forgeCoordinatorAdvanced" class="forge-coordinator-advanced"><summary aria-label="Ferramentas e diagnóstico" title="Ferramentas e diagnóstico">⋯</summary><div id="forgeCoordinatorAdvancedContent" class="forge-coordinator-advanced-content"></div></details>
-            <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Sessões GPT</button>
-            <button id="pauseOrchestrator" class="ghost-button" type="button" disabled>Pausar</button>
+            <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Sessões</button>
+            <button id="pauseOrchestrator" class="ghost-button" type="button" hidden aria-hidden="true" disabled>Pausar</button>
             <button id="coordinatorApiSettings" class="ghost-button" type="button" aria-label="Abrir configurações do GPT" title="Configurar ChatGPT e Forge MCP">Ajustes</button>
           </div>
         </header>
         <div id="coordinatorTransport" class="coordinator-transport" role="status" aria-live="polite">
           <span class="transport-symbol" aria-hidden="true">●</span>
-          <span id="orchestrationConnection" class="orchestration-connection">GPT Web para conversar; Forge MCP para ações autorizadas.</span>
+          <span id="orchestrationConnection" class="orchestration-connection">Estado persistido pelo Forge MCP. O aplicativo apenas apresenta a atividade do projeto.</span>
         </div>
         <details id="projectPulseDisclosure" class="command-advanced"><summary>Ferramentas de missão e diagnóstico local</summary>
         <section id="projectPulse" class="project-pulse" aria-label="Resumo operacional das frentes de trabalho" hidden>
@@ -244,14 +244,18 @@
             <button id="coordinatorOutcomeOpen" class="mini-secondary" type="button" hidden>Ver resultado</button>
           </section>
         </div>
-        <div id="coordinatorProposals" class="coordinator-proposals" aria-label="Propostas para revisão"></div>
-        <form id="coordinatorComposer">
+        <div id="coordinatorProposals" class="coordinator-proposals" aria-label="Propostas históricas para revisão" hidden aria-hidden="true"></div>
+        <section id="coordinatorPassiveBoundary" class="coordinator-passive-boundary" aria-label="Limite passivo do aplicativo">
+          <span class="coordinator-passive-mark" aria-hidden="true">MCP</span>
+          <div><strong>Somente observação e armazenamento</strong><p>Novas decisões e ações são iniciadas pelos chats GPT conectados ao Forge MCP. O App atualiza este histórico a partir do SQLite canônico.</p></div>
+        </section>
+        <form id="coordinatorComposer" hidden aria-hidden="true">
           <label class="sr-only" for="coordinatorPrompt">Mensagem ao Forjador</label>
           <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="Descreva o que você quer criar ou mudar…" aria-describedby="orchestrationConnection" title="Enter para enviar; Shift+Enter para nova linha" required></textarea>
           <button id="coordinatorSend" class="send-button coordinator-send" type="submit" aria-label="Enviar mensagem" disabled>Enviar</button>
         </form>
-        <small class="coordinator-route-note">Enter envia · Shift+Enter quebra linha</small>
-        <small id="coordinatorDraftState" class="coordinator-draft-state" role="status" aria-live="polite"></small>
+        <small class="coordinator-route-note" hidden aria-hidden="true">Enter envia · Shift+Enter quebra linha</small>
+        <small id="coordinatorDraftState" class="coordinator-draft-state" role="status" aria-live="polite" hidden aria-hidden="true"></small>
       </section>
       <p id="orchestrationNotice" class="orchestration-notice" role="status" aria-live="polite"></p>
       <section id="taskPanel" class="task-panel hidden">

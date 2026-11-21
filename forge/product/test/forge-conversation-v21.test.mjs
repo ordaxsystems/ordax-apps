@@ -21,19 +21,20 @@ test('central Forge UI has a single optional tools menu, not permanent diagnosti
   assert.match(css,/forge-coordinator-advanced:not\(\[open\]\)>/);
 });
 
-test('welcome suggestions stage a normal editable draft, never submit or start tools',()=>{
-  const js=read('orchestrator-ui.mjs'),css=read('ui.css');
-  assert.match(js,/O que vamos criar hoje\?/);
-  for(const label of ['Criar um site','Desenvolver um app','Planejar um projeto'])
-    assert.ok(js.includes(label));
+test('empty project activity stays passive and does not mount draft suggestions',()=>{
+  const js=read('orchestrator-ui.mjs'),html=read('ui.html'),css=read('ui.css');
+  assert.match(js,/Nenhuma atividade registrada/);
+  assert.match(js,/Quando um chat GPT usar o Forge MCP neste projeto/);
   const start=js.indexOf('if(page.messages.length===0)');
   const end=js.indexOf('for(const message of page.messages)',start);
   assert.ok(start>=0&&end>start);
   const welcome=js.slice(start,end);
-  assert.match(welcome,/input\.value=suggestion/);
-  assert.match(welcome,/input\.dispatchEvent\(new Event\('input',\{bubbles:true\}\)\)/);
+  assert.match(welcome,/empty\.append\(mark,title,copy\);box\.append\(empty\)/);
+  assert.doesNotMatch(welcome,/empty\.append\(mark,title,copy,choices\)/);
   assert.doesNotMatch(welcome,/api\.orchestratorInvoke|command\(|sendPrompt\(|\\.submit\(/);
-  assert.match(css,/\.forge-welcome-choices/);
+  assert.match(html,/id="coordinatorComposer" hidden aria-hidden="true"/);
+  assert.match(html,/id="coordinatorPassiveBoundary"/);
+  assert.match(css,/coordinator-passive-boundary/);
 });
 
 test('failed Forjador send exposes the existing linked-thread recovery, never a retry',()=>{
