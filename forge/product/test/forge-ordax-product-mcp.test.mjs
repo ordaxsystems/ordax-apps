@@ -56,7 +56,11 @@ test('Product MCP device listing uses only the sealed Forge token and never gran
   assert.equal(result.available,true);
   assert.equal(result.devices.length,2);
   assert.equal(result.devices[0].repositoryCatalogReadGranted,false);
+  assert.equal(result.devices[0].nativeTerminalGrantVisible,true);
+  assert.equal(result.devices[0].nativeTextWriteGrantVisible,false);
   assert.equal(result.devices[1].repositoryCatalogReadGranted,true);
+  assert.equal(result.delegatedTransportAvailable,false);
+  assert.equal(result.delegationBlocker,'native_forge_runtime_session_binding_required');
   assert.equal(result.devices[0].executionAuthorized,false);
   assert.equal(result.actionDispatched,false);
   assert.equal(result.deviceBindingCreated,false);

@@ -76,7 +76,8 @@ test('dedicated project is atomic, idempotent and hides archived projects withou
     schema:'ordax.forge.native-product-mcp/1',available:true,
     requiredProfile:'repository-catalog-read',
     devices:[{deviceId:'14cef8f4-3c06-4b1b-9e3a-42c74ef7dec5',
-      repositoryCatalogReadGranted:false,executionAuthorized:false}],
+      reportedOnline:true,repositoryCatalogReadGranted:false,
+      nativeTerminalGrantVisible:true,executionAuthorized:false}],
     executionAuthorized:false
   })};
   const nativeMcp=await svc.invoke(ctx,'ordax_devices',{projectId:dedicated.projectId});
@@ -111,6 +112,26 @@ test('dedicated project is atomic, idempotent and hides archived projects withou
   });
   assert.deepEqual(assigned.repositories,mapping.result.repositories);
   assert.equal(assigned.multiRepositoryWorktreeExecutionAvailable,false);
+  const diagnostic={projectId:dedicated.projectId,taskId:created.result.taskId,
+    repository:'ordaxsystems/ordax-os',
+    deviceId:'14cef8f4-3c06-4b1b-9e3a-42c74ef7dec5'};
+  const terminalPreflight=await svc.invoke(ctx,'ordax_execution_preflight',{
+    ...diagnostic,action:'terminal'
+  });
+  assert.equal(terminalPreflight.grantVisible,true);
+  assert.equal(terminalPreflight.reason,
+    'native_forge_runtime_session_binding_required');
+  assert.equal(terminalPreflight.executionAuthorized,false);
+  assert.equal(terminalPreflight.deviceSelectionVerified,false);
+  assert.equal(terminalPreflight.receiptCreated,false);
+  const catalogPreflight=await svc.invoke(ctx,'ordax_execution_preflight',{
+    ...diagnostic,action:'repository_catalog'
+  });
+  assert.equal(catalogPreflight.reason,'owner_capability_grant_required');
+  assert.equal(catalogPreflight.requiredProfile,'repository-catalog-read');
+  await assert.rejects(svc.invoke(ctx,'ordax_execution_preflight',{
+    ...diagnostic,repository:'ordaxsystems/ordax-runtime',action:'terminal'
+  }),/forge_task_repository_scope_not_assigned/);
   const replay=await svc.invoke(ctx,'work_repositories_set',{
     projectId:dedicated.projectId,taskId:created.result.taskId,
     claimToken:claim.claimToken,claimGeneration:claim.claim.generation,
@@ -127,6 +148,7 @@ test('dedicated project is atomic, idempotent and hides archived projects withou
   const remoteOps=dedicatedForgeMcpOperations(store,FORGE_APP_MCP_OPERATIONS);
   assert.ok(remoteOps.includes('project_repositories'));
   assert.ok(remoteOps.includes('ordax_devices'));
+  assert.ok(remoteOps.includes('ordax_execution_preflight'));
   assert.ok(remoteOps.includes('work_repositories_set'));
   for(const operation of ['mission_create','project_rename','project_delete'])
     assert.equal(remoteOps.includes(operation),false);
@@ -146,6 +168,7 @@ test('dedicated project is atomic, idempotent and hides archived projects withou
     [dedicated.projectId]);
   const tools=await mcp.handle({jsonrpc:'2.0',id:2,method:'tools/list'});
   assert.ok(tools.result.tools.some(x=>x.name==='forge_project_repositories'));
+  assert.ok(tools.result.tools.some(x=>x.name==='forge_ordax_execution_preflight'));
   assert.equal(tools.result.tools.some(x=>x.name==='forge_mission_create'),false);
   const listCatalog=await mcp.handle({jsonrpc:'2.0',id:3,method:'tools/call',
     params:{name:'forge_project_repositories',arguments:{}}});

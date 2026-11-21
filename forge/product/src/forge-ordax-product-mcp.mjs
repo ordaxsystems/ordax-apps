@@ -84,9 +84,11 @@ export function createForgeOrdaxProductMcp({session,fetchImpl=globalThis.fetch}=
           return errorResult('ordax_product_mcp_invalid_response');
         ids.add(id.toLowerCase());
         let catalogGranted=false;
+        let nativeTerminalGrantVisible=false;
+        let nativeTextReadGrantVisible=false;
+        let nativeTextWriteGrantVisible=false;
         for(const grant of entry.grant_groups){
-          if(grant?.profile_key!==GRANT||grant.space_id!==null||
-            grant.project_id!==null)continue;
+          if(grant?.space_id!==null||grant.project_id!==null)continue;
           const expiration=grant.valid_until;
           if(expiration!==null&&expiration!==undefined&&
             (typeof expiration!=='string'||!Number.isFinite(Date.parse(expiration))))
@@ -94,20 +96,33 @@ export function createForgeOrdaxProductMcp({session,fetchImpl=globalThis.fetch}=
           if(typeof expiration==='string'&&Date.parse(expiration)<=Date.now())continue;
           if(!Array.isArray(grant.capabilities)||grant.capabilities.length>128)
             return errorResult('ordax_product_mcp_invalid_response');
-          if(grant.capabilities.some(capability=>
-            capability?.capability===CAPABILITY&&capability.access_mode==='read'))
+          const has=(name,mode)=>grant.capabilities.some(capability=>
+            capability?.capability===name&&capability.access_mode===mode);
+          if(grant.profile_key===GRANT&&has(CAPABILITY,'read'))
             catalogGranted=true;
+          // Grants are indicators only. This native Forge client has no
+          // OpenAI session marker / Runtime-attested device selection.
+          // Device-scoped grants NEVER authorize a specific Git repository.
+          if(has('computer.terminal_exec','write'))nativeTerminalGrantVisible=true;
+          if(has('computer.text_read','read'))nativeTextReadGrantVisible=true;
+          if(has('computer.text_write','write'))nativeTextWriteGrantVisible=true;
         }
         devices.push({deviceId:id.toLowerCase(),
           name:typeof entry.device_name==='string'&&entry.device_name.length<=120
             ?entry.device_name:null,
           reportedOnline:entry.online===true,
           repositoryCatalogReadGranted:catalogGranted,
+          nativeTerminalGrantVisible,nativeTextReadGrantVisible,
+          nativeTextWriteGrantVisible,
           dispatchAttested:false,executionAuthorized:false});
       }
       return {schema:'ordax.forge.native-product-mcp/1',available:true,
         source:'authorized_ordax_platform_targets_for_forge_oauth_client',
         requiredProfile:GRANT,deviceBindingCreated:false,
+        // ChatGPT Product MCP actions require a signed OpenAI session marker
+        // plus a Runtime-attested binding. Native OAuth alone is insufficient.
+        delegatedTransportAvailable:false,
+        delegationBlocker:'native_forge_runtime_session_binding_required',
         actionDispatched:false,executionAuthorized:false,devices};
     }
   });

@@ -1192,6 +1192,63 @@ export class OrchestratorService {
         executionAuthorized:false,filesystemAccessGranted:false,
         multiRepositoryWorktreeExecutionAvailable:false};
     }
+    if(operation==='ordax_execution_preflight'){
+      const scope=readDedicatedForgeProject(this.store);
+      if(!scope||scope.projectId!==input.projectId)
+        throw Error('forge_dedicated_project_required');
+      this.task(input.projectId,input.taskId,'work');
+      // The immutable Task/repository assignment is the only Forge-local
+      // authority for WHICH repository the Task may discuss. It cannot grant
+      // Git access or select a physical Runtime target.
+      const membership=this.db.prepare(
+        'SELECT 1 FROM forge_work_repository_scope WHERE project_id=? AND task_id=? AND repository=? LIMIT 1'
+      ).get(input.projectId,input.taskId,input.repository);
+      if(!membership)throw Error('forge_task_repository_scope_not_assigned');
+      const make=(reason,details={})=>({
+        schema:'ordax.forge.execution-preflight/1',
+        projectId:input.projectId,taskId:input.taskId,
+        repository:input.repository,deviceId:input.deviceId,
+        action:input.action,reason,
+        deviceSelectionVerified:false,
+        runtimeSessionAttested:false,
+        delegatedTransportAvailable:false,
+        grantVisible:false,executionAuthorized:false,
+        actionDispatched:false,receiptCreated:false,...details
+      });
+      const catalog=this.repositoryCatalogPort?.read();
+      if(catalog?.available!==true||catalog.checkedOrigin!==true||
+        !catalog.repositories.some(r=>r.repo===input.repository))
+        return make('canonical_repository_ownership_unavailable');
+      const port=this.ordaxProductMcp;
+      if(typeof port?.devices!=='function')
+        return make('forge_native_oauth_port_unavailable');
+      const grantField={
+        repository_catalog:'repositoryCatalogReadGranted',
+        terminal:'nativeTerminalGrantVisible',
+        text_read:'nativeTextReadGrantVisible',
+        text_write:'nativeTextWriteGrantVisible'
+      }[input.action];
+      const requiredProfile={
+        repository_catalog:'repository-catalog-read',
+        terminal:'device-native-terminal',
+        text_read:'computer-text-edit',
+        text_write:'computer-text-edit'
+      }[input.action];
+      return Promise.resolve(port.devices()).then(snapshot=>{
+        if(snapshot?.available!==true)return make(
+          snapshot?.reason||'ordax_product_mcp_unavailable',{requiredProfile});
+        const device=snapshot.devices?.find(t=>t.deviceId===input.deviceId);
+        if(!device)return make('device_not_visible_to_forge_oauth',{requiredProfile});
+        const grantVisible=device[grantField]===true;
+        return make(!device.reportedOnline?'device_reported_offline':
+          !grantVisible?'owner_capability_grant_required':
+          'native_forge_runtime_session_binding_required',{
+            requiredProfile,grantVisible,reportedOnline:device.reportedOnline===true,
+            ownerAction:!grantVisible?'authorize_in_ordax_owner_permissions':
+              'native_runtime_session_attestation_required'
+          });
+      });
+    }
     if(operation==='ordax_devices'){
       const scope=readDedicatedForgeProject(this.store);
       if(!scope||scope.projectId!==input.projectId)
