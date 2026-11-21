@@ -87,16 +87,9 @@
             <button id="projectDeleteSubmit" type="submit">Excluir projeto definitivamente</button>
           </form>
         </details>
-        <div class="nav-section-heading orchestrator-heading"><span>Administração</span><button id="addOrchestrator" class="nav-add" type="button" aria-label="Novo administrador">+</button></div>
-        <div id="orchestratorNavList" class="nav-item-list" aria-label="Lista de administradores"></div>
-        <select id="orchestratorSelect" class="native-state-control" aria-label="Selecionar administrador do projeto" title="Administrador do projeto"><option value="">Selecione um administrador</option></select>
-        <details id="orchestratorSetup" class="nav-setup"><summary>Novo administrador</summary>
-          <form id="newOrchestratorForm" hidden>
-            <label for="orchestratorName">Nome</label><input id="orchestratorName" maxlength="140" required />
-            <label for="missionInput">Missão e instruções</label><textarea id="missionInput" maxlength="4000" rows="3" required></textarea>
-            <button type="submit">Criar administrador</button>
-          </form>
-        </details>
+        <div class="nav-section-heading orchestrator-heading"><span>Coordenação registrada</span></div>
+        <div id="orchestratorNavList" class="nav-item-list" aria-label="Lista de coordenações"></div>
+        <select id="orchestratorSelect" class="native-state-control" aria-label="Selecionar coordenação do projeto" title="Coordenação do projeto"><option value="">Selecione uma coordenação</option></select>
         <section id="forgeDevelopmentAccess" class="forge-development-access" aria-label="Autorização de desenvolvimento">
           <strong>Desenvolvimento com GPT</strong>
           <small id="forgeDevelopmentAccessStatus" role="status">Escolha um projeto para configurar o terminal.</small>
@@ -164,7 +157,6 @@
           <div class="coordinator-head-actions">
             <details id="forgeCoordinatorAdvanced" class="forge-coordinator-advanced"><summary aria-label="Ferramentas e diagnóstico" title="Ferramentas e diagnóstico">⋯</summary><div id="forgeCoordinatorAdvancedContent" class="forge-coordinator-advanced-content"></div></details>
             <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Sessões</button>
-            <button id="pauseOrchestrator" class="ghost-button" type="button" hidden aria-hidden="true" disabled>Pausar</button>
             <button id="coordinatorApiSettings" class="ghost-button" type="button" aria-label="Abrir configurações do GPT" title="Configurar ChatGPT e Forge MCP">Ajustes</button>
           </div>
         </header>

@@ -15,7 +15,8 @@ test('App native renderer can read canonical data, but not execute GPT, agents o
     'creating a project with a mission draft is storage, never GPT execution');
   for(const blocked of ['project_command_run',
     'project_file_write','project_worktree_verify','project_worktree_integrate',
-    'work_accept','project_delete','work_claim','work_progress','work_memory_set']){
+    'work_accept','project_delete','work_claim','work_progress','work_memory_set',
+    'orchestrator_create','orchestrator_pause']){
     assert.throws(()=>assertPassiveUiOperation(blocked),/forge_passive_app_mcp_only/,blocked);
   }
   const removed=['work_send','forjador_send','proposal_send','work_parallel_launch',
@@ -25,6 +26,9 @@ test('App native renderer can read canonical data, but not execute GPT, agents o
     assert.equal(ORCHESTRATOR_TOOLS.some(tool=>tool.operation===operation),false,operation);
     assert.throws(()=>assertPassiveUiOperation(operation),/forge_passive_ui_operation_unknown/,operation);
   }
+  for(const operation of ['orchestrator_create','orchestrator_pause'])
+    assert.equal(ORCHESTRATOR_TOOLS.some(tool=>tool.operation===operation),true,
+      operation+' remains Forge MCP capability');
   assert.throws(()=>assertPassiveUiOperation('unknown'),/forge_passive_ui_operation_unknown/);
 });
 

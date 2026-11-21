@@ -1595,11 +1595,12 @@ $('#renameTask').addEventListener('click', () => toggleTaskRename(true));
 $('#cancelTaskRename').addEventListener('click', () => toggleTaskRename(false));
 $('#renameTaskForm').addEventListener('submit', saveTaskRename);
 document.querySelector('[data-start-project]')?.addEventListener('click',()=>{
-  // First-run does not create a GPT Task. It guides the user to the
-  // configured coordinator or the setup needed to reach it.
+  // First-run never creates a coordinator/agent from the passive App.
   if(orchestrationUi?.hasOrchestrator?.())void orchestrationUi.showCoordinator();
-  else if(orchestrationUi?.hasProject?.())document.getElementById('addOrchestrator')?.click();
-  else document.getElementById('addProject')?.click();
+  else if(orchestrationUi?.hasProject?.()){
+    const notice=document.getElementById('orchestrationNotice');
+    if(notice)notice.textContent='Projeto sem coordenação registrada. Use o Forge MCP para configurar a coordenação.';
+  }else document.getElementById('addProject')?.click();
 });
 $('#taskSearch').addEventListener('input', renderTaskList);
 $('#rotateConversation').addEventListener('click',()=>void rotateConversation());

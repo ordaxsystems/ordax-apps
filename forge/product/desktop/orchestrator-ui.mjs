@@ -926,8 +926,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       $('projectSetup').open=false;$('forgeProjectAdvanced').open=false;
       await refreshProjects();await refreshOrchestrators();
       await showCoordinator();
-      $('coordinatorPrompt').focus();
-      status('Novo projeto. Escreva sua primeira mensagem ao Forjador.');
+      status('Novo projeto criado. Tarefas e coordenações são gerenciadas pelo Forge MCP.');
     }catch{
       status('Não foi possível confirmar o novo projeto. Verifique a lista antes de tentar de novo.');
       await refreshProjects().catch(()=>{});
@@ -948,11 +947,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('forgeProjectAdvanced').open=true;
     $('projectDeleteSetup').open=true;
     $('projectDeleteName').focus();
-  });
-  $('addOrchestrator').addEventListener('click',()=>{
-    if(!projectId){status('Selecione ou crie um projeto antes de adicionar um administrador.');return;}
-    $('forgeProjectAdvanced').open=true;
-    $('orchestratorSetup').open=true;$('orchestratorName').focus();
   });
   $('newScopedWorkButton').addEventListener('click',()=>{
     $('newScopedWorkDetails').open=true;$('scopedWorkTitle').focus();
@@ -1111,7 +1105,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(generation!==orchestratorRefreshGeneration||p!==projectId)return [];
     orchestrators=result.orchestrators;
     if(!orchestrators.some(o=>o.id===orchestratorId))orchestratorId=orchestrators[0]?.id||null;
-    options($('orchestratorSelect'),orchestrators,'Selecione um administrador');
+    options($('orchestratorSelect'),orchestrators,'Selecione uma coordenação');
     $('orchestratorSelect').value=orchestratorId||'';
     const selected=orchestrators.find(o=>o.id===orchestratorId);
     const selectedId=selected?.id||null;
@@ -1119,15 +1113,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     await activateCoordinatorDraft(selected?.chat_task_id||null,isCurrent);
     if(!isCurrent())return [];
     $('openOrchestrator').disabled=!selected;
-    $('pauseOrchestrator').disabled=!selected;
-    $('pauseOrchestrator').textContent=selected?.status==='paused'?'Retomar':'Pausar';
-    $('newOrchestratorForm').hidden=!p;
     $('openWorks').disabled=!p||!selected;
     $('openHistory').disabled=!p||!selected;
     $('openEvidence').disabled=!p||!selected;
     $('orchestratorMission').textContent=selected
       ?'Acompanhe tarefas, sessões, memória, progresso e resultados persistidos pelo Forge MCP.'
-      :'Selecione um projeto para começar.';
+      :p?'Projeto sem coordenação registrada. Use o Forge MCP para criar ou associar uma coordenação.'
+        :'Selecione um projeto para começar.';
     $('orchestratorMission').title=selected?.mission||'';
     $('orchestratorTitle').textContent='Atividade do projeto';
     syncCoordinatorActions();
@@ -1400,16 +1392,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       button.disabled=!repositoryPortAvailable||!projectsCache.find(item=>item.id===projectId)?.repository_url;
     }
   });
-  $('newOrchestratorForm').addEventListener('submit',event=>{
-    event.preventDefault();void formAction(event.currentTarget,async()=>{
-      const p=projectId;
-      const receipt=await command('orchestrator_create',{projectId:p,name:$('orchestratorName').value,mission:$('missionInput').value});
-      if(receipt.status!=='succeeded'||p!==projectId)return;
-      orchestratorId=receipt.result.orchestratorId;
-      $('newOrchestratorForm').reset();$('orchestratorSetup').open=false;
-      await refreshOrchestrators();await showCoordinator();status('Administrador configurado.');
-    });
-  });
   $('openOrchestrator').addEventListener('click',()=>{void showCoordinator().catch(error);});
   let openingWorkNavigation=false;
   function openMissionNavigation(filter,trigger){
@@ -1417,7 +1399,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     // Task automatically, even when arriving from a different app screen.
     if(openingWorkNavigation)return;
     if(!projectId||!orchestratorId||!chatTaskId){
-      status('Selecione um projeto e configure o Administrador Geral para ver as frentes.');
+      status('Este projeto ainda não tem coordenação registrada. Use o Forge MCP para configurar a coordenação.');
       return;
     }
     const currentProject=projectId,currentOrchestrator=orchestratorId;
@@ -1435,13 +1417,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   $('openWorks').addEventListener('click',()=>openMissionNavigation('all',$('openWorks')));
   $('openHistory').addEventListener('click',()=>openMissionNavigation('all',$('openHistory')));
   $('openEvidence').addEventListener('click',()=>openMissionNavigation('attention',$('openEvidence')));
-  $('pauseOrchestrator').addEventListener('click',async()=>{
-    const o=orchestrators.find(o=>o.id===orchestratorId);if(!o)return;
-    try {
-      await command('orchestrator_pause',{projectId,orchestratorId,paused:o.status!=='paused'});
-      await refreshOrchestrators();
-    } catch {error();}
-  });
   $('inspectProjectAccess').addEventListener('click',async()=>{
     if($('inspectProjectAccess').disabled||!projectId||!orchestratorId)return;
     const p=projectId,o=orchestratorId;

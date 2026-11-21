@@ -578,7 +578,7 @@ test('GPT execution navigation opens scoped work chooser, including an empty pro
   assert.match(orchestrator,/\$\('openWorks'\)\.disabled=!projectId\|\|!orchestratorId;/);
   assert.match(orchestrator,/\$\('openWorks'\)\.disabled=!p\|\|!selected;/);
   const start=orchestrator.indexOf('  function openMissionNavigation(');
-  const end=orchestrator.indexOf("  $('pauseOrchestrator').addEventListener",start);
+  const end=orchestrator.indexOf("  $('inspectProjectAccess').addEventListener",start);
   assert.ok(start>=0&&end>start,'GPT workspace click handler must exist');
   const handler=orchestrator.slice(start,end);
   assert.match(handler,/await showCoordinator\(\)/);
@@ -592,9 +592,10 @@ test('GPT execution navigation opens scoped work chooser, including an empty pro
   assert.match(shell,/if\(route!=='coordinator'\)[\s\S]{0,110}openWorks'\)\?\.setAttribute\('aria-expanded','false'\)/);
 });
 
-test('compact administrator navigation retains both accessible selectors and theme SSOT',()=>{
+test('compact coordination navigation is read-only for agents and retains theme SSOT',()=>{
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const orchestrator=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const rule=name=>{
     const start=css.indexOf(name);
     assert.ok(start>=0,'missing CSS selector '+name);
@@ -602,7 +603,11 @@ test('compact administrator navigation retains both accessible selectors and the
   };
   assert.equal((css.match(/:root\{/g)||[]).length,1,'one visual token root');
   assert.match(html,/id="projectSelect"[^>]*aria-label="Selecionar projeto ativo"/);
-  assert.match(html,/id="orchestratorSelect"[^>]*aria-label="Selecionar administrador do projeto"/);
+  assert.match(html,/id="orchestratorSelect"[^>]*aria-label="Selecionar coordenação do projeto"/);
+  assert.match(html,/Coordenação registrada/);
+  assert.doesNotMatch(html,/id="addOrchestrator"|id="newOrchestratorForm"|id="pauseOrchestrator"|Novo administrador/);
+  assert.doesNotMatch(orchestrator,/command\('orchestrator_create'|command\('orchestrator_pause'/);
+  assert.match(orchestrator,/Use o Forge MCP para criar ou associar uma coordenação/);
   assert.match(html,/id="coordinatorApiSettings"[^>]*aria-label="Abrir configurações do GPT"/);
   assert.match(css,/body\.orchestrator-focus \.app-shell\{grid-template-rows:98px minmax\(0,1fr\)\}/);
   assert.match(css,/body\.orchestrator-focus \.orchestration-navigation\{grid-column:1\/-1;grid-row:2;/);

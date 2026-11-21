@@ -765,7 +765,7 @@ body.orchestrator-focus #orchestratorWorkRail{padding:19px 15px 16px}
   body.orchestrator-focus .brand-row{grid-column:1;grid-row:1;justify-content:center;padding:0}
   body.orchestrator-focus .brand-copy{display:none}
   body.orchestrator-focus .logo{width:34px;height:34px;border-radius:10px}
-  body.orchestrator-focus .orchestration-navigation{grid-column:2;grid-row:1;display:grid;grid-template-columns:minmax(0,1fr) 32px minmax(0,1fr) 32px;grid-template-rows:36px;align-items:center;gap:5px;width:100%;max-height:none;overflow:visible;padding:0;position:relative}
+  body.orchestrator-focus .orchestration-navigation{grid-column:2;grid-row:1;display:grid;grid-template-columns:minmax(0,1fr) 32px minmax(0,1fr);grid-template-rows:36px;align-items:center;gap:5px;width:100%;max-height:none;overflow:visible;padding:0;position:relative}
   body.orchestrator-focus .orchestration-navigation>.nav-section-heading{display:contents}
   body.orchestrator-focus .orchestration-navigation .nav-heading-actions{display:contents}
   body.orchestrator-focus .orchestration-navigation .nav-section-heading span,
@@ -776,7 +776,6 @@ body.orchestrator-focus #orchestratorWorkRail{padding:19px 15px 16px}
   body.orchestrator-focus #orchestratorSelect{grid-column:3}
   body.orchestrator-focus #renameProjectButton{display:none}
   body.orchestrator-focus #addProject{grid-column:2;grid-row:1;width:32px;height:36px;padding:0;font-size:17px}
-  body.orchestrator-focus #addOrchestrator{grid-column:4;grid-row:1;width:32px;height:36px;padding:0;font-size:17px}
   body.orchestrator-focus .orchestration-navigation>.nav-setup[open]{position:absolute;top:calc(100% + 7px);left:0;z-index:30;width:min(360px,calc(100vw - 20px));max-height:calc(100vh - 82px);overflow:auto;padding:8px 12px;border:1px solid var(--border);border-radius:12px;background:var(--panel-2);box-shadow:0 18px 40px rgba(0,0,0,.48)}
   body.orchestrator-focus .left-rail .new-task,
   body.orchestrator-focus .left-rail .search-wrap,
@@ -800,9 +799,8 @@ body.orchestrator-focus #orchestratorWorkRail{padding:19px 15px 16px}
   body.orchestrator-focus .coordinator-head-actions{gap:5px}
   body.orchestrator-focus .coordinator-head-actions #coordinatorApiSettings{font-size:9px;width:auto;min-width:72px;height:32px;padding:0 7px;white-space:nowrap}
   body.orchestrator-focus .coordinator-head-actions #coordinatorApiEnable{font-size:0;width:32px;height:32px;padding:0}
-  body.orchestrator-focus .coordinator-head-actions #openOrchestrator,body.orchestrator-focus .coordinator-head-actions #pauseOrchestrator{font-size:0;width:32px;height:32px;padding:0}
+  body.orchestrator-focus .coordinator-head-actions #openOrchestrator{font-size:0;width:32px;height:32px;padding:0}
   body.orchestrator-focus .coordinator-head-actions #openOrchestrator::after{content:"◇";font-size:14px}
-  body.orchestrator-focus .coordinator-head-actions #pauseOrchestrator::after{content:"Ⅱ";font-size:12px}
   body.orchestrator-focus .coordinator-head-actions #coordinatorApiSettings::after{content:""}
   body.orchestrator-focus .coordinator-head-actions #coordinatorApiEnable::after{content:"API";font-size:9px}
   body.orchestrator-focus .coordinator-rail-toggle{display:inline-flex;align-items:center;justify-content:center;width:34px;height:33px;padding:0;font-size:0}
