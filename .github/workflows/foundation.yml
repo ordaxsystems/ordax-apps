@@ -3,14 +3,26 @@ name: OrdaX Apps Foundation
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'URGENTE-LEIA.md'
+      - 'AGENTS.md'
+      - 'README.md'
+      - 'HANDOFF.md'
+      - 'docs/**/*.md'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'URGENTE-LEIA.md'
+      - 'AGENTS.md'
+      - 'README.md'
+      - 'HANDOFF.md'
+      - 'docs/**/*.md'
 
 permissions:
   contents: read
 
 jobs:
-  # Keep existing required job names/checks. Skip heavy proofs only for
+  # Preserve existing diagnostic job names. Skip heavy proofs only for
   # a verified documentation-only diff; unknown changes fail closed.
   change-impact:
     runs-on: ubuntu-24.04
@@ -42,7 +54,7 @@ jobs:
           # Exact allowlist: contracts, fixtures, workflow files, app source
           # and unknown paths must always take the complete verification path.
           docs_only = bool(paths) and all(
-              path in {"AGENTS.md", "README.md", "HANDOFF.md"}
+              path in {"AGENTS.md", "README.md", "HANDOFF.md", "URGENTE-LEIA.md"}
               or (path.startswith("docs/") and path.endswith(".md"))
               for path in paths
           )
