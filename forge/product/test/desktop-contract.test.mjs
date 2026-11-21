@@ -957,7 +957,7 @@ test('Orchestrator workspace links project navigation, coordinator and scoped GP
   assert.match(css,/\.work-card:hover/);
 });
 
-test('coordinator shows an actionable empty state and keeps mobile controls inside the panel',()=>{
+test('coordinator shows a passive empty state and keeps mobile controls inside the panel',()=>{
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
@@ -966,8 +966,8 @@ test('coordinator shows an actionable empty state and keeps mobile controls insi
   assert.match(orchestration,/page\.messages\.length===0/);
   assert.match(orchestration,/uncertainCommands/);
   assert.match(orchestration,/nada foi reenviado automaticamente/);
-  assert.match(orchestration,/O que vamos criar hoje\?/);
-  assert.match(orchestration,/Conte sua ideia ao Forjador/);
+  assert.match(orchestration,/Nenhuma atividade registrada/);
+  assert.match(orchestration,/Quando um chat GPT usar o Forge MCP neste projeto/);
   assert.match(orchestration,/Criar um site/);
   assert.match(orchestration,/Desenvolver um app/);
   assert.match(orchestration,/GPT Web · disponível no aplicativo desktop/);
@@ -975,7 +975,11 @@ test('coordinator shows an actionable empty state and keeps mobile controls insi
   assert.match(css,/coordinator-head-actions #coordinatorApiSettings\{font-size:9px;width:auto/);
   assert.match(orchestration,/const legacyFailure=String\(receipt\.result\?\.failureCode/);
   assert.match(orchestration,/O tempo de resposta de um mecanismo legado expirou sem confirmação/);
-  assert.match(orchestration,/input\.dispatchEvent\(new Event\('input',\{bubbles:true\}\)\)/);
+  assert.match(orchestration,/empty\.append\(mark,title,copy\);box\.append\(empty\)/);
+  assert.doesNotMatch(orchestration,/empty\.append\(mark,title,copy,choices\)/);
+  assert.match(html,/id="coordinatorPassiveBoundary"/);
+  assert.match(html,/id="coordinatorComposer" hidden aria-hidden="true"/);
+  assert.match(css,/coordinator-passive-boundary/);
   assert.match(html,/id="forgeCoordinatorAdvanced"/);
   assert.match(css,/\.coordinator-empty\{[^}]*text-align:center/);
   assert.match(css,/body\.orchestrator-focus \.coordinator-analysis-actions\{display:grid;grid-template-columns:minmax\(0,1fr\)/);
@@ -1299,9 +1303,10 @@ test('Forjador uses GPT Web and exposes no legacy coordinator-chat route',()=>{
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   assert.match(uiHtml,/id="openOrchestrator"/);
   assert.match(uiHtml,/id="openWorks"/);
-  assert.match(uiHtml,/id="coordinatorRouteLabel">FORJADOR</);
+  assert.match(uiHtml,/id="coordinatorRouteLabel">ATIVIDADE DO PROJETO</);
   assert.match(uiHtml,/CONVERSA DE TRABALHO · CHATGPT WEB/);
-  assert.match(uiHtml,/id="coordinatorComposer"/);
+  assert.match(uiHtml,/id="coordinatorComposer" hidden aria-hidden="true"/);
+  assert.match(uiHtml,/id="coordinatorPassiveBoundary"/);
   assert.match(uiHtml,/id="composer"/);
   assert.match(uiHtml,/id="coordinatorSend"[^>]*>Enviar</);
   assert.match(uiHtml,/Via Forge MCP/);
