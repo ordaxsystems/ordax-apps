@@ -52,10 +52,10 @@ export function validateRuntimeContract({runtimeLock,runtimeContract,contractByt
   const appReads=new Map(appTools.filter(tool=>tool.readOnly===true).map(tool=>[tool.operation,tool]));
   const runtimeReads=runtimeContract.tools.filter(tool=>tool.readOnly===true);
   if(runtimeReads.length===0)fail('runtime_contract_has_no_read_operations');
-  for(const remote of runtimeContract.tools) {
-    if(remote.readOnly!==true&&appByOperation.get(remote.operation)?.readOnly===true)
-      fail('runtime_app_read_operation_not_readonly');
-  }
+  // Runtime bridge is read-only; even a deprecated writable tool in the
+  // pinned projection is misleading and must never be carried forward.
+  if(runtimeContract.tools.some(tool=>tool.readOnly!==true))
+    fail('runtime_contract_non_read_operation');
   for(const remote of runtimeReads) {
     const local=appReads.get(remote.operation);
     if(!local)fail('runtime_read_operation_missing_from_app');

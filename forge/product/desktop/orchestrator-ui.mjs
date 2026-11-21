@@ -1227,6 +1227,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       mcpState.textContent='Dispositivos visíveis ao OAuth nativo do Forge: '+
         devices.length+' · Catálogo autorizado: '+ready+
         '. Nenhum dispositivo foi selecionado e nenhuma execução foi habilitada.';
+      const transport=document.createElement('p');
+      transport.textContent=result.delegatedTransportAvailable===true
+        ?'Transporte nativo informado. A autorização de cada Task, repositório e dispositivo ainda precisa ser validada pelo MCP.'
+        :'Execução Forge → Runtime indisponível: vínculo nativo do dispositivo não atestado. A permissão de catálogo não autoriza comandos.';
+      section.append(transport);
       if(ready!==devices.length){
         const notice=document.createElement('p');
         notice.textContent='Permissão necessária para o catálogo: repository-catalog-read. '+
