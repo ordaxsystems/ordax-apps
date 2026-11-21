@@ -1,4 +1,7 @@
 import path from 'node:path';
+import fs from 'node:fs';
+import {spawnSync} from 'node:child_process';
+
 import {resolveLabUserRoot} from '../src/lab-profile-binding.mjs';
 import {resolveHostProfileRoot} from './host-profile-lock.mjs';
 
@@ -10,6 +13,30 @@ const OWNER='--forge-owner-core',APPROVED='--forge-owner-core-approved';
  * variables or a browser request. Owner's consent and the active Windows
  * session are checked again by the SQLite trust and sealed OAuth ports.
  */
+
+/** Ask Windows for the actual Documents known folder, not USERPROFILE/Documents:
+ * the Owner may have redirected it to OneDrive or another authorized volume. */
+export function resolveForgeNodeOwnerDocumentsDirectory({
+  platform=process.platform,run=spawnSync
+}={}){
+  if(platform!=='win32')throw Error('forge_node_documents_windows_required');
+  const result=run('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive',
+    '-Command',"[Environment]::GetFolderPath([Environment+SpecialFolder]::MyDocuments)"],
+    {windowsHide:true,timeout:10000,encoding:'utf8',maxBuffer:4096,
+      stdio:['ignore','pipe','pipe']});
+  const value=String(result?.stdout||'').trim();
+  if(result?.status!==0||result?.error||!value||value.includes('\n')||
+    value.includes('\r')||value.includes('\0')||!path.isAbsolute(value))
+    throw Error('forge_node_documents_known_folder_unavailable');
+  const root=path.resolve(value);
+  try{
+    const stat=fs.lstatSync(root);
+    if(!stat.isDirectory()||stat.isSymbolicLink())
+      throw Error('forge_node_documents_known_folder_unavailable');
+  }catch{throw Error('forge_node_documents_known_folder_unavailable');}
+  return root;
+}
+
 export function resolveForgeNodeHostMode({
   argv=process.argv,environment=process.env,productRoot,platform=process.platform
 }={}){

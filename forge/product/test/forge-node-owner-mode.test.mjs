@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import {fileURLToPath} from 'node:url';
-import {resolveForgeNodeHostMode} from '../host/host-owner-mode.mjs';
+import {resolveForgeNodeHostMode,resolveForgeNodeOwnerDocumentsDirectory} from '../host/host-owner-mode.mjs';
 
 const product=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const local='C:\\Users\\dev\\AppData\\Local';
@@ -44,6 +45,19 @@ test('owner mode rejects ambiguous flags, staged builds, override dirs and non-W
     argv:argv(...selected),environment:{LOCALAPPDATA:'relative'},platform:'win32'}),
     /forge_node_owner_localappdata_unavailable/);
 });
+test('Node owner resolves actual Windows Known Documents folder and rejects invalid paths',()=>{
+  const target=fs.mkdtempSync(path.join(os.tmpdir(),'forge-known-docs-'));
+  try{
+    assert.equal(resolveForgeNodeOwnerDocumentsDirectory({platform:'win32',
+      run:()=>({status:0,stdout:target})}),path.resolve(target));
+    for(const bad of [null,'not-absolute','C:\\wrong\\nextra']){
+      assert.throws(()=>resolveForgeNodeOwnerDocumentsDirectory({platform:'win32',
+        run:()=>({status:0,stdout:bad})}),/forge_node_documents_known_folder_unavailable/);
+    }
+    assert.throws(()=>resolveForgeNodeOwnerDocumentsDirectory({platform:'linux'}),
+      /forge_node_documents_windows_required/);
+  }finally{fs.rmSync(target,{recursive:true,force:true})}
+});
 test('Node Owner starts with existing sealed session; never embeds bearer in argv or env',()=>{
   const source=fs.readFileSync(path.join(product,'scripts/start-host.mjs'),'utf8');
   assert.match(source,/createForgeWindowsSafeStorage\(\{userRoot:mode\.userRoot\}\)/);
@@ -51,6 +65,6 @@ test('Node Owner starts with existing sealed session; never embeds bearer in arg
   assert.match(source,/acquireHostProfileLock\(dataRoot\)/);
   assert.match(source,/if\(mode\.owner\)await application\.startRemoteGateway\(\)/);
   assert.ok(source.indexOf('await acquireHostProfileLock(dataRoot)')<
-    source.indexOf('createHostApplication({productRoot,dataRoot,remoteSession})'));
+    source.indexOf('createHostApplication({productRoot,dataRoot,remoteSession,'));
   assert.doesNotMatch(source,/ORDAX_FORGE_HOST_REMOTE_BEARER|AUTH_TOKEN|ACCESS_TOKEN/);
 });

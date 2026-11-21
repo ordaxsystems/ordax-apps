@@ -24,6 +24,7 @@ import {ForgeProjectDevelopment} from '../src/forge-project-development.mjs';
 import {createForgeProductSession} from '../src/forge-product-session.mjs';
 import {createForgeRemoteMcpOwner} from '../src/forge-remote-mcp-owner.mjs';
 import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
+import {forgeOwnerWorkspaceScope} from '../src/forge-owner-workspace-scope.mjs';
 import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
 import {canonicalProviderChatUrl} from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
@@ -979,13 +980,7 @@ let runtimeOrchestratorBridge=null;
 let closeRuntimeOrchestratorPipe=null;
 const forgeMcpTrusted=new ForgeMcpOwnerTrust({store,
   appIdentity:app.getPath('userData'),
-  scopeSignature:projectId=>{
-    const binding=forgeLocalWorkspaces.binding(projectId);
-    if(!binding)return 'app-private:'+projectId;
-    if(!forgeLocalWorkspaces.status(projectId).verified)
-      throw Error('forge_mcp_trust_workspace_unverified');
-    return 'owner-bound:'+binding.root+':'+binding.identity;
-  }
+  scopeSignature:projectId=>forgeOwnerWorkspaceScope(forgeLocalWorkspaces,projectId)
 });
 // One native capability port; project consent is bound to the already verified
 // workspace identity in the EXISTING Forge SQLite, not a new permission store.

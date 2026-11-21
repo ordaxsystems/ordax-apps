@@ -8,7 +8,8 @@ import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
 import {assertPassiveUiOperation,assertPassiveUiMcpMessage} from '../src/forge-passive-ui-policy.mjs';
 import {createHostBrowserServer} from './host-browser-server.mjs';
 import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
-import {createForgeRemoteMcpOwner,FORGE_NODE_REMOTE_MCP_OPERATIONS} from '../src/forge-remote-mcp-owner.mjs';
+import {createForgeRemoteMcpOwner,FORGE_NODE_REMOTE_MCP_OPERATIONS,FORGE_NODE_NATIVE_REMOTE_MCP_OPERATIONS} from '../src/forge-remote-mcp-owner.mjs';
+import {createForgeNodeNativeOwnerPorts} from '../src/forge-node-native-owner-ports.mjs';
 
 const MIME_EXT=new Map([['image/png','png'],['image/jpeg','jpg'],['image/webp','webp'],['image/gif','gif'],['image/avif','avif']]);
 const providerUnavailable=()=>{throw Error('provider_transport_unavailable_on_host');};
@@ -19,7 +20,7 @@ const providerUnavailable=()=>{throw Error('provider_transport_unavailable_on_ho
  * create a provider executor, workspace authority, grant store, or Runtime.
  */
 export function createHostApplication({productRoot,dataRoot,environment=process.env,fetchImpl=globalThis.fetch,
-  credentialStore,remoteSession=null,remoteFetchImpl=fetchImpl}={}) {
+  credentialStore,remoteSession=null,remoteFetchImpl=fetchImpl,nativeOwner=null}={}) {
   if(typeof productRoot!=='string'||!path.isAbsolute(productRoot)||
     typeof dataRoot!=='string'||!path.isAbsolute(dataRoot))throw Error('host_application_roots_required');
   const resolvedProductRoot=path.resolve(productRoot);
@@ -40,10 +41,20 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
     ?store.getWorkspaceSession().metadata.observer_mode:'auto';
   // The browser Host has no verified GPT Web executor. Never fall back
   // to an external model API or to a second model.
+  // Native ports are only composed in the explicitly selected Node Owner
+  // process, after the one profile lock and with the existing remote session.
+  // Ordinary Host/browser clients never gain workspace or terminal authority.
+  if(nativeOwner!==null&&remoteSession===null)
+    throw Error('forge_node_native_owner_session_required');
+  const native=nativeOwner===null?null:createForgeNodeNativeOwnerPorts({
+    store,dataRoot:resolvedDataRoot,userRoot:nativeOwner.userRoot,
+    documentsDirectory:nativeOwner.documentsDirectory,environment
+  });
   let kernel;
   kernel=createOrchestratorKernel({
     store,
     authorize:({context})=>context===kernel?.context,
+    ...(native?{fileBroker:native.files,development:native.development}:{}),
     version:'node-host'
   });
   const {context,service,mcp}=kernel;
@@ -64,10 +75,11 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
   // native launcher provides the same sealed-credential session port.
   // Neither environment variables nor browser IPC may supply credentials.
   // The default plain Node Host remains disconnected (fail-closed).
-  const remoteOwnerTrust=remoteSession===null?null:new ForgeMcpOwnerTrust({
-    store,appIdentity:path.dirname(resolvedDataRoot),
-    scopeSignature:projectId=>'app-private:'+projectId
-  });
+  const remoteOwnerTrust=native?.ownerTrust||
+    (remoteSession===null?null:new ForgeMcpOwnerTrust({
+      store,appIdentity:path.dirname(resolvedDataRoot),
+      scopeSignature:projectId=>'app-private:'+projectId
+    }));
   const remoteVersion=remoteSession===null?null:
     JSON.parse(fs.readFileSync(path.join(resolvedProductRoot,'package.json'),'utf8')).version;
   if(remoteSession!==null&&(typeof remoteVersion!=='string'||remoteVersion.length>80))
@@ -75,8 +87,9 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
   const remote=remoteSession===null?null:createForgeRemoteMcpOwner({
     store,service,getContext:()=>context,ownerTrust:remoteOwnerTrust,
     session:remoteSession,version:remoteVersion,
-    allowedOperations:FORGE_NODE_REMOTE_MCP_OPERATIONS,
-    authorizeFileRead:()=>false,fetchImpl:remoteFetchImpl,
+    allowedOperations:native?FORGE_NODE_NATIVE_REMOTE_MCP_OPERATIONS:FORGE_NODE_REMOTE_MCP_OPERATIONS,
+    authorizeFileRead:native?native.authorizeFileRead:()=>false,
+    fetchImpl:remoteFetchImpl,
     onMutation:({operation,output})=>{
       if(ORCHESTRATOR_TOOLS.some(tool=>tool.operation===operation&&!tool.readOnly))notify();
       return output;

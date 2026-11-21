@@ -3,7 +3,7 @@ import {fileURLToPath} from 'node:url';
 import {createHostApplication} from '../host/host-application.mjs';
 import {PRODUCT_NAME} from '../src/product-brand.mjs';
 import {acquireHostProfileLock} from '../host/host-profile-lock.mjs';
-import {resolveForgeNodeHostMode} from '../host/host-owner-mode.mjs';
+import {resolveForgeNodeHostMode,resolveForgeNodeOwnerDocumentsDirectory} from '../host/host-owner-mode.mjs';
 import {createForgeWindowsSafeStorage} from '../src/forge-windows-safe-storage.mjs';
 import {createForgeProductSession,FORGE_NATIVE_OAUTH_CLIENT_ID} from '../src/forge-product-session.mjs';
 
@@ -43,7 +43,9 @@ const shutdown=()=>{
   return stopping;
 };
 try {
-  application=createHostApplication({productRoot,dataRoot,remoteSession});
+  application=createHostApplication({productRoot,dataRoot,remoteSession,
+    nativeOwner:mode.owner?{userRoot:mode.userRoot,
+      documentsDirectory:resolveForgeNodeOwnerDocumentsDirectory()}:null});
   if(mode.owner)await application.startRemoteGateway();
   server=application.createServer({onShutdown:()=>{void shutdown();}});
   const {url}=await server.listen();

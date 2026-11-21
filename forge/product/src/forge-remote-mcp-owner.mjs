@@ -90,5 +90,17 @@ const NODE_SQLITE_OPERATIONS=new Set([
   'work_list','work_plan','work_get','work_messages','conversation_rotate',
   'work_failover_prepare','proposals_list','command_get'
 ]);
+const NODE_NATIVE_OPERATIONS=new Set([
+  'project_files_status','project_files_list','project_file_read','project_file_write',
+  'project_development_status','project_command_run',
+  'project_worktree_prepare','project_worktree_review',
+  'project_worktree_verify','project_worktree_integrate'
+]);
+// A Node Host without native Owner ports must never advertise the above tools.
+// Even with ports, every read/command/worktree checks the exact physical
+// workspace identity, durable native approval and Task lease where required.
 export const FORGE_NODE_REMOTE_MCP_OPERATIONS=Object.freeze(
   FORGE_APP_MCP_OPERATIONS.filter(op=>NODE_SQLITE_OPERATIONS.has(op)));
+export const FORGE_NODE_NATIVE_REMOTE_MCP_OPERATIONS=Object.freeze(
+  FORGE_APP_MCP_OPERATIONS.filter(op=>NODE_SQLITE_OPERATIONS.has(op)||
+    NODE_NATIVE_OPERATIONS.has(op)));
