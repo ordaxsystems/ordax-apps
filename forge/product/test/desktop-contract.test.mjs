@@ -538,6 +538,12 @@ test('command centre uses one real project projection without fictional agents o
   assert.match(ui,/work\.claim\.chatIdentityVerified===true/);
   assert.match(ui,/work\.claim\.mcpToolCallObserved===true/);
   assert.match(ui,/function renderExecutionMemory\(\)/);
+  assert.ok(ui.includes("call('project_activity',{projectId:p}).catch(()=>null)"));
+  assert.ok(ui.includes("executionActivityScope===scope?executionActivity:null"));
+  assert.ok(ui.includes("event.kind==='forge.mcp.work_tool_observed'"));
+  assert.ok(ui.includes('Tentativa MCP de reservar tarefa ocupada foi recusada'));
+  assert.ok(ui.includes('Retomada bloqueada por efeitos incertos'));
+  assert.ok(ui.includes('identidade do chat não atestada'));
   assert.match(ui,/call\('project_memory',\{projectId:p\}\)\.catch\(\(\)=>null\)/);
   assert.match(ui,/executionMemoryScope===executionScope\(\)\?executionMemory:null/);
   assert.match(html,/Rótulos e checkpoints são declarações do cliente MCP, não provas de identidade ou efeitos externos/);

@@ -114,6 +114,20 @@ test('project activity distinguishes observed gateway coordination without inven
   }},gateway);
   assert.equal(claimed.result.structuredContent.status,'succeeded');
   assert.equal(claimed.result.structuredContent.result.status,'acquired');
+  const contenderGateway={
+    gatewayRequestId:'62000000-0000-4000-8000-000000000001',
+    gatewayAttemptId:'62000000-0000-4000-8000-000000000002',
+    gatewayAgentInstanceId:'62000000-0000-4000-8000-000000000003',
+    leaseStartObserved:true
+  };
+  const denied=await mcp.handle({jsonrpc:'2.0',id:3,method:'tools/call',params:{
+    name:'forge_work_claim',arguments:{
+      projectId:project.projectId,taskId:work.taskId,action:'acquire',
+      chatLabel:'Remote Chat C',requestId:'activity_remote_denied'
+    }
+  }},contenderGateway);
+  assert.equal(denied.result.structuredContent.status,'succeeded');
+  assert.equal(denied.result.structuredContent.result.status,'occupied');
 
   const view=await f.invoke('project_activity',{projectId:project.projectId});
   const item=view.tasks.find(x=>x.taskId===work.taskId);
@@ -134,5 +148,14 @@ test('project activity distinguishes observed gateway coordination without inven
   assert.equal(view.coordinationSessions[0].coordinationIdentity.gatewayAgentInstanceId,
     gateway.gatewayAgentInstanceId);
   assert.equal(JSON.stringify(view).includes(claimed.result.structuredContent.result.claimToken),false);
+  const refused=view.recentActivity.find(event=>
+    event.kind==='forge.mcp.work_tool_observed'&&event.outcome==='occupied');
+  assert.ok(refused,'the real denied MCP claim must be visible');
+  assert.equal(refused.taskId,work.taskId);
+  assert.equal(refused.operation,'work_claim');
+  assert.deepEqual(Object.keys(refused).sort(),
+    ['createdAt','kind','operation','outcome','seq','taskId']);
+  assert.equal(JSON.stringify(refused).includes(contenderGateway.gatewayAgentInstanceId),false);
+  assert.equal(JSON.stringify(refused).includes(contenderGateway.gatewayRequestId),false);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });

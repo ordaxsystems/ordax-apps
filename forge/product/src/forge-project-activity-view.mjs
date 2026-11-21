@@ -1,6 +1,7 @@
 import {forgeMcpWorkObservation} from './forge-mcp-observation.mjs';
 
 const PROJECT=/^project_[A-Za-z0-9-]+$/;
+const CLAIM_OUTCOMES=new Set(['acquired','renewed','released','occupied','blocked_unreconciled_effects']);
 
 const latest=(pairs)=>{
   let best=null;
@@ -80,11 +81,22 @@ export function forgeProjectActivityView(store,projectId,{maxEvents=40}={}) {
     JOIN lab_task_bindings b ON b.task_id=e.task_id
     JOIN tasks t ON t.id=e.task_id
     WHERE b.project_id=? AND t.workspace_session_id=?`).get(projectId,session).n;
-  const events=db.prepare(`SELECT e.seq,e.task_id AS taskId,e.kind,e.created_at AS createdAt
+  const events=db.prepare(`SELECT e.seq,e.task_id AS taskId,e.kind,e.created_at AS createdAt,
+      e.payload AS observationPayload
     FROM events e JOIN lab_task_bindings b ON b.task_id=e.task_id
     JOIN tasks t ON t.id=e.task_id
     WHERE b.project_id=? AND t.workspace_session_id=?
-    ORDER BY e.seq DESC LIMIT ?`).all(projectId,session,limit).reverse();
+    ORDER BY e.seq DESC LIMIT ?`).all(projectId,session,limit).reverse()
+    .map(({observationPayload,...event})=>{
+      // Reveal only a bounded claim outcome. The original event may contain
+      // gateway IDs/receipt metadata; never expose its raw payload to the App.
+      if(event.kind!=='forge.mcp.work_tool_observed')return event;
+      let payload;
+      try{payload=JSON.parse(observationPayload)}catch{return event}
+      if(payload?.operation!=='work_claim'||!CLAIM_OUTCOMES.has(payload?.outcome))
+        return event;
+      return {...event,operation:'work_claim',outcome:payload.outcome};
+    });
   const coordinationSessions=tasks.filter(x=>x.claim).map(x=>({
     taskId:x.taskId,chatLabel:x.claim.chatLabel,generation:x.claim.generation,
     claimState:x.claim.state,coordinationIdentity:x.claim.coordinationIdentity,

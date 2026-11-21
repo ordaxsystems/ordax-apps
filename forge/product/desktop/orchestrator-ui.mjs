@@ -309,6 +309,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   // second execution ledger. A succeeded GPT Run is not a verified code change.
   let executionMission=null,executionMissionScope='',executionWorkScope='';
   let executionMemory=null,executionMemoryScope='';
+  let executionActivity=null,executionActivityScope='';
   const executionScope=()=>[projectId,orchestratorId].join(':');
   const executionMemoryCategoryLabels={entity:'Entidade',structure:'Estrutura',fact:'Fato',decision:'Decisão',constraint:'Restrição',goal:'Objetivo',open_loop:'Pendência',reference:'Referência'};
   function renderExecutionSessions(works,scope){
@@ -513,6 +514,23 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(active)entries.push(['Missão registrada',stateLabels[state]||state]);
     if(active?.decision)entries.push(['Revisão registrada',
       'As sugestões internas não autorizam novas tarefas. Consulte a execução existente.']);
+    // Read the canonical event projection; a denied MCP claim is a
+    // coordination outcome, never proof of a live ChatGPT identity.
+    const activity=executionActivityScope===scope?executionActivity:null;
+    const claimConflicts=(activity?.recentActivity||[]).filter(event=>
+      event.kind==='forge.mcp.work_tool_observed'&&event.operation==='work_claim'&&
+      ['occupied','blocked_unreconciled_effects'].includes(event.outcome)).slice(-3).reverse();
+    const taskNames=new Map(works.map(work=>[work.id,work.title]));
+    for(const event of claimConflicts){
+      const when=Date.parse(event.createdAt||'');
+      const timestamp=Number.isFinite(when)
+        ?' · registro '+new Date(when).toLocaleString('pt-BR'):'';
+      const description=event.outcome==='occupied'
+        ?'Tentativa MCP de reservar tarefa ocupada foi recusada; titular preservado'
+        :'Retomada bloqueada por efeitos incertos; reconcilie recibos';
+      entries.push([taskNames.get(event.taskId)||'Tarefa deste projeto',
+        description+timestamp+' · identidade do chat não atestada']);
+    }
     for(const work of ordered.filter(w=>w.claim).slice(0,4)){
       const label=work.claim.state==='occupied'?'Reserva vigente':
         work.claim.state==='expired'?'Reserva expirada':
@@ -1096,12 +1114,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   });
   async function refreshWorks() {
     const generation=++epoch,p=projectId,o=orchestratorId;
-    if(!p) {workCount=0;executionWorkScope='';executionMemoryScope='';executionMemory=null;renderDependencyEditor([],null);renderWorks([]);renderExecutionMonitor();await onScopeChange(null);syncCoordinatorActions();return;}
-    const [result,planning,allResult,memory]=await Promise.all([
+    if(!p) {workCount=0;executionWorkScope='';executionMemoryScope='';executionMemory=null;executionActivityScope='';executionActivity=null;renderDependencyEditor([],null);renderWorks([]);renderExecutionMonitor();await onScopeChange(null);syncCoordinatorActions();return;}
+    const [result,planning,allResult,memory,activity]=await Promise.all([
       call('work_list',{projectId:p,...(o?{orchestratorId:o}:{})}),
       call('work_plan',{projectId:p,maxParallel:4}).catch(()=>null),
       o?call('work_list',{projectId:p}).catch(()=>null):Promise.resolve(null),
-      call('project_memory',{projectId:p}).catch(()=>null)
+      call('project_memory',{projectId:p}).catch(()=>null),
+      call('project_activity',{projectId:p}).catch(()=>null)
     ]);
     if(generation!==epoch||p!==projectId||o!==orchestratorId)return;
     const works=result.works;
@@ -1113,7 +1132,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     renderWorks(works,planning?.plan||null,editableDependencies);
     executionWorkScope=executionScope();
     executionMemory=memory?.schema==='ordax.forge.project-memory/1'&&memory.projectId===p?memory:null;
-    executionMemoryScope=executionScope();renderExecutionMonitor();
+    executionMemoryScope=executionScope();
+    executionActivity=activity?.schema==='ordax.forge.project-activity/1'&&activity.project?.id===p?activity:null;
+    executionActivityScope=executionScope();renderExecutionMonitor();
     await onScopeChange(new Set(works.map(w=>w.id)));
     if(generation!==epoch||p!==projectId||o!==orchestratorId)return;
     syncCoordinatorActions();
