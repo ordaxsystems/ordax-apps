@@ -1,3 +1,5 @@
+import {forgeMcpWorkObservation} from './forge-mcp-observation.mjs';
+
 const PROJECT=/^project_[A-Za-z0-9-]+$/;
 
 const latest=(pairs)=>{
@@ -42,6 +44,21 @@ export function forgeProjectActivityView(store,projectId,{maxEvents=40}={}) {
     const claimState=row.claimStatus==='released'?'released':
       row.claimStatus==='active'?(expired?'expired':'occupied'):null;
     const state=claimState==='occupied'?'active':claimState==='expired'?'expired':'idle';
+    const observed=row.claimGeneration?forgeMcpWorkObservation(db,{
+      projectId,taskId:row.taskId,operation:'work_claim',claimGeneration:row.claimGeneration
+    }):null;
+    const coordinationIdentity=observed?{
+      kind:observed.gatewayAgentInstanceId?'gateway_agent_instance':'mcp_ingress_only',
+      mcpToolCallObserved:observed.mcpToolCallObserved,
+      mcpIngress:observed.mcpIngress,
+      gatewayLeaseStartObserved:observed.gatewayLeaseStartObserved,
+      gatewayRequestId:observed.gatewayRequestId,
+      gatewayAttemptId:observed.gatewayAttemptId,
+      gatewayAgentInstanceId:observed.gatewayAgentInstanceId,
+      // The gateway worker identity distinguishes observed MCP coordination
+      // sessions. It is not a trusted ChatGPT conversation or Run identity.
+      gptRunIdentityVerified:false,chatIdentityVerified:false
+    }:null;
     const last=latest([
       ['claim',row.claimUpdatedAt],['event',row.lastEventAt],['message',row.lastMessageAt],
       ['run',row.lastRunAt],['task',row.taskUpdatedAt]
@@ -54,7 +71,8 @@ export function forgeProjectActivityView(store,projectId,{maxEvents=40}={}) {
       claim:row.claimStatus==null?null:{
         chatLabel:row.chatLabel,generation:row.claimGeneration,
         state:claimState,leaseUntil:row.leaseUntil,heartbeatAt:row.claimHeartbeatAt,
-        lastProgress:row.lastProgress,chatIdentityVerified:false
+        lastProgress:row.lastProgress,chatIdentityVerified:false,
+        coordinationIdentity
       }
     };
   });
@@ -67,6 +85,12 @@ export function forgeProjectActivityView(store,projectId,{maxEvents=40}={}) {
     JOIN tasks t ON t.id=e.task_id
     WHERE b.project_id=? AND t.workspace_session_id=?
     ORDER BY e.seq DESC LIMIT ?`).all(projectId,session,limit).reverse();
+  const coordinationSessions=tasks.filter(x=>x.claim).map(x=>({
+    taskId:x.taskId,chatLabel:x.claim.chatLabel,generation:x.claim.generation,
+    claimState:x.claim.state,coordinationIdentity:x.claim.coordinationIdentity,
+    // Caller labels aid humans but do not attest a ChatGPT conversation.
+    chatIdentityVerified:false
+  }));
   const counts={
     tasks:tasks.length,
     active:tasks.filter(x=>x.state==='active').length,
@@ -80,6 +104,7 @@ export function forgeProjectActivityView(store,projectId,{maxEvents=40}={}) {
     observedAt:new Date().toISOString(),
     counts,
     tasks,
+    coordinationSessions,
     recentActivity:events,
     limits:{tasksTruncated:rows.length>=256,eventsTruncated:Number(totalEvents)>events.length},
     notificationPreparation:{
