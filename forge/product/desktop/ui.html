@@ -330,7 +330,7 @@
 
     <aside id="contextRail" class="context-rail">
       <nav id="rightPaneTabs" class="right-pane-tabs" aria-label="Painel de trabalho" role="tablist">
-        <button id="executionPaneTab" class="right-pane-tab active" type="button" role="tab" aria-selected="true" aria-controls="executionOverview" data-pane="execution">Trabalhos</button>
+        <button id="executionPaneTab" class="right-pane-tab active" type="button" role="tab" aria-selected="true" aria-controls="executionOverview" data-pane="execution">Painel</button>
         <button id="previewPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="previewPanel" data-pane="preview">Prévia</button>
         <button id="filesPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="filesPanel" data-pane="files">Arquivos</button>
         <button id="providerPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="providerPanel" data-pane="provider">GPT Web</button>
@@ -354,7 +354,7 @@
       <section id="previewPanel" class="right-pane-panel preview-panel" role="tabpanel" aria-labelledby="previewPaneTab" hidden>
         <div class="preview-state-card"><span class="eyebrow">Preview do projeto</span><h3>O resultado aparecerá aqui</h3><p>A prévia exibe somente HTML realmente recebido e verificado pelo Forge. Nenhum site fictício é mostrado.</p><span id="previewRuntimeState" class="preview-runtime-state">Aguardando conexão do Runtime</span></div>
       </section>
-      <section id="executionOverview" class="execution-overview right-pane-panel" role="tabpanel" aria-labelledby="executionPaneTab" aria-label="Estado real dos Runs e evidências do projeto">
+      <section id="executionOverview" class="execution-overview right-pane-panel" role="tabpanel" aria-labelledby="executionPaneTab" aria-label="Observatório passivo do Forge MCP">
         <section id="workSurfacePreview" class="work-surface-preview" aria-label="Prévia visual do resultado" hidden>
           <header class="work-surface-heading"><div><span class="eyebrow">RESULTADO DO PROJETO</span><strong id="workSurfaceFilename">index.html</strong></div><span id="workSurfaceProof">HTML verificado</span><button id="workSurfaceRefresh" type="button" title="Reverificar index.html da pasta do projeto" hidden>Atualizar</button><button id="workSurfaceModeToggle" type="button" title="Alternar prévia interativa e visual">Somente visual</button></header>
           <div id="workSurfaceVersionBar" class="work-surface-version-bar" hidden>
@@ -367,29 +367,34 @@
           <p id="workSurfaceStatus" role="status" aria-live="polite">Prévia visual segura. JavaScript, rede e envio de formulários desativados; não publicado.</p>
         </section>
         <header class="execution-overview-head">
-          <div><span class="command-eyebrow">VISÃO DO PROJETO</span><h2 id="executionOverviewTitle">Trabalhos e andamento</h2><p id="executionOverviewDescription">Lendo os Runs e evidências registrados neste projeto.</p></div>
+          <div><span class="command-eyebrow">FORGE MCP · OBSERVAÇÃO</span><h2 id="executionOverviewTitle">Estado do projeto</h2><p id="executionOverviewDescription">Lendo tarefas, reservas, progresso e evidências persistidas no SQLite canônico.</p></div>
           <button id="refreshExecutionOverview" type="button" aria-label="Atualizar execução" title="Atualizar dados locais">↻</button>
         </header>
+        <section class="execution-authority-card" aria-label="Autoridade de execução">
+          <span class="execution-authority-mark" aria-hidden="true">MCP</span>
+          <div class="execution-authority-copy"><strong>Execução pertence ao Forge MCP</strong><span>O aplicativo persiste e apresenta o estado. Ele não inicia Tasks, Runs, terminal ou GPT por conta própria.</span></div>
+          <span id="executionAuthorityState" class="execution-authority-state" data-state="idle">Sem chat reservado</span>
+        </section>
         <article class="execution-mission-card">
-          <div class="execution-mission-label"><span class="execution-mission-icon" aria-hidden="true">◎</span><span>Missão atual</span><span id="executionMissionBadge" class="execution-badge" data-state="idle">Sem missão ativa</span></div>
+          <div class="execution-mission-label"><span class="execution-mission-icon" aria-hidden="true">◎</span><span>Contexto persistido</span><span id="executionMissionBadge" class="execution-badge" data-state="idle">Sem missão ativa</span></div>
           <h3 id="executionMissionTitle">Nenhuma missão técnica selecionada</h3>
           <p id="executionMissionDetail">Os estados serão apresentados conforme os registros do Forge.</p>
-          <div class="execution-autonomy-controls">
+          <div class="execution-autonomy-controls" hidden aria-hidden="true">
             <button id="autonomousContinuousToggle" type="button" class="mini-secondary" disabled>Ativar continuidade automática da missão</button>
             <small id="executionAutonomyState" class="execution-automation-state" role="status" aria-live="polite">Continuidade automática: desativada</small>
             <small id="autonomousContinuousState" role="status" aria-live="polite">Desativada. Uma nova etapa GPT exige ação explícita. A ativação não concede acesso ao MCP nem repete resultados incertos.</small>
           </div>
-          <div class="execution-mission-metrics"><span><strong id="executionWorkCount">0</strong> frentes</span><span><strong id="executionRunningCount">0</strong> em execução</span><span><strong id="executionReviewCount">0</strong> a revisar</span></div>
+          <div class="execution-mission-metrics"><span><strong id="executionWorkCount">0</strong><small>trabalhos</small></span><span><strong id="executionClaimedCount">0</strong><small>chats ativos</small></span><span><strong id="executionRunningCount">0</strong><small>Runs ativos</small></span><span><strong id="executionReviewCount">0</strong><small>a revisar</small></span></div>
         </article>
         <section class="execution-monitor-section" aria-label="Frentes e executores observados">
-          <div class="execution-section-heading"><h3>Frentes do projeto</h3><button id="executionOpenWorks" type="button">Ver missões</button></div>
+          <div class="execution-section-heading"><h3>Trabalhos coordenados</h3><button id="executionOpenWorks" type="button">Ver todos</button></div>
           <div id="executionWorkList" class="execution-work-list" role="list"><p class="execution-empty">Nenhuma frente registrada.</p></div>
         </section>
         <section class="execution-monitor-section" aria-label="Últimas decisões e verificações">
-          <div class="execution-section-heading"><h3>Atividade e verificação</h3></div>
+          <div class="execution-section-heading"><h3>Atividade persistida</h3></div>
           <ol id="executionActivity" class="execution-activity"><li>Sem atividade confirmada para esta missão.</li></ol>
         </section>
-        <details class="execution-monitor-details"><summary>Limites e evidências</summary><p>Os dados vêm dos projetos, dos Runs GPT e dos recibos canônicos do Forge. Uma resposta GPT não comprova alterações, testes ou publicação. Nada é marcado como validado sem evidência externa.</p></details>
+        <details class="execution-monitor-details"><summary>Fonte e limites da observação</summary><p>O painel lê o estado persistido pelo Forge MCP no armazenamento canônico. Reserva de chat, resposta GPT e progresso são histórico operacional; alterações, testes e publicação só aparecem como comprovados quando existe evidência externa correspondente.</p></details>
       </section>
       <section id="filesPanel" class="right-pane-panel forge-files-panel" role="tabpanel" aria-labelledby="filesPaneTab" hidden>
         <div class="forge-files-heading"><span class="eyebrow">WORKSPACE DO PROJETO</span><h2 id="forgeFilesProjectName">Arquivos</h2><button id="forgeFilesRefresh" class="mini-secondary" type="button" aria-label="Atualizar estado do workspace">↻ Atualizar</button></div>

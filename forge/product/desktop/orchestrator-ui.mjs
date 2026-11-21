@@ -405,11 +405,21 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const scope=executionScope(),works=executionWorkScope===scope?visibleWorkItems:[];
     const mission=executionMissionScope===scope?executionMission:null;
     const active=mission?.mode==='technical'?mission:null;
-    const stats={running:0,attention:0,ready:0,completed:0};
-    for(const work of works)stats[workClassForPlan(work)]++;
+    const stats={running:0,attention:0,ready:0,completed:0,claimed:0};
+    for(const work of works){
+      stats[workClassForPlan(work)]++;
+      if(work.claim?.state==='occupied')stats.claimed++;
+    }
     $('executionWorkCount').textContent=String(works.length);
+    $('executionClaimedCount').textContent=String(stats.claimed);
     $('executionRunningCount').textContent=String(stats.running);
     $('executionReviewCount').textContent=String(stats.attention);
+    const authority=$('executionAuthorityState');
+    authority.textContent=stats.claimed
+      ?stats.claimed+' chat'+(stats.claimed===1?'':'s')+' com reserva ativa'
+      :stats.running?'Run observado no projeto'
+        :stats.attention?'Aguardando revisão':'Sem chat reservado';
+    authority.dataset.state=stats.claimed||stats.running?'active':stats.attention?'attention':'idle';
     const overview=describeExecutionMonitor(stats);
     $('executionOverviewTitle').textContent=overview.title;
     $('executionOverviewDescription').textContent=overview.description;
@@ -455,14 +465,19 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const copy=document.createElement('span');copy.className='execution-work-copy';
       const title=document.createElement('strong');title.textContent=work.title;
       const info=document.createElement('small');
-      info.textContent=work.latest_run_status==='succeeded'?'Run GPT concluído · confira os arquivos na prévia':
-        work.running_runs>0?'Run GPT em andamento':
-        work.execution?.observed==='reconciliation_required'?'Envio incerto · reconciliar':
-        work.provider_segments>0?'Conversa registrada no projeto':'Ainda sem resposta GPT';
+      info.textContent=work.claim?.state==='occupied'
+        ?'Chat '+work.claim.chatLabel+' · '+(work.claim.lastProgress
+          ?String(work.claim.lastProgress).slice(0,120)
+          :'reserva ativa no Forge MCP')
+        :work.latest_run_status==='succeeded'?'Run GPT concluído · confira os arquivos na prévia':
+          work.running_runs>0?'Run GPT em andamento':
+          work.execution?.observed==='reconciliation_required'?'Envio incerto · reconciliar':
+          work.provider_segments>0?'Conversa registrada no projeto':'Ainda sem resposta GPT';
       copy.append(title,info);
       const label=document.createElement('span');label.className='execution-work-state';
-      label.textContent=state==='running'?'Em execução':
-        state==='attention'?'Revisar':state==='completed'?'Run concluído':'Aguardando';
+      label.textContent=work.claim?.state==='occupied'?'Reservada':
+        state==='running'?'Em execução':
+          state==='attention'?'Revisar':state==='completed'?'Run concluído':'Aguardando';
       button.append(icon,copy,label);
       button.addEventListener('click',async()=>{
         if(scope!==executionScope())return;
@@ -476,7 +491,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(active)entries.push(['Missão registrada',stateLabels[state]||state]);
     if(active?.decision)entries.push(['Revisão registrada',
       'As sugestões internas não autorizam novas tarefas. Consulte a execução existente.']);
-    for(const work of ordered.filter(w=>w.latest_run_status||w.running_runs>0).slice(0,3)){
+    for(const work of ordered.filter(w=>w.claim?.state==='occupied').slice(0,3)){
+      entries.push([work.title,'Reserva ativa · '+work.claim.chatLabel+
+        (work.claim.lastProgress?' · '+String(work.claim.lastProgress).slice(0,140):'')]);
+    }
+    for(const work of ordered.filter(w=>(w.latest_run_status||w.running_runs>0)&&w.claim?.state!=='occupied').slice(0,3)){
       entries.push([work.title,work.running_runs>0?'Run GPT em andamento':
         work.latest_run_status==='succeeded'?'Run concluído; confirme entregas e revisões separadamente':
         'Último Run: '+work.latest_run_status]);
