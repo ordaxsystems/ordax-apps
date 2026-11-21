@@ -10,15 +10,15 @@ export function describeExecutionMonitor({running,attention}) {
     throw Error('invalid_execution_monitor_counts');
   if(running>0)return {
     title:'Execução em andamento',
-    description:`${running} frente(s) com Run GPT ativo. Resultados externos continuam não verificados.`
+    description:`${running} tarefa(s) com Run GPT histórico ativo. Resultados externos continuam não verificados.`
   };
   if(attention>0)return {
     title:'Revisões pendentes',
-    description:`Nenhum Run GPT ativo. ${attention} frente(s) aguardam revisão ou reconciliação.`
+    description:`Nenhum Run GPT ativo. ${attention} tarefa(s) aguardam revisão ou reconciliação.`
   };
   return {
     title:'Nenhuma execução ativa',
-    description:'Nenhum Run GPT em andamento ou frente pendente de revisão neste projeto.'
+    description:'Nenhum Run GPT em andamento ou tarefa pendente de revisão neste projeto.'
   };
 }
 // Name-only onboarding uses the existing mission_create contract. This
@@ -56,95 +56,6 @@ export function resolveProjectOnboardingMission(name,objective) {
 }
 // Pure presentation of the SAME read-only project_preflight projection.
  // It cannot confer GitHub/Runtime authority or issue a provider request.
-export function describeConversationOutcome(mission,{artifactVerified=false}={}) {
-  if(!mission||typeof mission.missionId!=='string')return null;
-  // The canonical Store has independently matched the reviewed Run ID,
-  // confirmed its status and returned only its owning Task.
-  const taskId=typeof mission.decision?.sourceRunId==='string'&&
-    typeof mission.reviewedTaskId==='string'&&mission.reviewedTaskId.length>0
-      ?mission.reviewedTaskId:null;
-  switch(mission.state) {
-    case 'queued':case 'planning_a':case 'ready_a':
-      return {message:'Preparando seu pedido…',taskId:null};
-    case 'sending_a':
-      return {message:'Trabalhando no seu pedido…',taskId:null};
-    case 'ready_b':case 'reviewing_a':case 'ready_review_final':case 'reviewing_final':
-      return {message:'Analisando o resultado recebido…',taskId};
-    case 'sending_b':case 'planning_b':case 'ready_final':
-      return {message:'Continuando o trabalho autorizado…',taskId};
-    case 'verification_required':case 'succeeded':case 'budget_exhausted':
-      return {message:artifactVerified&&taskId
-        ?'O arquivo do site está disponível na prévia à direita. Ainda não foi publicado.'
-        :'Resposta recebida, mas nenhum arquivo novo foi verificado. A última prévia disponível foi preservada; não foi publicado.',taskId};
-    case 'reconciliation_required':
-      return {message:artifactVerified
-        ?'A versão atual do site está verificada na prévia. A revisão de acompanhamento ainda precisa de confirmação. Nada será reenviado automaticamente.'
-        :'A revisão de acompanhamento precisa de reconciliação. Nada será reenviado automaticamente.',taskId};
-    case 'blocked':
-      return {message:'Não foi possível concluir esta tarefa. Nenhum envio será repetido automaticamente.',taskId};
-    default:
-      return {message:'Verificando o andamento da tarefa…',taskId:null};
-  }
-}
-
-export function describeProjectPreflight(snapshot) {
-  if(snapshot?.schema!=='ordax.orchestrator.project-preflight/2'||
-    snapshot.provenance?.source!=='app_sqlite'||snapshot.provenance.externalObservation!==false||
-    !snapshot.observation||typeof snapshot.observation.requested!=='boolean'||
-    snapshot.observation.active!==false||!snapshot.repository||
-    typeof snapshot.repository.urlRegistered!=='boolean'||
-    snapshot.repository.authenticatedRead!=='unavailable'||
-    snapshot.runtime?.grantVerified!==false||
-    !snapshot.work||!Number.isSafeInteger(snapshot.work.registered)||snapshot.work.registered<0||
-    !Number.isSafeInteger(snapshot.work.started)||snapshot.work.started<0||
-    !Number.isSafeInteger(snapshot.work.unresolvedSends)||snapshot.work.unresolvedSends<0||
-    !snapshot.analysis||!Number.isSafeInteger(snapshot.analysis.attempts)||snapshot.analysis.attempts<0||
-    !Number.isSafeInteger(snapshot.analysis.completed)||snapshot.analysis.completed<0||
-    !(snapshot.analysis.lastStatus===null||['running','succeeded','failed','uncertain'].includes(snapshot.analysis.lastStatus))||
-    !(snapshot.analysis.lastAttemptAt===null||typeof snapshot.analysis.lastAttemptAt==='string')||
-    !snapshot.analysisEngine||snapshot.analysisEngine.available!==true||
-    snapshot.analysisEngine.mode!=='app_owned'||snapshot.analysisEngine.externalModelUsed!==false||
-    !snapshot.gates||typeof snapshot.gates.recordedWorkAnalysisEligible!=='boolean'||
-    snapshot.gates.githubObservationVerified!==false||
-    snapshot.gates.automaticGptDispatchAllowed!==false||
-    snapshot.gates.headlessExecutionVerified!==false||!Array.isArray(snapshot.blockers))
-    throw Error('project_preflight_evidence_invalid');
-  const actions=[];
-  if(snapshot.work.unresolvedSends>0)
-    actions.push('Reconcilie envios pendentes ou incertos antes de iniciar outra análise.');
-  if(snapshot.analysisEngine.state!=='ready')
-    actions.push('Retome o Forjador deste projeto.');
-  if(snapshot.work.registered===0)
-    actions.push('Registre uma frente de trabalho para a análise local.');
-  if(!snapshot.repository.urlRegistered)
-    actions.push('Cadastre a URL do repositório nas conexões do projeto.');
-  const historical=snapshot.repository.lastHistoricalHead;
-  if(historical?.provenance?.historical===true&&
-    historical.provenance.currentAccessVerified===false&&
-    historical.provenance.source==='github_rest_authenticated'&&
-    /^[a-f0-9]{40}$/.test(historical.headSha)&&
-    typeof historical.observedAt==='string'&&Number.isFinite(Date.parse(historical.observedAt)))
-    actions.push(`Histórico GitHub: HEAD ${historical.headSha.slice(0,12)} observado em ${historical.observedAt}; não confirma acesso atual, integridade ou checks.`);
-  actions.push('GitHub: integração autorizada pela Platform ainda indisponível neste Host.');
-  actions.push('Runtime: grant de leitura e supervisão headless ainda não verificados.');
-  const latestAnalysis=snapshot.analysis.lastStatus==='succeeded'
-    ?`Última análise registrada em ${snapshot.analysis.lastAttemptAt}.`
-    :snapshot.analysis.lastStatus==='running'?'Há uma análise em andamento; consulte o histórico antes de repetir.'
-      :snapshot.analysis.lastStatus==='uncertain'?'O recibo da última análise está incerto; consulte o histórico antes de repetir.'
-        :snapshot.analysis.lastStatus==='failed'?'A última análise falhou; consulte o histórico antes de repetir.'
-          :'Análise ainda não iniciada.';
-  const analysisLabel=snapshot.analysis.attempts>0?'Reanalisar frentes':'Analisar frentes';
-  return {
-    state:snapshot.observation.requested?'blocked':
-      snapshot.gates.recordedWorkAnalysisEligible?'ready':'blocked',
-    summary:`Inventário local: ${snapshot.work.registered} frente(s), ${snapshot.work.started} com histórico de Run, ${snapshot.work.unresolvedSends} envio(s) incerto(s) ou pendente(s). `+
-      `${latestAnalysis} `+(snapshot.gates.recordedWorkAnalysisEligible?
-        'Análise das frentes registradas elegível. ':
-        'Análise das frentes registradas bloqueada. ')+
-      'Fonte: Store local. O diagnóstico não enviou mensagens GPT, alterou arquivos nem fez uma chamada de modelo.',
-    actions,analysisLabel
-  };
-}
 
 // Presentation only. Neither a saved binding nor a connected computer-wide
 // MCP session proves a current project resource grant.
@@ -195,7 +106,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   let coordinatorOpen=false,analysisAvailable=false,orchestratorChatAvailable=false,coordinatorDraftCommitAvailable=false;
   let gptWebTransportAvailable=false;
   let observedGptHealth=null;
-  let analysisBusy=false,preflightBusy=false,preflightGeneration=0,repositoryBusy=false,observationBusy=false,repositoryPortAvailable=false,coordinatorSubmitting=false,quickProjectCreating=false,nodeHost=false;
+  let preflightBusy=false,preflightGeneration=0,repositoryBusy=false,repositoryPortAvailable=false,coordinatorSubmitting=false,quickProjectCreating=false,nodeHost=false;
   let coordinatorDraftTaskId=null,coordinatorDraftRevision=0,coordinatorDraftTimer=null;
   let coordinatorDraftGeneration=0,pendingCoordinatorDraft=null,coordinatorDraftWrite=Promise.resolve();
   const requestKeys=new Map();
@@ -239,9 +150,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const selected=orchestrators.find(item=>item.id===orchestratorId);
     const selectedReady=Boolean(selected)&&selected.status!=='paused';
     $('coordinatorSend').disabled=true; // MCP-only GPT sends
-    $('analyzeWorks').disabled=true; // GPT decides, not the App
     $('inspectProjectAccess').disabled=!projectId||!selected||analysisBusy||preflightBusy||coordinatorSubmitting;
-    $('prepareWork').disabled=true; // MCP-only coordination
     $('coordinatorPrompt').disabled=true; // App displays conversation history
   }
   function setCoordinatorDraftState(text='') {
@@ -522,7 +431,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       priority[workClassForPlan(a)]-priority[workClassForPlan(b)]).slice(0,5);
     if(!ordered.length){
       const empty=document.createElement('p');empty.className='execution-empty';
-      empty.textContent='Ainda não há frentes GPT neste projeto. Nenhum agente ativo foi confirmado.';
+      empty.textContent='Ainda não há tarefas neste projeto. Nenhum claim ativo foi confirmado.';
       workList.append(empty);
     }
     for(const work of ordered){
@@ -582,27 +491,31 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     }
   }
   function clearProjectPreflight() {
-    // Invalidate read-only responses issued before a project change or Pause.
     preflightGeneration++;
     $('projectPreflightState').textContent='Diagnóstico ainda não solicitado. Uma URL GitHub não comprova acesso ao repositório.';
     $('projectPreflightState').dataset.state='idle';
-    $('analyzeWorks').textContent='Analisar frentes';
     $('projectPreflightActions').replaceChildren();
     $('projectPreflightActions').hidden=true;
     clearRepositoryObservation();
   }
   function renderProjectPreflight(snapshot) {
-    const guide=describeProjectPreflight(snapshot);
     const node=$('projectPreflightState');
-    $('analyzeWorks').textContent=guide.analysisLabel;
-    node.textContent=guide.summary;
-    node.dataset.state=guide.state;
+    const work=snapshot?.work||{};
+    const blockers=Array.isArray(snapshot?.blockers)?snapshot.blockers:[];
+    const repo=snapshot?.repository?.urlRegistered?'URL GitHub cadastrada; leitura autenticada não verificada':'sem URL GitHub cadastrada';
+    node.textContent='SQLite: '+(Number(work.registered)||0)+' tarefa(s), '+(Number(work.started)||0)+' com histórico de Run, '+(Number(work.unresolvedSends)||0)+' recibo(s) de envio antigo pendente(s); '+repo+'. O App não iniciou análise, GPT ou execução.';
+    node.dataset.state=blockers.length?'blocked':'ready';
+    const labels={
+      orchestrator_paused:'Administrador histórico pausado.',
+      no_registered_work:'Nenhuma tarefa registrada neste projeto.',
+      work_receipts_unresolved:'Existem recibos históricos de envio ainda não reconciliados.'
+    };
     const list=$('projectPreflightActions');
-    list.replaceChildren(...guide.actions.map(action=>{
+    list.replaceChildren(...blockers.map(code=>{
       const item=document.createElement('li');
-      item.textContent=action;return item;
+      item.textContent=labels[code]||String(code);return item;
     }));
-    list.hidden=guide.actions.length===0;
+    list.hidden=blockers.length===0;
   }
   async function inspectProjectPreflight(p,o) {
     const generation=++preflightGeneration;
@@ -658,8 +571,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('projectPulseNote').textContent=counts.attention
       ?'Há frentes que exigem revisão do histórico e dos recibos. Nenhum reenvio é automático.'
       :total===0
-        ?'Nenhuma frente de trabalho registrada. Crie uma frente para acompanhar o progresso.'
-        :'Estados das conversas registradas; não comprovam execução autônoma nem conclusão do projeto.';
+        ?'Nenhuma tarefa registrada. Crie uma tarefa para acompanhar o progresso.'
+        :'Estados das tarefas persistidas; não comprovam execução externa nem conclusão do projeto.';
   }
   function applyWorkFilters(){
     const normalize=text=>String(text||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
@@ -765,18 +678,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const planStatus=$('workPlanSummary');
     if(plan?.automaticDispatchAllowed===false){
       planStatus.dataset.state=plan.blocked.length?'blocked':'ready';
-      const executor=plan.executor;
-      const physical=executor?.parallelProviderSendsEnabled===true
-        ?'Agents GPT: '+executor.maxConcurrentSends+' sessões · '+
-          (executor.activeProviderSends||0)+' ativas · '+executor.availableSlots+' livres.'
-        :executor?.maxConcurrentSends===1
-          ?'Executor GPT: 1 sessão · '+(executor.availableSlots===0?'ocupada.':'livre.')
-          :'Capacidade física do executor não atestada.';
       planStatus.textContent='Planejamento do projeto · '+plan.candidates.length+' candidatas · '+
         plan.waiting.length+' aguardando · '+plan.blocked.length+' bloqueadas · '+
         plan.inFlight+' em execução no projeto · '+
-        verificationRequiredWorkIds.size+' respostas aguardando comprovação de resultado. '+physical+
-        ' Candidatas só entram em paralelo após um launch durável do Forge; cada agent mantém Task, Run e receipt próprios.';
+        verificationRequiredWorkIds.size+' respostas aguardando comprovação de resultado. '+
+        'Coordenação MCP-first: cada chat GPT adquire sua Task com claim, registra progresso/memória e libera a lease ao concluir. O App não inicia agentes nem envia mensagens.';
     }else{
       planStatus.dataset.state='unavailable';
       planStatus.textContent=projectId?
@@ -915,23 +821,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   function options(select,rows,label) {
     select.replaceChildren(new Option(label,''),...rows.map(row=>new Option(row.name,row.id)));
   }
-  function syncProjectObservation() {
-    const project=projectsCache.find(item=>item.id===projectId);
-    const requested=project?.observation_requested===1;
-    const anotherRequested=projectsCache.some(item=>item.id!==projectId&&item.observation_requested===1);
-    const button=$('projectObservationToggle');
-    button.disabled=!project||observationBusy||(!requested&&anotherRequested);
-    button.dataset.requested=String(requested);
-    button.textContent=requested?'Pausar':'Iniciar';
-    $('projectObservationState').dataset.state=requested?'blocked':'idle';
-    $('projectObservationState').textContent=!project
-      ?'Selecione um projeto.'
-      :requested
-        ?'Início solicitado. O preflight local é restaurado ao abrir o projeto; não há observação remota nem execução em segundo plano.'
-        :anotherRequested
-          ?'Outro projeto deste perfil tem início solicitado. Pause aquele projeto antes de iniciar este.'
-        :'Pausado. Iniciar registra a intenção, consulta o inventário local e pode solicitar uma análise ao Administrador Geral se os gates permitirem.';
-  }
   function syncProjectRepository() {
     const project=projectsCache.find(item=>item.id===projectId);
     const input=$('projectRepositoryInput');
@@ -965,33 +854,30 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         'Runtime/workspace local não conectado a esta página; nenhuma pasta ou arquivo local é lido.';
     $('workspaceEvidence').textContent='Nenhum snapshot autorizado verificado nesta sessão.';
     syncCapabilitySummary();
-    syncProjectObservation();
   }
   async function refreshApiStatus() {
     const state=await api.coordinatorChatStatus();
     nodeHost=state.executionSurface==='node_host';
-    $('orchestratorWorkRail').setAttribute('aria-label',nodeHost?'Frentes de trabalho do projeto':'Conversas do projeto no GPT');
-    $('workRailTitle').textContent=nodeHost?'Frentes de trabalho':'Conversas no GPT';
-    $('coordinatorRailToggle').textContent='Sessões GPT';
-    $('newScopedWorkButton').textContent=nodeHost?'＋ Nova frente':'＋ Nova conversa no GPT';
-    $('newScopedWorkDetails').querySelector('summary').textContent=nodeHost?'Configurar título da frente':'Configurar nome da conversa';
-    $('newScopedWorkForm').querySelector('button[type="submit"]').textContent=nodeHost?'Criar frente e abrir rascunho':'Criar e abrir conversa';
-    $('workRailNote').textContent=nodeHost
-      ?'As frentes ficam salvas no projeto. O ChatGPT conectado responde no chat coordenador; envio às conversas de trabalho ainda não está ligado neste Host.'
-      :'Cada conversa mantém o próprio histórico dentro do projeto.';
+    $('orchestratorWorkRail').setAttribute('aria-label','Tarefas do projeto');
+    $('workRailTitle').textContent='Tarefas do projeto';
+    $('coordinatorRailToggle').textContent='Sessões';
+    $('newScopedWorkButton').textContent='＋ Nova tarefa';
+    $('newScopedWorkDetails').querySelector('summary').textContent='Configurar tarefa';
+    $('newScopedWorkForm').querySelector('button[type="submit"]').textContent='Criar tarefa';
+    $('workRailNote').textContent='As tarefas ficam no SQLite canônico e são assumidas por chats GPT via Forge MCP.';
     const engineStatus=await call('status');
     analysisAvailable=engineStatus.analysisAvailable===true;
     repositoryPortAvailable=engineStatus.repositoryPortAvailable===true;
     workspacePortAvailable=engineStatus.workspacePortAvailable===true;
     gptWebTransportAvailable=engineStatus.providerExecutionAvailable===true&&!nodeHost;
-    // GPT-first: the same canonical Forjador Task is now served by GPT Web.
-    // There is no secondary model coordinator; GPT Web is the sole executor.
+    // Passive App: the coordinator Task is displayed as project activity.
+    // GPT intelligence lives in external chats connected through Forge MCP.
     coordinatorDraftCommitAvailable=engineStatus.coordinatorDraftCommitAvailable===true;
     if(!coordinatorDraftCommitAvailable)setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
     else if($('coordinatorDraftState').textContent.includes('backend anterior'))
       setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
-    $('coordinatorNavProvider').textContent='Conversa do projeto';
-    $('coordinatorRouteLabel').textContent='FORJADOR';
+    $('coordinatorNavProvider').textContent='Estado · Forge MCP';
+    $('coordinatorRouteLabel').textContent='ATIVIDADE DO PROJETO';
     $('coordinatorApiSettings').textContent='Ajustes';
     $('coordinatorPrompt').placeholder='Descreva o que você quer criar ou mudar…';
     $('coordinatorSend').textContent='Enviar';
@@ -1098,7 +984,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     button.disabled=true;
     try{
       await refreshWorks();
-      if(p===projectId&&o===orchestratorId)await refreshAutonomousDialogue();
     }catch{status('Não foi possível atualizar a execução. O último estado confirmado foi preservado.');}
     finally{button.disabled=false;}
   });
@@ -1206,59 +1091,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     syncProjectRepository();
     return projectsCache;
   }
-  async function refreshContinuityStatus() {
-    const p=projectId,o=orchestratorId;
-    if(!p||!o){$('continuityToggle').disabled=true;$('continuityProposalsToggle').disabled=true;$('continuityFollowupPrepare').hidden=true;$('continuityFollowupPrepare').disabled=true;$('continuityState').textContent='Selecione um administrador.';return;}
-    const [result,engineStatus]=await Promise.all([
-      call('continuity_status',{projectId:p,orchestratorId:o}),
-      call('status').catch(()=>null)
-    ]);
-    if(p!==projectId||o!==orchestratorId)return;
-    const canDisable=result.enabled===true;
-    const canEnable=engineStatus?.analysisAvailable===true;
-    $('continuityToggle').disabled=true; // Passive UI does not schedule analysis
-    $('continuityToggle').title=!canDisable&&!canEnable
-      ?'A análise local do Forge não está disponível.'
-      :'';
-    $('continuityProposalsToggle').disabled=true; // MCP coordinates next work
-    $('continuityProposalsToggle').dataset.enabled=String(result.nextProposals.enabled);
-    $('continuityProposalsToggle').textContent=result.nextProposals.enabled?'Desativar propostas automáticas':'Propor próximas frentes automaticamente';
-    $('continuityToggle').dataset.enabled=String(result.enabled);
-    $('continuityToggle').textContent=result.enabled?'Desativar análise automática':'Ativar análise automática';
-    const messages={disabled:'Desativada',analysis_busy:'Análise local em andamento',pending:'Analisando trabalhos concluídos',observing:'Observando novas respostas',reconciliation_required:'Revisão manual necessária'};
-    const proposals=result.nextProposals.enabled?(' Próximas propostas: '+result.nextProposals.proposed+'/'+result.nextProposals.maximum+' geradas neste ciclo; exigem revisão.'):' Próximas propostas desativadas.';
-    const executionNotice=engineStatus?.autonomousExecution===true
-      ?' O supervisor de execução em segundo plano está ativo.'
-      :engineStatus?.autonomousExecution===false
-        ?' A análise só roda enquanto o processo OrdaX está aberto; o supervisor de 24 h do Runtime ainda não está conectado.'
-        :' O estado de execução em segundo plano não foi confirmado; não considerar como trabalho 24 h.';
-    const latestDecision=result.latest?.reviewDecision;
-    const nextLabels={continue_same_conversation:'Continuar na conversa atual',
-      new_conversation:'Abrir outra conversa',new_work:'Propor outra frente',
-      request_correction:'Solicitar correção',verify_external_effect:'Verificar efeitos externos',
-      candidate_complete:'Possível conclusão — falta verificar',blocked:'Aguardar dependência'};
-    const reviewNotice=latestDecision?.reviewOnly===true
-      ?' Revisão da última resposta GPT: '+(nextLabels[latestDecision.decision]||'Sem decisão')+
-        '. '+String(latestDecision.summary||'').slice(0,240)+
-        '. Proposta consultiva; nenhum efeito externo ou envio autorizado.'
-      :'';
-    const followup=$('continuityFollowupPrepare');
-    const supported=new Set(['continue_same_conversation','request_correction','new_conversation']);
-    const canPrepare=result.enabled===true&&result.latest?.state==='analyzed'&&
-      result.latest.followupPrepared!==true&&latestDecision?.reviewOnly===true&&
-      supported.has(latestDecision.decision)&&
-      orchestrators.find(item=>item.id===o)?.status==='ready';
-    followup.hidden=!canPrepare;
-    followup.disabled=!canPrepare;
-    followup.dataset.reviewRunId=canPrepare?result.latest.run_id:'';
-    followup.textContent=latestDecision?.decision==='new_conversation'
-      ?'Preparar nova conversa para continuar'
-      :latestDecision?.decision==='request_correction'
-        ?'Preparar correção na conversa GPT'
-        :'Preparar continuação na conversa GPT';
-    $('continuityState').textContent=(messages[result.state]||'Estado indisponível')+'.'+proposals+
-      ' Nenhum envio automático ao GPT.'+reviewNotice+executionNotice;
-  }
   async function refreshOrchestrators() {
     const generation=++orchestratorRefreshGeneration,p=projectId;
     const result=p?await call('orchestrators_list',{projectId:p}):{orchestrators:[]};
@@ -1281,160 +1113,32 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('openHistory').disabled=!p||!selected;
     $('openEvidence').disabled=!p||!selected;
     $('orchestratorMission').textContent=selected
-      ?'Crie e continue seu trabalho em uma conversa.'
+      ?'Acompanhe tarefas, sessões, memória, progresso e resultados persistidos pelo Forge MCP.'
       :'Selecione um projeto para começar.';
     $('orchestratorMission').title=selected?.mission||'';
-    $('orchestratorTitle').textContent='Conversa';
+    $('orchestratorTitle').textContent='Atividade do projeto';
     syncCoordinatorActions();
     renderOrchestratorNavigation();
     await refreshWorks();
     if(!isCurrent())return [];
-    await refreshContinuityStatus();
-    if(!isCurrent())return [];
-    await refreshAutonomousDialogue();
     return isCurrent()?orchestrators:[];
-  }
-  async function refreshAutonomousDialogue(){
-    const generation=++autonomousRefreshGeneration;
-    if(!projectId||!orchestratorId)return;
-    const p=projectId,o=orchestratorId;
-    const result=await call('autonomous_dialogue_status',{projectId:p,orchestratorId:o}).catch(()=>null);
-    if(generation!==autonomousRefreshGeneration||p!==projectId||o!==orchestratorId)return;
-    const job=result?.mission;
-    const continuousEnabled=result?.continuousExecutionEnabled===true;
-    const appOwnedTechnicalReviewAvailable=result?.appOwnedTechnicalReviewAvailable===true;
-    const continuousButton=$('autonomousContinuousToggle');
-    continuousButton.disabled=true; // App never schedules autonomous cycles
-    continuousButton.textContent=continuousEnabled
-      ?'Desativar continuidade automática':'Ativar continuidade automática da missão';
-    $('autonomousContinuousState').textContent=continuousEnabled
-      ?'Ativa neste projeto: novas etapas só são agendadas depois de um Run confirmado, revisão de progresso e ausência de operações incertas. Não concede acesso MCP.'
-      :'Desativada neste projeto. Cada ciclo extra exige autorização manual; nenhum efeito incerto será repetido.';
-    $('executionAutonomyState').textContent=continuousEnabled
-      ?'Continuidade automática habilitada · somente etapas verificáveis'
-      :'Continuidade automática desativada';
-    // Keep the previous verified preview while revising. A mission that
-    // predates the latest user turn must not remain a highlighted status.
-    const superseded=Boolean(job?.createdAt&&result?.lastUserTurnAt&&
-      Date.parse(result.lastUserTurnAt)>Date.parse(job.createdAt));
-    const currentJob=superseded?null:job;
-    const proof=await onArtifactPreviewTask?.(job?.reviewedTaskId||job?.taskAId||null);
-    if(generation!==autonomousRefreshGeneration||p!==projectId||o!==orchestratorId)return;
-    executionMission=currentJob;executionMissionScope=executionScope();renderExecutionMonitor();
-    const outcome=describeConversationOutcome(currentJob,{
-      artifactVerified:proof?.verified===true&&proof?.currentDelivery===true}),
-      outcomePanel=$('coordinatorOutcome');
-    const statusKey=currentJob?currentJob.missionId+':'+currentJob.state+':'+Boolean(proof?.currentDelivery):null;
-    if(statusKey&&statusKey!==lastPresentedMissionStatusKey&&outcome){
-      lastPresentedMissionStatusKey=statusKey;
-      status(outcome.message);
-    }
-    // Once the verified delivery is in the project conversation as a real
-    // assistant message, do not keep a redundant terminal status card pinned.
-    outcomePanel.hidden=!outcome||Boolean(proof?.currentDelivery&&currentJob&&
-      ['verification_required','succeeded','budget_exhausted','reconciliation_required','blocked'].includes(currentJob.state));
-    if(outcome){
-      $('coordinatorOutcomeText').textContent=outcome.message;
-      $('coordinatorOutcomeOpen').hidden=!outcome.taskId;
-      $('coordinatorOutcomeOpen').dataset.taskId=outcome.taskId||'';
-      // Reuse the same read-only mission projection inside the human chat.
-      // renderCoordinator may rebuild messages, so re-attach this ONE node.
-      const messages=$('coordinatorMessages');
-      if(messages.lastElementChild!==outcomePanel)messages.append(outcomePanel);
-    }
-    const labels={queued:'Missão aceita; planejamento automático pendente',planning_a:'Planejamento legado',ready_a:'Preparado para enviar GPT A',sending_a:'GPT A em execução',ready_b:'GPT A confirmado; preparando GPT B',planning_b:'Análise legada indisponível',ready_final:'Pergunta B pronta',sending_b:'GPT B em execução',planning_final:'Análise legada indisponível',succeeded:'Concluído: duas respostas GPT e proposta final confirmadas',blocked:'Falha comprovada; sem reenvio automático',reconciliation_required:'Resultado incerto: exige reconciliação, sem reenvio'};
-    const technicalLabel=job?.mode==='technical'?(
-      job.state==='verification_required'
-        ?job.maxGPTSends===1
-          ?'Primeira resposta recebida; outras ações precisam de novo pedido do usuário'
-          :'GPT respondeu; verificação externa de alterações/testes é necessária'
-        :job.state==='budget_exhausted'
-          ?'Ciclo de trabalho revisado; decisão histórica registrada'+
-            (job.canContinue?'; é possível autorizar outro ciclo':'')
-          :job.state==='blocked'
-            ?'Missão técnica bloqueada; nenhum envio será repetido'
-            :job.state==='reconciliation_required'
-              ?'Missão técnica incerta; exige reconciliação sem repetir'
-              :'Missão técnica: '+(labels[job.state]||job.state)
-    ):null;
-    const storyLabel=job?.mode==='story'?(job.quality?.passed===false
-      ?'História produzida, mas reprovada na qualidade: '+job.quality.violations.join(', ')
-      :job.state==='succeeded'
-      ?'História legada finalizada após duas rodadas GPT A/B'
-      :job.state.startsWith('story_')?'História colaborativa: '+job.state.replaceAll('_',' '):null):null;
-    // A technical consent may span several bounded, explicitly authorized
-    // cycles. Show only reviews backed by canonical confirmed Runs and
-    // receipts; never describe unverified external effects as complete.
-    const chain=currentJob?.mode==='technical'?currentJob.chainProgress:null;
-    const progress=chain?.cycles
-      ?`Ciclo ${chain.cycles}${chain.truncated?'+':''} · ${chain.completedReviews} revisões GPT confirmadas · ${chain.authorizedGPTSends} envios previstos nos ciclos registrados · `
-      :'';
-    const specialist=currentJob?.mode==='technical'&&currentJob.technicalSpecialist
-      ?'Especialista: '+currentJob.technicalSpecialist+' · '
-      :'';
-    const lastAcceptance=chain?.stages?.at(-1)?.acceptance?.status;
-    const acceptanceLabel={answer_indicates_progress:'progresso sugerido, não certificado',
-      requires_external_verification:'verificação externa pendente',
-      not_met:'critério de aceite não atendido'}[lastAcceptance];
-    const acceptanceState=acceptanceLabel?'Aceite: '+acceptanceLabel+' · ':'';
-    const handoff=currentJob?.pendingStage
-      ?'Etapa '+currentJob.pendingStage.step+' · '+currentJob.pendingStage.specialist+
-        ' · depende do Run GPT revisado · '
-      :'';
-    const localFile=currentJob?.verifiedArtifact?.kind==='local_html_file'
-      ?'HTML local verificado · SHA-256 '+currentJob.verifiedArtifact.sha256.slice(0,12)+'… · '
-      :'';
-    $('autonomousDialogueState').textContent=currentJob
-      ?progress+specialist+handoff+localFile+acceptanceState+(outcome?.message||technicalLabel||storyLabel||labels[job.state]||'Estado registrado')
-      :'Nenhuma execução ativa. Descreva o que deseja realizar.';
-    // A failed or uncertain mission remains read-only. Reuse the canonical
-    // Task navigator to inspect confirmed records, never schedule a retry.
-    const reviews=$('autonomousReviewActions');
-    reviews.replaceChildren();
-    if(currentJob&&['succeeded','blocked','reconciliation_required','verification_required','budget_exhausted'].includes(currentJob.state)) {
-      for(const item of currentJob.reviewTasks||[]) {
-        if(typeof item?.taskId!=='string'||!item.taskId)continue;
-        const button=document.createElement('button');
-        button.type='button';button.className='mini-secondary';
-        button.textContent='Revisar '+item.label;
-        button.addEventListener('click',async()=>{
-          if(p!==projectId||o!==orchestratorId)return;
-          button.disabled=true;
-          try {
-            coordinatorOpen=false;$('orchestrationPanel').hidden=true;
-            await onOpenWork(item.taskId);
-          }catch{
-            status('Não foi possível abrir a conversa para revisão. Nenhuma mensagem foi reenviada.');
-            button.disabled=false;
-          }
-        });
-        reviews.append(button);
-      }
-    }
-    reviews.hidden=reviews.childElementCount===0;
-    const continueButton=$('continueAutonomousTechnical');
-    continueButton.hidden=true; // App presents past cycles, never resumes one
-    continueButton.disabled=true;
   }
   async function renderCoordinator() {
     if(!projectId||!chatTaskId)return;
     const p=projectId,t=chatTaskId,o=orchestratorId;
     const recoveryRevision=++coordinatorRecoveryRevision;
-    const [page,{proposals},engineStatus]=await Promise.all([
+    const [page,engineStatus]=await Promise.all([
       call('work_messages',{projectId:p,taskId:t,limit:50}),
-      call('proposals_list',{projectId:p,orchestratorId:o}),
       call('status').catch(()=>null)
     ]);
     if(p!==projectId||t!==chatTaskId||o!==orchestratorId)return;
     const box=$('coordinatorMessages'),recoveryNotice=$('coordinatorRecoveryNotice');
-    // Preserve the one result node while rebuilding chat history. Removing it
-    // before refreshAutonomousDialogue would make the ID unresolvable.
+    // Preserve the one result node while rebuilding the persisted project activity.
     box.replaceChildren(recoveryNotice,$('coordinatorOutcome'));
     const recoveryMessage=describeUncertainReceiptNotice(engineStatus,p);
     recoveryNotice.classList.toggle('hidden',!recoveryMessage);
     recoveryNotice.textContent=recoveryMessage;
-    // The Forjador's own ChatGPT Task was previously reachable only through
-    // hidden Work navigation. Reuse the canonical Task inspection and explicit
+    // The historical project Task remains reachable only for inspection and explicit
     // read-only reply recovery; never create a second delivery/retry route.
     // Optional read-only Task lookup must not hold the project-switch/chat
     // rendering lane. Revalidate the selection and render revision before
@@ -1475,70 +1179,17 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const title=document.createElement('strong');title.textContent='Nenhuma atividade registrada';
       const copy=document.createElement('p');
       copy.textContent='Quando um chat GPT usar o Forge MCP neste projeto, decisões, progresso e resultados persistidos aparecerão aqui.';
-      const choices=document.createElement('div');choices.className='forge-welcome-choices';
-      for(const [label,suggestion] of [
-        ['Criar um site','Crie um site para minha ideia.'],
-        ['Desenvolver um app','Quero desenvolver um aplicativo.'],
-        ['Planejar um projeto','Ajude-me a planejar um novo projeto.']
-      ]){
-        const button=document.createElement('button');
-        button.type='button';button.className='forge-welcome-choice';
-        button.textContent=label;
-        button.addEventListener('click',()=>{
-          const input=$('coordinatorPrompt');
-          if(input.disabled)return;
-          input.value=suggestion;
-          input.dispatchEvent(new Event('input',{bubbles:true}));
-          input.focus();
-        });
-        choices.append(button);
-      }
       empty.append(mark,title,copy);box.append(empty);
     }
     for(const message of page.messages) {
       const article=document.createElement('article');article.className='coordinator-message';
       article.dataset.role=message.role==='user'?'user':'assistant';
-      const role=document.createElement('strong');role.textContent=message.role==='user'?'Você':'Forjador';
+      const role=document.createElement('strong');role.textContent=message.role==='user'?'Você':'Forge';
       const text=document.createElement('p');text.textContent=message.content;
       article.append(role,text);box.append(article);
     }
     box.scrollTop=box.scrollHeight;
-    await refreshAutonomousDialogue();
     const cards=$('coordinatorProposals');cards.replaceChildren();
-    for(const proposal of proposals) {
-      const prepared=proposal.status==='prepared';
-      const card=document.createElement('article');card.className='coordinator-proposal';
-      const title=document.createElement('strong');title.textContent=proposal.title;
-      const reason=document.createElement('p');reason.textContent=proposal.reason;
-      const draft=document.createElement('pre');draft.textContent=proposal.content;
-      const note=document.createElement('p');note.textContent=prepared?'Frente criada. O envio exige nova confirmação da mensagem exata no App.':'Revisar primeira mensagem: criar salva um rascunho local. Nenhum envio ao ChatGPT.';
-      const accept=document.createElement('button');accept.type='button';accept.textContent=prepared?'Revisar e enviar ao GPT':'Criar frente com este rascunho';
-      accept.disabled=orchestrators.find(item=>item.id===o)?.status==='paused';
-      const reject=document.createElement('button');reject.type='button';reject.textContent=prepared?'Abrir e editar':'Descartar proposta';
-      for(const [button,approved] of [[accept,true],[reject,false]])button.addEventListener('click',async()=>{
-        if(p!==projectId||o!==orchestratorId)return;
-        accept.disabled=true;reject.disabled=true;
-        try {
-          if(prepared&&!approved){coordinatorOpen=false;$('orchestrationPanel').hidden=true;await onOpenWork(proposal.taskId);return;}
-          if(prepared) {
-            const availability=providerComposeAvailability(await api.providerStatus());
-            if(p!==projectId||o!==orchestratorId)return;
-            if(!availability.allowed){status(COMPOSE_STATUS_MESSAGES[availability.reason]);accept.disabled=false;reject.disabled=false;return;}
-          }
-          const receipt=await command(prepared?'proposal_send':'proposal_review',{projectId:p,orchestratorId:o,actionId:proposal.actionId,
-            ...(prepared?{draftRevision:proposal.draftRevision}:{approved})});
-          if(p!==projectId||o!==orchestratorId)return;
-          await refreshWorks();await renderCoordinator();
-          if(receipt.status!=='succeeded') {
-            if(prepared&&receipt.result?.taskId){coordinatorOpen=false;$('orchestrationPanel').hidden=true;await onOpenWork(receipt.result.taskId);}
-            return;
-          }
-          if(receipt.result.taskId){coordinatorOpen=false;$('orchestrationPanel').hidden=true;await onOpenWork(receipt.result.taskId);}
-          status(prepared?'Resposta do GPT observada e registrada na conversa.':approved?'Frente criada com rascunho. Revise e envie pela conversa quando desejar.':'Proposta descartada.');
-        }catch{error();await renderCoordinator();}
-      });
-      card.append(title,reason,draft,note,accept,reject);cards.append(card);
-    }
   }
   let coordinatorRouteGeneration=0;
   async function showCoordinator() {
@@ -1778,139 +1429,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       await refreshOrchestrators();
     } catch {error();}
   });
-  $('continuityFollowupPrepare').addEventListener('click',async()=>{
-    const p=projectId,o=orchestratorId,button=$('continuityFollowupPrepare');
-    const reviewRunId=button.dataset.reviewRunId;
-    if(!p||!o||!reviewRunId||button.disabled)return;
-    button.disabled=true;
-    try {
-      const receipt=await command('continuity_followup_prepare',{
-        projectId:p,orchestratorId:o,reviewRunId
-      });
-      if(p!==projectId||o!==orchestratorId)return;
-      await refreshContinuityStatus();
-      if(receipt.status!=='succeeded'||!receipt.result?.taskId)return;
-      await refreshWorks();
-      coordinatorOpen=false;$('orchestrationPanel').hidden=true;
-      await onOpenWork(receipt.result.taskId);
-      status(receipt.result.conversationRotated
-        ?'Nova conversa preparada na mesma frente. Revise o rascunho antes de enviar.'
-        :'Próximo passo preparado na conversa original. Revise o rascunho antes de enviar.');
-    }catch{
-      if(p===projectId&&o===orchestratorId){
-        status('Não foi possível preparar o próximo passo: verifique rascunho, recibos e estado da frente.');
-        await refreshContinuityStatus().catch(()=>{});
-      }
-    }
-  });
-  $('continuityProposalsToggle').addEventListener('click',async()=>{
-    const p=projectId,o=orchestratorId;if(!p||!o)return;
-    $('continuityProposalsToggle').disabled=true;
-    try {await command('continuity_proposals_set',{projectId:p,orchestratorId:o,enabled:$('continuityProposalsToggle').dataset.enabled!=='true'});
-      await refreshContinuityStatus();}
-    catch {status('Não foi possível mudar as propostas automáticas.');await refreshContinuityStatus();}
-  });
-  $('continuityToggle').addEventListener('click',async()=>{
-    const p=projectId,o=orchestratorId;if(!p||!o)return;
-    $('continuityToggle').disabled=true;
-    try {await command('continuity_set',{projectId:p,orchestratorId:o,enabled:$('continuityToggle').dataset.enabled!=='true'});
-      await refreshContinuityStatus();}
-    catch {status('Não foi possível mudar a análise automática.');await refreshContinuityStatus();}
-  });
-  // One keyboard submission path: Enter or Ctrl/Cmd+Enter submits; Shift+Enter
-  // inserts a newline and IME composition must never trigger an early send.
-  $('coordinatorPrompt').addEventListener('keydown',event=>{
-    if(event.key!=='Enter'||event.isComposing||event.shiftKey)return;
-    event.preventDefault();
-    if(!$('coordinatorSend').disabled)$('coordinatorComposer').requestSubmit();
-  });
-  $('coordinatorComposer').addEventListener('submit',event=>{
-    event.preventDefault();
-    // Acquire the single-flight lock BEFORE the first async draft read.
-    // The form's button restoration must not allow a second GPT dispatch.
-    if(coordinatorSubmitting||analysisBusy||$('coordinatorSend').disabled)return;
-    coordinatorSubmitting=true;syncCoordinatorActions();
-    void formAction(event.currentTarget,async()=>{
-      const p=projectId,o=orchestratorId,t=chatTaskId;
-      const draft=await prepareCoordinatorDraft(t),content=draft?.content;
-      // Selection can change while awaiting the durable draft. Never send a
-      // stale coordinator message to the old project after navigation.
-      if(p!==projectId||o!==orchestratorId||t!==chatTaskId||!content)return;
-      status('Enviando ao GPT…');
-      const receipt=await command('forjador_send',{projectId:p,orchestratorId:o,content,draftRevision:draft.draftRevision});
-      if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
-      if(receipt.status==='succeeded'){
-        await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
-        status(receipt.result?.provider==='forge_autonomy'
-          ?'Pedido entregue ao Forge. GPT e MCP continuarão pela execução do projeto.'
-          :'Resposta do GPT registrada. Efeitos externos ainda exigem verificação.');
-      } else if(receipt.status==='uncertain'){
-        status('Envio GPT incerto. Consulte Execução antes de qualquer novo envio; não houve repetição.');
-      } else {
-        status('GPT não confirmou o envio. O rascunho foi mantido para verificação.');
-      }
-      // Auto-label only a still-untitled project after a persisted first turn.
-      // User-selected names always win; this never calls a model or GPT.
-      if(receipt.status==='succeeded'||receipt.status==='failed'){
-        try{
-          await command('project_auto_title',{projectId:p});
-          if(p===projectId)await refreshProjects();
-        }catch{/* title is optional and must never block the conversation */}
-      }
-      await renderCoordinator();
-    }).finally(()=>{coordinatorSubmitting=false;syncCoordinatorActions();});
-  });
-  async function analyzeRegisteredWorks(p,o,{automatic=false}={}) {
-    const snapshot=await inspectProjectPreflight(p,o);
-    if(p!==projectId||o!==orchestratorId)return null;
-    if(automatic&&!projectsCache.some(item=>item.id===p&&item.observation_requested===1))return null;
-    if(!snapshot||!snapshot.gates.recordedWorkAnalysisEligible) {
-      if(snapshot)status('Início registrado, mas a análise do Administrador está bloqueada pelas pré-condições locais. Nenhum envio foi realizado.');
-      return null;
-    }
-    const receipt=await command('orchestrator_analyze',{projectId:p,orchestratorId:o});
-    if(p!==projectId||o!==orchestratorId)return null;
-    if(receipt.status==='succeeded')status(automatic
-      ?'Diagnóstico inicial registrado pelo Administrador Geral, sem prompt. Analisou somente frentes locais; GitHub, GPT Web e Runtime não foram acionados.'
-      :'Análise das frentes locais registrada. Nenhuma recomendação foi executada.');
-    else status('Análise não confirmada. Confira o histórico antes de tentar novamente; o app não repetiu a solicitação.');
-    await renderCoordinator();
-    return receipt;
-  }
-  $('projectObservationToggle').addEventListener('click',async()=>{
-    const p=projectId,project=projectsCache.find(item=>item.id===projectId);
-    if(!project||observationBusy)return;
-    // Snapshot the selected scope before any await. A late response may not
-    // change the state or message of a different project.
-    const enabled=project.observation_requested!==1;
-    if(enabled&&(analysisBusy||coordinatorSubmitting))return;
-    observationBusy=true;syncProjectObservation();
-    if(enabled){analysisBusy=true;syncCoordinatorActions();}
-    try {
-      const receipt=await command('project_observation_set',{projectId:p,enabled});
-      if(receipt.status!=='succeeded'||receipt.result?.requested!==enabled)
-        throw Error('orchestrator_observation_unconfirmed');
-      if(p!==projectId)return;
-      clearProjectPreflight();
-      await refreshProjects();
-      if(p!==projectId)return;
-      if(enabled)await analyzeRegisteredWorks(p,orchestratorId,{automatic:true});
-      if(p!==projectId)return;
-      if(enabled&&!projectsCache.some(item=>item.id===p&&item.observation_requested===1))return;
-      if(!enabled)status(
-        'Observação pausada no projeto. Nenhum grant da Platform foi alterado.');
-    }catch(error){
-      if(p===projectId)status(error?.message==='orchestrator_project_observation_exclusive'
-        ?'Outro projeto já tem início solicitado neste perfil. Pause aquele projeto antes de iniciar este.'
-        :'Não foi possível confirmar a mudança da observação. Consulte o estado antes de repetir.');
-    }finally{
-      observationBusy=false;
-      if(enabled)analysisBusy=false;
-      // The user may have selected another project while the old command
-      // was awaited. Restore controls for the CURRENT scope, not the old one.
-      syncProjectObservation();
-    }
-  });
   $('inspectProjectAccess').addEventListener('click',async()=>{
     if($('inspectProjectAccess').disabled||!projectId||!orchestratorId)return;
     const p=projectId,o=orchestratorId;
@@ -1922,91 +1440,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         $('projectPreflightState').dataset.state='blocked';
       }
     }finally{preflightBusy=false;syncCoordinatorActions();}
-  });
-  $('analyzeWorks').addEventListener('click',async()=>{
-    if($('analyzeWorks').disabled||!projectId||!orchestratorId)return;
-    const p=projectId,o=orchestratorId;
-    analysisBusy=true;syncCoordinatorActions();
-    status(nodeHost
-      ?'Analisando frentes locais pelo coordenador disponível; o GitHub não será lido e nenhuma frente GPT será acionada…'
-      :'Análise externa desativada. Use as frentes GPT e seus recibos para revisar progresso.');
-    try {
-      await analyzeRegisteredWorks(p,o);
-    }catch{error();}
-    finally{analysisBusy=false;syncCoordinatorActions();}
-  });
-  $('autonomousContinuousToggle').addEventListener('click',async()=>{
-    const button=$('autonomousContinuousToggle');
-    if(button.disabled||!projectId||!orchestratorId)return;
-    const p=projectId,o=orchestratorId;
-    button.disabled=true;
-    try{
-      const snapshot=await call('autonomous_dialogue_status',{projectId:p,orchestratorId:o});
-      if(p!==projectId||o!==orchestratorId)return;
-      const enabled=snapshot?.continuousExecutionEnabled!==true;
-      const receipt=await command('autonomous_continuous_set',{
-        projectId:p,orchestratorId:o,enabled});
-      if(p!==projectId||o!==orchestratorId)return;
-      if(receipt.status==='succeeded')status(enabled
-        ?'Continuidade habilitada. Avança somente após confirmação dos Runs e revisão de progresso; erros e efeitos incertos bloqueiam novos envios.'
-        :'Continuidade desativada. As próximas etapas aguardam autorização.');
-    }catch{error();}
-    finally{if(p===projectId&&o===orchestratorId)await refreshAutonomousDialogue();}
-  });
-  $('continueAutonomousTechnical').addEventListener('click',async()=>{
-    const button=$('continueAutonomousTechnical');
-    if(button.disabled||!projectId||!orchestratorId)return;
-    const p=projectId,o=orchestratorId;
-    button.disabled=true;
-    try{
-      const snapshot=await call('autonomous_dialogue_status',{projectId:p,orchestratorId:o});
-      if(p!==projectId||o!==orchestratorId)return;
-      if(snapshot?.mission?.canContinue!==true){
-        status('A decisão histórica não foi confirmada. Nenhum envio realizado.');
-        return;
-      }
-      let availability;
-      try{availability=providerComposeAvailability(await api.providerStatus(),{hostMode:nodeHost});}
-      catch{
-        status('Não foi possível verificar a sessão GPT. Nenhuma autorização foi criada.');
-        return;
-      }
-      if(p!==projectId||o!==orchestratorId)return;
-      if(!availability.allowed){
-        status(COMPOSE_STATUS_MESSAGES[availability.reason]||
-          'Sessão GPT não confirmada. Nenhuma autorização foi criada.');
-        return;
-      }
-      const receipt=await command('autonomous_dialogue_continue',{
-        projectId:p,orchestratorId:o,sourceMissionId:snapshot.mission.missionId});
-      if(p!==projectId||o!==orchestratorId)return;
-      if(receipt.status==='succeeded')
-        status('Próxima etapa autorizada com recibos canônicos. A continuidade automática exige consentimento, revisão e ausência de incerteza.');
-    }catch{error();}
-    finally{if(p===projectId&&o===orchestratorId)await refreshAutonomousDialogue();}
-  });
-  $('prepareWork').addEventListener('click',async()=>{
-    if($('prepareWork').disabled||analysisBusy||coordinatorSubmitting||!projectId||!orchestratorId)return;
-    const p=projectId,o=orchestratorId,t=chatTaskId;
-    // Preparing a proposal consumes the same coordinator lane as chat.
-    // Admission is synchronous, before any draft flush or model request.
-    analysisBusy=true;coordinatorSubmitting=true;syncCoordinatorActions();
-    try {
-      let draft;
-      try{draft=await prepareCoordinatorDraft(t);}
-      catch{setCoordinatorDraftState('Não foi possível confirmar o rascunho salvo. Ele foi preservado e nenhuma proposta foi enviada.');return;}
-      if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
-      const content=draft?.content;
-      if(!content){status('Descreva no campo de mensagem a frente que o administrador deve preparar.');$('coordinatorPrompt').focus();return;}
-      status('A IA está preparando uma proposta de frente para sua revisão…');
-      try {
-        const receipt=await command('orchestrator_prepare',{projectId:p,orchestratorId:o,content,draftRevision:draft.draftRevision});
-        if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
-        await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
-        if(receipt.status==='succeeded')status('Proposta pronta. Confira título e mensagem antes de criar a frente.');
-        await renderCoordinator();
-      }catch{error();}
-    }finally{analysisBusy=false;coordinatorSubmitting=false;syncCoordinatorActions();}
   });
   function fitCoordinatorComposer(){
     const input=$('coordinatorPrompt');
@@ -2055,11 +1488,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       if(receipt.status!=='succeeded'||p!==projectId||o!==orchestratorId)return;
       $('batchWorkForm').reset();$('batchWorkDetails').open=false;
       await refreshWorks();
-      $('batchWorkFeedback').textContent=receipt.result.created+' frentes registradas. Nenhuma mensagem enviada ao GPT.';
-      status(receipt.result.created+' frentes registradas no projeto, sem enviar ao GPT. Organize as dependências antes de executar.');
+      $('batchWorkFeedback').textContent=receipt.result.created+' tarefas registradas. Nenhuma mensagem enviada ao GPT.';
+      status(receipt.result.created+' tarefas registradas no projeto. Chats GPT assumem trabalho somente por claim via Forge MCP.');
     });
   });
-  async function createWork(title='Nova conversa de trabalho') {
+  async function createWork(title='Nova tarefa') {
     if(!projectId||!orchestratorId)throw Error('orchestrator_selection_required');
     const p=projectId,o=orchestratorId;
     const receipt=await command('work_create',{projectId:p,orchestratorId:o,title});
@@ -2067,45 +1500,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     coordinatorOpen=false;$('orchestrationPanel').hidden=true;
     await refreshWorks();await onOpenWork(receipt.result.taskId);
     return receipt.result.taskId;
-  }
-  // Read-only status of the selected Run from the existing work_get endpoint.
-  // The service owns the SQLite receipt; the renderer cannot infer success
-  // from an earlier generic project analysis or a stale local button state.
-  async function getRunReviewStatus({taskId,runId}={}) {
-    const p=projectId,o=orchestratorId;
-    if(!p||!o||typeof taskId!=='string'||typeof runId!=='string')
-      throw Error('orchestrator_run_review_scope_missing');
-    const work=await call('work_get',{projectId:p,taskId});
-    if(p!==projectId||o!==orchestratorId||work?.kind!=='work'||
-       work?.orchestrator_id!==o||work?.runs?.[0]?.id!==runId||
-       work?.runs?.[0]?.status!=='succeeded'||
-       work?.latestRunReview?.runId!==runId)
-      throw Error('orchestrator_run_review_scope_changed');
-    return work.latestRunReview;
-  }
-  // Historical Run-scoped analysis remains inaccessible without a coordinator.
-  // The service verifies the Run, owning project, delivery receipt and quoted
-  // response before persisting a review decision. This never sends GPT work.
-  async function reviewGptRun({taskId,runId}={}) {
-    const p=projectId,o=orchestratorId;
-    const owner=orchestrators.find(item=>item.id===o);
-    if(!p||!o||owner?.status!=='ready'||!analysisAvailable||
-       analysisBusy||preflightBusy||coordinatorSubmitting)
-      throw Error('orchestrator_run_review_unavailable');
-    if(typeof taskId!=='string'||!/^task_[a-f0-9-]{36}$/i.test(taskId)||
-       typeof runId!=='string'||!/^run_[a-f0-9-]{36}$/i.test(runId))
-      throw Error('orchestrator_run_review_identity_invalid');
-    analysisBusy=true;syncCoordinatorActions();
-    try {
-      const receipt=await command('orchestrator_analyze',{
-        projectId:p,orchestratorId:o,reviewRunId:runId
-      });
-      if(p!==projectId||o!==orchestratorId)
-        throw Error('orchestrator_run_review_scope_changed');
-      return receipt;
-    } finally {
-      analysisBusy=false;syncCoordinatorActions();
-    }
   }
   return Object.freeze({
     async start({restoreNavigation=null}={}){const projects=await refreshProjects();
@@ -2148,7 +1542,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       observedGptHealth=health&&typeof health==='object'?health:null;
       syncForjadorSessionAvailability();
     },
-    createWork,reviewGptRun,getRunReviewStatus,hasProject:()=>Boolean(projectId),hasOrchestrator:()=>Boolean(chatTaskId),
+    createWork,hasProject:()=>Boolean(projectId),hasOrchestrator:()=>Boolean(chatTaskId),
     getProjectId:()=>projectId,
     getOrchestratorId:()=>orchestratorId,
     showCoordinator,

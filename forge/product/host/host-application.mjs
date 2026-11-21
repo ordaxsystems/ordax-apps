@@ -42,18 +42,6 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
   kernel=createOrchestratorKernel({
     store,
     authorize:({context})=>context===kernel?.context,
-    confirmProposal:async({proposal})=>hostServer?.confirm({
-      title:'Revisar nova frente',message:proposal.title,
-      detail:proposal.reason+'\n\nPrimeira mensagem (rascunho):\n'+proposal.content+
-        '\n\nEsta ação cria uma frente local e salva o rascunho. Não envia ao ChatGPT.',
-      approveLabel:'Criar frente com rascunho'
-    })??false,
-    confirmProposalSend:async({title,content})=>hostServer?.confirm({
-      title:'Confirmar primeiro envio ao ChatGPT',message:title,
-      detail:'Mensagem exata a enviar:\n\n'+content+
-        '\n\nO modo host não tem transporte ChatGPT disponível; nenhum envio será executado.',
-      approveLabel:'Enviar ao ChatGPT'
-    })??false,
     version:'node-host'
   });
   const {context,service,mcp}=kernel;
@@ -111,7 +99,6 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
     if(visible)throw Error('provider_transport_unavailable_on_host');
     return false;
   });
-  add('ordax:tasks:send',providerUnavailable);
   add('ordax:lab:build-proof',()=>({status:'unattested',reason:'node_host_source_build'}));
   add('ordax:lab:profile-proof',()=>({schema:'ordax.lab.profile-proof.v1',
     fingerprint:createHash('sha256').update(process.platform==='win32'?resolvedDataRoot.toLowerCase():resolvedDataRoot).digest('hex')}));

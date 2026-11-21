@@ -23,10 +23,6 @@ const SAFE_WORKFLOW_REJECTION=Object.freeze({
   forge_worktree_task_unprepared:'The Task has no active worktree. Review the owner-approved development state.',
   forge_worktree_main_dirty:'The canonical project worktree is dirty. Protect unrelated changes before proceeding.'
 });
-// The direct GPT send is a trusted GUI action, never an MCP tool exposed to GPT.
-// Prevent a model from invoking itself recursively through this same adapter.
-const UI_ONLY_OPERATIONS=new Set(['forjador_send']);
-
 // MCP tools/lifecycle adapter hosted by the App. The host supplies the trusted
 // context on EVERY call. This module opens no port, reads no database and owns
 // no authentication. Platform/Runtime must bind the remote transport/grants.
@@ -113,8 +109,7 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
         if(method==='tools/list') {
           if(message.params?.cursor!==undefined)return error(id,-32602,'Invalid cursor');
           const tools=ORCHESTRATOR_TOOLS.filter(tool=>{
-            if(UI_ONLY_OPERATIONS.has(tool.operation)||
-              (tool.operation==='project_command_run'&&!service.development)||
+            if((tool.operation==='project_command_run'&&!service.development)||
               (allow!==null&&!allow.has(tool.operation)))return false;
             try {service.requireAccess(context,tool.operation,scoped?allowedProjectId:null);return true;}catch{return false;}
           }).map(({operation,readOnly,...tool})=>{
@@ -129,8 +124,8 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
         }
         if(method==='tools/call') {
           const tool=ORCHESTRATOR_TOOLS.find(t=>t.name===message.params?.name);
-          if(!tool||UI_ONLY_OPERATIONS.has(tool.operation)||
-            (allow!==null&&!allow.has(tool.operation)))return error(id,-32602,'Unknown tool');
+          if(!tool||(allow!==null&&!allow.has(tool.operation)))
+            return error(id,-32602,'Unknown tool');
           const supplied=message.params?.arguments??{};
           if(!supplied||typeof supplied!=='object'||Array.isArray(supplied))
             return error(id,-32602,'Invalid tool arguments');

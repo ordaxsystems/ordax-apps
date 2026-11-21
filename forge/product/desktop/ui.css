@@ -471,7 +471,6 @@ body.orchestrator-focus .left-footer .provider-card{display:none}
 .project-pulse-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .project-pulse-heading>div:first-child{display:grid;gap:3px;min-width:0}
 .project-pulse-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end}
-.project-pulse-actions #analyzeWorks{background:var(--text);border-color:var(--text);color:var(--bg)}
 .project-pulse-kicker{color:var(--muted-2);font-size:var(--type-caption);font-weight:700;letter-spacing:.08em}
 .project-pulse-heading strong{color:var(--text);font-size:var(--type-body);font-weight:750}
 .project-pulse-heading button{min-height:34px;padding:7px 12px;border:1px solid var(--border);border-radius:9px;background:var(--panel-2);color:var(--text);font-size:var(--type-label);cursor:pointer}
@@ -484,8 +483,6 @@ body.orchestrator-focus .left-footer .provider-card{display:none}
 .project-pulse-stats strong{font-size:18px;font-weight:750;font-variant-numeric:tabular-nums;line-height:1.2;color:var(--text)}
 .project-pulse-stats span{color:var(--muted);font-size:var(--type-caption);line-height:1.35;overflow-wrap:anywhere}
 .project-pulse[data-state="review"] #projectPulseAttention{color:var(--amber)}
-.project-pulse-actions #projectObservationToggle[data-requested="true"]{border-color:var(--border-strong);background:var(--panel-3)}
-.project-pulse #projectObservationState[data-state="blocked"]{color:var(--muted);font-weight:600}
 .project-pulse p{color:var(--muted-2);font-size:var(--type-caption);line-height:1.4;margin:0}
 .project-pulse .project-preflight-state{padding:9px 11px;border:1px solid var(--border-soft);border-radius:9px;background:var(--panel-2);line-height:1.55;overflow-wrap:anywhere}
 .project-preflight-state[data-state="blocked"]{border-color:var(--border-strong)}
@@ -997,10 +994,6 @@ body.orchestrator-focus #orchestratorWorkRail{display:flex!important;padding:18p
 .execution-badge[data-state="blocked"]{border-color:#864d4d;color:#ebaaa3;background:#352323}
 .execution-mission-card h3{margin:16px 0 8px;font-size:16px;line-height:1.35;overflow-wrap:anywhere}
 .execution-mission-card p{margin:0;color:var(--muted);font-size:11px;line-height:1.6;overflow-wrap:anywhere}
-.execution-autonomy-controls{display:grid;gap:7px;margin-top:13px;padding-top:12px;border-top:1px solid var(--border-soft)}
-.execution-autonomy-controls>button{width:fit-content;max-width:100%;white-space:normal;text-align:left;line-height:1.35}
-.execution-autonomy-controls>small{font-size:11px;line-height:1.4;color:var(--muted)}
-.execution-autonomy-controls>small.execution-automation-state{font-weight:650;color:var(--text)}
 .execution-mission-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-top:15px;padding-top:14px;border-top:1px solid #473b37}
 .execution-mission-metrics span{display:grid;gap:3px;color:var(--muted);font-size:10px}
 .execution-mission-metrics strong{font-size:20px;color:var(--text);font-variant-numeric:tabular-nums}
@@ -2069,3 +2062,59 @@ body.orchestrator-focus .workspace-mode{min-height:42px}
 }
 .forge-development-actions button:first-child{background:var(--accent);border-color:var(--accent);color:#fff}
 .forge-development-actions button:disabled{opacity:.48;cursor:not-allowed}
+
+/* MCP-first workspace layout — passive App, full-window coordination view. */
+.app-shell{
+  grid-template-columns:238px minmax(560px,1fr) minmax(350px,430px);
+  background:#edf3ef
+}
+.left-rail{
+  padding:17px 13px 13px;background:#f8fbf9;border-right:1px solid #d7e3dc
+}
+.brand-row{padding:2px 4px 16px}.logo{background:var(--accent);color:#fff;box-shadow:0 8px 24px rgba(8,126,108,.18)}
+.project-identity{border-color:#d7e7de;background:#eef7f2}
+.workspace-modes{gap:6px;margin-top:8px}
+.workspace-mode{min-height:52px;background:#fff;border-color:#dde8e2;border-radius:11px}
+.workspace-mode[aria-pressed="true"]{background:#e9f5ef;box-shadow:0 6px 18px rgba(20,74,49,.07)}
+.new-task{margin-top:2px;text-align:center;background:#0a8b75;box-shadow:0 8px 18px rgba(8,126,108,.13)}
+.search-wrap{background:#fff;border-color:#dde7e1;color:var(--muted)}
+.search-wrap input{color:var(--text)}.search-wrap input::placeholder{color:#8a9a92}
+.chat-column{padding:16px 0 16px 16px;background:#edf3ef}
+#forgeProviderGate{display:none!important}
+.orchestration-panel:not([hidden]),.task-panel:not(.hidden),.empty:not(.hidden){
+  height:100%;min-height:0;border:1px solid #d8e5dd;border-radius:20px;background:#fff;
+  box-shadow:0 16px 44px rgba(34,78,57,.08);overflow:hidden
+}
+body.orchestrator-focus .app-shell{grid-template-columns:238px minmax(560px,1fr) minmax(350px,430px)}
+.coordinator-head{min-height:104px;padding:20px 24px;background:linear-gradient(135deg,#ffffff 0%,#f2f8f4 100%)}
+.coordinator-avatar{width:52px;height:52px;border-radius:15px;background:#e6f4ed;border-color:#c7dfd2}
+.coordinator-title h2{font-size:22px;letter-spacing:-.025em}
+.coordinator-title p{max-width:720px;font-size:12px}
+.coordinator-transport{padding:11px 24px;background:#f7faf8}
+.coordinator-messages{padding:22px 24px 16px;gap:10px;background:#fff}
+.coordinator-message{width:100%;max-width:none;margin:0;padding:15px 17px;border:1px solid #dfeae4;border-left:3px solid #c8dfd3;border-radius:14px;background:#f8fbf9}
+.coordinator-message strong{color:#0a7b68}.coordinator-message p{color:#2f4038}
+.coordinator-empty{width:min(100%,640px);border-color:#cfded6;background:#f8fbf9}
+.coordinator-passive-boundary{margin:0 24px 22px;padding:14px 16px;border-color:#cfe2d8;background:#eff8f3}
+.task-passive-boundary{margin:0}
+.task-head{min-height:86px;padding:14px 22px;background:linear-gradient(135deg,#ffffff 0%,#f7faf8 100%)}
+.messages{padding:20px 24px 18px;gap:12px;background:#fff}
+.message-list{gap:12px}.message{width:100%;max-width:none;padding:14px 16px;border:1px solid #e0e9e4;border-radius:14px;background:#f8fbf9}
+.message::before{background:#eef5f1;border-color:#d4e3db;color:#567266}.message.user::before{background:#dceee5;color:#0a725f}
+.message-content,.message.user .message-content{color:#314139}
+.composer-wrap{padding:0 24px 22px;background:#fff}
+.context-rail{
+  margin:16px 16px 16px 12px;border:1px solid #d8e5dd;border-radius:18px;background:#fff;
+  box-shadow:0 16px 44px rgba(34,78,57,.07);overflow:hidden
+}
+.right-pane-tabs{padding:12px 12px 9px;background:#f8fbf9;border-bottom:1px solid #e1e9e4}
+.right-pane-tab{border-radius:10px}.right-pane-tab.active{background:#e6f3ec;color:#087e6c;border-color:#c9dfd3}
+body.orchestrator-focus #contextRail{padding:0;margin:16px 16px 16px 12px}
+body.orchestrator-focus #orchestratorWorkRail{padding:18px 16px 16px}
+@media(max-width:1180px){
+  .app-shell,body.orchestrator-focus .app-shell{grid-template-columns:220px minmax(0,1fr)}
+  .chat-column{padding-right:16px}.context-rail{margin:0;border-radius:16px 0 0 16px}
+}
+@media(max-width:620px){
+  .chat-column{padding:10px 10px 10px 86px;margin-left:0}.orchestration-panel:not([hidden]),.task-panel:not(.hidden),.empty:not(.hidden){border-radius:16px}
+}

@@ -69,7 +69,6 @@ contextBridge.exposeInMainWorld('ordax', {
   archiveProjectMemory: (taskId, memoryId) => ipcRenderer.invoke('ordax:tasks:memory:archive', { taskId, memoryId }),
   scanMemoryCandidates: taskId => ipcRenderer.invoke('ordax:tasks:memory:candidates:scan', taskId),
   reviewMemoryCandidate: (taskId, candidateId, action, changes) => ipcRenderer.invoke('ordax:tasks:memory:candidates:review', { taskId, candidateId, action, changes }),
-  send: payload => ipcRenderer.invoke('ordax:tasks:send', payload),
   labProfileProof: () => ipcRenderer.invoke('ordax:lab:profile-proof'),
   labBuildProof: () => ipcRenderer.invoke('ordax:lab:build-proof'),
   providerStatus: () => ipcRenderer.invoke('ordax:provider:status'),

@@ -74,16 +74,18 @@ test('start defaults to the Node host while explicit Electron retains its isolat
   assert.doesNotMatch(worker,/persist:ordax-gratis-chatgpt|ORDAX_CHATGPT_PARTITION/);
 });
 
-test('owned product keeps GPT Web as the only model runtime and Forge MCP as the sole app', () => {
+test('owned product keeps GPT Web observational and Forge MCP as the sole tool authority', () => {
   const main=read('product/desktop/main.mjs');
   const worker=read('product/desktop/embedded-worker.mjs');
+  const contract=read('product/src/forge-contract.mjs');
   assert.match(worker,/class EmbeddedChatWorker/);
+  assert.match(worker,/allowSend=true/);
+  assert.match(worker,/provider_send_disabled_for_passive_app/);
+  assert.match(main,/new EmbeddedChatWorker\(\{id:'primary',allowSend:false\}\)/);
+  assert.match(main,/createForgeLoopbackMcp/);
+  assert.match(main,/FORGE_APP_MCP_OPERATIONS/);
   assert.doesNotMatch(main,/coordinator:null|createGroqCoordinatorConversation|createGroqSupervisorPlanner/);
-  assert.match(main,/const mcpApp='forge-mcp'/);
   assert.doesNotMatch(main,/GROQ_API_KEY|api\.groq\.com/);
-  assert.match(main,/runTask/);
-  const store=read('product/src/store.mjs');
-  assert.match(main,/store\.beginProviderRun\(taskId, prompt/);
-  assert.match(store,/this\.startRun\(taskId, workerId, observerMode\)/);
-  assert.match(main,/finishRun/);
+  assert.doesNotMatch(main,/const mcpApp='forge-mcp'|async function runTask\(|ownerDispatch|ordax:tasks:send|store\.beginProviderRun\(taskId, prompt|finishRun\(/);
+  assert.doesNotMatch(contract,/\['forjador_send'|\['work_send'|\['proposal_send'/);
 });

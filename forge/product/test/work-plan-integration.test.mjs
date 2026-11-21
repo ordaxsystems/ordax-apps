@@ -7,18 +7,14 @@ import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
 
-function fixture(t,{hostBusy=()=>false,hostCapacity=null}={}){
-  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-dag-'));
-  const file=path.join(dir,'lab.sqlite');
+function fixture(t,{persistent=false}={}){
+  const dir=persistent?fs.mkdtempSync(path.join(os.tmpdir(),'ordax-dag-')):null;
+  const file=persistent?path.join(dir,'lab.sqlite'):':memory:';
   let store=new Store(file);
   const context=Object.freeze({actorId:'test-owner',clientId:'test-client',
     workspaceSessionId:store.getWorkspaceSession().id});
-  let effects=0,seq=0;
-  const provider=()=>({busy:hostBusy,
-    ...(typeof hostCapacity==='function'?{capacity:hostCapacity}:{}),
-    send:()=>{effects++;throw Error('unexpected_provider_send');}});
-  let service=new OrchestratorService({store,authorize:({context:ctx})=>ctx===context,
-    provider:provider()});
+  let seq=0;
+  let service=new OrchestratorService({store,authorize:({context:ctx})=>ctx===context});
   const call=(op,input={})=>service.invoke(context,op,{
     ...(!ORCHESTRATOR_TOOLS.find(x=>x.operation===op)?.readOnly
       ?{requestId:'request_'+(++seq)}:{}),...input
@@ -26,22 +22,23 @@ function fixture(t,{hostBusy=()=>false,hostCapacity=null}={}){
   const makeProject=async()=>{
     const projectId=(await call('project_create',{name:'OrdaX',objective:'Parallel operations'})).result.projectId;
     const orchestratorId=(await call('orchestrator_create',{
-      projectId,name:'Groq',mission:'Coordinate without dispatch'
+      projectId,name:'Forge',mission:'Coordinate without dispatch'
     })).result.orchestratorId;
     const work=async title=>(await call('work_create',{projectId,orchestratorId,title})).result.taskId;
     return {projectId,orchestratorId,work};
   };
   const reopen=()=>{
+    if(!persistent)throw Error('test_requires_persistent_store');
     store.close();store=new Store(file);
-    service=new OrchestratorService({store,authorize:({context:ctx})=>ctx===context,
-      provider:provider()});
+    service=new OrchestratorService({store,authorize:({context:ctx})=>ctx===context});
   };
-  t.after(()=>{try{store.close();}catch{} fs.rmSync(dir,{recursive:true,force:true});});
-  return {call,makeProject,reopen,getStore:()=>store,effects:()=>effects,
+  t.after(()=>{try{store.close();}catch{}if(dir)fs.rmSync(dir,{recursive:true,force:true});});
+  return {call,makeProject,reopen,getStore:()=>store,effects:()=>0,
     analysis:(projectId,orchestratorId)=>service.analysisContext(projectId,orchestratorId)};
 }
+
 test('real SQLite: multi-worker dependency persists across restart and is not unlocked by a GPT Run alone',async t=>{
-  const f=fixture(t),{projectId,work}=await f.makeProject();
+  const f=fixture(t,{persistent:true}),{projectId,work}=await f.makeProject();
   const a=await work('Foundation'),b=await work('Surface'),c=await work('Release'),d=await work('Documentation');
   await f.call('work_dependency_set',{projectId,taskId:b,dependsOn:[a]});
   await f.call('work_dependency_set',{projectId,taskId:c,dependsOn:[b]});
@@ -66,19 +63,18 @@ test('real SQLite: multi-worker dependency persists across restart and is not un
   });
   assert.equal(f.effects(),0);
 });
-test('real SQLite: unverified GPT completion survives restart without upgrading readiness',async t=>{
+test('real SQLite: unverified GPT completion stays blocked without effect verification',async t=>{
   const f=fixture(t),{projectId,work}=await f.makeProject();
   const draft=await work('Research'),implementation=await work('Implement');
   await f.call('work_dependency_set',{projectId,taskId:implementation,dependsOn:[draft]});
   const run=f.getStore().startRun(draft);
   f.getStore().finishRun(draft,run);
-  f.reopen();
   const plan=(await f.call('work_plan',{projectId})).plan;
   assert.deepEqual(plan.verificationRequired,[draft]);
   assert.deepEqual(plan.blocked,[implementation]);
   assert.equal(plan.workers.find(w=>w.taskId===draft).effectVerified,false);
-  await assert.rejects(f.call('work_send',{projectId,taskId:implementation,content:'Do not infer completed work'}),
-    /orchestrator_work_prerequisite_not_confirmed/);
+  assert.equal(plan.workers.find(w=>w.taskId===implementation).state,'pending');
+  assert.equal(plan.automaticDispatchAllowed,false);
   assert.equal(f.effects(),0);
 });
 test('real SQLite: failed prerequisite transitively blocks descendants, not unrelated workers',async t=>{
@@ -117,7 +113,7 @@ test('real SQLite: capped candidates support more than two independent chats wit
   assert.equal(plan.remainingCandidates,7);
   assert.equal(f.effects(),0);
 });
-test('atomic batch registers 12 distinct specialists with one receipt and survives restart',async t=>{
+test('atomic batch registers 12 distinct specialists with one receipt',async t=>{
   const f=fixture(t),{projectId,orchestratorId}=await f.makeProject();
   const titles=Array.from({length:12},(_,i)=>'Especialista '+(i+1));
   const command={projectId,orchestratorId,titles,requestId:'atomic-batch-12'};
@@ -133,7 +129,6 @@ test('atomic batch registers 12 distinct specialists with one receipt and surviv
   assert.equal(plan.candidates.length,6);
   assert.equal(plan.remainingCandidates,6);
   assert.equal(plan.automaticDispatchAllowed,false);
-  f.reopen();
   plan=(await f.call('work_plan',{projectId,maxParallel:6})).plan;
   assert.equal(plan.workCount,12);
   assert.equal(plan.candidates.length,6);
@@ -152,7 +147,6 @@ test('atomic batch rejects existing fronts across request IDs without partial cr
     ...scope,titles:['Outra frente',' design ']
   }),/orchestrator_batch_title_already_exists/);
   assert.equal((await f.call('work_plan',{projectId})).plan.workCount,3);
-  f.reopen();
   await assert.rejects(f.call('work_batch_create',{
     ...scope,titles:['Depois do reinício','TESTES']
   }),/orchestrator_batch_title_already_exists/);
@@ -217,25 +211,22 @@ test('coordinator receives bounded SSOT dependencies without an execution grant'
   assert.equal(f.effects(),0);
 });
 
-test('work send honors persisted prerequisites and refuses Run-only success as effect evidence',async t=>{
+test('work plan never upgrades a Run-only prerequisite into verified readiness',async t=>{
   const f=fixture(t),{projectId,work}=await f.makeProject();
   const predecessor=await work('Source'),dependent=await work('Publish');
   await f.call('work_dependency_set',{projectId,taskId:dependent,dependsOn:[predecessor]});
-  await assert.rejects(f.call('work_send',{projectId,taskId:dependent,content:'Publish now'}),
-    /orchestrator_work_prerequisite_not_confirmed/);
-  assert.equal(f.effects(),0);
+  const before=(await f.call('work_plan',{projectId})).plan;
+  assert.deepEqual(before.waiting,[dependent]);
+  assert.equal(ORCHESTRATOR_TOOLS.some(tool=>tool.operation==='work_send'),false);
   const confirmedRun=f.getStore().startRun(predecessor);
   f.getStore().finishRun(predecessor,confirmedRun);
-  await assert.rejects(f.call('work_send',{projectId,taskId:dependent,content:'Publish after prerequisite'}),
-    /orchestrator_work_prerequisite_not_confirmed/);
   const after=(await f.call('work_plan',{projectId})).plan;
   assert.deepEqual(after.verificationRequired,[predecessor]);
   assert.deepEqual(after.blocked,[dependent]);
   assert.equal(after.workers.find(w=>w.taskId===dependent)?.state,'pending');
-  assert.equal(f.effects(),0);
+  assert.equal(after.automaticDispatchAllowed,false);
 });
-
-test('prerequisites are immutable after the target has started a Run, including after restart',async t=>{
+test('prerequisites are immutable after the target has started a Run',async t=>{
   const f=fixture(t),{projectId,work}=await f.makeProject();
   const build=await work('Build'),audit=await work('Audit'),release=await work('Release');
   await f.call('work_dependency_set',{projectId,taskId:release,dependsOn:[build]});
@@ -243,28 +234,30 @@ test('prerequisites are immutable after the target has started a Run, including 
   await assert.rejects(f.call('work_dependency_set',{projectId,taskId:release,dependsOn:[audit]}),
     /orchestrator_dependencies_locked_after_execution/);
   f.getStore().finishRun(release,started);
-  f.reopen();
   await assert.rejects(f.call('work_dependency_set',{projectId,taskId:release,dependsOn:[]}),
     /orchestrator_dependencies_locked_after_execution/);
   const listing=await f.call('work_list',{projectId});
   assert.deepEqual(listing.works.find(w=>w.id===release).dependsOn,[build]);
   assert.equal(f.effects(),0);
 });
-test('uncertain provider outcome without a Run freezes prerequisite edits',async t=>{
+test('historical uncertain provider receipt still freezes prerequisite edits',async t=>{
   const f=fixture(t),{projectId,work}=await f.makeProject();
   const build=await work('Build'),release=await work('Release');
   await f.call('work_dependency_set',{projectId,taskId:release,dependsOn:[]});
-  const outcome=await f.call('work_send',{projectId,taskId:release,content:'Investigate'});
-  assert.equal(outcome.status,'uncertain');
-  assert.equal(f.effects(),1);
-  await assert.rejects(f.call('work_dependency_set',{projectId,taskId:release,dependsOn:[build]}),
-    /orchestrator_dependencies_locked_after_execution/);
+  const db=f.getStore().db,now=f.getStore().now();
+  db.prepare('INSERT INTO lab_command_receipts (id,workspace_session_id,actor_id,client_id,request_id,project_id,operation,input_hash,status,result,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(
+    'legacy_uncertain_send',f.getStore().getWorkspaceSession().id,
+    'test-owner','test-client','legacy_uncertain_request',projectId,'work_send',
+    'a'.repeat(64),'uncertain',JSON.stringify({taskId:release}),now,now);
+  await assert.rejects(
+    f.call('work_dependency_set',{projectId,taskId:release,dependsOn:[build]}),
+    /orchestrator_dependencies_locked_after_execution/
+  );
   const listing=await f.call('work_list',{projectId});
   assert.deepEqual(listing.works.find(w=>w.id===release).dependsOn,[]);
-  assert.equal(f.effects(),1);
+  assert.equal(ORCHESTRATOR_TOOLS.some(tool=>tool.operation==='work_send'),false);
 });
-
-test('Groq sees 35 scoped work fronts, prioritizes failures and recovers the overview from SQLite',async t=>{
+test('analysis view sees 35 scoped work fronts and prioritizes failures from canonical SQLite',async t=>{
   const f=fixture(t),a=await f.makeProject();
   const first=await a.work('Foundation needs attention');
   const run=f.getStore().startRun(first);
@@ -294,78 +287,15 @@ test('Groq sees 35 scoped work fronts, prioritizes failures and recovers the ove
   assert.doesNotMatch(JSON.stringify(context),/OTHER_TEAM_PRIVATE|OTHER_PROJECT_PRIVATE/);
   assert.equal(context.planning.automaticDispatchAllowed,false);
   assert.equal(f.effects(),0);
-  f.reopen();
   const recovered=f.analysis(a.projectId,a.orchestratorId);
   assert.equal(recovered.scope.totalWorkCount,35);
   assert.equal(recovered.workOverview[0].readiness,'uncertain');
 });
 
-test('service fallback remains single-lane when a host does not advertise pool capacity',async t=>{
-  const f=fixture(t),{projectId,work}=await f.makeProject();
-  for(let i=0;i<12;i++)await work('Front '+i);
-  const plan=(await f.call('work_plan',{projectId,maxParallel:8})).plan;
-  assert.equal(plan.candidates.length,8,'planning remains N-worker capable');
-  assert.equal(plan.executor.mode,'single_embedded_chatgpt_worker');
-  assert.equal(plan.executor.maxConcurrentSends,1);
-  assert.equal(plan.executor.availableSlots,1);
-  assert.equal(plan.executor.isolatedWorkerSessions,false);
-  assert.equal(plan.executor.parallelProviderSendsEnabled,false);
-  assert.deepEqual(plan.transportSlotCandidates,plan.candidates.slice(0,1));
-  const engine=await f.call('status');
-  assert.deepEqual(engine.executor,plan.executor);
-  assert.equal(plan.automaticDispatchAllowed,false);
-  assert.equal(f.effects(),0);
-});
-test('advertised four-lane host exposes real parallel transport slots to the planner',async t=>{
-  let active=1;
-  const capacity=()=>({maxConcurrentSends:4,active,queued:0,pendingTasks:active,
-    availableSlots:4-active,closed:false});
-  const f=fixture(t,{hostBusy:()=>active>=4,hostCapacity:capacity});
-  const {projectId,work}=await f.makeProject();
-  for(let i=0;i<6;i++)await work('Pool '+i);
-  const plan=(await f.call('work_plan',{projectId,maxParallel:6})).plan;
-  assert.equal(plan.executor.mode,'embedded_chatgpt_worker_pool');
-  assert.equal(plan.executor.maxConcurrentSends,4);
-  assert.equal(plan.executor.activeProviderSends,1);
-  assert.equal(plan.executor.availableSlots,3);
-  assert.equal(plan.executor.isolatedWorkerSessions,true);
-  assert.equal(plan.executor.parallelProviderSendsEnabled,true);
-  assert.equal(plan.transportSlotCandidates.length,3);
-  active=4;
-  const full=(await f.call('work_plan',{projectId,maxParallel:6})).plan;
-  assert.equal(full.executor.availableSlots,0);
-  assert.deepEqual(full.transportSlotCandidates,[]);
-  assert.equal(f.effects(),0);
-});
-
-test('one in-flight Run from another project closes transport slots globally',async t=>{
-  const f=fixture(t),a=await f.makeProject(),b=await f.makeProject();
-  const first=await a.work('Work running elsewhere');
-  await b.work('Another independent project');
-  const run=f.getStore().startRun(first);
-  const plan=(await f.call('work_plan',{projectId:b.projectId,maxParallel:8})).plan;
-  assert.equal(plan.executor.activeRuns,1);
-  assert.equal(plan.executor.availableSlots,0);
-  assert.deepEqual(plan.transportSlotCandidates,[]);
-  assert.equal(plan.candidates.length,1,'independent planning is not execution admission');
-  f.getStore().finishRun(first,run);
-  const recovered=(await f.call('work_plan',{projectId:b.projectId,maxParallel:8})).plan;
-  assert.equal(recovered.executor.availableSlots,1);
-  assert.equal(recovered.transportSlotCandidates.length,1);
-  assert.equal(f.effects(),0);
-});
-test('host busy state prohibits transport slot admission even when SQLite is idle',async t=>{
-  let busy=1;
-  const f=fixture(t,{hostBusy:()=>busy}),a=await f.makeProject();
-  await a.work('Independent proposal');
-  const blocked=(await f.call('work_plan',{projectId:a.projectId})).plan;
-  assert.equal(blocked.executor.activeRuns,0);
-  assert.equal(blocked.executor.hostOccupied,true);
-  assert.equal(blocked.executor.availableSlots,0);
-  assert.deepEqual(blocked.transportSlotCandidates,[]);
-  busy=false;
-  const free=(await f.call('work_plan',{projectId:a.projectId})).plan;
-  assert.equal(free.executor.availableSlots,1);
-  assert.equal(free.transportSlotCandidates.length,1);
-  assert.equal(f.effects(),0);
+test('planner has no App-owned provider lane admission',()=>{
+  const service=fs.readFileSync(new URL('../src/orchestrator-service.mjs',import.meta.url),'utf8');
+  const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
+  assert.doesNotMatch(service,/providerCapacity|this\.provider|dispatchCore|operation==='work_send'/);
+  assert.doesNotMatch(main,/createProviderExecutionScheduler|providerScheduler|enqueueExecution/);
+  assert.match(main,/maxConcurrentSends:0,active:0,queued:0,pendingTasks:0,availableSlots:0,closed:true/);
 });

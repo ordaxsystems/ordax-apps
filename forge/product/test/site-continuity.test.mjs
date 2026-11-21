@@ -10,12 +10,11 @@ import {appOwnedSiteDecision,classifyExistingSiteChange,classifyProjectStatusQue
 
 test('natural edits resume the verified project HTML and its existing GPT Task',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-site-continuity-'));
-  const store=new Store(path.join(dir,'store.sqlite'));
+  const store=new Store(':memory:');
   t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true});});
   const context={actorId:'owner',clientId:'test',workspaceSessionId:store.getWorkspaceSession().id};
-  const service=new OrchestratorService({store,continuousExecutionByDefault:true,
-    authorize:({context:c})=>c===context,
-    provider:{available:()=>true,send:async()=>{throw Error('must_not_send_from_test');}}});
+  const service=new OrchestratorService({store,
+    authorize:({context:c})=>c===context});
   const ids=(await service.invoke(context,'mission_create',{
     name:'Café da Praça',mission:'Site da cafeteria',requestId:'new_project'
   })).result;
@@ -59,35 +58,23 @@ test('natural edits resume the verified project HTML and its existing GPT Task',
   assert.equal(appOwnedSiteDecision({
     delegateWork:true,currentRequest:'e entao ?',existingSite:true}),null,
     'read-only status is handled locally and does not become delegated work');
-  service.autonomous.tick=async()=>null; // only inspect admission, never send.
-  const mission=service.autonomous.start(context,{
-    projectId:ids.projectId,orchestratorId:ids.orchestratorId,
-    mission:'melhore o html',mode:'technical',directUserPrompt:true,
-    resumeSiteTaskId:site.taskId,requestId:'edit_site'
-  });
-  assert.equal(mission.taskAId,work,'must remain on original GPT conversation');
-  assert.equal(mission.maxGPTSends,1);
+  assert.equal(typeof service.autonomous.start,'undefined');
+  assert.equal(typeof service.autonomous.tick,'undefined');
   assert.equal(store.db.prepare("SELECT COUNT(*) n FROM runs WHERE task_id=?").get(work).n,1,
-    'admission never sent any duplicate provider message');
-  store.appendMessage(ids.chatTaskId,'user','melhore o html');
-  const status=service.autonomous.status(context,{
-    projectId:ids.projectId,orchestratorId:ids.orchestratorId});
-  assert.equal(status.mission.createdAt?.length>5,true);
-  assert.equal(typeof status.lastUserTurnAt==='string',true);
+    'passive App never creates a duplicate provider Run');
   assert.equal(store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
-test('a reconciled HTML revision resumes one same-thread mission without GPT replay',async t=>{
+test('a reconciled HTML revision stays on the same Task without App replay',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-site-reconcile-'));
-  const store=new Store(path.join(dir,'store.sqlite'));
+  const store=new Store(':memory:');
   t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true});});
   const context={actorId:'owner',clientId:'test',
     workspaceSessionId:store.getWorkspaceSession().id};
-  const service=new OrchestratorService({store,continuousExecutionByDefault:true,
-    authorize:({context:c})=>c===context,
-    provider:{available:()=>true,send:async()=>{throw Error('unexpected_provider_send');}}});
-  let seq=0;const call=(operation,input)=>
-    service.invoke(context,operation,{...input,requestId:'reconciled_'+(++seq)});
+  const service=new OrchestratorService({store,authorize:({context:c})=>c===context});
+  let seq=0;const call=(operation,input)=>service.invoke(context,operation,{
+    ...input,requestId:'reconciled_'+(++seq)
+  });
   const project=(await call('mission_create',{name:'Café',mission:'Meu site'})).result;
   const taskId=(await call('work_create',{projectId:project.projectId,
     orchestratorId:project.orchestratorId,title:'Meu site'})).result.taskId;
@@ -100,11 +87,9 @@ test('a reconciled HTML revision resumes one same-thread mission without GPT rep
   store.addAsset(taskId,first.id,{id:'original_html',kind:'file',
     mimeType:'text/html',localPath:path.join(dir,'old.html'),alt:'index.html',
     sha256:'a'.repeat(64)});
-  service.autonomous.tick=async()=>({state:'idle'});
-  const mission=service.autonomous.start(context,{projectId:project.projectId,
-    orchestratorId:project.orchestratorId,mission:'melhore o html',
-    mode:'technical',directUserPrompt:true,resumeSiteTaskId:taskId,
-    requestId:'natural_edit_once'});
+
+  // Represent a response observed in the external GPT chat. The App records it;
+  // it does not initiate or replay the provider request.
   const follow=store.beginProviderRun(taskId,'melhore o html');
   store.setChatUrl(taskId,url);
   const {recordProviderSubmissionProvenance}=await import('../src/provider-submission-provenance.mjs');
@@ -119,20 +104,17 @@ test('a reconciled HTML revision resumes one same-thread mission without GPT rep
     sha256:'b'.repeat(64)});
   store.event(taskId,'provider.response.reconciled',{run_id:follow.runId,
     response_sha256:'c'.repeat(64)});
-  store.db.prepare("UPDATE lab_autonomous_dialogues SET state='reconciliation_required',last_error='response_completion_unconfirmed' WHERE id=?")
-    .run(mission.missionId);
+
   const before=store.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=?').get(taskId).n;
-  assert.equal(service.autonomous.resumeReconciledTechnical(context),true);
-  const after=service.autonomous.status(context,{projectId:project.projectId,
-    orchestratorId:project.orchestratorId}).mission;
-  assert.equal(after.state,'ready_b');
-  assert.equal(after.lastError,null);
+  const historical=service.autonomous.status(context,{
+    projectId:project.projectId,orchestratorId:project.orchestratorId});
+  assert.equal(historical.legacyRecordOnly,true);
+  assert.equal(historical.mission,null);
+  assert.equal(typeof service.autonomous.resumeReconciledTechnical,'undefined');
   assert.equal(store.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=?').get(taskId).n,before);
   assert.equal(latestSiteWork(store,project.projectId,project.orchestratorId)?.assetId,'revised_html');
-  assert.equal(service.autonomous.resumeReconciledTechnical(context),false);
   assert.equal(store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
-
 test('reconciled site delivery at boot verifies disk bytes and only informs the project once',()=>{
   const source=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
   assert.match(source,/finalizeReconciledSiteDelivery\(taskId,\{captureMissing=false\}/);

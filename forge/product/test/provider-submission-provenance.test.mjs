@@ -170,7 +170,7 @@ test('W3 provenance never binds an unrelated URL, message, or Run',()=>{
   });
 });
 
-test('W3 provenance changes only the evidence predicate, never retries provider submission',()=>{
+test('W3 provenance remains read-only evidence while passive App never records a new submission',()=>{
   const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
   const inspect=fs.readFileSync(new URL('../src/provider-linked-thread-recovery.mjs',import.meta.url),'utf8');
   assert.match(inspect,/findProviderSubmissionProvenance/);
@@ -180,20 +180,11 @@ test('W3 provenance changes only the evidence predicate, never retries provider 
   assert.match(main,/ordax:tasks:reconcile-linked-reply/);
   assert.match(main,/reconcileProviderLinkedReply/);
   assert.doesNotMatch(inspect,/sendPrompt\(|requestSubmit\(/);
-  const receipt=main.slice(main.indexOf('onDeliveryObserved:('), main.indexOf('const rotationOutcome'));
-  assert.match(receipt,/recordProviderSubmissionProvenance/);
-  assert.match(receipt,/return binding;/);
-  assert.doesNotMatch(receipt,/sendPrompt\(/);
+  assert.doesNotMatch(main,/recordProviderSubmissionProvenance|recordProviderSubmissionIntent|async function runTask\(/);
 });
 
-test('conversation rotation fails closed before Run creation if canonical continuity cannot fit',()=>{
+test('passive App does not build provider continuation packets or create Runs',()=>{
   const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
-  const start=main.indexOf('async function runTask(');
-  const end=main.indexOf('\nfunction ',start+10);
-  const runTask=main.slice(start,end>start?end:undefined);
-  const packet=runTask.indexOf('store.buildContinuationPacket(taskId,prompt)');
-  const contextGuard=runTask.indexOf('assertContinuationContextReady(continuationPacket)');
-  const beginRun=runTask.indexOf('store.beginProviderRun(taskId, prompt');
-  assert.ok(packet>=0&&contextGuard>packet&&beginRun>contextGuard);
-  assert.match(runTask,/contextManifest=continuationPacket\?\.manifest/);
+  assert.doesNotMatch(main,/buildContinuationPacket\(taskId,prompt\)|assertContinuationContextReady|beginProviderRun\(/);
+  assert.doesNotMatch(main,/createOrchestratorKernel\(\{[\s\S]{0,1600}\bprovider\s*:/);
 });

@@ -56,7 +56,6 @@ export function forgeContinuationDecision({handoff,plan,taskId=null}={}) {
     typeof id==='string'&&workers.some(w=>w.taskId===id));
   if(taskId!==null&&!candidates.includes(taskId)&&!blockers.length)
     blockers.push('selected_task_not_dispatchable');
-  if(plan.executor?.availableSlots===0)blockers.push('executor_capacity_unavailable');
   const requiresSelection=taskId===null&&candidates.length>0;
   return Object.freeze({
     schema:'ordax.forge.continuation-decision/1',

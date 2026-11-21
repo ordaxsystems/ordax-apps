@@ -172,7 +172,7 @@ test('Real MCP tool path can execute a claimed Task while passive UI stays block
 
 test('MCP JSON-RPC surfaces claim tools without exposing deprecated autonomous controls',async t=>{
   const f=fixture(t),p=await setup(f);
-  assert.equal(FORGE_APP_MCP_OPERATIONS.length,64);
+  assert.ok(FORGE_APP_MCP_OPERATIONS.length<=64);
   assert.ok(FORGE_APP_MCP_OPERATIONS.includes('work_claim'));
   assert.ok(!FORGE_APP_MCP_OPERATIONS.includes('autonomous_dialogue_continue'));
   const mcp=createOrchestratorMcp({service:f.service,getContext:()=>f.context('gpt-tool')});
@@ -218,22 +218,13 @@ test('Live Task claims fence all Task-scoped lifecycle mutations, not only termi
     ['conversation_rotate',{}],
     ['work_failover_prepare',{}],
     ['project_memory_propose',{sourceMessageId:'message_example',category:'decision',
-      key:'test',content:'unauthorized memory',evidence:'Persisted excerpt'}],
-    ['work_send',{content:'Do not send to GPT'}]
+      key:'test',content:'unauthorized memory',evidence:'Persisted excerpt'}]
   ];
   for(const [operation,extra] of sameTask){
     await assert.rejects(f.call('gpt-b',operation,{
       projectId:p.projectId,taskId:p.auth,...extra
     }),/forge_work_claim_not_owned/,operation);
   }
-  await assert.rejects(f.call('gpt-b','work_parallel_launch',{
-    projectId:p.projectId,taskIds:[p.auth,p.ui]
-  }),/forge_work_claim_not_owned/);
-  await assert.rejects(f.call('gpt-b','work_parallel_launch',{
-    projectId:p.projectId,taskIds:[p.auth,p.ui],
-    claimProofs:[{taskId:p.auth,claimToken:'B'.repeat(43),
-      claimGeneration:acquired.result.claim.generation}]
-  }),/forge_work_claim_not_owned/);
   assert.equal(physicalEffects,0);
   assert.equal(providerSends,0);
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_work_dependencies WHERE task_id=?")
@@ -265,14 +256,11 @@ test('Claim turnover fences the old generation and leaves canonical SQLite intac
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
-test('Native-approved proposal sends can carry current Task claim proof without widening transport authority',()=>{
-  const params={requestId:'proposal_claim_1',projectId:'project_example',
-    orchestratorId:'orchestrator_example',actionId:'action_example',
-    draftRevision:1,claimToken:'A'.repeat(43),claimGeneration:9};
-  const {input}=validateOrchestratorInput('proposal_send',params);
-  assert.equal(input.claimToken,params.claimToken);
-  assert.equal(input.claimGeneration,9);
-  assert.throws(()=>validateOrchestratorInput('proposal_send',{
-    ...params,claimToken:'invalid'
-  }),/orchestrator_invalid_input/);
+test('removed App dispatch operations are absent from the canonical contract',()=>{
+  for(const operation of ['work_send','forjador_send','proposal_send','work_parallel_launch']){
+    assert.equal(ORCHESTRATOR_TOOLS.some(tool=>tool.operation===operation),false,operation);
+    assert.equal(FORGE_APP_MCP_OPERATIONS.includes(operation),false,operation);
+    assert.throws(()=>validateOrchestratorInput(operation,{requestId:'removed_'+operation}),
+      /orchestrator_unknown_operation/,operation);
+  }
 });

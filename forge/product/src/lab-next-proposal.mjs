@@ -23,18 +23,6 @@ export class LabNextProposal {
     this.db.prepare("UPDATE lab_next_proposals SET status='reconciliation_required',reason='interrupted_plan',updated_at=? WHERE status='planning'")
       .run(store.now());
   }
-  configure(projectId,orchestratorId,enabled) {
-    if(typeof enabled!=='boolean')throw Error('continuation_invalid_setting');
-    const baseline=this.db.prepare('SELECT COALESCE(MAX(rowid),0) AS n FROM lab_continuation_reviews').get().n;
-    this.db.prepare(`INSERT INTO lab_next_proposal_policy
-      (orchestrator_id,project_id,enabled,start_review_rowid) VALUES(?,?,?,?)
-      ON CONFLICT(orchestrator_id) DO UPDATE SET enabled=excluded.enabled,
-      start_review_rowid=CASE WHEN excluded.enabled=1 AND lab_next_proposal_policy.enabled=0
-        THEN excluded.start_review_rowid ELSE lab_next_proposal_policy.start_review_rowid END`)
-      .run(orchestratorId,projectId,enabled?1:0,baseline);
-    if(!enabled)this.quarantineInFlight(projectId,orchestratorId,'proposal_policy_disabled');
-    return this.status(projectId,orchestratorId);
-  }
   quarantineInFlight(projectId,orchestratorId,reason) {
     if(!['policy_disabled','proposal_policy_disabled','orchestrator_paused'].includes(reason))
       throw Error('continuation_invalid_interruption');
@@ -50,92 +38,7 @@ export class LabNextProposal {
       JOIN lab_continuation_reviews r ON r.run_id=p.review_run_id
       WHERE p.project_id=? AND p.orchestrator_id=? AND r.rowid>?`)
       .get(projectId,orchestratorId,policy?.start_review_rowid??Number.MAX_SAFE_INTEGER).n);
-    return {enabled:policy?.enabled===1,proposed,maximum:2,
-      remaining:Math.max(0,2-proposed),automaticGPTSends:false};
-  }
-  async tick(context) {
-    const session=this.store.getWorkspaceSession();
-    if(session?.status!=='active'||context?.workspaceSessionId!==session.id)
-      return {state:'blocked_workspace'};
-    // A blocked mission must not starve proposals from independent projects.
-    // Both signals are derived from the existing receipt/approval ledgers.
-    const choice=this.service.selectContinuationCandidate(this.db.prepare(`SELECT r.run_id,r.project_id,r.orchestrator_id,r.task_id,
-      EXISTS(SELECT 1 FROM lab_command_receipt_scope c
-        WHERE c.status='uncertain' AND c.operation IN ('work_send','proposal_send')
-        AND (c.task_id=r.task_id OR
-          (c.project_id=r.project_id AND c.unknown_work_target=1))) AS transport_uncertain,
-      EXISTS(SELECT 1 FROM action_ledger a
-        JOIN lab_orchestrators owner ON owner.chat_task_id=a.task_id
-        WHERE owner.id=r.orchestrator_id AND a.action_type='orchestrator.work-proposal'
-          AND a.status='pending') AS pending_review
-      FROM lab_continuation_reviews r
-      JOIN lab_next_proposal_policy p ON p.project_id=r.project_id AND p.orchestrator_id=r.orchestrator_id
-      JOIN lab_continuation_policies base ON base.project_id=r.project_id AND base.orchestrator_id=r.orchestrator_id
-      JOIN lab_orchestrators o ON o.id=r.orchestrator_id AND o.project_id=r.project_id
-      JOIN lab_projects project ON project.id=r.project_id AND project.workspace_session_id=?
-      JOIN tasks t ON t.id=r.task_id AND t.workspace_session_id=?
-      WHERE r.state='analyzed' AND p.enabled=1 AND base.enabled=1 AND o.status='ready'
-      -- A reviewed GPT result that requires verification, correction in the
-      -- same conversation, or a hold is not an invitation to create work.
-      -- Filter BEFORE candidate selection so it cannot starve another project.
-      AND (json_extract((SELECT c.result FROM lab_command_receipts c
-            WHERE c.id=r.command_id AND c.status='succeeded'),'$.reviewDecision.decision') IS NULL
-        OR json_extract((SELECT c.result FROM lab_command_receipts c
-            WHERE c.id=r.command_id AND c.status='succeeded'),'$.reviewDecision.decision')='new_work')
-      AND r.rowid>p.start_review_rowid
-      AND NOT EXISTS (SELECT 1 FROM lab_next_proposals n WHERE n.review_run_id=r.run_id)
-      AND (SELECT COUNT(*) FROM lab_next_proposals n JOIN lab_continuation_reviews q
-          ON q.run_id=n.review_run_id WHERE n.orchestrator_id=r.orchestrator_id
-          AND q.rowid>p.start_review_rowid)<2
-      ORDER BY transport_uncertain ASC,pending_review ASC,r.updated_at,r.run_id`).iterate(session.id,session.id));
-    if(!choice.row)return {state:choice.state};
-    const row=choice.row;
-    const reviewReceipt=this.db.prepare('SELECT result FROM lab_command_receipts WHERE id=(SELECT command_id FROM lab_continuation_reviews WHERE run_id=?) AND status=\'succeeded\'')
-      .get(row.run_id);
-    let specificDecision=null;
-    try{specificDecision=JSON.parse(reviewReceipt?.result||'{}').reviewDecision||null;}catch{}
-    // An explicit result interpretation supersedes generic proposal creation.
-    // A decision for the same thread or a verification request is NOT a new
-    // work front; never turn it into another work proposal silently.
-    if(specificDecision&&specificDecision.decision!=='new_work')
-      return {state:'awaiting_decision_review',runId:row.run_id,
-        decision:specificDecision.decision};
-    if(this.db.prepare(`SELECT 1 FROM action_ledger a JOIN lab_orchestrators o ON o.chat_task_id=a.task_id
-      WHERE o.id=? AND a.action_type='orchestrator.work-proposal' AND a.status='pending' LIMIT 1`)
-      .get(row.orchestrator_id))return {state:'waiting_proposal_review'};
-    if(this.service.hasUnresolvedWorkReceipt(row.project_id,row.task_id))
-      return {state:'reconciliation_required'};
-    const claimed=this.db.prepare(`INSERT OR IGNORE INTO lab_next_proposals
-      (review_run_id,project_id,orchestrator_id,status,updated_at) VALUES(?,?,?,'planning',?)`)
-      .run(row.run_id,row.project_id,row.orchestrator_id,this.store.now()).changes;
-    if(claimed!==1)return {state:'race'};
-    try {
-      const receipt=await this.service.invoke(context,'orchestrator_prepare',{
-        projectId:row.project_id,orchestratorId:row.orchestrator_id,
-        requestId:'next_'+row.run_id.replace(/[^A-Za-z0-9_-]/g,'_').slice(0,110),
-        content:specificDecision?.decision==='new_work'
-          ?'Com base na interpretação fundamentada do Run anterior, proponha exatamente UMA nova frente de trabalho: '+specificDecision.nextPrompt.slice(0,2000)+
-            '. A interpretação é consultiva: não assuma que efeitos externos foram executados.'
-          :'Revise o progresso confirmado e proponha apenas UMA nova frente curta, verificável e necessária à missão. Não afirme que o trabalho já foi executado.'
-      });
-      // Model calls may finish after the active workspace changes. Keep
-      // the uncertain receipt, but never certify the old session's proposal.
-      const current=this.store.getWorkspaceSession();
-      const sameWorkspace=current?.status==='active'&&current.id===session.id;
-      const ok=sameWorkspace&&receipt?.status==='succeeded'&&typeof receipt?.result?.proposalActionId==='string';
-      const finalized=this.db.prepare(`UPDATE lab_next_proposals
-        SET status=?,command_id=?,reason=?,updated_at=?
-        WHERE review_run_id=? AND status='planning'`)
-        .run(ok?'proposed':'reconciliation_required',receipt?.commandId||null,
-          ok?null:sameWorkspace?'proposal_unconfirmed':'workspace_changed',this.store.now(),row.run_id).changes;
-      // A durable stop can arrive while local analysis is in flight; never certify it.
-      return {state:ok&&finalized===1?'proposed':'reconciliation_required',runId:row.run_id};
-    }catch{
-      this.db.prepare(`UPDATE lab_next_proposals
-        SET status='reconciliation_required',reason='proposal_unconfirmed',updated_at=?
-        WHERE review_run_id=? AND status='planning'`)
-        .run(this.store.now(),row.run_id);
-      return {state:'reconciliation_required',runId:row.run_id};
-    }
+    return {enabled:false,historicalEnabled:policy?.enabled===1,legacyRecordOnly:true,
+      proposed,maximum:2,remaining:Math.max(0,2-proposed),automaticGPTSends:false};
   }
 }

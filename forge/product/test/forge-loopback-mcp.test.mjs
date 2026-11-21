@@ -114,13 +114,14 @@ test('application MCP can create durable synthetic projects without exposing rec
   const tools=(await rpc(ready.endpoint,ready.token,init.session,
     {jsonrpc:'2.0',id:30,method:'tools/list'})).payload.result.tools.map(tool=>tool.name);
   for(const name of ['forge_projects_list','forge_mission_create','forge_orchestrator_create',
-    'forge_work_create','forge_work_batch_create','forge_work_draft_set','forge_work_parallel_launch'])
+    'forge_work_create','forge_work_batch_create','forge_work_draft_set','forge_work_plan',
+    'forge_work_claim','forge_work_progress','forge_work_memory_set'])
     assert.ok(tools.includes(name),'application MCP tool missing: '+name);
   for(const name of ['forge_project_create','forge_project_quick_create','forge_project_auto_title',
     'forge_work_send','forge_forjador_send','forge_autonomous_dialogue_start',
     'forge_autonomous_dialogue_continue','forge_project_observation_set'])
     assert.ok(!tools.includes(name),'App-internal or recursive operation leaked into ChatGPT MCP: '+name);
-  assert.equal(FORGE_APP_MCP_OPERATIONS.length,64,'shared remote catalog must remain within the gateway contract');
+  assert.ok(FORGE_APP_MCP_OPERATIONS.length<=64,'shared remote catalog must remain within the gateway contract');
   assert.ok(tools.length<=64,'runtime capability filtering may only reduce the canonical catalog');
   const created=await rpc(ready.endpoint,ready.token,init.session,call(31,'mission_create',{
     name:'Synthetic autonomy lab',mission:'Exercise durable Task and Run continuity.',
@@ -191,7 +192,7 @@ test('real HTTP MCP exposes scoped work identity and messages without allowing c
     assert.ok(!Object.hasOwn(tool.inputSchema.properties,'projectId'));
   }
   for(const name of ['forge_work_create','forge_work_batch_create','forge_work_draft_set',
-    'forge_work_dependency_set','forge_work_parallel_launch']){
+    'forge_work_dependency_set','forge_work_claim','forge_work_progress','forge_work_memory_set']){
     const tool=tools.find(item=>item.name===name);
     assert.ok(tool,'typed project work mutation missing: '+name);
     assert.equal(tool.annotations.readOnlyHint,false);
