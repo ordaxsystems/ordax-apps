@@ -318,7 +318,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const sessions=[...works].filter(work=>work.claim||work.provider_segments>0)
       .sort((a,b)=>(b.claim?.state==='occupied')-(a.claim?.state==='occupied')||(b.provider_segments||0)-(a.provider_segments||0));
     const occupied=sessions.filter(work=>work.claim?.state==='occupied').length;
-    summary.textContent=sessions.length?occupied+' ativa'+(occupied===1?'':'s')+' · '+sessions.length+' registrada'+(sessions.length===1?'':'s'):'0 observadas';
+    // Claims reserve Tasks; they do not prove a GPT chat is online or executing.
+    summary.textContent=sessions.length?occupied+' reserva'+(occupied===1?'':'s')+' vigente'+(occupied===1?'':'s')+' · '+sessions.length+' frente'+(sessions.length===1?'':'s')+' observada'+(sessions.length===1?'':'s'):'0 frentes observadas';
     summary.dataset.state=occupied?'active':'idle';
     if(!sessions.length){
       const empty=document.createElement('p');empty.className='execution-empty';
@@ -336,7 +337,15 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
           :'Claim registrado no SQLite';
         const identity=work.claim.chatIdentityVerified===true
           ?'identidade do chat atestada':'identidade do chat não atestada';
-        detail.textContent=transport+' · '+identity+' · rótulo: '+work.claim.chatLabel+
+        const heartbeat=Date.parse(work.claim.heartbeatAt||'');
+        const recorded=Number.isFinite(heartbeat)
+          ?' · última atividade registrada: '+new Date(heartbeat).toLocaleString('pt-BR')
+          :' · sem horário de atividade verificável';
+        const freshness=work.claim.state==='occupied'&&Number.isFinite(heartbeat)
+          ?Date.now()-heartbeat<=5*60_000?' · atividade recente':' · sem atualização recente'
+          :'';
+        detail.textContent=transport+' · '+identity+' · rótulo declarado: '+work.claim.chatLabel+
+          recorded+freshness+
           (work.claim.state==='occupied'&&work.claim.lastProgress
             ?' · '+String(work.claim.lastProgress).slice(0,100):'');
       }else{
@@ -344,7 +353,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
           ' persistida'+(work.provider_segments===1?'':'s');
       }
       const state=document.createElement('span');state.className='execution-observation-state';
-      state.textContent=work.claim?.state==='occupied'?'Claim ativo':
+      state.textContent=work.claim?.state==='occupied'?'Reserva vigente':
         work.claim?.mcpToolCallObserved===true?'MCP observado':'Histórico';
       copy.append(title,detail);button.append(copy,state);
       button.addEventListener('click',async()=>{
