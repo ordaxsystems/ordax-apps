@@ -23,7 +23,7 @@ import {forgeVerifiedWorkAcceptances} from './forge-work-acceptance-evidence.mjs
 import {forgeMcpWorkObservation} from './forge-mcp-observation.mjs';
 import {ForgeWorkClaims} from './forge-work-claims.mjs';
 import {normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
-import {readDedicatedForgeProject,enforceDedicatedForgeProject} from './forge-dedicated-project.mjs';
+import {readDedicatedForgeProject,enforceDedicatedForgeProject,dedicatedForgeMcpOperations} from './forge-dedicated-project.mjs';
 
 function missionProjectName(mission) {
   const firstLine=String(mission||'').trim().split(/\r?\n/u,1)[0].trim();
@@ -1236,9 +1236,13 @@ export class OrchestratorService {
         try{return this.authorize({context,operation:'projects_list',projectId:row.projectId})===true;}
         catch{return false;}
       }).map(row=>({projectId:row.projectId,count:Number(row.count)}));
+      const activeScope=readDedicatedForgeProject(this.store);
+      const visible=new Set(dedicatedForgeMcpOperations(
+        this.store,ORCHESTRATOR_TOOLS.map(t=>t.operation)));
       return {
         contract:ORCHESTRATOR_CONTRACT,engine:'passive-app',
-        tools:ORCHESTRATOR_TOOLS.map(t=>t.name),
+        tools:ORCHESTRATOR_TOOLS.filter(t=>visible.has(t.operation)).map(t=>t.name),
+        ...(activeScope?{projectScope:activeScope}:{}),
         externalTransport:'forge_mcp_only',autonomousExecution:false,
         autonomousAnalysisAvailable:false,
         coordinatorDraftCommitAvailable:true,

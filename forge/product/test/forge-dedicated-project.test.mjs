@@ -36,6 +36,11 @@ test('dedicated project is atomic, idempotent and hides archived projects withou
   const list=await svc.invoke(ctx,'projects_list');
   assert.deepEqual(list.projects.map(p=>p.id),[dedicated.projectId]);
   assert.equal(list.projectScope.projectId,dedicated.projectId);
+  const scopedStatus=await svc.invoke(ctx,'status',{});
+  assert.equal(scopedStatus.projectScope.projectId,dedicated.projectId);
+  assert.equal(scopedStatus.tools.includes('forge_mission_create'),false);
+  assert.equal(scopedStatus.tools.includes('forge_forge_discover'),false);
+  assert.ok(scopedStatus.tools.includes('forge_discover'));
   const coordinators=await svc.invoke(ctx,'orchestrators_list',{projectId:dedicated.projectId});
   assert.equal(coordinators.orchestrators.length,1,'use existing coordinator authority, not second worker');
   assert.equal(coordinators.orchestrators[0].name,'Administrador OrdaX OS');
@@ -134,6 +139,26 @@ test('dedicated project is atomic, idempotent and hides archived projects withou
   const invalid=await mcp.handle({jsonrpc:'2.0',id:4,method:'tools/call',
     params:{name:'forge_project_repositories',arguments:{projectId:oldId}}});
   assert.ok(invalid.error);
+
+  // The public Forge connector is already installed with projectId required.
+  // Keep its remote tool schema unchanged; the Owner project gate is enforced
+  // by the service, not by removing expected arguments at the gateway.
+  const publicMcp=createOrchestratorMcp({service:svc,getContext:()=>ctx,
+    allowedOperations:remoteOps});
+  const publicInit=await publicMcp.handle({jsonrpc:'2.0',id:20,method:'initialize',
+    params:{protocolVersion:'2025-11-25',clientInfo:{name:'existing-forge-connector',
+      version:'1'},capabilities:{}}});
+  assert.ok(publicInit.result);
+  await publicMcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
+  const publicTools=await publicMcp.handle({jsonrpc:'2.0',id:21,method:'tools/list'});
+  const projectTool=publicTools.result.tools.find(tool=>tool.name==='forge_orchestrators_list');
+  assert.ok(projectTool.inputSchema.required.includes('projectId'));
+  const publicCall=await publicMcp.handle({jsonrpc:'2.0',id:22,method:'tools/call',
+    params:{name:'forge_orchestrators_list',arguments:{projectId:dedicated.projectId}}});
+  assert.equal(publicCall.result.structuredContent.orchestrators.length,1);
+  const historicalCall=await publicMcp.handle({jsonrpc:'2.0',id:23,method:'tools/call',
+    params:{name:'forge_orchestrators_list',arguments:{projectId:oldId}}});
+  assert.equal(historicalCall.result?.isError,true);
 });
 test('dedicated project metadata fails closed instead of switching to an archived project',()=>{
   const s=new Store(':memory:');

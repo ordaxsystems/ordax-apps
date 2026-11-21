@@ -2,7 +2,7 @@ import {createOrchestratorMcp} from './orchestrator-mcp.mjs';
 import {ForgeRemoteGatewayClient} from './forge-remote-gateway-client.mjs';
 import {FORGE_APP_MCP_OPERATIONS} from './forge-loopback-mcp.mjs';
 import {observeMcpToolCall} from './forge-mcp-observation.mjs';
-import {readDedicatedForgeProject,dedicatedForgeMcpOperations} from './forge-dedicated-project.mjs';
+import {dedicatedForgeMcpOperations} from './forge-dedicated-project.mjs';
 
 /**
  * One ingress for the canonical Forge MCP gateway, composable by either
@@ -27,7 +27,10 @@ export function createForgeRemoteMcpOwner({
 
   const mcp=createOrchestratorMcp({
     service,getContext,version,
-    allowedProjectId:readDedicatedForgeProject(store)?.projectId??null,
+    // Keep the existing public MCP tool input schemas (projectId required).
+    // The installed Forge connector still supplies projectId; narrowing the
+    // JSON schema would reject those tools at the gateway before they reach
+    // the canonical dedicated-project access guard in OrchestratorService.
     allowedOperations:dedicatedForgeMcpOperations(store,allowedOperations),authorizeFileRead,
     afterToolInvoke:({operation,args,output,transportReceipt})=>{
       try {
