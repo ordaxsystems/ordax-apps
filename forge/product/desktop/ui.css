@@ -997,7 +997,7 @@ body.orchestrator-focus #orchestratorWorkRail{display:flex!important;padding:18p
 .execution-autonomy-controls>button{width:fit-content;max-width:100%;white-space:normal;text-align:left;line-height:1.35}
 .execution-autonomy-controls>small{font-size:11px;line-height:1.4;color:var(--muted)}
 .execution-autonomy-controls>small.execution-automation-state{font-weight:650;color:var(--text)}
-.execution-mission-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-top:15px;padding-top:14px;border-top:1px solid #473b37}
+.execution-mission-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-top:15px;padding-top:14px;border-top:1px solid #473b37}
 .execution-mission-metrics span{display:grid;gap:3px;color:var(--muted);font-size:10px}
 .execution-mission-metrics strong{font-size:20px;color:var(--text);font-variant-numeric:tabular-nums}
 .execution-monitor-section{display:grid;gap:11px;min-width:0}
@@ -1755,6 +1755,24 @@ body.orchestrator-focus .project-chooser .project-nav-item:before{color:var(--ac
 }
 .execution-overview-head p{color:#809188}
 .execution-overview-head button{background:#fff;border-color:#dce6e0;color:#366c53}
+.execution-authority-card{
+  display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;
+  padding:13px 14px;border:1px solid #d6e7dd;border-radius:14px;background:#eef7f2
+}
+.execution-authority-mark{
+  display:grid;place-items:center;min-width:42px;height:42px;padding:0 9px;
+  border:1px solid #bfe0cf;border-radius:11px;background:#fff;color:#087762;
+  font-size:10px;font-weight:850;letter-spacing:.12em
+}
+.execution-authority-copy{display:grid;gap:3px;min-width:0}
+.execution-authority-copy strong{color:#244637;font-size:12px}
+.execution-authority-copy span{color:#6c8277;font-size:11px;line-height:1.45}
+.execution-authority-state{
+  max-width:126px;padding:6px 9px;border:1px solid #d4e4db;border-radius:999px;
+  background:#fff;color:#6a7e73;font-size:10px;font-weight:700;line-height:1.25;text-align:center
+}
+.execution-authority-state[data-state="active"]{border-color:#b7ddca;background:#e3f5eb;color:#0b775c}
+.execution-authority-state[data-state="attention"]{border-color:#ead7b0;background:#fff7e8;color:#8b641f}
 .execution-mission-card,body.orchestrator-focus .execution-mission-card{
   background:#fff;border:1px solid #e0e9e3;border-radius:15px;
   box-shadow:0 4px 17px rgba(20,60,40,.035)
@@ -1875,6 +1893,11 @@ body.orchestrator-focus.forge-task-focus #send{background:#087e6c;color:#fff}
 .execution-mission-metrics,.execution-monitor-details{
   border-color:#e3ebe6
 }
+.execution-mission-metrics span{
+  min-width:0;padding:9px 8px;border:1px solid #e1ebe5;border-radius:10px;background:#f8fbf9
+}
+.execution-mission-metrics strong{font-size:18px;color:#214638}
+.execution-mission-metrics small{color:#758a7f;font-size:9px;line-height:1.2}
 .execution-mission-card p,.execution-overview-head p,.execution-activity li,
 .execution-empty{font-size:12px;line-height:1.55;color:#687f72}
 .execution-autonomy-controls>small{font-size:12px;color:#657d70}
@@ -1922,7 +1945,7 @@ body:has(#empty:not(.hidden)) .left-rail{background:#fff}
 body:has(#empty:not(.hidden)) .left-footer{padding-top:12px}
 body.orchestrator-focus .workspace-modes-caption{display:none}
 body.orchestrator-focus .workspace-mode{min-height:42px}
-body.orchestrator-focus #executionOverview:has(#executionMissionBadge[data-state="idle"]) .execution-mission-card{display:none}
+/* O contexto persistido permanece visível mesmo quando não há missão ativa. */
 .left-footer .provider-card{border:0;background:transparent;padding:5px 2px;border-radius:0}
 .left-footer .provider-main{align-items:center}
 .left-footer #providerDetail,.left-footer #sessionPersistenceNote{display:none}

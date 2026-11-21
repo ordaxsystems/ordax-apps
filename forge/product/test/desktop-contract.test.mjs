@@ -663,12 +663,18 @@ test('command centre uses one real project projection without fictional agents o
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   const shell=fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
   for(const id of ['executionOverview','executionMissionBadge','executionMissionTitle',
-    'executionWorkList','executionActivity','executionOpenWorks','refreshExecutionOverview',
+    'executionAuthorityState','executionClaimedCount','executionWorkList','executionActivity',
+    'executionOpenWorks','refreshExecutionOverview',
     'openHistory','openEvidence','projectPulseDisclosure']){
     assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,
       id+' must have one canonical DOM owner');
   }
   assert.match(ui,/function renderExecutionMonitor\(\)/);
+  assert.match(html,/Execução pertence ao Forge MCP/);
+  assert.match(html,/O aplicativo persiste e apresenta o estado/);
+  assert.match(html,/class="execution-autonomy-controls" hidden aria-hidden="true"/);
+  assert.match(ui,/work\.claim\?\.state==='occupied'/);
+  assert.match(ui,/executionClaimedCount/);
   assert.match(ui,/executionWorkScope===scope\?visibleWorkItems:\[\]/);
   assert.match(ui,/executionMissionScope===scope\?executionMission:null/);
   assert.match(ui,/workClassForPlan\(work\)/);
