@@ -120,6 +120,66 @@ test('dedicated project is atomic, idempotent and hides archived projects withou
   });
   assert.deepEqual(assigned.repositories,mapping.result.repositories);
   assert.equal(assigned.multiRepositoryWorktreeExecutionAvailable,false);
+  const runtimeRequestId='33333333-3333-4333-8333-333333333333';
+  const deviceId='14cef8f4-3c06-4b1b-9e3a-42c74ef7dec5';
+  let nativeReads=0,checks=0;
+  svc.ordaxProductMcp.repositoryProof=async({repository,mode='start',
+      runtimeRequestId:resumeId,expectedDeviceId})=>{
+    assert.equal(repository,'ordaxsystems/ordax-apps');
+    if(mode==='status'){
+      checks++;
+      assert.equal(resumeId,runtimeRequestId);
+      assert.equal(expectedDeviceId,deviceId);
+      return {schema:'ordax.forge.runtime-repository-proof/1',
+        state:'observed',verified:true,actionCompleted:true,
+        actionDispatched:true,repository,deviceId,
+        runtimeRequestId,source:'canonical_ordax_runtime_repository_catalog',
+        runtimeProjectSlug:'apps',branch:'main',
+        dirty:false,statusAvailable:true,
+        gitExecutionAuthorized:false,filesAccessible:false};
+    }
+    nativeReads++;
+    return {schema:'ordax.forge.runtime-repository-proof/1',
+      state:'pending',verified:false,actionCompleted:false,
+      actionDispatched:true,repository,deviceId,runtimeRequestId,
+      gitExecutionAuthorized:false,filesAccessible:false};
+  };
+  const probeInput={projectId:dedicated.projectId,
+    taskId:created.result.taskId,repository:'ordaxsystems/ordax-apps',
+    action:'start',claimToken:claim.claimToken,
+    claimGeneration:claim.claim.generation,
+    requestId:'dedicated_native_repo_probe_start'};
+  const pendingProbe=await svc.invoke(ctx,'ordax_repository_probe',probeInput);
+  assert.equal(pendingProbe.status,'uncertain','queued Runtime reads are not verified completion');
+  assert.equal(pendingProbe.result.state,'pending');
+  assert.equal(pendingProbe.result.runtimeRequestId,runtimeRequestId);
+  assert.equal(pendingProbe.result.verified,false);
+  const replayProbe=await svc.invoke(ctx,'ordax_repository_probe',probeInput);
+  assert.equal(replayProbe.commandId,pendingProbe.commandId);
+  assert.equal(nativeReads,1,'Forge replay must not re-enqueue the remote read');
+  await assert.rejects(svc.invoke(ctx,'ordax_repository_probe',{
+    ...probeInput,repository:'ordaxsystems/ordax-runtime',
+    requestId:'native_scope_denied'}),/forge_task_repository_scope_not_assigned/);
+  await assert.rejects(svc.invoke(ctx,'ordax_repository_probe',{
+    ...probeInput,requestId:'native_claim_denied',
+    claimToken:'x'.repeat(43)}),/forge_work_claim_not_owned/);
+  const resolved=await svc.invoke(ctx,'ordax_repository_probe',{
+    ...probeInput,action:'status',sourceCommandId:pendingProbe.commandId,
+    requestId:'dedicated_native_repo_probe_status'});
+  assert.equal(resolved.status,'succeeded');
+  assert.equal(resolved.result.state,'observed');
+  assert.equal(resolved.result.gitExecutionAuthorized,false);
+  assert.equal(checks,1);
+  assert.equal(svc.getReceipt(ctx,pendingProbe.commandId).status,'succeeded');
+  const statusReplay=await svc.invoke(ctx,'ordax_repository_probe',{
+    ...probeInput,action:'status',sourceCommandId:pendingProbe.commandId,
+    requestId:'dedicated_native_repo_probe_status'});
+  assert.equal(statusReplay.commandId,resolved.commandId);
+  assert.equal(checks,1,'status retries never duplicate the native status read');
+  await assert.rejects(svc.invoke(ctx,'ordax_repository_probe',{
+    ...probeInput,action:'status',sourceCommandId:pendingProbe.commandId,
+    requestId:'dedicated_native_repo_probe_second_status'
+  }),/forge_runtime_repository_receipt_not_pending/);
   const nativeInput={projectId:dedicated.projectId,
     taskId:created.result.taskId,
     claimToken:claim.claimToken,claimGeneration:claim.claim.generation,
@@ -172,6 +232,7 @@ test('dedicated project is atomic, idempotent and hides archived projects withou
   assert.ok(remoteOps.includes('project_repositories'));
   assert.ok(remoteOps.includes('ordax_devices'));
   assert.ok(remoteOps.includes('ordax_native_session_open'));
+  assert.ok(remoteOps.includes('ordax_repository_probe'));
   assert.ok(remoteOps.includes('ordax_execution_preflight'));
   assert.ok(remoteOps.includes('work_repositories_set'));
   for(const operation of ['mission_create','project_rename','project_delete'])
@@ -194,6 +255,7 @@ test('dedicated project is atomic, idempotent and hides archived projects withou
   assert.ok(tools.result.tools.some(x=>x.name==='forge_project_repositories'));
   assert.ok(tools.result.tools.some(x=>x.name==='forge_ordax_execution_preflight'));
   assert.ok(tools.result.tools.some(x=>x.name==='forge_ordax_native_session_open'));
+  assert.ok(tools.result.tools.some(x=>x.name==='forge_ordax_repository_probe'));
   assert.equal(tools.result.tools.some(x=>x.name==='forge_mission_create'),false);
   const listCatalog=await mcp.handle({jsonrpc:'2.0',id:3,method:'tools/call',
     params:{name:'forge_project_repositories',arguments:{}}});

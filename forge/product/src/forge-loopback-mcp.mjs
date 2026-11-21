@@ -13,6 +13,10 @@ const APP_MCP_EXCLUDED=new Set([
   // Rename is App-local historical project metadata, not an external MCP
   // administration action. Dedicated OrdaX OS is fixed to one project.
   'project_rename',
+  // Historical single-repository binding is App-local metadata. The
+  // dedicated OrdaX OS product derives repo scope from the OS ownership
+  // contract and Runtime authorization, not a model-provided URL.
+  'project_repository_set',
   // Project observation is only an intent flag today: there is no external
   // observation executor to authorize. Keep it in the owner App IPC, not in
   // the bounded public GPT MCP catalog. work_accept uses the reclaimed slot.

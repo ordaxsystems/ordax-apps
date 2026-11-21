@@ -24,6 +24,7 @@ import {forgeMcpWorkObservation} from './forge-mcp-observation.mjs';
 import {ForgeWorkClaims} from './forge-work-claims.mjs';
 import {normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
 import {readDedicatedForgeProject,enforceDedicatedForgeProject,dedicatedForgeMcpOperations} from './forge-dedicated-project.mjs';
+import {runForgeOrdaxRepositoryProbe} from './forge-ordax-repository-service.mjs';
 
 function missionProjectName(mission) {
   const firstLine=String(mission||'').trim().split(/\r?\n/u,1)[0].trim();
@@ -532,6 +533,8 @@ export class OrchestratorService {
       return view;
     }
     this.requireAccess(context,operation,input.projectId||null);
+    if(operation==='ordax_repository_probe')
+      return runForgeOrdaxRepositoryProbe(this,context,input);
     if(operation==='ordax_native_session_open'){
       const dedicated=readDedicatedForgeProject(this.store);
       if(!dedicated||dedicated.projectId!==input.projectId)

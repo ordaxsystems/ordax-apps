@@ -3,6 +3,7 @@
 // Runtime, owner-grant writer, device selector, executor or credential store.
 import {randomUUID,randomBytes} from 'node:crypto';
 import {FORGE_NATIVE_OAUTH_CLIENT_ID} from './forge-product-session.mjs';
+import {forgeRuntimeRepositoryProof} from './forge-ordax-repository-proof.mjs';
 
 const ENDPOINT='https://mcp.ordax.com.br/mcp';
 const MAX_RESPONSE=131072;
@@ -53,7 +54,47 @@ export function createForgeOrdaxProductMcp({session,fetchImpl=globalThis.fetch}=
     ready:false,reason,deviceBindingAttested:false,
     actionDispatched:false,executionAuthorized:false,...extra
   });
-  return Object.freeze({
+  const nativeRepositoryCall=async(name,args)=>{
+    // This is only the existing Product MCP. No Runtime, queue, filesystem
+    // broker or token store is instantiated by the Forge App.
+    if(!['repository_catalog','ordax_action_status'].includes(name))
+      return {ok:false,reason:'forge_native_repository_tool_forbidden'};
+    let token;
+    try{token=await session.accessToken();}
+    catch{return {ok:false,reason:'forge_native_oauth_required'};}
+    if(typeof token!=='string'||token.length<20)
+      return {ok:false,reason:'forge_native_oauth_required'};
+    const id='forge-runtime-'+randomUUID();
+    let reply;
+    try{
+      reply=await fetchImpl(ENDPOINT,{
+        method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),
+        headers:{accept:'application/json','content-type':'application/json',
+          Authorization:'Bearer '+token},
+        body:JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',
+          params:{name,arguments:args,
+            _meta:{'ordax/native-session':nativeNonce}}})
+      });
+    }catch{
+      return {ok:false,reason:'ordax_runtime_read_outcome_unconfirmed',
+        outcomeUnconfirmed:true};
+    }
+    let body;
+    try{body=JSON.parse(await boundedResponse(reply));}
+    catch{return {ok:false,reason:'ordax_runtime_read_outcome_unconfirmed',
+      outcomeUnconfirmed:true};}
+    if(!reply.ok)
+      return {ok:false,reason:reply.status===401||reply.status===403
+        ?'ordax_runtime_read_grant_required':'ordax_runtime_transport_unavailable',
+        outcomeUnconfirmed:reply.status>=500};
+    if(body?.jsonrpc!=='2.0'||body.id!==id||body.error||
+       !body.result||typeof body.result!=='object'||
+       !body.result.structuredContent)
+      return {ok:false,reason:'ordax_runtime_read_outcome_unconfirmed',
+        outcomeUnconfirmed:true};
+    return {ok:true,payload:body.result.structuredContent};
+  };
+  const port=Object.freeze({
     async openNativeSession(){
       const current=session.status();
       if(current.connected!==true||current.mode!=='oauth'||
@@ -124,6 +165,41 @@ export function createForgeOrdaxProductMcp({session,fetchImpl=globalThis.fetch}=
       // Authenticated session metadata without a bound device or a concrete
       // Owner selection challenge proves neither rollout nor progress.
       return nativeResult('native_session_not_attested');
+    },
+    async repositoryProof({repository,mode='start',runtimeRequestId=null,
+      expectedDeviceId=null}={}){
+      if(typeof repository!=='string'||
+         !/^ordaxsystems\/ordax-[a-z0-9-]{2,101}$/.test(repository)||
+         !['start','status'].includes(mode)||
+         (mode==='status'&&(!UUID.test(runtimeRequestId||'')||
+           !UUID.test(expectedDeviceId||''))))
+        return {schema:'ordax.forge.runtime-repository-proof/1',
+          state:'denied',reason:'forge_runtime_repository_scope_invalid',
+          verified:false,actionDispatched:false,actionCompleted:false};
+      const attested=await port.openNativeSession();
+      if(attested.ready!==true||attested.deviceBindingAttested!==true||
+         !UUID.test(attested.deviceId||''))
+        return {schema:'ordax.forge.runtime-repository-proof/1',
+          state:'denied',reason:attested.reason||'forge_native_session_not_attested',
+          verified:false,actionDispatched:false,actionCompleted:false};
+      if(expectedDeviceId&&expectedDeviceId.toLowerCase()!==attested.deviceId)
+        return {schema:'ordax.forge.runtime-repository-proof/1',
+          state:'denied',reason:'forge_runtime_attested_device_changed',
+          verified:false,actionDispatched:false,actionCompleted:false};
+      const tool=mode==='start'?'repository_catalog':'ordax_action_status';
+      const args=mode==='start'
+        ?{device_id:attested.deviceId,wait_for_completion_ms:8000}
+        :{request_id:runtimeRequestId,wait_for_completion_ms:8000};
+      const reply=await nativeRepositoryCall(tool,args);
+      if(!reply.ok)
+        return {schema:'ordax.forge.runtime-repository-proof/1',
+          state:reply.outcomeUnconfirmed===true?'uncertain':'denied',
+          reason:reply.reason,repository,deviceId:attested.deviceId,
+          verified:false,actionDispatched:false,actionCompleted:false,
+          ...(reply.outcomeUnconfirmed===true?{outcomeUnconfirmed:true}:{})};
+      return forgeRuntimeRepositoryProof({
+        payload:reply.payload,repository,deviceId:attested.deviceId
+      });
     },
     async devices(){
       const current=session.status();
@@ -206,4 +282,5 @@ export function createForgeOrdaxProductMcp({session,fetchImpl=globalThis.fetch}=
         actionDispatched:false,executionAuthorized:false,devices};
     }
   });
+  return port;
 }
