@@ -2207,6 +2207,12 @@ export class OrchestratorService {
         const worker=workers.get(entry.taskId);
         if(worker?.state!=='pending'||worker.dependsOn.some(
           dependency=>workers.get(dependency)?.state!=='succeeded'))continue;
+        // The launch is a durable intent, not authority to use another chat's
+        // Task. An active claim, even if expired, needs explicit release or
+        // takeover before the scheduler may send. Skipping it also prevents
+        // occupied Tasks from starving independent children in a full pool.
+        if(this.workClaims.row(launch.project_id,entry.taskId,
+          context.workspaceSessionId)?.status==='active')continue;
         ready.push({launch,entry});
       }
       if(ready.length>=admission.availableSlots)break;
@@ -2216,6 +2222,11 @@ export class OrchestratorService {
     const start=async({launch,entry})=>{
       this.requireAccess(context,'work_parallel_launch',launch.project_id);
       const task=this.task(launch.project_id,entry.taskId,'work');
+      // Recheck immediately before any effect receipt: a claim may have been
+      // acquired after candidate selection, including on a changed draft.
+      this.workClaims.assertTaskMutation(context,{
+        projectId:launch.project_id,taskId:entry.taskId
+      });
       const draft=this.store.getTaskDraft(entry.taskId);
       const digest=createHash('sha256').update(String(draft.draft||'')).digest('hex');
       const childInput={projectId:launch.project_id,taskId:entry.taskId,
