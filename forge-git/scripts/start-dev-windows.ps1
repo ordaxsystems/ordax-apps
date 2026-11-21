@@ -4,6 +4,7 @@ param(
   [switch]$CheckOnly,
   [switch]$InstallStartup,
   [switch]$RemoveStartup,
+  [switch]$FromWindowsStartup,
   [string]$CoreExecutable = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -11,6 +12,9 @@ Set-StrictMode -Version Latest
 if($env:OS -ne 'Windows_NT'){throw 'forge_dev_windows_only'}
 if(([int][bool]$CheckOnly + [int][bool]$InstallStartup + [int][bool]$RemoveStartup) -gt 1){
   throw 'forge_dev_launcher_conflicting_actions'
+}
+if($FromWindowsStartup -and ($CheckOnly -or $InstallStartup -or $RemoveStartup)){
+  throw 'forge_dev_startup_shell_conflicting_actions'
 }
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $coreExe = Join-Path $env:LOCALAPPDATA 'Programs\OrdaX Forge\OrdaX Forge.exe'
@@ -94,6 +98,9 @@ if($InstallStartup -or $RemoveStartup){
   $shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
   $shortcut.Arguments = '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $scriptPath + '"'
   if($CoreExecutable){$shortcut.Arguments += ' -CoreExecutable "' + $coreExe + '"'}
+  # The marker denotes the Windows user's interactive shell as launch owner.
+  # A remote Runtime action must hand off here, not retain Core in its Job.
+  $shortcut.Arguments += ' -FromWindowsStartup'
   $shortcut.WorkingDirectory = $root
   $shortcut.Description = 'OrdaX Forge + Forge Git - desenvolvimento local autorizado'
   $shortcut.Save()
@@ -133,6 +140,35 @@ if($CheckOnly){
 # A manually launched Core with no matching Supervisor is not this DEV lifecycle.
 if($coreProcesses.Count -and !$supervisorMatchesCore){
   throw 'forge_dev_core_without_canonical_supervisor'
+}
+# A terminal action from OrdaX Runtime runs inside its own Windows Job. If
+# this action starts a detached process directly, a Runtime recycle can kill
+# the entire Forge/Supervisor/Git subtree. Relay through the *existing* Windows
+# Startup shortcut so the logged-in shell, not the remote Runtime, owns startup.
+# No second scheduler, process supervisor, SQLite, token or persistent flag.
+if(!$FromWindowsStartup -and (!$coreProcesses.Count -or !$gitActive)){
+  if(!(Test-Path -LiteralPath $link -PathType Leaf)){
+    throw 'forge_dev_startup_shortcut_required'
+  }
+  $shell = New-Object -ComObject WScript.Shell
+  $existing = $shell.CreateShortcut($link)
+  $expectedArgs = '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "' +
+    $scriptPath + '"'
+  if($CoreExecutable){$expectedArgs += ' -CoreExecutable "' + $coreExe + '"'}
+  $expectedArgs += ' -FromWindowsStartup'
+  $expectedTarget = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+  if($existing.TargetPath -ine $expectedTarget -or
+     $existing.Arguments -cne $expectedArgs -or
+     $existing.WorkingDirectory -ine $root){
+    throw 'forge_dev_startup_shortcut_mismatch'
+  }
+  $session = (Get-Process -Id $PID).SessionId
+  $shellOwners = @(Get-Process -Name explorer -ErrorAction SilentlyContinue |
+    Where-Object {$_.SessionId -eq $session})
+  if(!$shellOwners.Count){throw 'forge_dev_interactive_shell_unavailable'}
+  [void](Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList ('"'+$link+'"') -PassThru)
+  Write-Output 'forge_dev_windows_shell_handoff_requested'
+  exit 0
 }
 # Inherit process-local DEV policy into both binaries without changing
 # persistent per-user/machine environment variables: no production drift.
