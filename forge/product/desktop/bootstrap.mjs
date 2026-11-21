@@ -18,4 +18,7 @@ if(process.versions.electron && process.defaultApp!==true && !proof.verified)
   throw new Error('lab_packaged_runtime_attestation_required');
 // Legacy development trees without a manifest remain explicitly unattested.
 // Do not relabel them verified and never silently repair a corrupt manifest.
-await import('./main.mjs');
+// A first-party loopback viewer uses the EXISTING Node Host as sole Core.
+// It never evaluates main.mjs, which opens the Electron-owned SQLite/MCP.
+if(process.argv.includes('--forge-view-only'))await import('./view-client.mjs');
+else await import('./main.mjs');
