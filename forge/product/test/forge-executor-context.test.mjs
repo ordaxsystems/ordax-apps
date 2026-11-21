@@ -23,12 +23,19 @@ test('canonical instructions reference only real typed MCP tool names, never inv
     assert.ok(catalog.has(name),'unscoped instructions refer to missing MCP tool: '+name);
   assert.ok(mentioned(scoped).includes('forge_discover'));
   assert.ok(mentioned(scoped).includes('forge_work_messages'));
+  assert.ok(mentioned(scoped).includes('forge_project_activity'));
   assert.ok(mentioned(FORGE_MCP_INSTRUCTIONS).includes('forge_projects_list'));
+  assert.ok(mentioned(FORGE_MCP_INSTRUCTIONS).includes('forge_project_activity'));
+  assert.ok(FORGE_LOCAL_MCP_OPERATIONS.includes('project_activity'));
   assert.doesNotMatch(JSON.stringify(FORGE_EXECUTOR_PROTOCOL),/\bGroq\b/i);
   assert.doesNotMatch(FORGE_MCP_INSTRUCTIONS,/\bGroq\b/i);
   assert.doesNotMatch(FORGE_SCOPED_MCP_INSTRUCTIONS,/\bGroq\b/i);
-  assert.match(FORGE_MCP_INSTRUCTIONS,/GPT Web is the sole model executor/);
-  assert.match(FORGE_MCP_INSTRUCTIONS,/Forge MCP is the sole project tool integration/);
+  assert.match(FORGE_MCP_INSTRUCTIONS,/GPT is the intelligence layer/);
+  assert.match(FORGE_MCP_INSTRUCTIONS,/Forge MCP owns authorized project tools, claims, memory and receipts/);
+  assert.match(FORGE_MCP_INSTRUCTIONS,/Forge App passively stores and presents canonical state/);
+  assert.match(scoped,/never (?:grants a lease|grants a claim)/);
+  assert.match(scoped,/never (?:wakes|wake)/i);
+  assert.match(scoped,/never (?:triggers a notification|trigger a notification)/i);
 });
 
 test('Forge exposes project context without granting filesystem access or inferring a path',async t=>{
