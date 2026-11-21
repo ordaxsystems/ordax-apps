@@ -121,7 +121,9 @@ export function createForgeOrdaxProductMcp({session,fetchImpl=globalThis.fetch}=
           expiresAt:selected.expires_at,
           ownerConfirmationRequired:true
         });
-      return nativeResult('native_device_attestation_pending');
+      // Authenticated session metadata without a bound device or a concrete
+      // Owner selection challenge proves neither rollout nor progress.
+      return nativeResult('native_session_not_attested');
     },
     async devices(){
       const current=session.status();

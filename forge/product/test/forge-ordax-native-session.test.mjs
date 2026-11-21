@@ -97,6 +97,23 @@ test('unconfirmed network response is never treated as a failed effect safe to r
   assert.equal(result.executionAuthorized,false);
   assert.equal(JSON.stringify(result).includes('secret'),false);
 });
+test('OAuth metadata without Runtime binding never claims a pending challenge',async()=>{
+  const client=createForgeOrdaxProductMcp({session:validSession(),
+    fetchImpl:async(_url,opts)=>{
+      const req=JSON.parse(opts.body);
+      return Response.json({jsonrpc:'2.0',id:req.id,result:{
+        structuredContent:{ok:true,authenticated:true,
+          client_id:FORGE_NATIVE_OAUTH_CLIENT_ID}
+      }});
+    }});
+  const result=await client.openNativeSession();
+  assert.equal(result.ready,false);
+  assert.equal(result.reason,'native_session_not_attested');
+  assert.equal(result.ownerConfirmationRequired,undefined);
+  assert.equal(result.deviceBindingAttested,false);
+  assert.equal(result.actionDispatched,false);
+});
+
 test('forged binding, wrong client and correlation mismatch remain untrusted',async()=>{
   let call=0;
   const client=createForgeOrdaxProductMcp({session:validSession(),
