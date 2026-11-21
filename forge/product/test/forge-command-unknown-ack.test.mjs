@@ -121,3 +121,39 @@ test('native Owner can acknowledge a scoped remote MCP terminal receipt without 
     .get('command_remote_client_unknown'),before);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
+
+test('native Owner can quarantine interrupted work acceptance without inventing success',async t=>{
+  const f=fixture(t);
+  const p=(await f.invoke('project_quick_create',{creationNonce:'review_work_accept'})).result;
+  const orchestratorId=f.store.db.prepare('SELECT id FROM lab_orchestrators WHERE project_id=?')
+    .get(p.projectId).id;
+  const work=(await f.invoke('work_create',{
+    projectId:p.projectId,orchestratorId,title:'Acceptance target'
+  })).result;
+  seed(f,{id:'command_accept_uncertain',projectId:p.projectId,operation:'work_accept',
+    result:{taskId:work.taskId,phase:'testing_integrated_main'}});
+  seed(f,{id:'command_accept_recovery_proof',projectId:p.projectId,
+    status:'succeeded',at:'2026-11-18T12:00:00.000Z',
+    result:{projectId:p.projectId,completed:true,exitCode:0,
+      commandOutcome:'exit_zero',workspaceScope:'project_root'}});
+  const before=f.store.db.prepare('SELECT * FROM lab_command_receipts WHERE id=?')
+    .get('command_accept_uncertain');
+  assert.equal((await f.invoke('project_handoff',{projectId:p.projectId,taskId:work.taskId}))
+    .counts.unresolvedCommands,1);
+  const ack=f.service.closeUnverifiedCommand(f.context,{
+    projectId:p.projectId,commandId:'command_accept_uncertain',
+    acknowledgeUnknownEffects:true,requestId:'native_accept_receipt_review',
+    note:'O teste de aceite interrompido permanece desconhecido; uma nova tentativa exigirá prova fresca.'
+  },{nativeOwnerConfirmed:true});
+  assert.equal(ack.status,'succeeded');
+  assert.equal(ack.result.originalOperation,'work_accept');
+  assert.equal(ack.result.disposition,'abandon_unverified');
+  assert.equal(ack.result.evidenceCommandId,'command_accept_recovery_proof');
+  assert.equal(ack.result.externalEffectsVerified,false);
+  assert.equal(ack.result.replayAllowed,false);
+  assert.equal((await f.invoke('project_handoff',{projectId:p.projectId,taskId:work.taskId}))
+    .counts.unresolvedCommands,0);
+  assert.deepEqual(f.store.db.prepare('SELECT * FROM lab_command_receipts WHERE id=?')
+    .get('command_accept_uncertain'),before);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});

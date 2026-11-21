@@ -1525,7 +1525,8 @@ registerUiHandler('ordax:forge:command:close-unverified',async(event,projectId,c
   const row=store.db.prepare(`SELECT request_id,operation,status,updated_at
     FROM lab_command_receipts WHERE id=? AND project_id=? AND workspace_session_id=?`)
     .get(commandId,projectId,localOrchestratorContext.workspaceSessionId);
-  if(row?.operation!=='project_command_run'||row.status!=='uncertain')
+  if(!row||!['project_command_run','work_accept'].includes(row.operation)||
+     row.status!=='uncertain')
     throw Error('forge_command_review_scope_or_status_invalid');
   if(!store.db.prepare('SELECT 1 FROM lab_command_active_unresolved WHERE id=?').get(commandId))
     throw Error('forge_command_review_already_closed');
@@ -1534,12 +1535,12 @@ registerUiHandler('ordax:forge:command:close-unverified',async(event,projectId,c
   // and the existing Core still requires later independent terminal evidence
   // before appending an acknowledgement with unknown effects.
   const accepted=forgeDevAutoPairMode||await confirmInActiveUi({
-    title:'Revisar comando com resultado desconhecido',
-    message:'Reconhecer este comando interrompido sem afirmar que funcionou?',
-    detail:'Comando '+commandId+'\\nSolicitação '+row.request_id+
+    title:'Revisar ação com resultado desconhecido',
+    message:'Reconhecer esta ação interrompida sem afirmar que funcionou?',
+    detail:'Operação '+row.operation+'\\nRecibo '+commandId+'\\nSolicitação '+row.request_id+
       '\\n\\nO efeito original continuará DESCONHECIDO e o recibo original permanecerá intacto. '+
       'Um registro de revisão separado só encerrará o bloqueio se existir prova posterior de terminal saudável. '+
-      'O Forge não repetirá o comando, não certificará seus efeitos e não tratará a revisão como sucesso.',
+      'O Forge não repetirá a ação, não certificará seus efeitos e não tratará a revisão como sucesso.',
     approveLabel:'Reconhecer resultado desconhecido'
   });
   if(!accepted)return {cancelled:true};
@@ -1548,7 +1549,7 @@ registerUiHandler('ordax:forge:command:close-unverified',async(event,projectId,c
   return orchestratorService.closeUnverifiedCommand(localOrchestratorContext,{
     requestId:'native_review_'+randomUUID(),projectId,commandId,
     acknowledgeUnknownEffects:true,
-    note:'Proprietário confirmou no diálogo nativo o encerramento sem comprovar resultados; execução original não será repetida.'
+    note:'Proprietário confirmou no diálogo nativo o encerramento sem comprovar resultados; ação original não será repetida.'
   },{nativeOwnerConfirmed:true});
 });
 // Local MCP is explicitly enabled only from the trusted Electron settings UI.

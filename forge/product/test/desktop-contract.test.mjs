@@ -29,6 +29,7 @@ test('unknown terminal review reuses pre-granted DEV Owner intent; production st
   assert.equal((uiHtml.match(/id="forgeUncertainCommandsList"/g)||[]).length,1);
   assert.match(preload,/forgeCommandCloseUnverified: \(projectId,commandId\)/);
   assert.match(ui,/function refreshForgeUncertainCommands\(\)/);
+  assert.match(ui,/new Set\(\['project_command_run','work_accept'\]\)/);
   assert.match(ui,/window\.ordax\.orchestratorInvoke\('project_handoff',\{projectId\}\)/);
   assert.match(ui,/window\.ordax\.forgeCommandCloseUnverified\(projectId,row\.commandId\)/);
   assert.match(ui,/if\(projectChanged\)void refreshForgeUncertainCommands\(\)/);
@@ -41,6 +42,7 @@ test('unknown terminal review reuses pre-granted DEV Owner intent; production st
   assert.equal(main.split(entry).length-1,1,'one native Owner review entrypoint');
   const area=main.slice(main.indexOf(entry),main.indexOf("// Local MCP is explicitly enabled",main.indexOf(entry)));
   assert.match(area,/requireTrustedSupervisorRenderer\(event\)/);
+  assert.match(area,/\['project_command_run','work_accept'\]\.includes\(row\.operation\)/);
   assert.match(area,/if\(hostBrowserMode\)throw Error\('forge_command_review_native_only'\)/);
   assert.match(area,/const accepted=forgeDevAutoPairMode\|\|await confirmInActiveUi\(\{/);
   assert.match(main,/const forgeDevAutoPairMode=forgeDevAutonomyEnabled&&/);

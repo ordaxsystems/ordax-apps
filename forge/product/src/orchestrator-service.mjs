@@ -135,10 +135,11 @@ export class OrchestratorService {
     // append-only receipt ledger. An Owner acknowledgement is a NEW receipt:
     // the original command stays uncertain, is never replayed, and never
     // becomes evidence of success or of external effects.
-    this.db.exec(`CREATE VIEW IF NOT EXISTS lab_command_active_unresolved AS
+    this.db.exec('DROP VIEW IF EXISTS lab_command_active_unresolved');
+    this.db.exec(`CREATE VIEW lab_command_active_unresolved AS
       SELECT c.* FROM lab_command_receipts c
       WHERE c.status IN ('running','uncertain') AND (
-        c.status='running' OR c.operation!='project_command_run' OR
+        c.status='running' OR c.operation NOT IN ('project_command_run','work_accept') OR
         NOT EXISTS(SELECT 1 FROM lab_command_receipts a
           WHERE a.operation='command_close_unverified' AND a.status='succeeded'
             AND a.project_id=c.project_id
@@ -422,15 +423,27 @@ export class OrchestratorService {
       const source=this.db.prepare(`SELECT * FROM lab_command_receipts
         WHERE id=? AND project_id=? AND workspace_session_id=?`).get(input.commandId,
           input.projectId,context.workspaceSessionId);
-      if(!source||source.operation!=='project_command_run'||source.status!=='uncertain')
+      if(!source||!['project_command_run','work_accept'].includes(source.operation)||
+         source.status!=='uncertain')
         throw Error('forge_command_review_scope_or_status_invalid');
-      // Only the known terminal timeout path is eligible, not provider sends
-      // or corrupted/unreadable receipts.
+      // Only two bounded native paths are reviewable: a terminal command whose
+      // outcome was already classified unknown, or a work acceptance interrupted
+      // while running its fresh integrated-main test. Provider sends and all
+      // other effects remain non-reviewable here.
       let sourceResult;
       try{sourceResult=JSON.parse(source.result||'null');}catch{}
-      if(sourceResult?.reason!=='forge_development_command_outcome_uncertain'||
-         sourceResult.externalEffectsVerified!==false)
+      const terminalUnknown=source.operation==='project_command_run'&&
+        sourceResult?.reason==='forge_development_command_outcome_uncertain'&&
+        sourceResult.externalEffectsVerified===false;
+      const acceptanceUnknown=source.operation==='work_accept'&&
+        sourceResult?.phase==='testing_integrated_main'&&
+        typeof sourceResult?.taskId==='string';
+      if(!terminalUnknown&&!acceptanceUnknown)
         throw Error('forge_command_review_effect_unverified');
+      if(acceptanceUnknown) {
+        const task=this.task(input.projectId,sourceResult.taskId,'work');
+        if(task.status==='completed')throw Error('forge_command_review_effect_unverified');
+      }
       if(!this.db.prepare('SELECT 1 FROM lab_command_active_unresolved WHERE id=?')
         .get(source.id))throw Error('forge_command_review_already_closed');
       const candidates=this.db.prepare(`SELECT id,result,updated_at
@@ -451,6 +464,7 @@ export class OrchestratorService {
       return this.finish(reserved.commandId,{
         schema:'ordax.forge.unknown-command-acknowledgement/1',
         targetCommandId:source.id,originalStatus:'uncertain',
+        originalOperation:source.operation,
         originalInputHash:source.input_hash,disposition:'abandon_unverified',
         acknowledgedUnknownEffects:true,externalEffectsVerified:false,
         originalReceiptPreserved:true,replayAllowed:false,
@@ -901,9 +915,10 @@ export class OrchestratorService {
           throw Error('forge_work_accept_verification_receipt_invalid');
       }
       const previous=this.db.prepare(
-        'SELECT id FROM lab_command_receipts WHERE project_id=? AND workspace_session_id=? '+
-        "AND operation='work_accept' AND status IN ('running','uncertain','succeeded') "+
-        "AND json_valid(result) AND json_extract(result,'$.taskId')=? LIMIT 1")
+        'SELECT c.id FROM lab_command_receipts c WHERE c.project_id=? AND c.workspace_session_id=? '+
+        "AND c.operation='work_accept' AND (c.status='succeeded' OR "+
+        "EXISTS(SELECT 1 FROM lab_command_active_unresolved u WHERE u.id=c.id)) "+
+        "AND json_valid(c.result) AND json_extract(c.result,'$.taskId')=? LIMIT 1")
         .get(input.projectId,session,input.taskId);
       if(previous)throw Error('forge_work_accept_already_requested');
       return {runId:task.runId,integratedHeadSha:root.integratedHeadSha};
