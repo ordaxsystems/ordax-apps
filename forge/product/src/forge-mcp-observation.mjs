@@ -84,7 +84,7 @@ export function observeMcpWorkTool({store,operation,output,ingress,transportRece
       WHERE project_id=? AND task_id=? AND kind='work'`)
       .get(receipt.project_id,taskId))
     return false;
-  if(operation==='work_claim'&&!['acquired','renewed','released'].includes(proof?.status))
+  if(operation==='work_claim'&&!['acquired','renewed','released','occupied','blocked_unreconciled_effects'].includes(proof?.status))
     return false;
   if(['work_progress','work_memory_set'].includes(operation)&&proof?.status!=='recorded')
     return false;

@@ -223,6 +223,20 @@ test('work claims distinguish leased remote gateway ingress from direct in-proce
   },gateway);
   assert.equal(remote.status,'succeeded');
   assert.equal(remote.result.status,'acquired');
+  const contenderGateway={
+    gatewayRequestId:'50000000-0000-4000-8000-000000000001',
+    gatewayAttemptId:'50000000-0000-4000-8000-000000000002',
+    gatewayAgentInstanceId:'50000000-0000-4000-8000-000000000003',
+    leaseStartObserved:true
+  };
+  const denied=await f.call(3,'work_claim',{
+    projectId:p,taskId:remoteWork.taskId,action:'acquire',
+    chatLabel:'contender-chat-label',requestId:'contender_claim'
+  },contenderGateway);
+  assert.equal(denied.status,'succeeded');
+  assert.equal(denied.result.status,'occupied');
+  assert.equal(denied.result.acquired,false);
+  assert.equal(denied.result.claim.generation,remote.result.claim.generation);
   const listed=(await f.service.invoke(f.context,'work_list',{projectId:p})).works;
   const directListed=listed.find(x=>x.id===directWork.taskId).claim;
   const remoteListed=listed.find(x=>x.id===remoteWork.taskId).claim;
@@ -250,11 +264,19 @@ test('work claims distinguish leased remote gateway ingress from direct in-proce
   assert.equal(remoteClaim.gatewayAgentInstanceId,gateway.gatewayAgentInstanceId);
   assert.equal(remoteClaim.gptRunIdentityVerified,false);
   assert.equal(remoteClaim.chatIdentityVerified,false);
-  assert.equal(f.workEvents().length,1);
-  const payload=JSON.parse(f.workEvents()[0].payload);
-  assert.equal(payload.operation,'work_claim');
-  assert.equal(payload.outcome,'acquired');
-  assert.equal(payload.claim_generation,1);
-  assert.ok(!JSON.stringify(payload).includes('remote-chat-label'));
-  assert.ok(!JSON.stringify(payload).includes(remote.result.claimToken));
+  assert.equal(f.workEvents().length,2);
+  const [acquiredEvent,deniedEvent]=f.workEvents().map(row=>JSON.parse(row.payload));
+  assert.equal(acquiredEvent.operation,'work_claim');
+  assert.equal(acquiredEvent.outcome,'acquired');
+  assert.equal(acquiredEvent.claim_generation,1);
+  assert.equal(acquiredEvent.gateway_agent_instance_id,gateway.gatewayAgentInstanceId);
+  assert.equal(deniedEvent.operation,'work_claim');
+  assert.equal(deniedEvent.outcome,'occupied');
+  assert.equal(deniedEvent.gateway_agent_instance_id,contenderGateway.gatewayAgentInstanceId);
+  assert.notEqual(deniedEvent.gateway_agent_instance_id,acquiredEvent.gateway_agent_instance_id);
+  assert.equal(remoteListed.gatewayAgentInstanceId,gateway.gatewayAgentInstanceId,
+    'denied contender must not replace the active claim owner observation');
+  assert.ok(!JSON.stringify(acquiredEvent).includes('remote-chat-label'));
+  assert.ok(!JSON.stringify(deniedEvent).includes('contender-chat-label'));
+  assert.ok(!JSON.stringify(f.workEvents()).includes(remote.result.claimToken));
 });
