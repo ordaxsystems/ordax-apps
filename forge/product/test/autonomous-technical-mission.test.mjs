@@ -5,251 +5,69 @@ import os from 'node:os';
 import path from 'node:path';
 import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
-import {recordProviderSubmissionProvenance} from '../src/provider-submission-provenance.mjs';
-import {verifyLocalHtmlArtifact,assertLocalArtifactPath} from '../src/provider-html-artifact.mjs';
+import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
 
-function fixture(t,{withHtmlProof=false,missingArtifactPort=false,maxExpectedSends=4}={}) {
-  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-app-owned-mission-'));
-  const store=new Store(path.join(dir,'canonical.sqlite'));
-  t.after(()=>{store.close();fs.rmSync(dir,{force:true,recursive:true});});
-  const context=Object.freeze({actorId:'owner',clientId:'lab',
+function fixture(t){
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'forge-autonomy-history-'));
+  const store=new Store(path.join(dir,'store.sqlite'));
+  const context=Object.freeze({actorId:'owner',clientId:'test',
     workspaceSessionId:store.getWorkspaceSession().id});
-  let sends=0,assetFile=null;
-  const provider={available:()=>true,busy:()=>false,send:async({taskId,content})=>{
-    sends++;
-    assert.ok(sends<=maxExpectedSends);
-    const {runId}=store.beginProviderRun(taskId,content);
-    const chatUrl=store.getTask(taskId).chat_url||
-      'https://chatgpt.com/c/'+String(sends).padStart(8,'0')+'-2222-4333-8444-555555555555';
-    store.setChatUrl(taskId,chatUrl);
-    const messageId=store.db.prepare("SELECT id FROM messages WHERE task_id=? AND role='user' ORDER BY rowid DESC LIMIT 1").get(taskId).id;
-    assert.equal(recordProviderSubmissionProvenance({store,taskId,runId,messageId,
-      providerPrompt:content,chatUrl,submittedAt:Date.now()}).recorded,true);
-    const assistant=store.appendMessage(taskId,'assistant',
-      'O GPT respondeu ao pedido. Efeitos externos ainda precisam de verificação independente.');
-    store.finishRun(taskId,runId);
-    if(withHtmlProof&&sends===1){
-      assetFile=path.join(dir,'asset_site.html');
-      fs.writeFileSync(assetFile,'<!doctype html><html><head><title>Prova local</title></head><body><h1>OK</h1></body></html>');
-      const proof=verifyLocalHtmlArtifact(assetFile);
-      store.addAsset(taskId,assistant.id,{id:'asset_site_proof',kind:'file',
-        mimeType:'text/html',localPath:assetFile,alt:'index.html',sha256:proof.sha256});
-      store.event(taskId,'provider.artifact.html_verified',{run_id:runId,
-        asset_id:'asset_site_proof',sha256:proof.sha256,bytes:proof.bytes,
-        scope:'private_local_file',browser_tested:false,published:false});
-    }
-    return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
-  }};
-  const service=new OrchestratorService({store,provider,continuousExecutionByDefault:true,
-    verifyLocalArtifact:missingArtifactPort?null:({assetId,taskId})=>{
-      const asset=store.getAsset(assetId);
-      if(asset?.task_id!==taskId||asset?.kind!=='file'||asset?.mime_type!=='text/html')
-        throw Error('artifact_unscoped');
-      const root=fs.realpathSync.native(dir);
-      const real=fs.realpathSync.native(assertLocalArtifactPath(dir,asset.local_path));
-      assertLocalArtifactPath(root,real);
-      const proof=verifyLocalHtmlArtifact(real);
-      if(proof.sha256!==asset.sha256)throw Error('artifact_changed');
-      return {verified:true,sha256:proof.sha256,bytes:proof.bytes,
-        verification:proof.verification};
-    },
-    authorize:({context:c})=>c===context});
+  const service=new OrchestratorService({store,authorize:({context:who})=>who===context});
   let seq=0;
-  const call=(operation,input={})=>service.invoke(context,operation,{requestId:'req_'+(++seq),...input});
-  const setup=async(name='Projeto de engenharia')=>{
-    const projectId=(await call('project_create',{name,objective:'Criar site'})).result.projectId;
-    const orchestratorId=(await call('orchestrator_create',{projectId,name:'Forjador',mission:'Evoluir o projeto'})).result.orchestratorId;
-    return {projectId,orchestratorId};
-  };
-  const start=(ids,requestId,mission)=>{
-    const chatTaskId=service.orchestrator(ids.projectId,ids.orchestratorId).chat_task_id;
-    const current=store.getTaskDraft(chatTaskId);
-    const draftRevision=current.draft_revision+1;
-    store.setDraft(chatTaskId,mission,draftRevision);
-    return service.startDevAutonomousForjador(context,{...ids,requestId,
-      content:mission,draftRevision});
-  };
-  const wait=async ids=>{
-    for(let i=0;i<240;i++){
-      await service.autonomous.tick(context);
-      const m=service.autonomous.status(context,ids).mission;
-      if(['verification_required','budget_exhausted','reconciliation_required','blocked'].includes(m?.state))return m;
-      await new Promise(resolve=>setTimeout(resolve,30));
-    }
-    throw Error('app_owned_mission_not_terminal');
-  };
-  return {store,service,context,setup,start,wait,
-    sends:()=>sends,artifactFile:()=>assetFile};
+  const call=(operation,input={})=>service.invoke(context,operation,{
+    ...(!ORCHESTRATOR_TOOLS.find(tool=>tool.operation===operation)?.readOnly
+      ?{requestId:'history_'+(++seq)}:{}),...input
+  });
+  t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true});});
+  return {store,context,service,call};
+}
+async function project(f){
+  const created=(await f.call('mission_create',{name:'Histórico',mission:'Projeto histórico'})).result;
+  return created;
 }
 
-test('confirmed HTML attachment is rehashed locally and scoped to its real GPT Run',async t=>{
-  const f=fixture(t,{withHtmlProof:true}),ids=await f.setup();
-  const receipt=f.start(ids,'local_file_proof','Crie um site HTML local e confira o arquivo de saída.');
-  assert.equal(receipt.status,'succeeded');
-  const m=await f.wait(ids);
-  assert.equal(m.state,'verification_required');
-  assert.equal(m.verifiedArtifact?.kind,'local_html_file');
-  assert.equal(m.verifiedArtifact?.verification,'local_bytes_and_structure');
-  assert.equal(m.verifiedArtifact?.published,false);
-  assert.equal(m.verifiedArtifact?.externalEffectVerified,false);
-  assert.equal(m.decision.reviewProvider,'ordax_app_policy');
-  const runId=m.verifiedArtifact.runId;
-  fs.appendFileSync(f.artifactFile(),'<!-- tampered -->');
-  assert.equal(f.service.autonomous.status(f.context,ids).mission.verifiedArtifact,null);
-  assert.equal(f.sends(),1);
-  assert.equal(f.service.autonomous.verifiedHtmlForRun(ids.projectId,ids.orchestratorId,runId),null);
+test('autonomous execution operations are absent from the canonical Forge contract',()=>{
+  const operations=new Set(ORCHESTRATOR_TOOLS.map(tool=>tool.operation));
+  for(const operation of [
+    'forjador_send','autonomous_continuous_set','autonomous_dialogue_continue',
+    'orchestrator_analyze','orchestrator_prepare','proposal_review',
+    'continuity_set','continuity_proposals_set','continuity_followup_prepare'
+  ]) assert.equal(operations.has(operation),false,operation);
+  const source=fs.readFileSync(new URL('../src/autonomous-dialogue.mjs',import.meta.url),'utf8');
+  assert.doesNotMatch(source,/\bstart\(context|\btick\(|continueTechnical\(|setContinuousExecution\(/);
+  assert.match(source,/legacyRecordOnly:true/);
 });
 
-test('native isolated browser snapshot is Run-bound, idempotent and never certifies deployment',async t=>{
-  const f=fixture(t,{withHtmlProof:true}),ids=await f.setup();
-  f.start(ids,'browser_proof','Crie um site HTML local e confirme a prévia isolada.');
-  const mission=await f.wait(ids),html=mission.verifiedArtifact;
-  const observation={kind:'isolated_browser_snapshot',
-    taskId:f.store.db.prepare("SELECT task_id FROM runs WHERE id=?").get(html.runId).task_id,
-    assetId:html.assetId,sha256:html.sha256,screenshotSha256:'a'.repeat(64),
-    width:442,height:388,browserTested:false,published:false,externalEffectVerified:false};
-  assert.equal(f.service.autonomous.recordBrowserRenderObservation({...observation,sha256:'b'.repeat(64)}),null);
-  const proof=f.service.autonomous.recordBrowserRenderObservation(observation);
-  assert.equal(proof.browserRenderObserved,true);
-  assert.equal(proof.browserTested,false);
-  assert.equal(proof.externalEffectVerified,false);
-  assert.equal(f.service.autonomous.recordBrowserRenderObservation(observation)?.browserRenderObserved,true);
-  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE kind='provider.artifact.browser_render_observed'").get().n,1);
+test('historical autonomous mission remains readable but cannot resume',async t=>{
+  const f=fixture(t),p=await project(f),now=f.store.now();
+  f.store.db.prepare(`INSERT INTO lab_autonomous_dialogues
+    (id,workspace_session_id,actor_id,client_id,project_id,orchestrator_id,
+     request_id,mission,state,max_gpt_sends,followup_policy,created_at,updated_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      'mission_history',f.context.workspaceSessionId,f.context.actorId,f.context.clientId,
+      p.projectId,p.orchestratorId,'historical_request','Missão antiga',
+      'reconciliation_required',2,'review_only',now,now);
+  const status=await f.call('autonomous_dialogue_status',{
+    projectId:p.projectId,orchestratorId:p.orchestratorId
+  });
+  assert.equal(status.legacyRecordOnly,true);
+  assert.equal(status.continuousExecutionEnabled,false);
+  assert.equal(status.appOwnedTechnicalReviewAvailable,false);
+  assert.equal(status.mission.mission,'Missão antiga');
+  assert.equal(status.mission.state,'reconciliation_required');
+  assert.equal(status.mission.requiresReconciliation,true);
+  assert.equal(typeof f.service.autonomous.start,'undefined');
+  assert.equal(typeof f.service.autonomous.tick,'undefined');
+  assert.equal(typeof f.service.autonomous.continueTechnical,'undefined');
 });
 
-test('bounded browser control receipt requires verified render and exact unchanged asset',async t=>{
-  const f=fixture(t,{withHtmlProof:true}),ids=await f.setup();
-  f.start(ids,'local_controls','Crie um site HTML local e verifique os controles isolados.');
-  const html=(await f.wait(ids)).verifiedArtifact;
-  const taskId=f.store.db.prepare('SELECT task_id FROM runs WHERE id=?').get(html.runId).task_id;
-  const report={schema:'ordax.lab.isolated-html-controls.v1',scope:'bounded_local_dom',
-    status:'passed',checked:2,passed:2,failed:0,checks:[
-      {id:'details_toggle',status:'passed'},{id:'aria_toggle',status:'not_applicable'},
-      {id:'required_form',status:'passed'}]};
-  const observation={kind:'isolated_browser_controls',taskId,assetId:html.assetId,
-    sha256:html.sha256,report,browserTested:false,published:false,externalEffectVerified:false};
-  assert.equal(f.service.autonomous.recordBrowserControlsObservation(observation),null);
-  const render={kind:'isolated_browser_snapshot',taskId,assetId:html.assetId,
-    sha256:html.sha256,screenshotSha256:'a'.repeat(64),width:442,height:388,
-    browserTested:false,published:false,externalEffectVerified:false};
-  assert.equal(f.service.autonomous.recordBrowserRenderObservation(render).browserRenderObserved,true);
-  const proof=f.service.autonomous.recordBrowserControlsObservation(observation);
-  assert.equal(proof.browserControls.status,'passed');
-  assert.equal(proof.browserControls.passed,2);
-  assert.equal(proof.externalEffectVerified,false);
-  fs.appendFileSync(f.artifactFile(),'<!-- changed -->');
-  assert.equal(f.service.autonomous.status(f.context,ids).mission.verifiedArtifact,null);
-  assert.equal(f.service.autonomous.recordBrowserControlsObservation(observation),null);
-});
-
-test('HTML row without an App verifier remains unverified',async t=>{
-  const f=fixture(t,{withHtmlProof:true,missingArtifactPort:true}),ids=await f.setup();
-  f.start(ids,'no_host_verifier','Crie um site HTML local e revise o arquivo.');
-  const m=await f.wait(ids);
-  assert.equal(m.verifiedArtifact,null);
-  assert.equal(m.decision.externalEffectVerified,false);
-});
-
-test('dev autonomy starts from the real forjador_send path and continues without another owner command',async t=>{
-  const f=fixture(t,{maxExpectedSends:4}),ids=await f.setup();
-  const content='crie um site de página única para a cafeteria fictícia Estação Café';
-  const receipt=f.start(ids,'real_forjador_site_1',content);
-  assert.equal(receipt.status,'succeeded');
-  assert.equal(receipt.operation,'forjador_send');
-  assert.equal(receipt.result.provider,'forge_autonomy');
-  assert.equal(receipt.result.delegation,'technical');
-  const first=await f.wait(ids);
-  assert.equal(first.state,'budget_exhausted');
-  assert.equal(first.maxGPTSends,2);
-  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='forjador_send'").get().n,1);
-  const advanced=await f.service.autonomous.tick(f.context);
-  assert.equal(advanced.state,'advanced');
-  assert.equal(advanced.automatic,true);
-  assert.notEqual(advanced.missionId,first.missionId);
-  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='forjador_send'").get().n,1,
-    'automatic continuation must not create another owner command');
-  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
-});
-
-test('DEV continuation ignores newer unrelated unready missions',async t=>{
-  const f=fixture(t,{maxExpectedSends:6});
-  const first=await f.setup('Projeto primeiro');
-  f.start(first,'continue_first','Crie um site para o projeto primeiro.');
-  const ready=await f.wait(first);
-  assert.equal(ready.state,'budget_exhausted');
-  const newer=await f.setup('Projeto novo');
-  const queued=f.start(newer,'start_second','Crie um site para o projeto novo.');
-  assert.equal(queued.status,'succeeded');
-  // The newer mission is ready but has not started its first GPT Run.
-  // Its existence must not starve a previously verified ready project.
-  const result=f.service.autonomous.advanceContinuousExecution(f.context);
-  assert.equal(result.state,'advanced');
-  assert.equal(result.automatic,true);
-  assert.equal(f.store.db.prepare(
-    'SELECT project_id FROM lab_autonomous_dialogues WHERE id=?'
-  ).get(result.missionId).project_id,first.projectId);
-  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
-});
-
-test('DEV continuation ignores a running Run in an independent project',async t=>{
-  const f=fixture(t,{maxExpectedSends:6});
-  const first=await f.setup('Projeto livre');
-  f.start(first,'continue_unblocked','Crie um site para o projeto livre.');
-  const ready=await f.wait(first);
-  assert.equal(ready.state,'budget_exhausted');
-  const second=await f.setup('Projeto ocupado');
-  const work=(await f.service.invoke(f.context,'work_create',{
-    projectId:second.projectId,orchestratorId:second.orchestratorId,
-    title:'Trabalho independente',requestId:'unrelated_running_work'
-  })).result.taskId;
-  const inFlight=f.store.beginProviderRun(work,'Uma tarefa independente ainda em execução.');
-  assert.ok(inFlight.runId);
-  // A global SELECT from runs would previously block all DEV continuation.
-  const result=f.service.autonomous.advanceContinuousExecution(f.context);
-  assert.equal(result.state,'advanced');
-  assert.equal(f.store.db.prepare('SELECT status FROM runs WHERE id=?').get(inFlight.runId).status,'running');
-  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
-});
-
-test('DEV paused coordinator cannot starve another ready project',async t=>{
-  const f=fixture(t,{maxExpectedSends:6});
-  const paused=await f.setup('Projeto pausado');
-  const first=f.start(paused,'paused_project_first','Crie um site para a missão pausada.');
-  assert.equal(first.status,'succeeded');
-  f.store.db.prepare("UPDATE lab_orchestrators SET status='paused' WHERE id=?")
-    .run(paused.orchestratorId);
-  const ready=await f.setup('Projeto independente pronto');
-  const second=f.start(ready,'ready_project_second','Crie um site para o projeto independente.');
-  assert.equal(second.status,'succeeded');
-  const finished=await f.wait(ready);
-  assert.equal(finished.state,'budget_exhausted',
-    'a paused older coordinator must not stop a ready project');
-  assert.equal(f.service.autonomous.status(f.context,paused).mission.state,'ready_a',
-    'paused mission remains durable and can resume');
-  assert.equal(f.store.db.prepare('SELECT COUNT(*) AS n FROM runs WHERE task_id=?')
-    .get(f.service.autonomous.status(f.context,paused).mission.taskAId).n,0,
-    'paused coordinator must not submit to the GPT provider');
-  assert.equal(f.service.autonomous.status(f.context,paused).continuousExecutionEnabled,true);
-  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
-});
-
-test('transient provider unavailability defers continuation without revoking DEV intent',async t=>{
-  const f=fixture(t,{maxExpectedSends:6});
-  const owner=await f.setup('Projeto com provedor temporariamente indisponível');
-  f.start(owner,'temporary_provider_first','Crie um site e continue até terminar.');
-  const finished=await f.wait(owner);
-  assert.equal(finished.state,'budget_exhausted');
-  const original=f.service.autonomous.continueTechnical;
-  f.service.autonomous.continueTechnical=()=>{throw Error('autonomous_provider_unavailable');};
-  const deferred=f.service.autonomous.advanceContinuousExecution(f.context);
-  assert.equal(deferred.state,'deferred');
-  assert.equal(deferred.reason,'autonomous_provider_unavailable');
-  assert.equal(f.service.autonomous.status(f.context,owner).continuousExecutionEnabled,true);
-  assert.equal(f.service.autonomous.status(f.context,owner).mission.missionId,finished.missionId);
-  f.service.autonomous.continueTechnical=original;
-  const resumed=f.service.autonomous.advanceContinuousExecution(f.context);
-  assert.equal(resumed.state,'advanced');
-  assert.equal(resumed.automatic,true);
-  assert.notEqual(resumed.missionId,finished.missionId);
-  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+test('removed autonomous operations fail closed as unknown operations',async t=>{
+  const f=fixture(t),p=await project(f);
+  for(const operation of ['autonomous_continuous_set','autonomous_dialogue_continue','forjador_send']){
+    await assert.rejects(
+      f.service.invoke(f.context,operation,{projectId:p.projectId,orchestratorId:p.orchestratorId}),
+      /orchestrator_unknown_operation/,
+      operation
+    );
+  }
 });

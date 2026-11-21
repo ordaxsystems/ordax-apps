@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import vm from 'node:vm';
 import {fileURLToPath} from 'node:url';
 import {providerComposeAvailability,providerTaskComposeAvailability,canStartFreshProviderChat,COMPOSE_STATUS_MESSAGES} from '../src/provider-compose-availability.mjs';
 
@@ -91,7 +90,7 @@ test('fresh provider chat recovery preserves the Task and is blocked for unsafe 
 });
 
 test('Electron uses existing persistent isolated Chromium partition; never stores provider password',()=>{
-  assert.match(worker,/constructor\(\{id='primary',partition='persist:ordax-forge-chatgpt'\}/);
+  assert.match(worker,/constructor\(\{id='primary',partition='persist:ordax-forge-chatgpt',allowSend=true\}/);
   assert.match(worker,/this\.partition = partition/);
   assert.match(worker,/this\.session = session\.fromPartition\(this\.partition\)/);
   assert.match(worker,/this\.view = createView\(this\.partition\)/);
@@ -100,18 +99,12 @@ test('Electron uses existing persistent isolated Chromium partition; never store
   assert.doesNotMatch(worker,/setCookie|setPassword|passwordVault|passwordFile/i);
 });
 
-test('main-process preflight rejects signed-out sends before appendMessage, setDraft, startRun',()=>{
-  const start=main.indexOf('async function runTask('),end=main.indexOf('function layoutViews()',start);
-  assert.ok(start>=0 && end>start);
-  const section=main.slice(start,end);
-  const workerIdentity=section.indexOf('providerViews.resolve(runWorker?.view?.webContents)!==runWorker');
-  const probe=section.indexOf('assertProviderSendReadiness(health);');
-  const atomic=section.indexOf('store.beginProviderRun(taskId, prompt, {');
-  const transport=section.indexOf('await runWorker.sendPrompt(');
-  assert.ok(workerIdentity>0 && probe>workerIdentity && atomic>probe && transport>atomic);
-  assert.doesNotMatch(section,/store\.appendMessage\(taskId, 'user', prompt\)/);
-  assert.doesNotMatch(section,/store\.startRun\(taskId/);
-  assert.match(worker,/assertProviderSendReadiness\(health\)/);
+test('passive App has no main-process GPT send path',()=>{
+  assert.doesNotMatch(main,/createOrchestratorKernel\(\{[\s\S]{0,1600}\bprovider\s*:/);
+  assert.doesNotMatch(main,/ownerDispatch/);
+  assert.match(main,/new EmbeddedChatWorker\(\{id:'primary',allowSend:false\}\)/);
+  assert.doesNotMatch(main,/async function runTask\(|ordax:tasks:send|createProviderExecutionScheduler/);
+  assert.match(worker,/if\(this\.allowSend!==true\)throw new Error\('provider_send_disabled_for_passive_app'\)/);
 });
 
 test('App has visible login warning, optional local draft, and disabled send initially',()=>{
@@ -132,108 +125,16 @@ test('App has visible login warning, optional local draft, and disabled send ini
   assert.match(ui,/providerTaskComposeAvailability\(status,\{hostMode:window\.ordaxHost\?\.hostMode===true\}\)/);
 });
 
-// Exercise actual production submit callback against a minimal isolated UI.
-// This is NOT a ChatGPT login simulation, account confirmation or provider E2E.
-const first='async function submitTaskMessage(contentOverride = null) {';
-const last="$('#prompt').addEventListener('input', event => {";
-const i=ui.indexOf(first),j=ui.indexOf(last,i);
-assert.ok(i>=0 && j>i,'submit_handler_not_found');
-const handlerSource=ui.slice(i,j);
-function mount({allowed,send}){
-  const nodes=new Map();
-  const node=id=>{
-    if(!nodes.has(id))nodes.set(id,{
-      value:'Rascunho preservado',disabled:false,style:{height:'auto'},textContent:'',
-      classList:{add(){},remove(){}},
-      scrollTop:0,scrollHeight:0,focus(){},
-      insertAdjacentHTML(){}
-    });
-    return nodes.get(id);
-  };
-  let callback,staged=0,flushed=0,submissions=0;
-  const taskId='task_p5_immutable';
-  const context={
-    currentTaskId:taskId,
-    currentTask:{draft_revision:2,chat_url:null,continuation:{total_messages:0},messages:[]},
-    composeAvailability:{allowed,reason:allowed?'ready':'login_required'},
-    submittingTaskIds:new Set(),
-    draftCache:new Map([[taskId,{revision:2,content:node('#prompt').value}]]),
-    $:selector=>selector==='#composer'?{addEventListener:(type,fn)=>{if(type==='submit')callback=fn;}}:node(selector),
-    stageDraft:()=>{staged++;},
-    flushDraft:()=>{flushed++;},
-    refreshProvider:()=>{},
-    syncComposerAvailability:()=>{},
-    loadTasks:async()=>{},
-    openTask:async()=>{},
-    renderHistory:()=>{},
-    renderContext:()=>{},
-    esc:x=>x,
-    friendlyError:()=> 'Sessão indisponível',
-    plural:()=> '1 mensagem',
-    window:{ordax:{send:async payload=>{submissions++;return send(payload);}}},
-    setTimeout,clearTimeout
-  };
-  vm.runInNewContext(handlerSource,context,{timeout:1200});
-  assert.equal(typeof callback,'function');
-  return {node,context,run:()=>callback({preventDefault(){}}),
-    counters:()=>({staged,flushed,submissions})};
-}
 
-test('Enter/submit while signed out never sends, clears text or creates a Run',async()=>{
-  const f=mount({allowed:false,send:()=>{throw Error('must_not_send');}});
-  await f.run();
-  assert.equal(f.node('#prompt').value,'Rascunho preservado');
-  assert.deepEqual(f.counters(),{staged:1,flushed:0,submissions:0});
-  assert.equal(f.context.submittingTaskIds.size,0);
-});
-
-test('provider login expires between UI readiness and transport: draft survives backend denial',async()=>{
-  const f=mount({allowed:true,send:()=>{throw Error('chatgpt_login_required');}});
-  await f.run();
-  assert.equal(f.node('#prompt').value,'Rascunho preservado');
-  assert.equal(f.context.draftCache.get('task_p5_immutable').content,'Rascunho preservado');
-  assert.deepEqual(f.counters(),{staged:0,flushed:1,submissions:1});
-  assert.equal(f.context.submittingTaskIds.size,0);
-});
-
-test('after confirmed send, draft is cleared only on successful IPC response',async()=>{
-  let resolveSend;
-  const pending=new Promise(resolve=>{resolveSend=resolve;});
-  const f=mount({allowed:true,send:()=>pending});
-  const sent=f.run();
-  assert.equal(f.node('#prompt').value,'Rascunho preservado');
-  resolveSend({task:{title:'Local Task',messages:[],checkpoint_record:null,continuation:{total_messages:1}}});
-  await sent;
-  assert.equal(f.node('#prompt').value,'');
-  assert.equal(f.context.draftCache.get('task_p5_immutable').content,'');
-  assert.equal(f.counters().submissions,1);
-});
-
-test('one pending Task cannot block another Task or trigger a duplicate of itself',async()=>{
-  let releaseFirst;
-  const first=new Promise(resolve=>{releaseFirst=resolve;});
-  const requested=[];
-  const f=mount({allowed:true,send:payload=>{
-    requested.push(payload.taskId);
-    return payload.taskId==='task_p5_immutable'?first:
-      {task:{title:'Second Task',messages:[],checkpoint_record:null,
-        continuation:{total_messages:1}}};
-  }});
-  const sentA=f.run();
-  assert.equal(f.context.submittingTaskIds.has('task_p5_immutable'),true);
-  await f.run();
-  assert.deepEqual(requested,['task_p5_immutable'],'same Task cannot submit twice');
-  f.context.currentTaskId='task_second';
-  f.context.currentTask={draft_revision:1,chat_url:null,
-    continuation:{total_messages:0},messages:[]};
-  f.context.draftCache.set('task_second',{revision:1,content:'Rascunho preservado'});
-  await f.run();
-  assert.deepEqual(requested,['task_p5_immutable','task_second']);
-  assert.equal(f.context.submittingTaskIds.has('task_p5_immutable'),true);
-  assert.equal(f.context.submittingTaskIds.has('task_second'),false);
-  releaseFirst({task:{title:'First Task',messages:[],checkpoint_record:null,
-    continuation:{total_messages:1}}});
-  await sentA;
-  assert.equal(f.context.submittingTaskIds.size,0);
-  assert.equal(f.context.currentTaskId,'task_second');
+test('Task view is read-only and exposes no renderer submit route',()=>{
+  const preload=fs.readFileSync(path.resolve(dir,'../desktop/preload.cjs'),'utf8');
+  const hostBridge=fs.readFileSync(path.resolve(dir,'../host/host-browser-server.mjs'),'utf8');
+  assert.match(html,/id="taskPassiveBoundary"/);
+  assert.match(html,/id="composer" class="composer" hidden aria-hidden="true"/);
+  assert.match(html,/Aplicativo passivo: esta tela não envia mensagens ao GPT nem inicia execução/);
+  assert.doesNotMatch(ui,/submitTaskMessage|window\.ordax\.send/);
+  assert.doesNotMatch(preload,/ordax:tasks:send|\bsend:\s*payload/);
+  assert.doesNotMatch(hostBridge,/ordax:tasks:send/);
+  assert.doesNotMatch(main,/ordax:tasks:send|async function runTask\(/);
+  assert.match(worker,/provider_send_disabled_for_passive_app/);
 });

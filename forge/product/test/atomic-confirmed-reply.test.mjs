@@ -87,12 +87,9 @@ test('foreign task or already-finalized Run never invokes asset side effects',t=
  assert.equal(invoked,0);
  assert.equal(f.count('messages'),1);
 });
-test('main routes observed provider completion exclusively through the Store atomic method',()=>{
+test('passive Electron main does not own provider completion or mutate assistant history',()=>{
  const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
- const run=main.slice(main.indexOf('async function runTask('),main.indexOf('function layoutViews()'));
- assert.match(run,/store\.commitObservedProviderReply\(taskId, runId/);
- assert.doesNotMatch(run,/store\.appendMessage\(taskId, 'assistant'/);
- assert.doesNotMatch(run,/store\.checkpoint\(taskId,/);
- assert.match(run,/for \(const assetPath of writtenPaths\)/);
- assert.match(run,/provisional\.flush\(\)/);
+ assert.doesNotMatch(main,/async function runTask\(|commitObservedProviderReply\(|beginProviderRun\(/);
+ assert.doesNotMatch(main,/createOrchestratorKernel\(\{[\s\S]{0,1600}\bprovider\s*:/);
+ assert.doesNotMatch(main,/ownerDispatch/);
 });

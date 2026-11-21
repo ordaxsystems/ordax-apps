@@ -18,22 +18,12 @@ test('only confirmed autonomous work can inspect a real HTML attachment',()=>{
   assert.equal(shouldAttemptAutomaticHtmlCapture({}),false);
 });
 
-test('post-Run handler reuses canonical capture and never dispatches a second prompt',()=>{
+test('passive App retains explicit read-only HTML capture without post-Run dispatch',()=>{
   const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
   assert.match(main,/async function captureConfirmedHtmlArtifact\(requestedId,\{/);
   assert.match(main,/return captureConfirmedHtmlArtifact\(requestedId\)/);
-  assert.match(main,/shouldAttemptAutomaticHtmlCapture\(\{/);
-  assert.match(main,/captureWorker:executionWorker,allowConcurrentProviderRuns:true/);
   assert.match(main,/inspectProviderLinkedThread\(\{store,worker:captureWorker,taskId\}\)/);
   assert.match(main,/captureWorker\.downloadLinkedHtmlArtifact\(/);
-  const begin=main.indexOf("send:async({taskId,content,draftRevision,taskKind,authorSource='human'})=>");
-  const end=main.indexOf('localOrchestratorContext=orchestratorKernel.context',begin);
-  const text=main.slice(begin,end);
-  assert.ok(begin>0&&end>begin);
-  assert.equal((text.match(/enqueueExecution\(/g)||[]).length,1,
-    'the sender must have exactly one work execution lane');
-  assert.equal((text.match(/captureConfirmedHtmlArtifact\(/g)||[]).length,1,
-    'recovery must call the one canonical capture function');
-  assert.doesNotMatch(text,/requestSubmit|sendPrompt|\.send\(/);
-  assert.match(text,/attachment_not_verified/);
+  assert.doesNotMatch(main,/shouldAttemptAutomaticHtmlCapture|captureWorker:executionWorker|async function runTask\(|enqueueExecution\(/);
+  assert.doesNotMatch(main,/createOrchestratorKernel\(\{[\s\S]{0,1600}\bprovider\s*:/);
 });

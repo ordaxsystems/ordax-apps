@@ -8,17 +8,18 @@ import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
 
-function fixture(t,{provider,coordinator,repositoryPort=null,confirmProposal=()=>true,confirmProposalSend=()=>true}={}) {
+function fixture(t,{repositoryPort=null}={}) {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-orchestration-'));
   const file=path.join(dir,'lab.sqlite');
   const store=new Store(file);
   const context=Object.freeze({actorId:'local-test-owner',clientId:'app-test',workspaceSessionId:store.getWorkspaceSession().id});
   let allowed=true;
-  const service=new OrchestratorService({store,provider,coordinator,repositoryPort,confirmProposal,confirmProposalSend,authorize:({context:c})=>allowed&&c===context});
+  const service=new OrchestratorService({store,repositoryPort,authorize:({context:c})=>allowed&&c===context});
   t.after(()=>{try{store.close();}catch{}fs.rmSync(dir,{recursive:true,force:true});});
   let request=0;
   return {file,store,context,service,setAllowed:v=>allowed=v,
-    call:(op,input={})=>service.invoke(context,op,{...(!ORCHESTRATOR_TOOLS.find(t=>t.operation===op).readOnly?{requestId:'r'+(++request)}:{}),...input})};
+    call:(op,input={})=>{const tool=ORCHESTRATOR_TOOLS.find(item=>item.operation===op);
+      return service.invoke(context,op,{...(tool&&!tool.readOnly?{requestId:'r'+(++request)}:{}),...input});}};
 }
 async function project(f,name='Projeto A') {
   const p=(await f.call('project_create',{name,objective:'Criar site'})).result.projectId;
@@ -26,19 +27,6 @@ async function project(f,name='Projeto A') {
   const w=(await f.call('work_create',{projectId:p,orchestratorId:o.orchestratorId,title:'Site'})).result.taskId;
   return {p,o:o.orchestratorId,chat:o.chatTaskId,w};
 }
-function executorReceipt(store,taskId) {
-  const runId=store.startRun(taskId);store.finishRun(taskId,runId);
-  return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
-}
-
-async function preparedWork(f) {
-  const a=await project(f);
-  const actionId=(await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Compare as alternativas.'})).result.proposalActionId;
-  const created=await f.call('proposal_review',{projectId:a.p,orchestratorId:a.o,actionId,approved:true});
-  return {...a,actionId,taskId:created.result.taskId,draftRevision:1};
-}
-const proposedReply=async()=>({content:'Proposta para revisão',proposal:{title:'Pesquisar',content:'Compare as alternativas.',reason:'Fundamentar o projeto'}});
-
 test('project deletion requires exact owner confirmation and removes only project-owned App records',async t=>{
   const f=fixture(t),a=await project(f,'Projeto para excluir'),b=await project(f,'Projeto preservado');
   f.store.appendMessage(a.w,'user','Mensagem somente do projeto descartável');
@@ -71,11 +59,11 @@ test('project deletion requires exact owner confirmation and removes only projec
 test('project deletion refuses active or uncertain work and resource bindings',async t=>{
   const f=fixture(t),a=await project(f,'Protegido');
   const active=f.store.startRun(a.w);
-  await assert.rejects(f.call('project_delete',{projectId:a.p,confirmName:'Protegido'}),/run_active/);
+  await assert.rejects(f.call('project_delete',{projectId:a.p,confirmName:'Protegido'}),/orchestrator_project_delete_work_active/);
   f.store.finishRun(a.w,active);
   f.service.transaction(()=>f.service.reserve(f.context,'work_send',{
     requestId:'pending-protected-work',projectId:a.p,taskId:a.w,content:'sensitive'}));
-  await assert.rejects(f.call('project_delete',{projectId:a.p,confirmName:'Protegido'}),/commands_unresolved/);
+  await assert.rejects(f.call('project_delete',{projectId:a.p,confirmName:'Protegido'}),/orchestrator_project_delete_work_active/);
   assert.ok(f.store.getTask(a.w));
   assert.equal(f.store.db.prepare('SELECT COUNT(*) AS n FROM lab_projects WHERE id=?').get(a.p).n,1);
   f.store.db.prepare("UPDATE lab_command_receipts SET status='failed' WHERE request_id='pending-protected-work'").run();
@@ -135,18 +123,21 @@ test('project preflight reports only scoped local evidence, never manufactures e
   assert.equal(providerSends,0);assert.equal(modelCalls,0);
 });
 
-test('project preflight uses app-owned analysis and paused Forjador blocks without changing durable tasks',async t=>{
+test('project preflight advertises MCP-only analysis and pause without changing durable tasks',async t=>{
   const f=fixture(t),a=await project(f);
   const ready=await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o});
   assert.deepEqual(ready.blockers,[]);
-  assert.equal(ready.analysisEngine.available,true);
-  assert.equal(ready.analysisEngine.mode,'app_owned');
-  assert.equal(ready.analysisEngine.externalModelUsed,false);
+  assert.deepEqual(ready.analysisEngine,{
+    state:'mcp_only',available:false,mode:'gpt_via_forge_mcp',externalModelUsed:false
+  });
   assert.equal(ready.gates.recordedWorkAnalysisEligible,true);
+  assert.equal(ready.gates.automaticGptDispatchAllowed,false);
   await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
   const paused=await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o});
   assert.deepEqual(paused.blockers,['orchestrator_paused']);
   assert.equal(paused.gates.recordedWorkAnalysisEligible,false);
+  assert.equal(paused.analysisEngine.available,false);
+  assert.equal(paused.analysisEngine.mode,'gpt_via_forge_mcp');
   assert.equal(f.store.getTask(a.w).status,'ready');
 });
 
@@ -390,184 +381,54 @@ test('only one project may request observation in one App profile; pause enables
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
-test('native-approved first send uses the existing executor, durable approval and one receipt without coordinator API',async t=>{
-  let sends=0,confirms=0;
-  const f=fixture(t,{coordinator:{send:proposedReply},confirmProposalSend:async({content})=>{
-    confirms++;assert.equal(content,'Compare as alternativas.');return true;
-  },provider:{ready:async()=>true,send:async({taskId,content,draftRevision})=>{
-    sends++;
-    assert.equal(draftRevision,2);
-    assert.equal(f.store.db.prepare("SELECT status FROM approval_ledger WHERE task_id=?").get(taskId).status,'approved');
-    assert.equal(f.store.db.prepare("SELECT status FROM action_ledger WHERE task_id=? AND action_type='orchestrator.proposal-send'").get(taskId).status,'dispatching');
-    const {runId}=f.store.beginProviderRun(taskId,content,{draftRevision});
-    f.store.appendMessage(taskId,'assistant','Comparação observada');f.store.finishRun(taskId,runId);
-    return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
-  }}}),a=await preparedWork(f);
-  f.service.coordinator=null;
-  assert.equal((await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals[0].status,'prepared');
-  const input={requestId:'first-send',projectId:a.p,orchestratorId:a.o,actionId:a.actionId,draftRevision:1};
-  const result=await f.call('proposal_send',input);
-  assert.equal(result.status,'succeeded');assert.equal(result.result.effectVerified,false);
-  assert.equal(f.store.getTask(a.taskId).draft,'');
-  assert.deepEqual(await f.call('proposal_send',input),result);
-  await assert.rejects(f.call('proposal_send',{...input,requestId:'another-send'}),/first_send_unavailable/);
-  assert.equal(sends,1);assert.equal(confirms,1);
-  assert.equal((await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals.length,0);
-});
-
-test('missing or cancelled native send confirmation and failed readiness create no send approval or provider call',async t=>{
-  for(const mode of ['missing','cancelled','not-ready']) {
-    let sends=0,confirms=0;
-    const f=fixture(t,{coordinator:{send:proposedReply},
-      confirmProposalSend:mode==='missing'?null:async()=>{confirms++;return false;},
-      provider:{ready:async()=>mode!=='not-ready',send:()=>{sends++;throw Error('must not send');}}}),a=await preparedWork(f);
-    await assert.rejects(f.call('proposal_send',{projectId:a.p,orchestratorId:a.o,actionId:a.actionId,draftRevision:1}),/not_approved|provider_unavailable/);
-    assert.equal(sends,0);assert.equal(confirms,mode==='cancelled'?1:0);
-    assert.equal(f.store.getTask(a.taskId).draft,'Compare as alternativas.');
-    assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM action_ledger WHERE action_type='orchestrator.proposal-send'").get().n,0);
-  }
-});
-
-test('first send revalidates draft, pause, permission and intervening runs after native review',async t=>{
-  for(const mode of ['draft','pause','revocation','run']) {
-    let confirm,sends=0;
-    const f=fixture(t,{coordinator:{send:proposedReply},confirmProposalSend:()=>new Promise(resolve=>{confirm=resolve;}),
-      provider:{send:()=>{sends++;throw Error('must not send');}}}),a=await preparedWork(f);
-    const input={projectId:a.p,orchestratorId:a.o,actionId:a.actionId,draftRevision:1};
-    const pending=f.call('proposal_send',input);
-    // Metadata remains usable while the owner reviews; no SQL transaction is open.
-    if(mode==='draft')f.store.setDraft(a.taskId,'Mensagem editada',2);
-    if(mode==='pause')await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
-    if(mode==='revocation')f.setAllowed(false);
-    if(mode==='run'){const id=f.store.startRun(a.taskId);f.store.finishRun(a.taskId,id);}
-    confirm(true);
-    await assert.rejects(pending,/draft_changed|paused|access_denied|first_send_unavailable/);
-    assert.equal(sends,0);
-    assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM action_ledger WHERE action_type='orchestrator.proposal-send'").get().n,0);
-  }
-});
-
-test('uncertain first send survives recovery and neither same nor new commands replay transport',async t=>{
-  let sends=0;
-  const f=fixture(t,{coordinator:{send:proposedReply},provider:{send:async({taskId,content,draftRevision})=>{
-    sends++;f.store.beginProviderRun(taskId,content,{draftRevision});throw Error('lost transport');
-  }}}),a=await preparedWork(f);
-  const input={projectId:a.p,orchestratorId:a.o,actionId:a.actionId,draftRevision:1,requestId:'uncertain-first-send'};
-  const receipt=await f.call('proposal_send',input);
-  assert.equal(receipt.status,'uncertain');
-  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=?').get(a.taskId).n,1);
-  assert.equal(f.store.db.prepare('SELECT status FROM action_ledger WHERE id=?').get(receipt.result.sendActionId).status,'indeterminate');
-  // Simulate process loss before final receipt/action persistence.
-  f.store.db.prepare("UPDATE lab_command_receipts SET status='running' WHERE id=?").run(receipt.commandId);
-  f.store.db.prepare("UPDATE action_ledger SET status='dispatching' WHERE id=?").run(receipt.result.sendActionId);
-  f.store.close();
-  const reopened=new Store(f.file);
-  try {
-    const service=new OrchestratorService({store:reopened,authorize:()=>true,
-      provider:{send:()=>{sends++;throw Error('must not replay');}}});
-    assert.equal(service.recoverInterruptedCommands(),1);
-    assert.equal(service.recoverInterruptedCommands(),0);
-    assert.equal((await service.invoke(f.context,'proposal_send',input)).status,'uncertain');
-    await assert.rejects(service.invoke(f.context,'proposal_send',{...input,requestId:'new-first-send'}),/first_send_unavailable/);
-    assert.equal(reopened.db.prepare('SELECT status FROM action_ledger WHERE id=?').get(receipt.result.sendActionId).status,'indeterminate');
-  }finally{reopened.close();}
-  assert.equal(sends,1);
-});
-
-test('send approval persistence is atomic and project/work-send permissions cannot be bypassed',async t=>{
-  let sends=0,confirms=0;
-  const f=fixture(t,{coordinator:{send:proposedReply},confirmProposalSend:async()=>{confirms++;return true;},
-    provider:{send:()=>{sends++;throw Error('must not send');}}}),a=await preparedWork(f),b=await project(f,'B');
-  const input={projectId:a.p,orchestratorId:a.o,actionId:a.actionId,draftRevision:1};
-  await assert.rejects(f.call('proposal_send',{...input,projectId:b.p,orchestratorId:b.o}),/unavailable/);
-  const authorize=f.service.authorize;
-  f.service.authorize=args=>args.operation!=='work_send'&&authorize(args);
-  await assert.rejects(f.call('proposal_send',input),/access_denied/);assert.equal(confirms,0);
-  f.service.authorize=authorize;
-  f.store.db.exec("CREATE TRIGGER reject_send_approval BEFORE INSERT ON approval_ledger BEGIN SELECT RAISE(ABORT,'injected_send_approval'); END");
-  await assert.rejects(f.call('proposal_send',input),/injected_send_approval/);
-  assert.equal(sends,0);
-  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='proposal_send'").get().n,0);
-  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM action_ledger WHERE action_type='orchestrator.proposal-send'").get().n,0);
-  assert.equal(f.store.getTask(a.taskId).draft,'Compare as alternativas.');
-});
-
-test('app-owned work proposal survives restart and approval creates exactly one scoped work and draft without GPT',async t=>{
-  let sends=0;
-  const f=fixture(t,{provider:{send:()=>{sends++;throw Error('must not send');}}}),a=await project(f),b=await project(f,'B');
-  const before=f.store.db.prepare('SELECT COUNT(*) n FROM tasks').get().n;
-  const content='Investigar erro sem alterar arquivos.';
-  f.store.setDraft(a.chat,content,1);
-  const input={projectId:a.p,orchestratorId:a.o,content,draftRevision:1,requestId:'prepare-once'};
-  const receipt=await f.call('orchestrator_prepare',input);
-  assert.equal(receipt.status,'succeeded');
-  assert.equal(receipt.result.provider,'ordax_app_policy');
-  assert.equal(receipt.result.appOwned,true);
-  assert.equal(f.store.getTaskDraft(a.chat).draft,'');
-  assert.equal(f.store.getTaskDraft(a.chat).draft_revision,2);
-  assert.equal(f.store.messages(a.chat).length,0);
-  assert.deepEqual(await f.call('orchestrator_prepare',input),receipt);
-  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM tasks').get().n,before);
-  const actionId=receipt.result.proposalActionId;
-  assert.equal((await f.call('proposals_list',{projectId:b.p,orchestratorId:b.o})).proposals.length,0);
-  await assert.rejects(f.call('proposal_review',{projectId:b.p,orchestratorId:b.o,actionId,approved:true}),/unavailable/);
-  const reopened=new Store(f.file);
-  try {
-    const recovered=new OrchestratorService({store:reopened,authorize:()=>true});
-    assert.equal((await recovered.invoke(f.context,'proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals[0].actionId,actionId);
-  } finally {reopened.close();}
-  const approved=await f.call('proposal_review',{projectId:a.p,orchestratorId:a.o,actionId,approved:true});
-  assert.equal(approved.result.providerMessagesSent,0);
-  const created=f.store.getTask(approved.result.taskId);
-  assert.equal(created.title,content);
-  assert.equal(created.draft,content);
-  assert.equal(created.messages.length,0);
-  assert.equal((await f.call('work_get',{projectId:a.p,taskId:created.id})).orchestrator_id,a.o);
-  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM tasks').get().n,before+1);
-  assert.equal(sends,0);
-});
-
-test('proposal rejection, paused Forjador and transaction failure never create partial work',async t=>{
+test('passive App rejects removed GPT dispatch and decision operations before side effects',async t=>{
   const f=fixture(t),a=await project(f);
-  const prepare=async()=> (await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Nova frente'})).result.proposalActionId;
-  const actionId=await prepare();
-  const scope={projectId:a.p,orchestratorId:a.o,actionId};
-  await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
-  await assert.rejects(f.call('proposal_review',{...scope,approved:true}),/paused/);
-  await f.call('proposal_review',{...scope,approved:false});
-  assert.equal((await f.call('work_list',{projectId:a.p})).works.length,1);
-  await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:false});
-  const next=await prepare();
-  f.store.db.exec("CREATE TRIGGER reject_draft BEFORE UPDATE OF draft ON tasks BEGIN SELECT RAISE(ABORT,'injected_draft_failure'); END");
-  await assert.rejects(f.call('proposal_review',{projectId:a.p,orchestratorId:a.o,actionId:next,approved:true}),/injected_draft_failure/);
-  assert.equal((await f.call('work_list',{projectId:a.p})).works.length,1);
-  assert.equal((await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals[0].actionId,next);
-  assert.equal(f.store.db.prepare("SELECT status FROM approval_ledger WHERE action_id=?").get(next).status,'pending');
+  const before={
+    runs:f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,
+    messages:f.store.db.prepare('SELECT COUNT(*) n FROM messages').get().n,
+    receipts:f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts').get().n,
+    actions:f.store.db.prepare('SELECT COUNT(*) n FROM action_ledger').get().n
+  };
+  const attempts=[
+    ['work_send',{requestId:'removed_work_send',projectId:a.p,taskId:a.w,content:'nao enviar'}],
+    ['forjador_send',{requestId:'removed_forjador',projectId:a.p,orchestratorId:a.o,content:'nao enviar'}],
+    ['proposal_send',{requestId:'removed_proposal_send',projectId:a.p,orchestratorId:a.o,actionId:'action_removed'}],
+    ['orchestrator_prepare',{requestId:'removed_prepare',projectId:a.p,orchestratorId:a.o,content:'nao decidir'}],
+    ['proposal_review',{requestId:'removed_review',projectId:a.p,orchestratorId:a.o,actionId:'action_removed',approved:true}],
+    ['orchestrator_analyze',{requestId:'removed_analyze',projectId:a.p,orchestratorId:a.o}]
+  ];
+  for(const [operation,input] of attempts)
+    await assert.rejects(f.service.invoke(f.context,operation,input),/orchestrator_unknown_operation/,operation);
+  assert.deepEqual({
+    runs:f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,
+    messages:f.store.db.prepare('SELECT COUNT(*) n FROM messages').get().n,
+    receipts:f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts').get().n,
+    actions:f.store.db.prepare('SELECT COUNT(*) n FROM action_ledger').get().n
+  },before);
+  assert.equal(f.service.provider,undefined);
+  assert.equal(f.service.confirmProposal,undefined);
 });
 
-test('an approval boolean without trusted native confirmation cannot apply an app-owned proposal',async t=>{
-  const f=fixture(t,{confirmProposal:null}),a=await project(f);
-  const actionId=(await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Nova frente'})).result.proposalActionId;
-  await assert.rejects(f.call('proposal_review',{projectId:a.p,orchestratorId:a.o,actionId,approved:true}),/not_approved/);
-  assert.equal((await f.call('work_list',{projectId:a.p})).works.length,1);
-  assert.equal((await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals.length,1);
-});
-
-test('native review of app-owned proposal holds no database transaction and revalidates pause and authorization',async t=>{
-  let confirm;
-  const f=fixture(t,{confirmProposal:()=>new Promise(resolve=>{confirm=resolve;})}),a=await project(f);
-  const actionId=(await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Nova frente'})).result.proposalActionId;
-  const input={projectId:a.p,orchestratorId:a.o,actionId,approved:true};
-  const pending=f.call('proposal_review',input);
-  await assert.rejects(f.call('proposal_review',input),/review_busy/);
-  await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
-  confirm(true);await assert.rejects(pending,/paused/);
-  await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:false});
-  const revoked=f.call('proposal_review',input);
-  f.setAllowed(false);confirm(true);await assert.rejects(revoked,/access_denied/);
-  f.setAllowed(true);
-  assert.equal((await f.call('work_list',{projectId:a.p})).works.length,1);
-  assert.equal((await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals.length,1);
+test('historical proposal ledger remains readable but cannot execute review',async t=>{
+  const f=fixture(t),a=await project(f);
+  const proposal={title:'Historico',content:'Registro persistido antigo',reason:'Compatibilidade de leitura'};
+  const actionId=f.store.beginAction(a.chat,null,'orchestrator.work-proposal',null,{
+    actorId:f.context.actorId,clientId:f.context.clientId,projectId:a.p,orchestratorId:a.o,proposal
+  });
+  f.store.requestApproval(a.chat,actionId,'Aprovacao historica');
+  const corrupt=f.store.beginAction(a.chat,null,'orchestrator.work-proposal',null,{
+    actorId:f.context.actorId,clientId:f.context.clientId,projectId:a.p,orchestratorId:a.o,proposal
+  });
+  f.store.requestApproval(a.chat,corrupt,'Corromper');
+  f.store.db.prepare('UPDATE action_ledger SET payload=? WHERE id=?').run('{"broken"',corrupt);
+  const listed=await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o});
+  assert.deepEqual(listed.proposals.map(item=>item.actionId),[actionId]);
+  assert.equal(listed.proposals[0].status,'pending');
+  await assert.rejects(f.service.invoke(f.context,'proposal_review',{
+    requestId:'no_review',projectId:a.p,orchestratorId:a.o,actionId,approved:true
+  }),/orchestrator_unknown_operation/);
+  assert.equal(f.store.db.prepare('SELECT status FROM action_ledger WHERE id=?').get(actionId).status,'pending');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_task_bindings WHERE kind=?').get('work').n,1);
 });
 
 test('projects, coordinators and work persist in the same SQLite, with bounded semantic reads',async t=>{
@@ -688,71 +549,24 @@ test('forged subjects, unknown keys, cross-project bindings and read revocation 
   await assert.rejects(f.call('command_get',{commandId:'command_unknown'}),/access_denied/);
 });
 
-test('one provider send uses the injected canonical executor and a stable receipt, with no replay',async t=>{
-  let calls=0;
-  const f=fixture(t,{provider:{send:async({taskId})=>{calls++;return executorReceipt(f.store,taskId);}}}),a=await project(f);
-  const input={requestId:'send-once',projectId:a.p,taskId:a.w,content:'Olá'};
-  const first=await f.call('work_send',input);
-  assert.equal(first.status,'succeeded');
-  assert.equal(first.result.effectVerified,false);
-  assert.deepEqual(await f.call('work_send',input),first);
-  assert.equal(calls,1);
-  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,1,'only the injected canonical executor creates a Run');
-});
-
-test('unknown delivery remains uncertain across restart; neither same nor new request can resend',async t=>{
-  let calls=0;
-  const f=fixture(t,{provider:{send:async()=>{calls++;throw Error('upstream private detail');}}}),a=await project(f);
-  const input={requestId:'send-once',projectId:a.p,taskId:a.w,content:'Olá'};
-  const result=await f.call('work_send',input);
-  assert.equal(result.status,'uncertain');assert.equal(result.requiresReconciliation,true);
-  assert.doesNotMatch(JSON.stringify(result),/private detail/);
-  assert.equal((await f.call('work_get',{projectId:a.p,taskId:a.w})).monitor.state,'reconciliation_required');
-  const listed=(await f.call('work_list',{projectId:a.p})).works[0];
-  assert.equal(listed.execution.observed,'reconciliation_required');
-  assert.equal(listed.execution.needsReview,true);
-  assert.equal(listed.execution.automaticDispatchAllowed,false);
-  assert.deepEqual(await f.call('work_send',input),result);
-  await assert.rejects(f.call('work_send',{...input,requestId:'different'}),/reconciliation_required/);
-  f.store.close();
-  const reopened=new Store(f.file);
-  try {
-    const c={...f.context,workspaceSessionId:reopened.getWorkspaceSession().id};
-    const s=new OrchestratorService({store:reopened,authorize:()=>true,provider:{send:async()=>{calls++;}}});
-    assert.equal(s.recoverInterruptedCommands(),0);
-    assert.deepEqual(await s.invoke(c,'work_send',input),result);
-    assert.equal(calls,1);
-  }finally{reopened.close();}
-});
-
-test('explicitly proven pre-submit failure is retryable without replaying the same request',async t=>{
-  let calls=0;
-  const f=fixture(t,{provider:{send:async({taskId})=>{
-    calls++;
-    const runId=f.store.startRun(taskId);
-    f.store.recordRunMetrics(taskId,runId,'beta',{
-      failedStage:'health',providerDeliveryState:'not_submitted'
-    });
-    f.store.finishRun(taskId,runId,'health:chatgpt_session_not_observed');
-    const error=Object.assign(new Error('health:chatgpt_session_not_observed'),{
-      providerDeliveryState:'not_submitted',providerFailureStage:'health',
-      providerFailureCode:'chatgpt_session_not_observed'
-    });
-    throw error;
-  }}}),a=await project(f);
-  const input={requestId:'pre-submit',projectId:a.p,taskId:a.w,content:'Leia o README'};
-  const first=await f.call('work_send',input);
-  assert.equal(first.status,'failed');
-  assert.equal(first.requiresReconciliation,false);
-  assert.equal(first.result.reason,'provider_not_submitted');
-  assert.equal(first.result.failureCode,'chatgpt_session_not_observed');
-  assert.deepEqual(await f.call('work_send',input),first);
-  assert.equal(calls,1,'an identical requestId is idempotent');
+test('legacy provider receipts remain observable while the passive App cannot send',async t=>{
+  const f=fixture(t),a=await project(f);
+  const legacy=f.service.transaction(()=>f.service.reserve(f.context,'work_send',{
+    requestId:'legacy_unknown_send',projectId:a.p,taskId:a.w,content:'registro historico'
+  }));
+  assert.ok(legacy.commandId);
+  assert.equal(f.service.recoverInterruptedCommands(),1);
+  assert.equal(f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE id=?')
+    .get(legacy.commandId).status,'uncertain');
   const work=await f.call('work_get',{projectId:a.p,taskId:a.w});
-  assert.deepEqual(work.monitor,{state:'failed',retryAllowed:true,mayAutomaticallySend:false});
-  const retry=await f.call('work_send',{...input,requestId:'pre-submit-retry'});
-  assert.equal(retry.status,'failed');
-  assert.equal(calls,2,'only a new explicit request can retry');
+  assert.equal(work.monitor.state,'reconciliation_required');
+  const beforeRuns=f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n;
+  await assert.rejects(f.service.invoke(f.context,'work_send',{
+    requestId:'new_send_forbidden',projectId:a.p,taskId:a.w,content:'nao executar'
+  }),/orchestrator_unknown_operation/);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,beforeRuns);
+  assert.equal(f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE id=?')
+    .get(legacy.commandId).status,'uncertain');
 });
 
 test('command receipt migration adds failed state without losing uncertain history',async t=>{
@@ -784,20 +598,6 @@ test('command receipt migration adds failed state without losing uncertain histo
   assert.equal(migrated.receipt(row).requiresReconciliation,true);
 });
 
-test('a claimed success without transport evidence and a canonical successful Run stays uncertain',async t=>{
-  const f=fixture(t,{provider:{send:async()=>({confirmed:true,runId:'run_12345678'})}}),a=await project(f);
-  const result=await f.call('work_send',{projectId:a.p,taskId:a.w,content:'Teste'});
-  assert.equal(result.status,'uncertain');
-});
-
-test('a complete transport receipt belonging to another Task cannot confirm the current work',async t=>{
-  const f=fixture(t,{provider:{send:async()=>executorReceipt(f.store,otherTask)}}),a=await project(f);
-  const otherTask=f.store.createTask('Other').id;
-  const result=await f.call('work_send',{projectId:a.p,taskId:a.w,content:'Teste'});
-  assert.equal(result.status,'uncertain');
-  assert.equal(f.store.getTask(a.w).status,'ready');
-});
-
 test('ordinary GPT Tasks without a project binding pass provider preflight without SQLite null parameters',async t=>{
   const f=fixture(t);
   const task=f.store.createTask('GPT Web — conversa independente de projeto');
@@ -814,23 +614,6 @@ test('ordinary GPT Tasks without a project binding pass provider preflight witho
     .get(begun.userMessage.id).role,'user');
   f.store.finishRun(task.id,begun.runId);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
-});
-
-test('in-flight requests do not run twice; pause and a second work cannot bypass the executor',async t=>{
-  let resolve,calls=0;
-  const gate=new Promise(r=>resolve=r);
-  const f=fixture(t,{provider:{send:async({taskId})=>{calls++;await gate;return executorReceipt(f.store,taskId);}}}),a=await project(f);
-  const input={requestId:'active',projectId:a.p,taskId:a.w,content:'Trabalhe'};
-  const pending=f.call('work_send',input);
-  assert.equal((await f.call('work_send',input)).status,'running');
-  assert.equal((await f.call('work_get',{projectId:a.p,taskId:a.w})).monitor.mayAutomaticallySend,false);
-  await assert.rejects(f.call('work_send',{...input,requestId:'other'}),/executor_busy/);
-  await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
-  assert.throws(()=>f.service.assertProviderTaskAvailable(a.w),/paused/);
-  assert.throws(()=>f.service.assertProviderTaskAvailable(a.chat),/coordinator_channel/);
-  assert.throws(()=>f.service.assertProviderTaskAvailable(a.chat,{allowCoordinator:true}),/paused/);
-  resolve();await pending;assert.equal(calls,1);
-  await assert.rejects(f.call('work_send',{...input,requestId:'paused'}),/paused/);
 });
 
 test('status reports uncertain receipt counts per authorized project without replay or cross-project attribution',async t=>{
@@ -927,8 +710,7 @@ test('malformed recovery receipt quarantines the command and remains safely insp
 
 
 test('truncated provider receipts preserve read models and quarantine only their own project',async t=>{
-  let sends=0;
-  const f=fixture(t,{provider:{send:async({taskId})=>{sends++;return executorReceipt(f.store,taskId);}}});
+  const f=fixture(t);
   const a=await project(f,'Interrupted'),b=await project(f,'Independent');
   const reserved=f.service.transaction(()=>f.service.reserve(f.context,'proposal_send',{
     requestId:'truncated_target',projectId:a.p,orchestratorId:a.o,
@@ -945,25 +727,24 @@ test('truncated provider receipts preserve read models and quarantine only their
   assert.equal((await f.call('work_plan',{projectId:a.p})).plan.workers.length,1);
   assert.equal((await f.call('status')).uncertainCommands,1);
   assert.throws(()=>f.service.assertProviderTaskAvailable(a.w),/reconciliation_required/);
-  await assert.rejects(f.call('work_send',{projectId:a.p,taskId:a.w,content:'Não reenviar'}),
-    /reconciliation_required/);
+  await assert.rejects(f.service.invoke(f.context,'work_send',{
+    requestId:'removed_a',projectId:a.p,taskId:a.w,content:'Não reenviar'
+  }),/orchestrator_unknown_operation/);
   await assert.rejects(f.call('conversation_rotate',{projectId:a.p,taskId:a.w}),
     /reconciliation_required/);
   await assert.rejects(f.call('work_dependency_set',{projectId:a.p,taskId:a.w,dependsOn:[]}),
     /dependencies_locked_after_execution/);
-  assert.equal(sends,0);
-  const independent=await f.call('work_send',{projectId:b.p,taskId:b.w,content:'Trabalho autorizado independente'});
-  assert.equal(independent.status,'succeeded');
-  assert.equal(sends,1);
-  const verified=await f.call('work_get',{projectId:b.p,taskId:b.w});
-  assert.equal(verified.runs[0].status,'succeeded');
-  assert.equal(verified.monitor.state,'awaiting_instruction');
+  const independent=await f.call('work_get',{projectId:b.p,taskId:b.w});
+  assert.equal(independent.monitor.state,'awaiting_instruction');
+  assert.equal(independent.runs.length,0);
+  await assert.rejects(f.service.invoke(f.context,'work_send',{
+    requestId:'removed_b',projectId:b.p,taskId:b.w,content:'Trabalho independente'
+  }),/orchestrator_unknown_operation/);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
 test('uncertain first-send target referencing a task in another project cannot quarantine that task',async t=>{
-  let sends=0;
-  const f=fixture(t,{provider:{send:async({taskId})=>{sends++;return executorReceipt(f.store,taskId);}}});
+  const f=fixture(t);
   const a=await project(f,'Receipt owner'),b=await project(f,'Separate target');
   const reserved=f.service.transaction(()=>f.service.reserve(f.context,'proposal_send',{
     requestId:'cross_project_target',projectId:a.p,orchestratorId:a.o,
@@ -977,48 +758,42 @@ test('uncertain first-send target referencing a task in another project cannot q
   assert.equal(scoped.unknown_work_target,1);
   assert.equal((await f.call('work_get',{projectId:a.p,taskId:a.w})).monitor.state,'reconciliation_required');
   assert.equal((await f.call('work_get',{projectId:b.p,taskId:b.w})).monitor.state,'awaiting_instruction');
-  const confirmed=await f.call('work_send',{projectId:b.p,taskId:b.w,content:'Isolado'});
-  assert.equal(confirmed.status,'succeeded');assert.equal(sends,1);
+  const independent=await f.call('work_get',{projectId:b.p,taskId:b.w});
+  assert.equal(independent.runs.length,0);
+  await assert.rejects(f.service.invoke(f.context,'work_send',{
+    requestId:'removed_cross_project',projectId:b.p,taskId:b.w,content:'Isolado'
+  }),/orchestrator_unknown_operation/);
 });
 
 test('corrupted historical coordinator receipt does not quarantine independent GPT work',async t=>{
-  let sends=0;
-  const f=fixture(t,{provider:{send:async({taskId})=>{sends++;return executorReceipt(f.store,taskId);}}});
+  const f=fixture(t);
   const a=await project(f);
   const reserved=f.service.transaction(()=>f.service.reserve(f.context,'orchestrator_analyze',{
     requestId:'broken_advisory',projectId:a.p,orchestratorId:a.o}));
   f.store.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
     .run('{"taskId":',reserved.commandId);
   assert.equal(f.service.recoverInterruptedCommands(),1);
-  assert.equal(f.service.coordinatorTurnBusy(a.chat),false);
-  assert.equal((await f.call('work_get',{projectId:a.p,taskId:a.w})).monitor.state,'awaiting_instruction');
-  assert.equal((await f.call('work_send',{projectId:a.p,taskId:a.w,content:'Enviar explicitamente'})).status,'succeeded');
-  assert.equal(sends,1);
+  const work=await f.call('work_get',{projectId:a.p,taskId:a.w});
+  assert.equal(work.monitor.state,'awaiting_instruction');
+  assert.equal(work.runs.length,0);
+  await assert.rejects(f.service.invoke(f.context,'work_send',{
+    requestId:'removed_after_advisory',projectId:a.p,taskId:a.w,content:'Não executar'
+  }),/orchestrator_unknown_operation/);
 });
 
-test('continuation analysis and advisory proposals quarantine unknown provider target without SQL errors',async t=>{
-  const f=fixture(t,{coordinator:{available:()=>true,send:async({prepareWork})=>
-    prepareWork?{content:'Plano',proposal:{title:'Próxima frente',content:'Verificar continuidade',reason:'Necessário'}}:
-      {content:'Análise confirmada'}}});
-  const a=await project(f);
-  await f.call('continuity_set',{projectId:a.p,orchestratorId:a.o,enabled:true});
-  await f.call('continuity_proposals_set',{projectId:a.p,orchestratorId:a.o,enabled:true});
-  const run=f.store.startRun(a.w);f.store.finishRun(a.w,run);
-  assert.equal(f.service.continuation.scan(),1);
-  const reserved=f.service.transaction(()=>f.service.reserve(f.context,'proposal_send',{
-    requestId:'broken_continuation',projectId:a.p,orchestratorId:a.o,
-    actionId:'action_placeholder',draftRevision:1}));
-  f.store.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
-    .run('{"taskId":',reserved.commandId);
-  assert.equal(f.service.recoverInterruptedCommands(),1);
-  const blocked=await f.service.continuation.tick(f.context);
-  assert.equal(blocked.state,'reconciliation_required');
-  assert.equal(f.store.db.prepare('SELECT state FROM lab_continuation_reviews WHERE run_id=?').get(run).state,'queued',
-    'no Groq analysis is consumed without verified provider provenance');
-  f.store.db.prepare("UPDATE lab_continuation_reviews SET state='analyzed' WHERE run_id=?").run(run);
-  assert.equal((await f.service.continuation.nextProposal.tick(f.context)).state,'reconciliation_required');
-  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_next_proposals').get().n,0);
-  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+test('continuation is historical read-only and cannot schedule analysis or proposals',async t=>{
+  const f=fixture(t),a=await project(f);
+  const status=await f.call('continuity_status',{projectId:a.p,orchestratorId:a.o});
+  assert.equal(status.enabled,false);
+  assert.equal(status.legacyRecordOnly,true);
+  assert.equal(status.mode,'legacy_record_only');
+  assert.equal(status.automaticGPTSends,false);
+  assert.equal(typeof f.service.continuation.tick,'undefined');
+  assert.equal(typeof f.service.continuation.configure,'undefined');
+  for(const operation of ['continuity_set','continuity_proposals_set','continuity_followup_prepare'])
+    await assert.rejects(f.service.invoke(f.context,operation,{
+      requestId:'removed_'+operation,projectId:a.p,orchestratorId:a.o
+    }),/orchestrator_unknown_operation/);
 });
 
 test('retired orchestrator_chat is rejected before receipt or model dispatch',async t=>{
@@ -1036,16 +811,17 @@ test('retired orchestrator_chat is rejected before receipt or model dispatch',as
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='orchestrator_chat'").get().n,0);
 });
 
-test('proposal preparation rejects stale revisions before any app-owned proposal or GPT work',async t=>{
-  let gptCalls=0;
-  const f=fixture(t,{provider:{send:async()=>{gptCalls++;throw Error('must_not_send_gpt');}}}),a=await project(f);
+test('removed proposal preparation cannot mutate a coordinator draft',async t=>{
+  const f=fixture(t),a=await project(f);
   f.store.setDraft(a.chat,'Mensagem mais recente',3);
-  await assert.rejects(f.call('orchestrator_prepare',{requestId:'stale-draft',projectId:a.p,orchestratorId:a.o,
-    content:'Texto antigo',draftRevision:2}),/task_draft_revision_conflict/);
-  assert.equal(gptCalls,0);
+  await assert.rejects(f.service.invoke(f.context,'orchestrator_prepare',{
+    requestId:'removed_prepare',projectId:a.p,orchestratorId:a.o,
+    content:'Texto antigo',draftRevision:2
+  }),/orchestrator_unknown_operation/);
   assert.equal(f.store.getTaskDraft(a.chat).draft,'Mensagem mais recente');
   assert.equal(f.store.messages(a.chat).length,0);
-  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id=?").get('stale-draft').n,0);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id=?")
+    .get('removed_prepare').n,0);
 });
 
 test('GPT Store keeps user draft and history atomic when draft-clear fails',async t=>{
@@ -1110,37 +886,38 @@ test('existing Lab project schema receives the remote URL column without losing 
   assert.equal(linked.result.repositoryUrl,'https://github.com/ordaxsystems/veste');
 });
 
-test('work send targets the linked GitHub remote and clearly reports that no local workspace is attached',async t=>{
-  let received;
-  const f=fixture(t,{provider:{send:async({taskId,content,repositoryUrl})=>{
-    received={content,repositoryUrl};
-    const runId=f.store.startRun(taskId);
-    f.store.appendMessage(taskId,'assistant','Consulta remota indisponível nesta fixture.');
-    f.store.finishRun(taskId,runId);
-    return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
-  }}});
-  const projectId=(await f.call('project_create',{name:'VESTE',repositoryUrl:'https://github.com/ordaxsystems/veste'})).result.projectId;
-  const orchestratorId=(await f.call('orchestrator_create',{projectId,name:'VESTE',mission:'Evoluir a loja'})).result.orchestratorId;
+test('linked GitHub remote remains stored context without an App provider-send path',async t=>{
+  const f=fixture(t);
+  const projectId=(await f.call('project_create',{
+    name:'VESTE',repositoryUrl:'https://github.com/ordaxsystems/veste'
+  })).result.projectId;
+  const orchestratorId=(await f.call('orchestrator_create',{
+    projectId,name:'VESTE',mission:'Evoluir a loja'
+  })).result.orchestratorId;
   const taskId=(await f.call('work_create',{projectId,orchestratorId,title:'Loja remota'})).result.taskId;
-  const receipt=await f.call('work_send',{projectId,taskId,content:'Inspecione a loja e proponha a primeira alteração.'});
-  assert.equal(receipt.status,'succeeded');
-  assert.equal(received.repositoryUrl,'https://github.com/ordaxsystems/veste');
-  assert.match(received.content,/Repositório padrão: https:\/\/github\.com\/ordaxsystems\/veste/);
-  assert.match(received.content,/Nenhuma pasta local está conectada/);
-  assert.equal(receipt.result.effectVerified,false);
-  await assert.rejects(f.call('project_repository_set',{projectId,repositoryUrl:'https://github.com/ordaxsystems/another-repo'}),
-    /repository_change_requires_new_project/);
-  assert.equal((await f.call('projects_list')).projects.find(item=>item.id===projectId).repository_url,
-    'https://github.com/ordaxsystems/veste');
+  const listed=(await f.call('projects_list')).projects.find(item=>item.id===projectId);
+  assert.equal(listed.repository_url,'https://github.com/ordaxsystems/veste');
+  const preflight=await f.call('project_preflight',{projectId,orchestratorId});
+  assert.equal(preflight.repository.urlRegistered,true);
+  assert.equal(preflight.analysisEngine.mode,'gpt_via_forge_mcp');
+  await assert.rejects(f.service.invoke(f.context,'work_send',{
+    requestId:'removed_remote_send',projectId,taskId,content:'nao executar'
+  }),/orchestrator_unknown_operation/);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=?').get(taskId).n,0);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM messages WHERE task_id=?').get(taskId).n,0);
 });
 
-test('app-owned analysis is bounded to one project and orchestrator and never sends GPT work',async t=>{
-  let providerCalls=0;
-  const f=fixture(t,{provider:{send:async()=>{providerCalls++;throw Error('must_not_send');}}});
-  const a=await project(f);
-  for(let i=0;i<5;i++)await f.call('work_create',{projectId:a.p,orchestratorId:a.o,title:`Frente ${i}`});
-  const other=(await f.call('orchestrator_create',{projectId:a.p,name:'Outro orquestrador',mission:'Outra área'})).result;
-  const otherWork=(await f.call('work_create',{projectId:a.p,orchestratorId:other.orchestratorId,title:'OUTRA_FRENTE_PRIVADA'})).result.taskId;
+test('analysis context is bounded read-only data and App-owned analyze is absent',async t=>{
+  const f=fixture(t),a=await project(f);
+  for(let i=0;i<5;i++)await f.call('work_create',{
+    projectId:a.p,orchestratorId:a.o,title:`Frente ${i}`
+  });
+  const other=(await f.call('orchestrator_create',{
+    projectId:a.p,name:'Outro orquestrador',mission:'Outra area'
+  })).result;
+  const otherWork=(await f.call('work_create',{
+    projectId:a.p,orchestratorId:other.orchestratorId,title:'OUTRA_FRENTE_PRIVADA'
+  })).result.taskId;
   const b=await project(f,'Projeto privado');
   f.store.appendMessage(a.w,'user','Primeira mensagem antiga');
   for(let i=0;i<6;i++)f.store.appendMessage(a.w,i%2?'assistant':'user',`Mensagem recente ${i}`);
@@ -1149,22 +926,17 @@ test('app-owned analysis is bounded to one project and orchestrator and never se
   f.store.appendMessage(b.w,'user','OUTRO_PROJETO_PRIVADO');
   const analysis=f.service.analysisContext(a.p,a.o);
   assert.equal(analysis.works.length,4);
-  assert.ok(analysis.works.every(work=>work.title!=='OUTRA_FRENTE_PRIVADA'));
   const serialized=JSON.stringify(analysis);
   assert.doesNotMatch(serialized,/OUTRO_ORQUESTRADOR_PRIVADO|OUTRO_PROJETO_PRIVADO|OUTRA_FRENTE_PRIVADA/);
   assert.doesNotMatch(serialized,/very-secret-value|gsk_abcdefghijklmnopqrstuv|https:\/\/private\.example/);
   assert.match(serialized,/\[redigido\]|\[credencial redigida\]|\[link omitido\]/);
   assert.doesNotMatch(serialized,/Primeira mensagem antiga/);
-  const input={requestId:'analysis-once',projectId:a.p,orchestratorId:a.o};
-  const receipt=await f.call('orchestrator_analyze',input);
-  assert.equal(receipt.status,'succeeded');
-  assert.equal(receipt.result.provider,'ordax_app_policy');
-  assert.equal(receipt.result.appOwned,true);
-  assert.equal(receipt.result.analysisObserved,true);
-  assert.deepEqual(receipt.result.analysis,{workCount:4,messageCount:5});
-  assert.equal(providerCalls,0);
-  assert.equal(f.store.messages(a.chat).filter(message=>message.role==='assistant').length,1);
-  assert.deepEqual(await f.call('orchestrator_analyze',input),receipt);
+  await assert.rejects(f.service.invoke(f.context,'orchestrator_analyze',{
+    requestId:'removed_analysis',projectId:a.p,orchestratorId:a.o
+  }),/orchestrator_unknown_operation/);
+  assert.equal(f.store.db.prepare(
+    "SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='orchestrator_analyze'"
+  ).get().n,0);
 });
 
 test('old unbound tasks remain intact and are not silently adopted into a project',async t=>{
@@ -1193,23 +965,25 @@ test('MCP initialize/discovery/call use exactly the same App service and persist
   assert.equal(init.result.serverInfo.title,'OrdaX Forge');
   await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
   const tools=(await rpc('tools/list')).result.tools;
-  // The GPT-first direct send is native UI-only; it must not be recursively
-  // advertised to a GPT client through the Forge's own MCP adapter.
-  const exposed=ORCHESTRATOR_TOOLS.filter(tool=>tool.operation!=='forjador_send'&&
-    (tool.operation!=='project_command_run'||Boolean(f.service.development)));
+  // The passive Forge catalog contains no GPT dispatch operation.
+  const exposed=ORCHESTRATOR_TOOLS.filter(tool=>
+    tool.operation!=='project_command_run'||Boolean(f.service.development));
   assert.equal(tools.length,exposed.length);
   assert.deepEqual(new Set(tools.map(tool=>tool.name)),new Set(exposed.map(tool=>tool.name)));
   assert.equal(tools.some(tool=>tool.name==='forge_forjador_send'),false);
   assert.ok(tools.some(tool=>tool.name==='forge_continuity_status'&&tool.annotations.readOnlyHint===true));
-  assert.ok(tools.some(tool=>tool.name==='forge_continuity_set'&&tool.annotations.readOnlyHint===false));
+  assert.equal(tools.some(tool=>tool.name==='forge_continuity_set'),false);
   assert.ok(tools.every(tool=>tool.inputSchema.additionalProperties===false));
   // Forge's own MCP is a domain adapter, never the external OrdaX computer
   // control transport. A real grant/Runtime port cannot be inferred from
   // successful MCP initialize or tools/list discovery.
   const forgeStatus=(await rpc('tools/call',{name:'forge_status',arguments:{}}))
     .result.structuredContent;
-  assert.equal(forgeStatus.engine,'app-owned');
-  assert.equal(forgeStatus.externalTransport,'not_connected');
+  assert.equal(forgeStatus.engine,'passive-app');
+  assert.equal(forgeStatus.externalTransport,'forge_mcp_only');
+  assert.equal(forgeStatus.analysisMode,'gpt_via_forge_mcp');
+  assert.equal(forgeStatus.analysisAvailable,false);
+  assert.equal(forgeStatus.providerExecutionAvailable,false);
   assert.equal(forgeStatus.workspacePortAvailable,false);
   assert.equal(forgeStatus.repositoryPortAvailable,false);
   assert.equal(forgeStatus.autonomousExecution,false);
@@ -1255,70 +1029,14 @@ test('MCP safe workflow rejection returns bounded action diagnosis and never exp
   assert.equal(JSON.stringify(conflict).includes('Rascunho não enviado'),false);
   const empty=await rpc(3,'work_parallel_launch',{projectId:a.p,
     taskIds:[a.w,a.w],requestId:'safe_duplicate'});
-  assert.equal(empty.result.isError,true);
-  assert.ok(!empty.result.structuredContent);
+  assert.equal(empty.error.code,-32602);
+  assert.equal(empty.result,undefined);
   const secret=await rpc(4,'work_get',{projectId:a.p,taskId:a.w});
   assert.equal(secret.result.isError,true);
   assert.equal(JSON.stringify(secret).includes('C:/private'),false);
   assert.equal(JSON.stringify(secret).includes('secret:'),false);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,0);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM messages').get().n,0);
-});
-
-test('corrupt proposal payload does not block legitimate pending review or reveal another project',async t=>{
-  let providerSends=0;
-  const f=fixture(t,{coordinator:{available:()=>true,send:async()=>({
-    content:'Proposta para revisão',
-    proposal:{title:'Verificar evidências',content:'Inspecione o resultado sem executar.',reason:'Aceite'}})},
-    provider:{send:async()=>{providerSends++;throw Error('unexpected_gpt_send');}}});
-  const a=await project(f,'Projeto A');
-  const b=await project(f,'Projeto B');
-  const validA=(await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,
-    content:'Proposta A válida'})).result.proposalActionId;
-  const invalidA=(await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,
-    content:'Outra proposta A'})).result.proposalActionId;
-  const validB=(await f.call('orchestrator_prepare',{projectId:b.p,orchestratorId:b.o,
-    content:'Proposta independente B'})).result.proposalActionId;
-  const db=f.store.db;
-  db.prepare('UPDATE action_ledger SET payload=? WHERE id=?').run('{"truncated"',invalidA);
-  const listed=await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o});
-  assert.deepEqual(listed.proposals.map(x=>x.actionId),[validA]);
-  assert.equal((await f.call('proposals_list',{projectId:b.p,orchestratorId:b.o})).proposals[0].actionId,validB);
-  assert.equal(db.prepare('SELECT payload FROM action_ledger WHERE id=?').get(invalidA).payload,'{"truncated"',
-    'evidence must be preserved, not rewritten by a list read');
-  await assert.rejects(f.call('proposal_review',{projectId:a.p,orchestratorId:a.o,
-    actionId:invalidA,approved:true}));
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM lab_task_bindings WHERE kind=?').get('work').n,2);
-  assert.equal(providerSends,0);
-  assert.equal(db.prepare('PRAGMA quick_check').get().quick_check,'ok');
-});
-
-test('prepared proposals require canonical approved ledger and ignore corrupted result or shape',async t=>{
-  let providerSends=0;
-  const f=fixture(t,{coordinator:{available:()=>true,send:async()=>({
-    content:'Proposta revisável',proposal:{title:'Nova frente',content:'Revisar evidência',reason:'Aceite'}})},
-    provider:{send:async()=>{providerSends++;throw Error('unexpected_gpt_send');}}});
-  const a=await project(f);
-  const makeProposal=async content=>(await f.call('orchestrator_prepare',{
-    projectId:a.p,orchestratorId:a.o,content})).result.proposalActionId;
-  const good=await makeProposal('Boa proposta');
-  const approved=await f.call('proposal_review',{projectId:a.p,orchestratorId:a.o,actionId:good,approved:true});
-  assert.equal(approved.status,'succeeded');
-  const malformed=await makeProposal('Corrupt result');
-  const other=await f.call('proposal_review',{projectId:a.p,orchestratorId:a.o,actionId:malformed,approved:true});
-  assert.equal(other.status,'succeeded');
-  const pending=await makeProposal('Pending valid');
-  const db=f.store.db;
-  assert.deepEqual(new Set((await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o}))
-    .proposals.map(x=>x.actionId)),new Set([pending,malformed,good]));
-  db.prepare('UPDATE action_ledger SET result=? WHERE id=?').run('{"broken"',malformed);
-  db.prepare("UPDATE approval_ledger SET status='rejected' WHERE action_id=?").run(good);
-  const visible=(await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals;
-  assert.deepEqual(visible.map(x=>x.actionId),[pending]);
-  assert.equal(visible[0].status,'pending');
-  assert.equal(db.prepare('SELECT result FROM action_ledger WHERE id=?').get(malformed).result,'{"broken"');
-  assert.equal(db.prepare('PRAGMA quick_check').get().quick_check,'ok');
-  assert.equal(providerSends,0);
 });
 
 test('Live native View MCP uses SQLite receipts and never replays uncertain clicks',async t=>{
@@ -1584,8 +1302,7 @@ test('work failover rotates only a terminal failed GPT attempt and records a fen
 });
 
 test('work failover refuses running, interrupted and unresolved attempts while independent work remains available',async t=>{
-  let sends=0;
-  const f=fixture(t,{provider:{send:async({taskId})=>{sends++;return executorReceipt(f.store,taskId);}}});
+  const f=fixture(t);
   const a=await project(f,'Alvo'),b=await project(f,'Independente');
   const running=f.store.startRun(a.w,'worker_stuck');
   await assert.rejects(f.call('work_failover_prepare',{projectId:a.p,taskId:a.w}),/failover_source_still_running/);
@@ -1597,9 +1314,14 @@ test('work failover refuses running, interrupted and unresolved attempts while i
     requestId:'uncertain_failover_source',projectId:a.p,taskId:a.w,content:'efeito possivelmente enviado'}));
   f.service.finish(reserved.commandId,{taskId:a.w,reason:'transport_unknown'},'uncertain');
   await assert.rejects(f.call('work_failover_prepare',{projectId:a.p,taskId:a.w}),/reconciliation_required/);
-  const independent=await f.call('work_send',{projectId:b.p,taskId:b.w,content:'Continuar frente independente'});
-  assert.equal(independent.status,'succeeded');
-  assert.equal(sends,1);
+  const independent=await f.call('work_get',{projectId:b.p,taskId:b.w});
+  assert.equal(independent.monitor.state,'awaiting_instruction');
+  assert.equal(independent.runs.length,0);
+  const claim=await f.call('work_claim',{
+    projectId:b.p,taskId:b.w,action:'acquire',chatLabel:'Chat independente'
+  });
+  assert.equal(claim.result.status,'acquired');
+  assert.equal(claim.result.claim.taskId,b.w);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 

@@ -12,30 +12,26 @@ const createWindow=main.slice(
   main.indexOf("ipcMain.on('ordax:worker:preload-ready'")
 );
 
-test('App renderer never starts beneath a visible embedded provider view',()=>{
-  const attach=createWindow.indexOf('attachProviderView(registeredWorker,providerHostWindow)');
+test('App renderer starts before the single observational provider navigation',()=>{
+  const attach=createWindow.indexOf('attachProviderView(worker,providerHostWindow)');
   const firstLayout=createWindow.indexOf('layoutViews();',attach);
   const loadApp=createWindow.indexOf("await win.loadFile(path.join(here, 'ui.html'))");
-  const loadProvider=createWindow.indexOf('providerWorkers.forEach((candidate,index)=>');
+  const loadProvider=createWindow.indexOf("void worker.load('https://chatgpt.com/')");
   assert.ok(attach>=0 && firstLayout>attach && loadApp>firstLayout &&
-    loadProvider>loadApp,'attach all lanes to the hidden provider host and load the App before provider navigation');
+    loadProvider>loadApp,'attach the observer to the hidden provider host and load the App before provider navigation');
   assert.match(createWindow,/providerHostWindow=new BrowserWindow\(\{[\s\S]*?show:false[\s\S]*?focusable:false[\s\S]*?skipTaskbar:true/);
-  assert.match(createWindow,/void candidate\.load\('https:\/\/chatgpt\.com\/'\)\.catch/);
-  assert.doesNotMatch(createWindow,/await candidate\.load\('https:\/\/chatgpt\.com\/'\)/,
-    'a provider timeout must not reject the App startup promise');
-  assert.match(main,/candidate\.view\.setVisible\(false\)/);
-  assert.match(main,/candidate\.view\.setVisible\(true\)/);
+  assert.match(createWindow,/new EmbeddedChatWorker\(\{id:'primary',allowSend:false\}\)/);
+  assert.match(createWindow,/void worker\.load\('https:\/\/chatgpt\.com\/'\)\.catch/);
+  assert.doesNotMatch(createWindow,/providerWorkers=Array\.from|agent-|createProviderExecutionScheduler/);
 });
-
-test('initial GPT navigation failure is recorded without taking down the OrdaX shell',()=>{
+test('initial observational GPT navigation failure is recorded without taking down the App shell',()=>{
   const worker=fs.readFileSync(new URL('../desktop/embedded-worker.mjs',import.meta.url),'utf8');
   assert.match(worker,/provider_initial_load_failed/);
   assert.match(worker,/code === 'provider_navigation_timeout'/);
-  assert.match(createWindow,/void candidate\.load\('https:\/\/chatgpt\.com\/'\)\.catch/);
-  assert.match(createWindow,/if\(candidate===worker\)hostStartupLog\('provider_primary_worker_load_failed'\)/);
+  assert.match(createWindow,/void worker\.load\('https:\/\/chatgpt\.com\/'\)\.catch/);
+  assert.match(createWindow,/provider_observer_load_failed/);
   assert.match(createWindow,/hostStartupLog\('window_create_complete'\)/);
 });
-
 test('App renderer and main-frame load failures surface a native, safe diagnostic',()=>{
   assert.match(createWindow,/webContents\.on\('render-process-gone'/);
   assert.match(createWindow,/webContents\.on\('did-fail-load'/);

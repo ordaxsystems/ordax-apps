@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {resolveProjectOnboardingMission,describeProjectPreflight,describeExecutionMonitor,describeConversationOutcome,describeUncertainReceiptNotice} from '../desktop/orchestrator-ui.mjs';
+import {resolveProjectOnboardingMission,describeExecutionMonitor,describeUncertainReceiptNotice} from '../desktop/orchestrator-ui.mjs';
 import {PRODUCT_NAME,PRODUCT_SHORT_NAME} from '../src/product-brand.mjs';
 const root = path.resolve(import.meta.dirname, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
@@ -32,7 +32,9 @@ test('unknown terminal review reuses pre-granted DEV Owner intent; production st
   assert.match(ui,/window\.ordax\.orchestratorInvoke\('project_handoff',\{projectId\}\)/);
   assert.match(ui,/window\.ordax\.forgeCommandCloseUnverified\(projectId,row\.commandId\)/);
   assert.match(ui,/if\(projectChanged\)void refreshForgeUncertainCommands\(\)/);
-  assert.match(mcp,/UI_ONLY_OPERATIONS=new Set\(\['forjador_send'\]\)/);
+  assert.doesNotMatch(mcp,/UI_ONLY_OPERATIONS|forjador_send/);
+  const contract=fs.readFileSync(path.join(root,'src','forge-contract.mjs'),'utf8');
+  assert.doesNotMatch(contract,/\['forjador_send'|\['work_send'|\['proposal_send'/);
   assert.doesNotMatch(mcp,/['"]command_close_unverified['"]/, 'native only operation is not part of the MCP tool catalog');
   assert.match(service,/if\(nativeOwnerConfirmed!==true\)/);
   const entry="registerUiHandler('ordax:forge:command:close-unverified'";
@@ -116,7 +118,7 @@ test('remote MCP app clicks cannot terminate their own durable receipt writer',(
   assert.match(ui,/window\.ordax\.quitApp\(\)/,'native Owner exit remains available');
 });
 
-test('confirmed HTML artifact download stays scoped to a succeeded Run and never sends prompts',()=>{
+test('confirmed HTML artifact download stays read-only while the App kernel has no GPT dispatch',()=>{
   const main=fs.readFileSync(path.join(root,'desktop','main.mjs'),'utf8');
   const worker=fs.readFileSync(path.join(root,'desktop','embedded-worker.mjs'),'utf8');
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
@@ -130,7 +132,10 @@ test('confirmed HTML artifact download stays scoped to a succeeded Run and never
   assert.match(main,/verifyLocalHtmlArtifact\(filePath\)/);
   assert.match(main,/inspectProviderLinkedThread\(\{store,worker:captureWorker,taskId\}\)/);
   assert.match(main,/captureWorker\.downloadLinkedHtmlArtifact\(/);
-  assert.match(main,/captureWorker:executionWorker,allowConcurrentProviderRuns:true/);
+  assert.doesNotMatch(main,/createOrchestratorKernel\(\{[\s\S]{0,1600}\bprovider\s*:/);
+  assert.doesNotMatch(main,/ownerDispatch/);
+  assert.doesNotMatch(main,/continuousExecutionByDefault/);
+  assert.doesNotMatch(main,/captureWorker:executionWorker,allowConcurrentProviderRuns:true/);
   assert.match(main,/inspection\.threadRendered!==true/);
   assert.match(main,/if \(!asset \|\| asset.kind!=='image'/,
     'app asset protocol must not render untrusted HTML');
@@ -151,86 +156,25 @@ test('confirmed HTML artifact download stays scoped to a succeeded Run and never
   assert.match(ui,/Arquivo salvo e verificado/);
 });
 
-test('GPT Work visibly attributes autonomous messages to OrdaX, never the human author',()=>{
-  const source=fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
-  const service=fs.readFileSync(path.join(root,'src','orchestrator-service.mjs'),'utf8');
-  const desktop=fs.readFileSync(path.join(root,'desktop','main.mjs'),'utf8');
-  assert.match(source,/message\.author_source==='orchestrator'/);
-  assert.match(source,/automatic\?'orchestrator':message\.role/);
-  assert.match(source,/OrdaX · envio automático/);
-  assert.doesNotMatch(source,/message\.role === 'user' \? 'Você' : 'ChatGPT'/,
-    'machine-created work must never silently become user-authored chat');
-  assert.match(source,/author_source:userMessage\.author_source\|\|'human'/);
-  assert.match(service,/author_source:m\.author_source/);
-  assert.match(desktop,/authorSource/);
-});
-
-test('natural project UI does not show model-generated publishing proposals as instructions',()=>{
-  const code=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
-  const summary=code.match(/\$\('executionMissionDetail'\)\.textContent=([\s\S]*?)\n    const workList/);
-  assert.ok(summary,'execution summary exists');
-  assert.doesNotMatch(summary[1],/\.decision\.summary|questionFinal/);
-  const raw=code.match(/\$\('autonomousDialogueState'\)\.textContent=([\s\S]*?)\n    \/\//);
-  assert.ok(raw,'mission status exists');
-  assert.doesNotMatch(raw[1],/\.decision\.summary|questionFinal|lastError/);
-  assert.match(raw[1],/outcome\?\.message/);
-});
-
-test('human conversation presents a read-only result instead of leaking technical routing',()=>{
-  const base={missionId:'autonomous_fixture',mode:'technical',maxGPTSends:1,
-    taskAId:'task_first',taskBId:null,reviewedTaskId:'task_first',
-    reviewTasks:[{taskId:'task_first',label:'Trabalho GPT'}]};
-  const ready=describeConversationOutcome({...base,state:'verification_required',
-    decision:{sourceRunId:'run_verified'}});
-  assert.equal(ready.taskId,'task_first');
-  assert.equal(describeConversationOutcome({...base,taskBId:'task_unconfirmed',
-    reviewTasks:[...base.reviewTasks,{taskId:'task_unconfirmed'}],
-    state:'reconciliation_required',decision:{sourceRunId:'run_verified'}}).taskId,'task_first',
-    'a second interrupted Task must never replace the confirmed answer link');
-  assert.match(ready.message,/Resposta recebida/);
-  assert.match(ready.message,/nenhum arquivo novo foi verificado/);
-  const delivered=describeConversationOutcome({...base,state:'verification_required',
-    decision:{sourceRunId:'run_verified'}},{artifactVerified:true});
-  assert.match(delivered.message,/disponível na prévia à direita/);
-  assert.match(delivered.message,/Ainda não foi publicado/);
-  assert.doesNotMatch(ready.message,/Groq|GPT|API|token|JSON/);
-  assert.deepEqual(describeConversationOutcome({...base,state:'sending_a',decision:null}),
-    {message:'Trabalhando no seu pedido…',taskId:null});
-  const uncertain=describeConversationOutcome({...base,state:'reconciliation_required',
-    decision:{sourceRunId:'run_verified'}});
-  assert.equal(uncertain.taskId,'task_first');
-  assert.match(uncertain.message,/Nada será reenviado automaticamente/);
-  assert.equal(describeConversationOutcome({...base,state:'reconciliation_required',
-    decision:null}).taskId,null,'an unverified run cannot open as confirmed result');
-  assert.equal(describeConversationOutcome({...base,reviewedTaskId:null,
-    state:'verification_required',decision:{sourceRunId:'run_verified'}}).taskId,null,
-    'a missing owner match is never a confirmed result');
-  const verifiedWithoutReview=describeConversationOutcome({...base,state:'reconciliation_required',
-    decision:null,reviewedTaskId:null},{artifactVerified:true});
-  assert.equal(verifiedWithoutReview.taskId,null,'a verified preview is not permission to open an unattributed work');
-  assert.match(verifiedWithoutReview.message,/versão atual do site está verificada/);
-  assert.match(verifiedWithoutReview.message,/Nada será reenviado automaticamente/);
-  assert.doesNotMatch(verifiedWithoutReview.message,/interrompida/);
-  assert.equal(describeConversationOutcome(null),null);
+test('passive App exposes historical activity without autonomous mission messaging',()=>{
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
-  const uiSource=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
-  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
-  for(const id of ['coordinatorOutcome','coordinatorOutcomeText','coordinatorOutcomeOpen'])
-    assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1);
-  assert.match(uiSource,/describeConversationOutcome\(currentJob,\{/);
-  assert.match(uiSource,/artifactVerified:proof\?\.verified===true&&proof\?\.currentDelivery===true/);
-  assert.match(uiSource,/outcomePanel\.hidden=!outcome\|\|Boolean\(proof\?\.currentDelivery/);
-  assert.match(uiSource,/box\.replaceChildren\(recoveryNotice,\$\('coordinatorOutcome'\)\)/,
-    'chat redraw must not remove the sole result node from the DOM');
-  assert.match(uiSource,/await onOpenWork\(taskId\)/);
-  assert.doesNotMatch(uiSource.slice(uiSource.indexOf("  $('coordinatorOutcomeOpen').addEventListener"),uiSource.indexOf("  $('executionOpenWorks').addEventListener")),/command\(|provider\.send|window\.ordax\.send/);
-  assert.match(css,/\.coordinator-outcome\[hidden\]/);
+  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  const service=fs.readFileSync(path.join(root,'src','orchestrator-service.mjs'),'utf8');
+  const main=fs.readFileSync(path.join(root,'desktop','main.mjs'),'utf8');
+  assert.doesNotMatch(source,/autonomousDialogueState|describeConversationOutcome|OrdaX · envio automático|forjador_send|proposal_send/);
+  assert.doesNotMatch(service,/startDevAutonomousForjador|confirmAndSendProposal|dispatchCore|operation==='orchestrator_analyze'|operation==='orchestrator_prepare'|service\.invoke\([^\n]*'orchestrator_(?:analyze|prepare)'/);
+  assert.doesNotMatch(main,/async function runTask\(|ownerDispatch|ordax:tasks:send/);
+  assert.match(html,/id="executionActivity"/);
+  assert.match(html,/id="executionSessionList"/);
+  assert.match(html,/id="executionMemoryList"/);
+  assert.match(source,/work\.claim\?\.state==='occupied'/);
+  assert.match(source,/call\('project_memory'/);
 });
 
 test('physical frontend monitor describes registered execution, not fictitious active work',()=>{
   assert.deepEqual(describeExecutionMonitor({running:0,attention:2}),{
     title:'Revisões pendentes',
-    description:'Nenhum Run GPT ativo. 2 frente(s) aguardam revisão ou reconciliação.'
+    description:'Nenhum Run GPT ativo. 2 tarefa(s) aguardam revisão ou reconciliação.'
   });
   assert.equal(describeExecutionMonitor({running:1,attention:2}).title,'Execução em andamento');
   assert.equal(describeExecutionMonitor({running:0,attention:0}).title,'Nenhuma execução ativa');
@@ -238,8 +182,9 @@ test('physical frontend monitor describes registered execution, not fictitious a
     assert.throws(()=>describeExecutionMonitor(invalid),/invalid_execution_monitor_counts/);
   assert.match(uiHtml,/id="executionOverviewTitle"/);
   assert.match(uiHtml,/id="executionOverviewDescription"/);
-  assert.match(uiHtml,/Forjador/);
-  assert.match(uiHtml,/Tarefas e resultados/);
+  assert.match(uiHtml,/Atividade/);
+  assert.match(uiHtml,/Claims, progresso e resultados/);
+  assert.doesNotMatch(uiHtml,/FORJADOR/);
   const renderer=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.match(renderer,/\$\('executionOverviewTitle'\)\.textContent=overview\.title/);
   assert.match(renderer,/\$\('executionOverviewDescription'\)\.textContent=overview\.description/);
@@ -294,7 +239,8 @@ test('empty project state promises persistence without claiming autonomous execu
   assert.match(ui,/document\.querySelector\('\[data-start-project\]'\)/);
   assert.doesNotMatch(ui,/querySelector\('\[data-create-task\]'\)/);
 
-  assert.match(uiHtml,/converse com o Forjador/);
+  assert.match(uiHtml,/distribua tarefas entre chats GPT/);
+  assert.match(uiHtml,/memória, progresso e evidências/);
   assert.doesNotMatch(uiHtml,/continuar amanhã|gerencia automaticamente as conversas internas/);
 });
 
@@ -332,14 +278,12 @@ test('project onboarding accepts a name without a written mission, without impli
   assert.ok(inferred.length<4000);
   const html=uiHtml;
   assert.match(html,/id="projectObjective"[^>]+placeholder="Descreva brevemente a ideia do seu projeto\."[^>]*><\/textarea>/);
-  assert.equal((html.match(/id="analyzeWorks"/g)||[]).length,1);
-  assert.ok(html.indexOf('id="analyzeWorks"')<html.indexOf('id="orchestrationIntegrations"'));
-  assert.match(html,/id="analysisScopeHint"[^>]*>[^<]*Iniciar consulta o estado local e os recibos/);
+  assert.equal((html.match(/id="analyzeWorks"/g)||[]).length,0);
+  assert.match(html,/id="analysisScopeHint"[^>]*>[^<]*diagnóstico lê somente estado local e recibos/i);
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.match(orchestration,/resolveProjectOnboardingMission\(name,\$\('projectObjective'\)\.value\)/);
   assert.match(orchestration,/command\('mission_create',input\)/);
-  assert.match(orchestration,/command\('orchestrator_analyze',\{projectId:p,orchestratorId:o\}\)/);
-  assert.doesNotMatch(orchestration,/onStartMission\(/);
+  assert.doesNotMatch(orchestration,/orchestrator_analyze|onStartMission\(/);
 });
 
 test('work rail supports bounded batch creation without dispatching to GPT',()=>{
@@ -354,147 +298,39 @@ test('work rail supports bounded batch creation without dispatching to GPT',()=>
   assert.match(uiSource,/\$\('batchWorkFeedback'\)\.textContent=notice/);
   assert.match(html,/sem mensagens ao GPT ou novos agentes físicos/);
   assert.match(uiSource,/command\('work_batch_create',\{projectId:p,orchestratorId:o,titles\}\)/);
-  assert.match(uiSource,/receipt\.result\.created\+' frentes registradas no projeto, sem enviar ao GPT/);
-  assert.match(uiSource,/Agents GPT: '\+executor\.maxConcurrentSends\+' sessões/);
-  assert.match(uiSource,/cada agent mantém Task, Run e receipt próprios/);
+  assert.match(uiSource,/receipt\.result\.created\+' tarefas registradas no projeto\. Chats GPT assumem trabalho somente por claim via Forge MCP\.'/);
+  assert.doesNotMatch(uiSource,/Agents GPT:|cada agent mantém|providerScheduler|agent-/);
+  assert.match(uiSource,/command\('work_batch_create',/);
 });
-test('autonomous mission recovery exposes scoped existing Tasks without a duplicate legacy launcher',()=>{
+test('legacy autonomous mission UI is absent from the passive App',()=>{
   const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
-  assert.equal((uiHtml.match(/id="autonomousReviewActions"/g)||[]).length,1);
-  assert.match(source,/const reviews=\$\('autonomousReviewActions'\)/);
-  assert.match(source,/reviews\.replaceChildren\(\)/);
-  assert.match(source,/for\(const item of currentJob\.reviewTasks\|\|\[\]\)/);
-  assert.match(source,/await onOpenWork\(item\.taskId\)/);
-  assert.match(source,/reviews\.hidden=reviews\.childElementCount===0/);
-  assert.doesNotMatch(uiHtml,/startAutonomous(?:Technical|Dialogue|Story)|orchestratorExperiments/);
-  assert.doesNotMatch(source,/launchAutonomousMission|command\('autonomous_dialogue_start'/);
-  assert.doesNotMatch(main,/payload\?\.operation==='forjador_send'/);
-  assert.doesNotMatch(main,/startDevAutonomousForjador/);
-});
-test('technical continuation accepts the app-owned review policy and still checks fresh GPT readiness',()=>{
-  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
-  const autonomy=fs.readFileSync(path.join(root,'src','autonomous-dialogue.mjs'),'utf8');
-  assert.equal((uiHtml.match(/id="continueAutonomousTechnical"/g)||[]).length,1);
-  assert.match(uiHtml,/id="continueAutonomousTechnical"[^>]*hidden disabled/);
-  assert.match(source,/continueButton\.hidden=true/);
-  assert.match(source,/appOwnedTechnicalReviewAvailable=result\?\.appOwnedTechnicalReviewAvailable===true/);
-  assert.doesNotMatch(source,/\(!analysisAvailable&&!appOwnedTechnicalReviewAvailable\)/);
-  assert.match(autonomy,/appOwnedTechnicalReviewAvailable:this\.service\.continuousExecutionByDefault===true/);
-  const handler=source.slice(source.indexOf("$('continueAutonomousTechnical').addEventListener"));
-  assert.match(handler,/snapshot\?\.mission\?\.canContinue!==true/);
-  assert.match(handler,/providerComposeAvailability\(await api\.providerStatus\(\),\{hostMode:nodeHost\}\)/);
-  assert.ok(handler.indexOf('providerComposeAvailability(await api.providerStatus()')<
-    handler.indexOf("command('autonomous_dialogue_continue'"),
-    'the physical GPT readiness check must precede an authorization');
-  assert.match(handler,/sourceMissionId:snapshot\.mission\.missionId/);
-  assert.match(handler,/if\(!availability\.allowed\)/);
+  for(const id of ['autonomousReviewActions','continueAutonomousTechnical','projectObservationToggle','projectObservationState','analyzeWorks'])
+    assert.equal((uiHtml.match(new RegExp('id="'+id+'"','g'))||[]).length,0,id);
+  assert.doesNotMatch(source,/autonomous_dialogue_start|autonomous_dialogue_continue|orchestrator_analyze|project_observation_set/);
+  assert.doesNotMatch(main,/startDevAutonomousForjador|ownerDispatch|async function runTask\(/);
 });
 
-test('preflight is read-only, project-scoped and cannot silently send GPT',()=>{
+test('project preflight is manual read-only diagnosis and cannot dispatch GPT',()=>{
   const html=uiHtml;
-  const uiSource=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.equal((html.match(/id="inspectProjectAccess"/g)||[]).length,1);
   assert.equal((html.match(/id="projectPreflightState"/g)||[]).length,1);
-  assert.match(html,/projectPreflightState"[^>]*role="status"/);
-  assert.match(uiSource,/call\('project_preflight',\{projectId:p,orchestratorId:o\}\)/);
-  assert.match(uiSource,/if\(!snapshot\|\|!snapshot\.gates\.recordedWorkAnalysisEligible\)/);
-  assert.match(uiSource,/generation!==preflightGeneration\|\|p!==projectId\|\|o!==orchestratorId/);
-  // Preflight rendering now uses the same pure fail-closed helper as Start;
-  // a registered URL must never masquerade as authenticated GitHub access.
-  assert.match(uiSource,/snapshot\.repository\.authenticatedRead!=='unavailable'/);
-  assert.match(uiSource,/snapshot\.provenance\.externalObservation!==false/);
-  assert.match(uiSource,/O diagnóstico não enviou mensagens GPT, alterou arquivos nem fez uma chamada de modelo/);
-  assert.match(uiSource,/clearProjectPreflight\(\)/);
-  assert.match(uiSource,/command\('orchestrator_analyze',\{projectId:p,orchestratorId:o\}\)/);
+  assert.match(html,/id="analysisScopeHint"[^>]*>[^<]*diagnóstico lê somente estado local e recibos/i);
+  assert.match(source,/call\('project_preflight',\{projectId:p,orchestratorId:o\}\)/);
+  assert.match(source,/generation!==preflightGeneration\|\|p!==projectId\|\|o!==orchestratorId/);
+  assert.match(source,/O App não iniciou análise, GPT ou execução/);
+  assert.doesNotMatch(source,/describeProjectPreflight|orchestrator_analyze|analyzeRegisteredWorks|project_observation_set/);
 });
 
-test('GitHub observation is hidden until trusted host capability and never authorizes from a URL',()=>{
-  const s=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+test('GitHub observation stays capability-gated and a saved URL never proves access',()=>{
+  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.equal((uiHtml.match(/id="observeProjectRepository"/g)||[]).length,1);
   assert.match(uiHtml,/id="observeProjectRepository"[^>]*hidden disabled/);
-  assert.match(s,/repositoryPortAvailable=engineStatus\.repositoryPortAvailable===true/);
-  assert.match(s,/button\.disabled\|\|!repositoryPortAvailable/);
-  assert.match(s,/call\('repository_observe',\{projectId:p\}\)/);
-  assert.match(s,/p!==projectId\|\|projectsCache\.find/);
-  assert.match(s,/snapshot\.provenance\?\.grantRechecked!==true/);
-});
-
-test('Start persists consent and requests one prompt-free local analysis only when its gates pass',()=>{
-  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
-  assert.equal((uiHtml.match(/id="projectObservationToggle"/g)||[]).length,1);
-  assert.equal((uiHtml.match(/id="projectObservationState"/g)||[]).length,1);
-  assert.match(uiHtml,/id="analysisScopeHint"[^>]*>Iniciar consulta o estado local e os recibos/);
-  assert.match(source,/project\?\.observation_requested===1/);
-  assert.match(source,/command\('project_observation_set',\{projectId:p,enabled\}\)/);
-  assert.match(source,/async function analyzeRegisteredWorks\(p,o,\{automatic=false\}=\{\}\)/);
-  assert.match(source,/if\(automatic&&!projectsCache\.some\(item=>item\.id===p&&item\.observation_requested===1\)\)return null/);
-  assert.match(source,/if\(!snapshot\|\|!snapshot\.gates\.recordedWorkAnalysisEligible\)/);
-  assert.match(source,/command\('orchestrator_analyze',\{projectId:p,orchestratorId:o\}\)/);
-  assert.match(source,/Diagnóstico inicial registrado pelo Administrador Geral, sem prompt/);
-  assert.match(source,/GitHub, GPT Web e Runtime não foram acionados/);
-  assert.match(source,/await analyzeRegisteredWorks\(p,orchestratorId,\{automatic:true\}\)/);
-  assert.match(source,/const p=projectId,project=projectsCache\.find/);
-  assert.match(source,/if\(p!==projectId\)return/);
-});
-
-test('verified repository HEAD is shown only as historical evidence and never as current permission',()=>{
-  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
-  assert.match(source,/historical\.provenance\.currentAccessVerified===false/);
-  assert.match(source,/Histórico GitHub: HEAD/);
-  assert.match(source,/não confirma acesso atual, integridade ou checks/);
-  assert.match(source,/snapshot\.repository\.authenticatedRead!=='unavailable'/);
-});
-
-test('Start inspects local evidence immediately and restores it without repeating model analysis',()=>{
-  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
-  assert.equal((uiHtml.match(/id="projectPreflightActions"/g)||[]).length,1);
-  assert.match(source,/if\(enabled\)await analyzeRegisteredWorks\(p,orchestratorId,\{automatic:true\}\)/);
-  assert.match(source,/await inspectRequestedProject\(\);\s*let refreshPending/);
-  assert.match(source,/generation!==preflightGeneration\|\|p!==projectId\|\|o!==orchestratorId/);
-  assert.match(source,/requested!==\(projectsCache\.find/);
-  assert.match(source,/button\.disabled=!project\|\|observationBusy\|\|\(!requested&&anotherRequested\)/);
-  assert.match(source,/observationBusy=false;[\s\S]{0,240}syncProjectObservation\(\);\s*}\s*}\);/);
-  const evidence={
-    schema:'ordax.orchestrator.project-preflight/2',
-    provenance:{source:'app_sqlite',externalObservation:false},
-    observation:{requested:true,active:false},
-    repository:{urlRegistered:true,authenticatedRead:'unavailable'},
-    runtime:{grantVerified:false},
-    analysisEngine:{state:'ready',available:true,mode:'app_owned',externalModelUsed:false},
-    work:{registered:4,started:2,unresolvedSends:0},
-    analysis:{attempts:1,completed:1,lastStatus:'succeeded',lastAttemptAt:'2026-11-02T03:00:00.000Z'},
-    gates:{recordedWorkAnalysisEligible:true,githubObservationVerified:false,
-      automaticGptDispatchAllowed:false,headlessExecutionVerified:false},
-    blockers:[]
-  };
-  const guide=describeProjectPreflight(evidence);
-  assert.equal(guide.state,'blocked');
-  assert.match(guide.summary,/Inventário local: 4 frente/);
-  assert.match(guide.summary,/Última análise registrada em 2026-11-02/);
-  assert.match(guide.summary,/O diagnóstico não enviou mensagens GPT/);
-  assert.equal(guide.analysisLabel,'Reanalisar frentes');
-  assert.match(guide.actions.join(' '),/Platform ainda indisponível/);
-  assert.match(guide.actions.join(' '),/supervisão headless ainda não verificados/);
-  const missing=describeProjectPreflight({
-    ...evidence,observation:{requested:false,active:false},
-    repository:{urlRegistered:false,authenticatedRead:'unavailable'},
-    analysisEngine:{state:'paused',available:true,mode:'app_owned',externalModelUsed:false},
-    work:{registered:0,started:0,unresolvedSends:2},
-    analysis:{attempts:0,completed:0,lastStatus:null,lastAttemptAt:null},
-    gates:{...evidence.gates,recordedWorkAnalysisEligible:false}
-  });
-  assert.equal(missing.state,'blocked');
-  assert.match(missing.actions.join(' '),/Reconcilie envios pendentes/);
-  assert.match(missing.summary,/Análise ainda não iniciada/);
-  assert.equal(missing.analysisLabel,'Analisar frentes');
-  assert.match(missing.actions.join(' '),/Retome o Forjador/);
-  assert.match(missing.actions.join(' '),/Cadastre a URL/);
-  assert.throws(()=>describeProjectPreflight({
-    ...evidence,provenance:{source:'app_sqlite',externalObservation:true}
-  }),/project_preflight_evidence_invalid/);
-  assert.throws(()=>describeProjectPreflight({
-    ...evidence,gates:{...evidence.gates,automaticGptDispatchAllowed:true}
-  }),/project_preflight_evidence_invalid/);
+  assert.match(source,/repositoryPortAvailable=engineStatus\.repositoryPortAvailable===true/);
+  assert.match(source,/button\.disabled\|\|!repositoryPortAvailable/);
+  assert.match(source,/call\('repository_observe',\{projectId:p\}\)/);
+  assert.match(source,/snapshot\.provenance\?\.grantRechecked!==true/);
+  assert.match(source,/URL GitHub cadastrada; leitura autenticada não verificada/);
 });
 
 test('desktop is single-instance with canonical durable AppData state', () => {
@@ -505,13 +341,16 @@ test('desktop is single-instance with canonical durable AppData state', () => {
   assert.match(binding,/path\.join\(localAppData,'OrdaX','Forge'\)/);
   assert.match(binding,/lab_staged_profile_explicit_binding_required/);
   assert.match(main, /recoverInterruptedRuns/);
-  assert.match(main, /heartbeatRun/);
+  assert.match(main, /writeForgeHeartbeat/);
+  assert.doesNotMatch(main, /heartbeatRun\(/);
   assert.match(main, /will-quit/);
   assert.match(main, /store\.close\(\)/);
   assert.doesNotMatch(main, /executionTail/);
-  assert.match(main, /createProviderExecutionScheduler/);
-  assert.match(main, /const registeredScheduler=providerScheduler/);
-  assert.match(main, /enqueueExecution/);
+  assert.doesNotMatch(main, /createProviderExecutionScheduler|registeredScheduler|enqueueExecution/);
+  assert.match(main, /new EmbeddedChatWorker\(\{id:'primary',allowSend:false\}\)/);
+  assert.match(main, /maxConcurrentSends:0,active:0,queued:0,pendingTasks:0,availableSlots:0,closed:true/);
+  assert.match(worker, /allowSend=true/);
+  assert.match(worker, /provider_send_disabled_for_passive_app/);
   assert.match(main, /providerHealthInFlight/);
   assert.match(main, /providerHealthCache/);
   assert.match(main, /if \(base\.active\)/);
@@ -673,7 +512,8 @@ test('command centre uses one real project projection without fictional agents o
   assert.match(ui,/function renderExecutionMonitor\(\)/);
   assert.match(html,/Execução pertence ao Forge MCP/);
   assert.match(html,/O aplicativo persiste e apresenta o estado/);
-  assert.match(html,/class="execution-autonomy-controls" hidden aria-hidden="true"/);
+  assert.doesNotMatch(html,/execution-autonomy-controls|autonomousContinuousToggle|continueAutonomousTechnical/);
+  assert.match(html,/Execução MCP-first/);
   assert.match(ui,/work\.claim\?\.state==='occupied'/);
   assert.match(ui,/executionClaimedCount/);
   assert.match(ui,/function renderExecutionSessions\(works,scope\)/);
@@ -696,41 +536,26 @@ test('command centre uses one real project projection without fictional agents o
   assert.doesNotMatch(ui,/Math\.random\(|fakeProgress|fakeAgents/);
 });
 
-test('project hub exposes creation and switching before the administrative navigation',()=>{
+test('project hub exposes creation, switching and passive workspace areas',()=>{
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
-  for(const id of ['activeProjectName','activeProjectDetail','projectNavList','openOrchestrator','openWorks'])
-    assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,id+' must have exactly one owner');
-  assert.ok(html.indexOf('id="quickNewProject"')<html.indexOf('id="openOrchestrator"'),
-    'create project must be discoverable before workspace navigation');
-  assert.ok(html.indexOf('id="projectNavList"')<html.indexOf('id="openOrchestrator"'),
-    'switching projects must be immediately discoverable in the sidebar');
-  assert.match(html,/Administrador Geral/);
-  assert.match(html,/id="openWorks"[\s\S]*?<strong>Atividades<\/strong>/);
+  for(const id of ['activeProjectName','activeProjectDetail','projectNavList','openOrchestrator','openWorks','openHistory','openEvidence'])
+    assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,id);
+  assert.ok(html.indexOf('id="quickNewProject"')<html.indexOf('id="openOrchestrator"'));
+  assert.ok(html.indexOf('id="projectNavList"')<html.indexOf('id="openOrchestrator"'));
+  assert.match(html,/id="openOrchestrator"[\s\S]*?<strong>Atividade<\/strong>/);
+  assert.match(html,/id="openWorks"[\s\S]*?<strong>Tarefas<\/strong>/);
+  assert.match(html,/Claims, progresso e resultados/);
+  assert.match(html,/Histórico<\/strong><small>Atividade persistida/);
   assert.match(html,/id="executionOverview"/);
   assert.match(html,/<section id="projectSwitcher" class="project-chooser"[^>]*hidden>/);
   assert.match(orchestration,/projectSwitcher'\)\.hidden=otherProjects\.length===0/);
   assert.match(orchestration,/projects\.filter\(project=>project\.id!==projectId\)/);
   assert.match(orchestration,/quickNewProject'\)\.addEventListener\('click',\(\)=>void createBlankProject\(\)\)/);
-  assert.match(orchestration,/addProject'\)\.addEventListener\('click',openNewProjectForm\)/);
-  assert.match(css,/body\.orchestrator-focus #quickNewProject/);
-  assert.match(css,/body\.orchestrator-focus \.project-chooser/);
-  // New projects start outside orchestrator-focus. Their form must still
-  // escape the scrolling rail and the GPT history controls on first use.
-  assert.match(css,/\.left-rail #projectSetup\[open\]\{[\s\S]*?position:fixed/);
-  assert.match(css,/\.left-rail #projectSetup\[open\]\{[\s\S]*?z-index:110/);
-  assert.doesNotMatch(css,/body\.orchestrator-focus #projectSetup\[open\]/);
-  assert.doesNotMatch(html,/Trocar de projeto anterior/);
-  assert.match(orchestration,/activeProjectName'\)\.textContent=current\?\.name/);
-  assert.match(orchestration,/GitHub vinculado por URL · leitura não verificada/);
-  assert.match(orchestration,/coordinatorRouteLabel'\)\.textContent='FORJADOR'/);
-  assert.match(css,/--font-ui:/);
-  for(const token of ['--bg:','--panel:','--panel-2:','--border:','--text:','--muted:','--focus:'])
-    assert.ok(css.includes(token),token+' should be defined in the canonical CSS root');
+  assert.match(orchestration,/coordinatorRouteLabel'\)\.textContent='ATIVIDADE DO PROJETO'/);
   assert.match(css,/\.project-identity\{/);
-  assert.match(css,/\.nav-item\.active\{[^}]*var\(--focus\)/);
-  assert.doesNotMatch(html,/id="startProjectAutonomous"/);
+  assert.doesNotMatch(html,/Trocar de projeto anterior|Administrador Geral|FORJADOR/);
 });
 
 test('GPT execution navigation opens scoped work chooser, including an empty project, without implicit task selection',()=>{
@@ -738,7 +563,7 @@ test('GPT execution navigation opens scoped work chooser, including an empty pro
   const orchestrator=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const shell=fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
   assert.match(html,/id="openWorks"[^>]*aria-controls="orchestratorWorkRail"[^>]*aria-expanded="false"/);
-  assert.match(html,/Atividades<\/strong><small>Tarefas e resultados/);
+  assert.match(html,/Tarefas<\/strong><small>Claims, progresso e resultados/);
   assert.match(orchestrator,/\$\('openWorks'\)\.disabled=!projectId\|\|!orchestratorId;/);
   assert.match(orchestrator,/\$\('openWorks'\)\.disabled=!p\|\|!selected;/);
   const start=orchestrator.indexOf('  function openMissionNavigation(');
@@ -750,7 +575,7 @@ test('GPT execution navigation opens scoped work chooser, including an empty pro
   assert.match(handler,/if\(currentProject!==projectId\|\|currentOrchestrator!==orchestratorId\)return/);
   assert.doesNotMatch(handler,/visibleWorkItems\[0\]/,'never choose the first task arbitrarily');
   assert.doesNotMatch(handler,/onOpenWork\(/,'the work list never sends or opens a GPT task by itself');
-  assert.match(orchestrator,/Nenhuma frente registrada neste projeto/);
+  assert.match(orchestrator,/Nenhuma tarefa registrada/);
   assert.match(orchestrator,/\$\('openWorks'\)\.setAttribute\('aria-expanded',String\(open\)\)/);
   assert.match(orchestrator,/\$\('openWorks'\)\.setAttribute\('aria-expanded','false'\)/);
   assert.match(shell,/if\(route!=='coordinator'\)[\s\S]{0,110}openWorks'\)\?\.setAttribute\('aria-expanded','false'\)/);
@@ -790,7 +615,7 @@ test('operational overview reuses work state and never presents an experimental 
   for(const id of ['projectPulse','projectPulseTotal','projectPulseRunning','projectPulseAttention','projectPulseWaiting','projectPulseNote','openProjectWork'])
     assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,'unique ID: '+id);
   assert.match(html,/<section id="projectPulse"[^>]*hidden>/);
-  assert.match(html,/Resumo das frentes registradas, não uma confirmação de execução autônoma/);
+  assert.match(html,/Resumo das tarefas persistidas\. O App não inicia execução, análise ou agentes/);
   assert.doesNotMatch(html,/orchestratorExperiments|Missões legadas desativadas/);
   assert.match(orchestration,/function renderProjectPulse\(counts,total\)/);
   assert.match(orchestration,/const hasScope=Boolean\(projectId&&orchestratorId\)/);
@@ -799,7 +624,7 @@ test('operational overview reuses work state and never presents an experimental 
   assert.match(orchestration,/for\(const work of works\)counts\[workClassForPlan\(work\)\]\+\+/);
   assert.match(orchestration,/\['reconciliation_required','review_required'\]\.includes\(work\.execution\?\.observed\)/);
   assert.match(orchestration,/openProjectWork'\)\.addEventListener\('click',\(\)=>\{/);
-  assert.match(orchestration,/Estados das conversas registradas; não comprovam execução autônoma/);
+  assert.match(orchestration,/Estados das tarefas persistidas; não comprovam execução externa/);
   assert.match(css,/\.project-pulse\[hidden\]\{display:none\}/);
   assert.match(css,/\.project-pulse-stats\{display:grid;grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
   assert.doesNotMatch(css,/orchestrator-experiments/);
@@ -811,7 +636,7 @@ test('project pulse opens a single filtered rail with preserved keyboard focus a
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.match(html,/id="projectPulseStats"/);
   assert.deepEqual([...html.matchAll(/data-work-filter="([^"]+)"/g)].map(m=>m[1]),['all','running','attention','ready']);
-  assert.match(html,/aria-label="Ver frentes que precisam de revisão"/);
+  assert.match(html,/aria-label="Ver tarefas que precisam de revisão"/);
   assert.match(orchestration,/projectPulseStats'\)\.addEventListener\('click'/);
   assert.match(orchestration,/const button=event\.target\.closest\('button\[data-work-filter\]'\)/);
   assert.match(orchestration,/openFilteredWorks\(button\.dataset\.workFilter,button\)/);
@@ -913,46 +738,26 @@ test('work filters have recoverable empty feedback without duplicate data source
   assert.match(css,/\.work-filter-empty\{[^}]*var\(--panel-2\)/);
 });
 
-test('Orchestrator workspace links project navigation, coordinator and scoped GPT work conversations', () => {
+test('project workspace presents Tasks and coordination without an App-owned GPT dispatcher', () => {
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   for(const id of ['projectNavList','orchestratorNavList','projectSelect','orchestratorSelect','orchestrationPanel','orchestratorWorkRail','orchestratorWorks','newScopedWorkForm','closeWorkRail'])
-    assert.match(html,new RegExp(`id="${id}"`));
-  assert.match(html,/Conversas no GPT/);
-  assert.match(html,/Nova conversa no GPT/);
-  assert.match(html,/id="analyzeWorks"/);
-  assert.match(html,/id="remoteRepositoryCapabilityNote"/);
-  assert.match(orchestration,/command\('orchestrator_analyze'/);
-  assert.match(orchestration,/call\('status'\)\.catch\(\(\)=>null\)/);
-  assert.match(orchestration,/const canDisable=result\.enabled===true/);
-  assert.match(orchestration,/const canEnable=engineStatus\?\.analysisAvailable===true/);
-  assert.match(html,/id="continuityFollowupPrepare"/);
-  assert.match(orchestration,/command\('continuity_followup_prepare'/);
-  assert.match(orchestration,/followup\.dataset\.reviewRunId=canPrepare\?result\.latest\.run_id:''/);
-  assert.match(orchestration,/A análise local do Forge não está disponível/);
-  assert.match(orchestration,/engineStatus\?\.autonomousExecution===false/);
-  assert.match(orchestration,/A análise só roda enquanto o processo OrdaX está aberto; o supervisor de 24 h do Runtime ainda não está conectado/);
+    assert.ok(html.includes('id="'+id+'"'),id);
+  assert.match(orchestration,/workRailTitle'\)\.textContent='Tarefas do projeto'/);
+  assert.match(orchestration,/newScopedWorkButton'\)\.textContent='＋ Nova tarefa'/);
   assert.match(orchestration,/call\('work_list'/);
   assert.match(orchestration,/let refreshPending=false,refreshRequested=false/);
   assert.match(orchestration,/while\(refreshRequested\)/);
   assert.match(orchestration,/await onScopeChange\(new Set\(works\.map\(w=>w\.id\)\)\)/);
-  assert.match(orchestration,/if\(item\.id===orchestratorId\)\{void showCoordinator\(\)\.catch\(\(\)=>error\(\)\);return;\}/);
-  assert.match(ui,/onScopeChange:async ids=>/);
-  assert.match(ui,/try \{await loadTasks\(\);\}\s*catch/);
   assert.match(orchestration,/onOpenWork\(work\.id\)/);
   assert.match(orchestration,/executionSurface==='node_host'/);
   assert.match(orchestration,/const setWorkRailOpen=open=>/);
   assert.match(orchestration,/\$\('closeWorkRail'\)\.addEventListener\('click'/);
   assert.match(orchestration,/coordinatorDraftCommitAvailable/);
-  assert.match(orchestration,/abra o aplicativo desktop|abra o Forge desktop/i);
-  assert.match(orchestration,/GPT indisponível/);
-  assert.match(orchestration,/O ChatGPT conectado responde no chat coordenador; envio às conversas de trabalho ainda não está ligado neste Host/);
-  assert.match(orchestration,/URL salva no projeto: \$\{project\.repository_url\}\. Este Host não lê o GitHub nem envia mensagens às frentes de trabalho\./);
-  assert.match(orchestration,/Nenhuma integração GitHub está conectada ao Host/);
-  assert.match(orchestration,/Runtime\/workspace local não conectado a esta página/);
-  assert.match(orchestration,/URL do GitHub salva como metadado do projeto/);
-  assert.match(orchestration,/orchestrator-focus/);
+  assert.match(ui,/onScopeChange:async ids=>/);
+  assert.doesNotMatch(orchestration,/command\('orchestrator_analyze'|continuity_followup_prepare|autonomous_continuous_set|autonomous_dialogue_continue/);
+  assert.doesNotMatch(orchestration,/Conversas no GPT|Nova conversa no GPT/);
   assert.match(css,/body\.orchestrator-focus #contextRail/);
   assert.match(css,/\.work-card:hover/);
 });
@@ -968,8 +773,7 @@ test('coordinator shows a passive empty state and keeps mobile controls inside t
   assert.match(orchestration,/nada foi reenviado automaticamente/);
   assert.match(orchestration,/Nenhuma atividade registrada/);
   assert.match(orchestration,/Quando um chat GPT usar o Forge MCP neste projeto/);
-  assert.match(orchestration,/Criar um site/);
-  assert.match(orchestration,/Desenvolver um app/);
+  assert.doesNotMatch(orchestration,/Criar um site|Desenvolver um app|Planejar um projeto/);
   assert.match(orchestration,/GPT Web · disponível no aplicativo desktop/);
   assert.match(html,/id="coordinatorApiSettings"[^>]*>Ajustes</);
   assert.match(css,/coordinator-head-actions #coordinatorApiSettings\{font-size:9px;width:auto/);
@@ -1006,7 +810,7 @@ test('startup Task restoration initializes its controls before the first await',
   assert.match(ui,/if\(epoch!==navigationEpoch\|\|currentTaskId!==id\)return;\s*syncRunReviewAction\(task\);\s*try \{await persistWorkspaceNavigation/);
 });
 
-test('Host keeps execution truth visible while collapsing project setup below the conversation',()=>{
+test('Host keeps execution truth visible while collapsing project setup below the passive activity view',()=>{
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
@@ -1014,7 +818,8 @@ test('Host keeps execution truth visible while collapsing project setup below th
   for(const id of ['capabilityGpt','capabilityGitHub','capabilityRuntime','capabilityContinuity'])
     assert.match(html,new RegExp(`id="${id}"`));
   assert.match(html,/<details id="orchestrationIntegrations" class="orchestration-integrations">/);
-  assert.match(html,/Projeto, conexões e automação/);
+  assert.match(html,/Conexões e diagnóstico/);
+  assert.match(html,/Projeto, acesso e limites observáveis/);
   assert.match(orchestration,/function syncCapabilitySummary\(\)/);
   assert.match(orchestration,/summary\.hidden=!nodeHost/);
   assert.match(orchestration,/GitHub · URL salva, leitura ausente/);
@@ -1055,10 +860,11 @@ test('new missions are local drafts and never silently start a GPT work conversa
   assert.doesNotMatch(orchestration,/canStartMission\(/);
   assert.match(orchestration,/Projeto e missão criados localmente/);
   assert.match(orchestration,/await showCoordinator\(\)/);
-  assert.match(ui,/window\.ordax\.send\(\{ taskId, content, draftRevision \}\)/);
+  assert.doesNotMatch(ui,/window\.ordax\.send|submitTaskMessage/);
   assert.match(contract,/\['mission_create'/);
   assert.match(contract,/\['project_rename'/);
-  assert.match(main,/!\['project_delete','forjador_send'\]\.includes\(operation\)/);
+  assert.match(main,/operation!=='project_delete'/);
+  assert.doesNotMatch(main,/forjador_send/);
   assert.match(main,/projectAssetCleanupScope/);
   assert.match(main,/pruneDeletedProjectAssets/);
   assert.match(packagedSmoke,/missionDraftPreserved/);
@@ -1087,19 +893,20 @@ test('drafts are scoped to a Task, revision-guarded and saved without entering p
   assert.match(main, /createTaskUiHandlers/);
   assert.match(taskHandlers, /ordax:tasks:draft:set/);
   assert.match(taskHandlers, /ordax:tasks:draft:get/);
-  assert.match(main, /store\.beginProviderRun\(taskId, prompt/);
+  assert.doesNotMatch(main, /store\.beginProviderRun\(taskId, prompt|async function runTask\(/);
   assert.match(store, /this\.setDraft\(taskId, '', draftRevision\)/);
   assert.match(ui, /draftCache/);
   assert.match(ui, /flushDraft/);
   assert.match(ui, /if \(id !== currentTaskId\) await flushDraft\(\);/);
   assert.match(ui, /await flushDraft\(\);\s*if\(routeEpoch!==navigationEpoch\)return false;\s*await selectRightPane\('execution'\);\s*if\(routeEpoch!==navigationEpoch\)return false;/);
   assert.match(ui, /navigationEpoch/);
-  assert.match(ui, /draftRevision/);
+  assert.doesNotMatch(ui, /window\.ordax\.send|submitTaskMessage/);
   assert.match(html, /draftState/);
   assert.match(html, /coordinatorDraftState/);
   assert.match(orchestration,/api\.getTaskDraft\(taskId\)/);
   assert.match(orchestration,/api\.setDraft\(draft\.taskId,draft\.content,draft\.revision\)/);
-  assert.match(orchestration,/draftRevision:draft\.draftRevision/);
+  assert.match(orchestration,/coordinatorDraftRevision/);
+  assert.doesNotMatch(orchestration,/forjador_send|proposal_send|coordinatorComposer'\)\.addEventListener\('submit'/);
   assert.match(orchestration,/reconcileCoordinatorDraft/);
   assert.doesNotMatch(ui, /localStorage|sessionStorage/);
 });
@@ -1115,14 +922,13 @@ test('project titles can be renamed from the chat header and are persisted in Ta
   assert.match(html, /id="renameTaskForm"/);
 });
 
-test('SSOT projections avoid duplicate full-history reads during send and support bounded context', () => {
+test('SSOT projections keep bounded historical context without App-owned provider send', () => {
   const source = fs.readFileSync(path.join(root, 'src', 'store.mjs'), 'utf8');
   assert.match(source, /idx_messages_task_sequence/);
   assert.match(source, /SELECT t\.id,t\.title,t\.status,t\.created_at,t\.updated_at/);
   assert.doesNotMatch(source, /SELECT t\.\*, \(SELECT COUNT\(\*\) FROM task_conversations/);
   assert.match(source, /getTaskExecutionSnapshot\(taskId\)/);
-  assert.match(main, /store\.getTaskExecutionSnapshot\(taskId\)/);
-  assert.match(main, /conversationPlan\.newSession && task\.has_messages/);
+  assert.doesNotMatch(main, /store\.getTaskExecutionSnapshot\(taskId\)|conversationPlan\.newSession|async function runTask\(/);
   assert.match(source, /const recentMessages=this\.messages\(taskId,\{limit:8\}\)/);
   assert.match(source, /totalMessageCount,/);
   assert.match(source, /snapshot\.totalMessages/);
@@ -1171,49 +977,41 @@ test('live E2E scripts wait for a fresh Task ID before sending test prompts', ()
   }
 });
 
-test('persistent Task memory can rotate provider conversations without losing the project', () => {
+test('persistent Task memory preserves historical provider segments without App-owned continuation', () => {
   const store = fs.readFileSync(path.join(root,'src','store.mjs'),'utf8');
   assert.match(store, /task_conversations/);
   assert.match(store, /rotateConversation/);
   assert.match(store, /buildContinuationPrompt/);
   assert.match(store, /continuationSummary/);
-  assert.match(main, /needsContinuation/);
-  assert.match(main, /providerPrompt/);
   assert.match(preload, /rotateConversation/);
-  assert.match(ui, /Conversa GPT nova aberta/);
-  assert.match(ui, /await window\.ordax\.home\(\)/);
   assert.match(uiHtml, /id="recoverProviderConversation"/);
+  assert.doesNotMatch(main, /needsContinuation|providerPrompt|async function runTask\(/);
+  assert.doesNotMatch(ui, /window\.ordax\.send|submitTaskMessage/);
 });
 
-test('a persistent project hides internal provider sessions and rotates by observed transcript pressure or the hard turn ceiling', () => {
+test('historical provider segmentation remains readable but the passive App never rotates or submits a chat', () => {
   const policy = fs.readFileSync(path.join(root,'src','conversation-policy.mjs'),'utf8');
   const store = fs.readFileSync(path.join(root,'src','store.mjs'),'utf8');
   const html = fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   assert.match(policy, /SUCCESSFUL_TURNS_PER_SEGMENT = 24/);
   assert.match(policy, /MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT = 64 \* 1024/);
   assert.match(policy, /observedTranscriptPressure/);
-  assert.match(main, /planProviderConversation/);
-  assert.match(main, /nextPromptBytes:Buffer\.byteLength/);
-  assert.match(main, /conversationPlan\.newSession/);
-  assert.match(main, /provider\.conversation\.auto_rotated/);
   assert.match(store, /observedConversationTranscriptBytes/);
   assert.match(store, /provider\.submission\.provenance/);
   assert.match(store, /message_assets/);
+  assert.match(store, /conversation_completed_runs/);
   assert.match(taskHandlers, /conversation_rotation_during_run/);
   assert.match(html, /internal-diagnostics/);
-  assert.match(html, /<details/);
-  assert.match(ui, /Projeto contínuo/);
+  assert.doesNotMatch(main, /planProviderConversation|conversationPlan\.newSession|provider\.conversation\.auto_rotated|async function runTask\(/);
   assert.doesNotMatch(html, /id="rotateConversation"[^>]*Nova conversa interna/);
-  assert.match(store, /conversation_completed_runs/);
 });
 
-test('provider chat identity is canonical and unconfirmed navigation never triggers resend', () => {
+test('provider chat identity is canonical only for read-only historical inspection', () => {
   const source = fs.readFileSync(path.join(root,'src','conversation-policy.mjs'),'utf8');
   assert.match(source, /canonicalProviderChatUrl/);
-  assert.match(main, /canonicalProviderChatUrl\(result\.chatUrl\)/);
-  assert.match(main, /provider\.conversation\.url_unconfirmed/);
-  assert.match(main, /provider_url_unconfirmed/);
-  assert.doesNotMatch(main, /provider_url:\s*String\(result\.chatUrl/);
+  assert.match(main, /canonicalProviderChatUrl/);
+  assert.doesNotMatch(main, /provider\.conversation\.url_unconfirmed|provider_url_unconfirmed|provider_url:\s*String\(result\.chatUrl/);
+  assert.doesNotMatch(main, /sendPrompt\(|async function runTask\(/);
 });
 
 test('project memory suggestions are review-only and isolated from canon', () => {
@@ -1241,7 +1039,7 @@ test('generic project context is assembled from approved memory without truncati
   assert.match(context, /JANELA DE HISTORICO/);
   assert.match(context, /HISTORICO FORA DO ORCAMENTO/);
   assert.match(context, /continuation_budget_invariant_failed/);
-  assert.match(main,/assertContinuationContextReady\(continuationPacket\)/);
+  assert.doesNotMatch(main,/assertContinuationContextReady\(continuationPacket\)/);
   assert.match(ui,/continuation_context_unavailable_request_exceeds_budget/);
   assert.match(ui,/continuation_context_critical_memory_omitted/);
   assert.ok(!store.includes('slice(0, 12)'));
@@ -1280,94 +1078,64 @@ test('late provider recovery refreshes both Electron and Host task views',()=>{
 });
 
 
-test('single GPT model and Forge MCP replace the external coordinator',()=>{
+test('GPT intelligence is external to the passive App and Forge MCP owns project tools',()=>{
   const host=fs.readFileSync(path.join(root,'host','host-application.mjs'),'utf8');
   const orchestratorUI=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.match(main,/const coordinatorChatStatus=\(\)=>/);
-  assert.match(main,/const mcpApp='forge-mcp'/);
-  assert.doesNotMatch(orchestratorUI,/Conecte e selecione OrdaX MCP/);
-  assert.match(orchestratorUI,/Conecte e selecione Forge MCP/);
-  assert.doesNotMatch(main,/coordinator:null/);
-  assert.doesNotMatch(host,/const coordinator=null/);
+  assert.doesNotMatch(main,/createOrchestratorKernel\(\{[\s\S]{0,1600}\bprovider\s*:/);
+  assert.doesNotMatch(main,/ownerDispatch/);
+  assert.doesNotMatch(main,/const mcpApp='forge-mcp'|async function runTask\(|ordax:tasks:send/);
+  assert.doesNotMatch(orchestratorUI,/Conecte e selecione OrdaX MCP|forjador_send|proposal_send/);
   assert.doesNotMatch(main,/GROQ_API_KEY|createGroqCoordinatorConversation|supervisor:key:save/);
   assert.doesNotMatch(host,/GROQ_API_KEY|api\.groq\.com|createChatGPTPlanConnection/);
   assert.doesNotMatch(uiHtml,/labSupervisorKeySettings|chatgptPlanSettings|capabilityGroq/);
   assert.doesNotMatch(preload,/supervisorSaveKey|forjadorGroqPrompt/);
   assert.match(orchestratorUI,/gptWebTransportAvailable/);
 });
-
-test('Forjador uses GPT Web and exposes no legacy coordinator-chat route',()=>{
+test('project activity center is passive and exposes no GPT dispatch route',()=>{
   const orchestratorUi=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const contract=fs.readFileSync(path.join(root,'src','forge-contract.mjs'),'utf8');
   const service=fs.readFileSync(path.join(root,'src','orchestrator-service.mjs'),'utf8');
-  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const main=fs.readFileSync(path.join(root,'desktop','main.mjs'),'utf8');
+  const executorContext=fs.readFileSync(path.join(root,'src','forge-executor-context.mjs'),'utf8');
   assert.match(uiHtml,/id="openOrchestrator"/);
   assert.match(uiHtml,/id="openWorks"/);
   assert.match(uiHtml,/id="coordinatorRouteLabel">ATIVIDADE DO PROJETO</);
-  assert.match(uiHtml,/CONVERSA DE TRABALHO · CHATGPT WEB/);
   assert.match(uiHtml,/id="coordinatorComposer" hidden aria-hidden="true"/);
   assert.match(uiHtml,/id="coordinatorPassiveBoundary"/);
-  assert.match(uiHtml,/id="composer"/);
-  assert.match(uiHtml,/id="coordinatorSend"[^>]*>Enviar</);
-  assert.match(uiHtml,/Via Forge MCP/);
-  assert.match(ui,/setWorkspaceRoute\('coordinator'\)/);
-  assert.match(ui,/setWorkspaceRoute\('gpt'\)/);
-  assert.match(ui,/await flushDraft\(\);\s*if\(routeEpoch!==navigationEpoch\)return false;\s*await selectRightPane\('execution'\);\s*if\(routeEpoch!==navigationEpoch\)return false;/);
-  assert.match(ui,/await selectRightPane\('provider'\)/);
-  assert.match(orchestratorUi,/orchestratorChatAvailable=gptWebTransportAvailable/);
-  assert.doesNotMatch(orchestratorUi,/orchestratorChatAvailable=analysisAvailable/);
-  assert.match(orchestratorUi,/\$\('coordinatorComposer'\)\.addEventListener\('submit'/);
-  assert.match(orchestratorUi,/command\('forjador_send'/);
-  assert.match(contract,/\['forjador_send'.*directly to the GPT Web executor/);
-  assert.doesNotMatch(contract,/\['orchestrator_chat'/);
-  assert.match(service,/dispatchLocalCoordination\(context,operation,input\)/);
-  assert.match(service,/provider:'ordax_app_policy'/);
-  assert.doesNotMatch(service,/const port=.*this\.coordinator|interpretGPTWorkReview/);
-  assert.doesNotMatch(service,/operation==='orchestrator_chat'|delegateWork:operation===|jarvis_delegation/);
-  assert.match(service,/orchestrator_chat remains queryable here only for receipts created by older/);
-  assert.match(css,/#orchestratorWorkRail\{display:flex!important/);
-  assert.match(css,/body\.orchestrator-focus \.left-rail \.tasks-wrap\{display:none!important\}/);
-
-  assert.doesNotMatch(orchestratorUi,/GPT Web é o único transporte para enviar mensagens neste chat/);
+  assert.match(uiHtml,/id="taskPassiveBoundary"/);
+  assert.match(uiHtml,/id="composer" class="composer" hidden aria-hidden="true"/);
+  assert.match(orchestratorUi,/coordinatorRouteLabel'\)\.textContent='ATIVIDADE DO PROJETO'/);
+  assert.doesNotMatch(orchestratorUi,/command\('forjador_send'|proposal_send|proposals_list|coordinatorComposer'\)\.addEventListener\('submit'/);
+  assert.doesNotMatch(contract,/\['(?:work_send|forjador_send|proposal_send|work_parallel_launch)'/);
+  assert.doesNotMatch(service,/confirmAndSendProposal|dispatchCore|tickParallelDispatch|prepareParallelLaunch/);
+  assert.doesNotMatch(main,/createOrchestratorKernel\(\{[\s\S]{0,1600}\bprovider\s*:/);
+  assert.doesNotMatch(main,/ownerDispatch/);
+  assert.doesNotMatch(main,/async function runTask\(|createProviderExecutionScheduler|ordax:tasks:send/);
+  assert.match(executorContext,/forge_work_claim/);
+  assert.match(executorContext,/forge_work_progress/);
+  assert.match(executorContext,/Forge never spawns child GPT workers/);
 });
 
-
-test('Forjador UI admits a single GPT send or optional proposal while an async draft is being committed',()=>{
+test('activity center keeps local storage controls but cannot submit a coordinator turn',()=>{
   const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const admission=source.slice(source.indexOf('function syncCoordinatorActions()'),
     source.indexOf('function setCoordinatorDraftState('));
-  assert.match(admission,/\$\('coordinatorSend'\)\.disabled=true/);
-  assert.match(admission,/\$\('analyzeWorks'\)\.disabled=true/);
-  assert.match(admission,/\$\('prepareWork'\)\.disabled=true/);
-  const chat=source.slice(source.indexOf("\$('coordinatorComposer')\.addEventListener('submit'"),
-    source.indexOf("\$('analyzeWorks')\.addEventListener('click'"));
-  assert.match(chat,/if\(coordinatorSubmitting\|\|analysisBusy\|\|\$\('coordinatorSend'\)\.disabled\)return/);
-  const locked=chat.indexOf('coordinatorSubmitting=true;syncCoordinatorActions()');
-  const draft=chat.indexOf('await prepareCoordinatorDraft(t)');
-  const dispatch=chat.indexOf("command('forjador_send'");
-  assert.ok(locked>=0&&draft>locked&&dispatch>draft,'acquire before the first await and dispatch');
-  assert.match(chat,/if\(p!==projectId\|\|o!==orchestratorId\|\|t!==chatTaskId\|\|!content\)return/);
-  assert.match(chat,/\.finally\(\(\)=>\{coordinatorSubmitting=false;syncCoordinatorActions\(\);\}\)/);
-  const proposal=source.slice(source.indexOf("\$('prepareWork')\.addEventListener('click'"),
-    source.indexOf("\$('coordinatorPrompt')\.addEventListener('input'"));
-  assert.match(proposal,/if\(\$\('prepareWork'\)\.disabled\|\|analysisBusy\|\|coordinatorSubmitting/);
-  assert.ok(proposal.indexOf('analysisBusy=true;coordinatorSubmitting=true;syncCoordinatorActions()')>=0 &&
-    proposal.indexOf('analysisBusy=true;coordinatorSubmitting=true;syncCoordinatorActions()')<
-    proposal.indexOf('await prepareCoordinatorDraft(t)'),
-    'proposal must lock the shared coordinator before awaiting SQLite draft');
-  assert.match(proposal,/finally\{analysisBusy=false;coordinatorSubmitting=false;syncCoordinatorActions\(\);\}/);
-  assert.doesNotMatch(chat,/window\.ordax\.send\(/,'UI must use the canonical Forjador operation, not bypass the service');
-  assert.doesNotMatch(proposal,/window\.ordax\.send\(/,'Groq planning must never invoke the GPT Web sender');
+  assert.ok(admission.includes("$('coordinatorSend').disabled=true"));
+  assert.doesNotMatch(admission,/analyzeWorks|prepareWork/);
+  assert.doesNotMatch(source,/coordinatorComposer'\)\.addEventListener\('submit'|command\('forjador_send'|proposal_send/);
+  assert.match(source,/stageCoordinatorDraft/);
+  assert.match(source,/setCoordinatorDraftState/);
 });
 
 test('asynchronous project and orchestrator refreshes cannot overwrite newer scope or draft',()=>{
   const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const project=source.slice(source.indexOf('async function refreshProjects()'),
-    source.indexOf('async function refreshContinuityStatus()'));
+    source.indexOf('async function refreshOrchestrators()'));
   assert.match(project,/const generation=\+\+projectRefreshGeneration/);
   assert.match(project,/if\(generation!==projectRefreshGeneration\)return projectsCache/);
   const orch=source.slice(source.indexOf('async function refreshOrchestrators()'),
-    source.indexOf('async function refreshAutonomousDialogue()'));
+    source.indexOf('async function renderCoordinator()'));
   const fetch=orch.indexOf("await call('orchestrators_list'");
   const accept=orch.indexOf('orchestrators=result.orchestrators');
   const guard=orch.indexOf('if(generation!==orchestratorRefreshGeneration||p!==projectId)return []');
@@ -1376,7 +1144,7 @@ test('asynchronous project and orchestrator refreshes cannot overwrite newer sco
   assert.match(orch,/const isCurrent=\(\)=>generation===orchestratorRefreshGeneration&&p===projectId&&selectedId===orchestratorId/);
   assert.match(orch,/await activateCoordinatorDraft\(selected\?\.chat_task_id\|\|null,isCurrent\)/);
   assert.match(orch,/await refreshWorks\(\);\s*if\(!isCurrent\(\)\)return \[\]/);
-  assert.match(orch,/await refreshContinuityStatus\(\);\s*if\(!isCurrent\(\)\)return \[\]/);
+  assert.doesNotMatch(orch,/refreshContinuityStatus|refreshAutonomousDialogue/);
   const draft=source.slice(source.indexOf('async function activateCoordinatorDraft('),
     source.indexOf('async function prepareCoordinatorDraft('));
   assert.match(draft,/await flushCoordinatorDraft\(\);\s*[^\n]*\n\s*if\(!isCurrent\(\)\)return/);
@@ -1387,28 +1155,17 @@ test('asynchronous project and orchestrator refreshes cannot overwrite newer sco
     'scope must still be current before and after the async work-list subscription');
 });
 
-test('continuous project consent is visible once in the real execution pane and scoped to canonical status',()=>{
+test('App never enables autonomous project execution from its activity pane',()=>{
   const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
-  const contract=fs.readFileSync(path.join(root,'src','forge-contract.mjs'),'utf8');
-  assert.equal((uiHtml.match(/id="autonomousContinuousToggle"/g)||[]).length,1);
-  assert.ok(uiHtml.indexOf('id="autonomousContinuousToggle"')>
-    uiHtml.indexOf('id="executionOverview"'));
-  assert.match(source,/result\?\.continuousExecutionEnabled===true/);
-  assert.match(source,/command\('autonomous_continuous_set'/);
-  assert.match(source,/if\(p!==projectId\|\|o!==orchestratorId\)return/);
-  assert.match(contract,/\['autonomous_continuous_set'/);
-  assert.match(uiHtml,/id="executionAutonomyState"/);
-  assert.match(uiHtml,/id="autonomousContinuousState"/);
+  assert.doesNotMatch(main,/continuousExecutionByDefault/);
+  assert.doesNotMatch(main,/createOrchestratorKernel\(\{[\s\S]{0,1600}\bprovider\s*:/);
+  assert.doesNotMatch(main,/ownerDispatch/);
+  assert.doesNotMatch(uiHtml,/id="autonomousContinuousToggle"/);
+  assert.doesNotMatch(source,/autonomousContinuousToggle|command\('autonomous_continuous_set'/);
 });
-
-test('coordinator Enter uses exactly one IME-safe keyboard handler',()=>{
+test('passive activity center has no coordinator keyboard or submit handler',()=>{
   const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
-  assert.equal((source.match(/\$\('coordinatorPrompt'\)\.addEventListener\('keydown'/g)||[]).length,1);
-  const keyboard=source.slice(source.indexOf("\$('coordinatorPrompt').addEventListener('keydown'"),
-    source.indexOf("\$('coordinatorComposer').addEventListener('submit'"));
-  assert.match(keyboard,/event\.key!=='Enter'\|\|event\.isComposing\|\|event\.shiftKey/);
-  assert.match(keyboard,/event\.preventDefault\(\)/);
-  assert.match(keyboard,/if\(!\$\('coordinatorSend'\)\.disabled\)\$\('coordinatorComposer'\)\.requestSubmit\(\)/);
-  assert.equal((keyboard.match(/requestSubmit\(\)/g)||[]).length,1);
-  assert.doesNotMatch(keyboard,/window\.ordax\.send\(/);
+  assert.equal((source.match(/\$\('coordinatorPrompt'\)\.addEventListener\('keydown'/g)||[]).length,0);
+  assert.equal((source.match(/\$\('coordinatorComposer'\)\.addEventListener\('submit'/g)||[]).length,0);
+  assert.doesNotMatch(source,/requestSubmit\(\)|command\('forjador_send'/);
 });

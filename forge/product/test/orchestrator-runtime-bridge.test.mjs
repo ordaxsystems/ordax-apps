@@ -40,7 +40,7 @@ test('signed read uses a host-minted context; ordinary object lookalikes have no
 test('host v1 never inherits new local proposal reads or writes from the App catalog',async()=>{
   const f=fixture(),ready=await f.bridge.handle(f.bootstrap);
   assert.deepEqual(ready.operations,['status','projects_list','orchestrators_list','work_list','work_get','work_messages','command_get']);
-  for(const operation of ['proposals_list','orchestrator_prepare','proposal_review','proposal_send'])
+  for(const operation of ['proposals_list','orchestrator_prepare','proposal_review'])
     assert.equal((await f.bridge.handle(f.request(operation))).error,'host_read_only');
   assert.equal(f.reads(),0);
 });
@@ -51,7 +51,7 @@ test('separate control capability exposes bounded local orchestration but never 
   for(const operation of [
     'project_create','project_quick_create','mission_create','orchestrator_create',
     'project_memory_propose','work_create','work_batch_create','work_draft_set',
-    'work_dependency_set','work_parallel_launch','work_plan'
+    'work_dependency_set','work_plan'
   ]) assert.ok(ready.operations.includes(operation),'missing control operation '+operation);
   for(const operation of ['work_send','forjador_send','proposal_send','project_delete','workspace_bind',
     'autonomous_dialogue_start','autonomous_dialogue_continue'])

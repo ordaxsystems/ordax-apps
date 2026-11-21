@@ -92,16 +92,12 @@ test('fail closed on legacy failed submit stage without saved metrics',t=>{
   assert.equal(listTaskUncertainTransportRuns(store,task.id).length,1);
 });
 
-test('main enforces guard before local user message and Run creation',()=>{
+test('passive App cannot create a local provider Run or bypass uncertain-transport policy',()=>{
   const here=path.dirname(fileURLToPath(import.meta.url));
   const main=fs.readFileSync(path.resolve(here,'../desktop/main.mjs'),'utf8');
-  const part=main.split('async function runTask(')[1].split('const heartbeat =')[0];
-  const guard=part.indexOf('assertTaskHasNoUncertainTransport(store,taskId)');
-  const atomic=part.indexOf('store.beginProviderRun(taskId, prompt');
-  assert.ok(guard>=0 && atomic>guard);
-  assert.ok(part.indexOf('assertProviderSendReadiness(await worker.health())')<atomic);
-  assert.doesNotMatch(part,/store\.appendMessage\(taskId, 'user'/);
-  assert.doesNotMatch(part,/store\.startRun\(taskId/);
   const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
+  assert.doesNotMatch(main,/async function runTask\(|beginProviderRun\(|assertTaskHasNoUncertainTransport\(/);
+  assert.doesNotMatch(main,/createOrchestratorKernel\(\{[\s\S]{0,1600}\bprovider\s*:/);
+  assert.doesNotMatch(ui,/window\.ordax\.send|submitTaskMessage/);
   assert.match(ui,/task_submission_reconciliation_required/);
 });

@@ -69,12 +69,13 @@ test('read-only recovery and artifact receipts remain visible in the focused For
   assert.match(css,/#htmlArtifactStatus:not\(:empty\)\{display:block!important\}/);
 });
 
-test('conversation keeps one canonical textarea and one submit route',()=>{
+test('activity history retains compatibility DOM but has no submit route',()=>{
   const html=read('ui.html'),js=read('orchestrator-ui.mjs');
   assert.equal((html.match(/id="coordinatorPrompt"/g)||[]).length,1);
   assert.equal((html.match(/id="coordinatorSend"/g)||[]).length,1);
-  assert.match(js,/fitCoordinatorComposer\(\)/);
-  assert.match(js,/stageCoordinatorDraft\(\)/);
+  assert.match(html,/id="coordinatorComposer" hidden aria-hidden="true"/);
+  assert.match(html,/id="coordinatorPassiveBoundary"/);
   assert.match(js,/article\.dataset\.role=message\.role==='user'\?'user':'assistant'/);
-  assert.match(js,/message\.role==='user'\?'Você':'Forjador'/);
+  assert.match(js,/message\.role==='user'\?'Você':'Forge'/);
+  assert.doesNotMatch(js,/coordinatorComposer'\)\.addEventListener\('submit'|forjador_send|proposal_send|proposals_list/);
 });

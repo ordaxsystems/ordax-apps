@@ -792,7 +792,7 @@ function syncComposerAvailability() {
   $('#composer').dataset.sendReady = allowed ? 'true' : 'false';
   $('#composerConnection').dataset.state = composeAvailability.reason;
   $('#composerConnectionText').textContent = 'Modo passivo: esta interface exibe as tarefas. Solicite execuções ao Forge MCP.';
-  // The Forjador layout hides the small sidebar provider card. Surface the
+  // The passive activity layout hides the small sidebar provider card. Surface the
   // SAME canonical login/readiness gate at the top of every project screen.
   const gate=$('#forgeProviderGate');
   const pool=lastProviderPoolSession;
@@ -1847,73 +1847,6 @@ $('#providerForward').addEventListener('click',()=>void providerAction($('#provi
 $('#providerReload').addEventListener('click',()=>void providerAction($('#providerReload'),()=>window.ordax.reload()));
 $('#providerHome').addEventListener('click',()=>void providerAction($('#providerHome'),()=>window.ordax.home()));
 
-async function submitTaskMessage(contentOverride = null) {
-  if (!currentTaskId) return false;
-  const input = $('#prompt');
-  if (typeof contentOverride === 'string') {
-    input.value = contentOverride;
-    input.dispatchEvent(new Event('input', { bubbles:true }));
-  }
-  const content = input.value.trim();
-  if (!content || submittingTaskIds.has(currentTaskId)) return false;
-  // Enter/requestSubmit cannot bypass the disabled submit button.
-  if (!composeAvailability.allowed) {
-    syncComposerAvailability();
-    stageDraft();
-    return false;
-  }
-  const taskId = currentTaskId;
-  flushDraft();
-  const draftRevision = Math.max(draftCache.get(taskId)?.revision || 0, Number(currentTask?.draft_revision || 0)) + 1;
-  submittingTaskIds.add(taskId);
-  syncComposerAvailability();
-  // Preserve text until backend accepts the send: logout must not consume drafts.
-  $('#runStatus').textContent = currentTask?.chat_url ? 'Enviando…' : currentTask?.continuation?.total_messages ? 'Abrindo nova conversa com memória…' : 'Enviando…';
-  $('#runStatus').classList.remove('hidden');
-  $('#send').disabled = true;
-  let sent = false;
-  try {
-    const { task } = await window.ordax.send({ taskId, content, draftRevision });
-    draftCache.set(taskId, { content:'', revision:draftRevision });
-    if (currentTaskId === taskId) {
-      input.value = '';
-      input.style.height = '';
-      $('#draftState').textContent = '';
-      currentTask = task;
-      renderHistory(task, { reset:true, scrollToLatest:true });
-      renderContext(task);
-      $('#recoveryBanner').classList.add('hidden');
-      const version = task.checkpoint_record?.version || 0;
-      $('#taskCheckpoint').textContent = `Memória local v${version} • ${plural(task.continuation?.total_messages || task.messages.length, 'mensagem', 'mensagens')}`;
-    }
-    await loadTasks();
-    if(currentTaskId===taskId)syncRunReviewAction(currentTask);
-    sent = true;
-  } catch (error) {
-    const message = friendlyError(error);
-    if (currentTaskId === taskId) {
-      await openTask(taskId).catch(() => null);
-      if (currentTaskId === taskId) {
-        $('#messageList').insertAdjacentHTML('beforeend', `<article class="message error"><div class="message-body"><div class="message-role">Erro</div><div class="message-content">${esc(message)}</div></div></article>`);
-        $('#messages').scrollTop = $('#messages').scrollHeight;
-      }
-    }
-  } finally {
-    $('#runStatus').classList.add('hidden');
-    $('#runStatus').textContent = '';
-    submittingTaskIds.delete(taskId);
-    syncComposerAvailability();
-    if (currentTaskId === taskId) input.focus();
-    refreshProvider();
-  }
-  return sent;
-}
-
-$('#composer').addEventListener('submit', event => {
-  event.preventDefault();
-  return submitTaskMessage();
-});
-
 $('#prompt').addEventListener('input', event => {
   const input = event.currentTarget;
   input.style.height = 'auto';
@@ -1926,10 +1859,6 @@ $('#prompt').addEventListener('draft-restored', () => {
   input.style.height = `${Math.min(input.scrollHeight, 150)}px`;
 });
 window.addEventListener('pagehide', flushDraft);
-$('#prompt').addEventListener('keydown', event => {
-  if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('#composer').requestSubmit(); }
-});
-
 window.ordax.onRunStarted(payload => {
   if (payload.taskId !== currentTaskId) return;
   appendLiveRun(payload.runId, payload.userMessage);

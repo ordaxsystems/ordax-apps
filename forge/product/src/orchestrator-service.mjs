@@ -1,16 +1,12 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {ORCHESTRATOR_CONTRACT,ORCHESTRATOR_TOOLS,validateOrchestratorInput,validateNativeCommandReviewInput} from './forge-contract.mjs';
 import {assertTaskHasNoUncertainTransport,listTaskUncertainTransportRuns} from './provider-uncertain-run-policy.mjs';
-import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
 import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
 import {validateWorkProposal} from './orchestrator-proposal.mjs';
 import {findProviderSubmissionProvenance} from './provider-submission-provenance.mjs';
 import {LabContinuation} from './lab-continuation.mjs';
 import {AutonomousDialogue} from './autonomous-dialogue.mjs';
-import {appOwnedSiteDecision} from './natural-site-intent.mjs';
-import {latestSiteWork} from './site-work-context.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
-import {providerSessionReport} from './provider-compose-availability.mjs';
 import {forgeProjectContext,forgeMcpDiscovery} from './forge-executor-context.mjs';
 import {forgeProjectMemoryView} from './forge-project-memory-view.mjs';
 import {forgeProjectAdministratorView} from './forge-project-administrator-view.mjs';
@@ -24,7 +20,7 @@ import {workExecutionSummary} from './work-execution-summary.mjs';
 import {projectWorkPlan} from './work-plan-read-model.mjs';
 import {forgeVerifiedWorkAcceptances} from './forge-work-acceptance-evidence.mjs';
 import {ForgeWorkClaims} from './forge-work-claims.mjs';
-import {appendRemoteRepositoryInstructions,normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
+import {normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
 
 function missionProjectName(mission) {
   const firstLine=String(mission||'').trim().split(/\r?\n/u,1)[0].trim();
@@ -32,65 +28,20 @@ function missionProjectName(mission) {
   return Array.from(firstSentence).slice(0,140).join('')||'Novo projeto';
 }
 
-function appOwnedProposal(content) {
-  const normalized=String(content||'').trim();
-  if(!normalized)throw Error('orchestrator_proposal_invalid');
-  const firstLine=normalized.split(/\r?\n/u,1)[0].replace(/\s+/gu,' ').trim();
-  const title=Array.from(firstLine).slice(0,140).join('')||'Nova frente';
-  return validateWorkProposal({title,content:normalized,
-    reason:'Proposta local derivada diretamente da solicitação registrada; nenhum modelo externo foi consultado.'});
-}
-
-function appOwnedAnalysisSummary(context) {
-  const planning=context?.planning||{};
-  return ['Análise local do Forge registrada.',
-    Number(context?.scope?.totalWorkCount||0)+' frente(s) no projeto; '+
-      Number(context?.scope?.includedWorkCount||0)+' inspecionada(s) em detalhe.',
-    (Array.isArray(planning.candidateTaskIds)?planning.candidateTaskIds.length:0)+' pronta(s), '+
-      Number(planning.waitingCount||0)+' aguardando dependência, '+
-      Number(planning.blockedCount||0)+' bloqueada(s), '+
-      Number(planning.verificationRequiredCount||0)+' aguardando verificação.',
-    'Evidência local: '+Number(context?.evidence?.workspace?.entries?.length||0)+' entrada(s) de workspace, '+
-      Number(context?.evidence?.commands?.length||0)+' comando(s)/teste(s) recente(s), '+
-      Number(context?.evidence?.receipts?.uncertain||0)+' recibo(s) incerto(s); Git histórico '+
-      (context?.evidence?.repository?'disponível':'indisponível')+'.',
-    'Nenhum modelo externo foi consultado e nenhuma mensagem GPT foi enviada.'].join(' ');
-}
-
-function appOwnedRunReview(source) {
-  const observedExcerpt=redactOrchestratorAnalysisText(source.observedAnswer,180)
-    .replace(/\s+/gu,' ').trim();
-  return {sourceRunId:source.runId,decision:'verify_external_effect',
-    summary:'O Forge confirmou a resposta GPT deste Run, mas não há prova externa suficiente para certificar efeitos.',
-    reason:'A política local diferencia resposta observada de alteração real em arquivos, testes, GitHub ou publicação.',
-    observedExcerpt,nextPrompt:null,reviewOnly:true,externalEffectVerified:false,
-    automaticGPTSendAuthorized:false,reviewProvider:'ordax_app_policy',
-    acceptance:{criterion:'Comprovar os efeitos externos alegados pela resposta GPT usando evidência verificável do projeto.',
-      status:'requires_external_verification',observedExcerpt}};
-}
-
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
 export class OrchestratorService {
-  constructor({store,authorize,provider=null,confirmProposal=null,confirmProposalSend=null,workspacePort=null,fileBroker=null,development=null,repositoryPort=null,verifyLocalArtifact=null,continuousExecutionByDefault=false}={}) {
+  constructor({store,authorize,workspacePort=null,fileBroker=null,development=null,repositoryPort=null,verifyLocalArtifact=null}={}) {
     if(!store?.db || typeof authorize!=='function')throw Error('orchestrator_ports_required');
     this.store=store; this.db=store.db; this.authorize=authorize;
-    this.provider=provider;
     // Optional native Forge MCP projection of the separately owned Forge Git checkpoint.
     this.forgeGitMemoryPort=null;
     // Native renderer proof is an optional App-owned read-only port. It is
     // never used as project authorization or as evidence of publication.
     this.viewPort=null;
-    this.continuousExecutionByDefault=continuousExecutionByDefault===true;
     // Optional App-owned, read-only local proof port. No filesystem authority
     // is inferred from a persisted model answer, asset path or remote URL.
     this.verifyLocalArtifact=typeof verifyLocalArtifact==='function'?verifyLocalArtifact:null;
-    this.confirmProposal=confirmProposal;
-    this.confirmProposalSend=confirmProposalSend;
-    this.pendingProposalReviews=new Set();
-    // One process-local admission lane per canonical coordinator Task.
-    // The durable command receipts remain the only source of truth.
-    this.activeCoordinatorTurns=new Set();
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS lab_projects (
         id TEXT PRIMARY KEY, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
@@ -534,47 +485,6 @@ export class OrchestratorService {
     return this.receipt(this.db.prepare('SELECT * FROM lab_command_receipts WHERE id=?').get(commandId));
   }
 
-  startDevAutonomousForjador(context,raw={}) {
-    if(!this.continuousExecutionByDefault)return null;
-    const {input}=validateOrchestratorInput('forjador_send',raw);
-    this.requireAccess(context,'forjador_send',input.projectId);
-    const owner=this.orchestrator(input.projectId,input.orchestratorId);
-    if(owner.status!=='ready')throw Error('orchestrator_paused');
-    this.assertProviderTaskAvailable(owner.chat_task_id,{allowCoordinator:true});
-    const existingSite=latestSiteWork(this.store,input.projectId,input.orchestratorId);
-    const route=appOwnedSiteDecision({
-      delegateWork:true,currentRequest:input.content,existingSite:Boolean(existingSite)
-    });
-    if(!route)return null;
-    return this.transaction(()=>{
-      const reserved=this.reserve(context,'forjador_send',input);
-      if(reserved.existing)return reserved.existing;
-      const draft=this.store.getTaskDraft(owner.chat_task_id);
-      if(input.draftRevision!=null&&
-         (draft?.draft_revision!==input.draftRevision||draft?.draft!==input.content))
-        throw Error('task_draft_revision_conflict');
-      const enabled=this.db.prepare(`UPDATE lab_orchestrators
-        SET continuous_execution_enabled=1 WHERE id=? AND project_id=?`)
-        .run(owner.id,input.projectId).changes;
-      if(enabled!==1)throw Error('autonomous_continuous_owner_changed');
-      this.store.appendMessage(owner.chat_task_id,'user',input.content,{authorSource:'human'});
-      if(input.draftRevision!=null)
-        this.store.setDraft(owner.chat_task_id,'',input.draftRevision+1);
-      const accepted=this.autonomous.start(context,{
-        projectId:input.projectId,orchestratorId:input.orchestratorId,
-        mission:input.content,mode:'technical',directUserPrompt:true,
-        ...(route.workIntent==='edit'&&existingSite?.taskId
-          ?{resumeSiteTaskId:existingSite.taskId}:{}),
-        requestId:'dev_'+reserved.commandId
-      });
-      return this.finish(reserved.commandId,{
-        taskId:owner.chat_task_id,autonomousMissionId:accepted.missionId,
-        provider:'forge_autonomy',delegation:'technical',
-        responseObserved:false,effectVerified:false
-      });
-    });
-  }
-
   async invoke(context,operation,raw={}) {
     const {tool,input}=validateOrchestratorInput(operation,raw);
     // A completed delete has a projectless tombstone so the same requestId
@@ -710,10 +620,6 @@ export class OrchestratorService {
       }
     }
     if(operation==='autonomous_dialogue_status')return this.autonomous.status(context,input);
-    if(operation==='autonomous_continuous_set')return {status:'succeeded',operation,
-      result:this.autonomous.setContinuousExecution(context,input)};
-    if(operation==='autonomous_dialogue_continue')return {status:'succeeded',operation,
-      result:this.autonomous.continueTechnical(context,input)};
     if(operation==='repository_observe') {
       const repositoryUrl=this.projectRepositoryUrl(input.projectId);
       const recheck=()=>{
@@ -742,7 +648,16 @@ export class OrchestratorService {
     if(operation==='project_delete')return this.transaction(()=>{
       const reserved=this.reserve(context,operation,input);
       if(reserved.existing)return reserved.existing;
-      if(this.autonomous.inFlight||this.activeCoordinatorTurns.size||this.pendingProposalReviews.size)
+      const activeRun=this.db.prepare(`SELECT 1 FROM runs r
+        JOIN lab_task_bindings b ON b.task_id=r.task_id
+        WHERE b.project_id=? AND r.status='running' LIMIT 1`).get(input.projectId);
+      const activeClaim=this.db.prepare(`SELECT 1 FROM lab_work_claims
+        WHERE project_id=? AND status='active' AND lease_until>? LIMIT 1`)
+        .get(input.projectId,this.store.now());
+      const unresolved=this.db.prepare(`SELECT 1 FROM lab_command_receipts
+        WHERE project_id=? AND id<>? AND status IN ('running','uncertain') LIMIT 1`)
+        .get(input.projectId,reserved.commandId);
+      if(activeRun||activeClaim||unresolved)
         throw Error('orchestrator_project_delete_work_active');
       // Detach ONLY the deletion receipt before removing all scoped history.
       this.db.prepare('UPDATE lab_command_receipts SET project_id=NULL WHERE id=?').run(reserved.commandId);
@@ -768,44 +683,15 @@ export class OrchestratorService {
     if(operation==='project_worktree_integrate')return this.integrateProjectWorktree(context,input);
     if(operation==='work_accept')return this.acceptIntegratedWork(context,input);
     if(operation==='project_command_run')return this.runProjectCommand(context,input);
-    if(tool.readOnly&&operation==='status'){
-      const status=this.read(context,operation,input);
-      // A provider SEND method is only an installed adapter, not login proof.
-      // Probe the real currently idle ChatGPT WebContentsView with bounded
-      // read-only health; an unavailable/failed probe stays unverified.
-      let observed=null;
-      try{observed=await this.provider?.sessionHealth?.();}catch{}
-      this.requireAccess(context,operation);
-      return {...status,providerSession:providerSessionReport(observed)};
-    }
     if(tool.readOnly)return this.read(context,operation,input);
-    if(operation==='proposal_send')return this.confirmAndSendProposal(context,input);
-    if(operation==='proposal_review'&&input.approved)return this.confirmAndReviewProposal(context,input);
-    if(['work_send','forjador_send','orchestrator_analyze','orchestrator_prepare'].includes(operation))return this.dispatch(context,operation,input);
     return this.transaction(()=>{
       const reserved=this.reserve(context,operation,input);
       if(reserved.existing)return reserved.existing;
       if(['work_draft_set','work_dependency_set','conversation_rotate',
           'work_failover_prepare','project_memory_propose'].includes(operation))
         this.workClaims.assertTaskMutation(context,input);
-      if(operation==='work_parallel_launch') {
-        // Each targeted Task is separately leased. Prove every occupied
-        // Task before recording a project-wide launch intent.
-        const proofs=new Map();
-        for(const proof of input.claimProofs||[]) {
-          if(proofs.has(proof.taskId)||!input.taskIds.includes(proof.taskId))
-            throw Error('forge_work_claim_proofs_invalid');
-          proofs.set(proof.taskId,proof);
-        }
-        for(const taskId of input.taskIds)
-          this.workClaims.assertTaskMutation(context,{
-            projectId:input.projectId,taskId,...(proofs.get(taskId)||{})
-          });
-      }
       const result=operation==='project_memory_propose'
         ?(this.task(input.projectId,input.taskId),this.store.memoryCandidates.proposeFromAssistant(input.taskId,input))
-        :operation==='proposal_review'?this.reviewProposal(context,input)
-        :operation==='work_parallel_launch'?this.prepareParallelLaunch(input,reserved.commandId)
         :this.mutate(operation,input);
       if(['project_create','project_quick_create','mission_create'].includes(operation))this.db.prepare('UPDATE lab_command_receipts SET project_id=? WHERE id=?')
         .run(result.projectId,reserved.commandId);
@@ -1268,17 +1154,16 @@ export class OrchestratorService {
         catch{return false;}
       }).map(row=>({projectId:row.projectId,count:Number(row.count)}));
       return {
-        contract:ORCHESTRATOR_CONTRACT,engine:'app-owned',
+        contract:ORCHESTRATOR_CONTRACT,engine:'passive-app',
         tools:ORCHESTRATOR_TOOLS.map(t=>t.name),
-        externalTransport:'not_connected',autonomousExecution:false,
-        autonomousAnalysisAvailable:true,
+        externalTransport:'forge_mcp_only',autonomousExecution:false,
+        autonomousAnalysisAvailable:false,
         coordinatorDraftCommitAvailable:true,
         workspacePortAvailable:this.workspace.available(),
         repositoryPortAvailable:this.repository.available(),
-        continuationEnabled:Number(this.db.prepare('SELECT COUNT(*) n FROM lab_continuation_policies WHERE enabled=1').get().n),
-        analysisAvailable:true,analysisMode:'app_owned',
-        providerExecutionAvailable:typeof this.provider?.send==='function',
-        executor:this.executorAdmission(),
+        continuationEnabled:0,
+        analysisAvailable:false,analysisMode:'gpt_via_forge_mcp',
+        providerExecutionAvailable:false,
         activeRuns:Number(this.db.prepare("SELECT COUNT(*) n FROM runs WHERE status='running'").get().n),
         uncertainCommands:uncertainRows.reduce((total,row)=>total+Number(row.count),0),
         uncertainByProject
@@ -1333,7 +1218,7 @@ export class OrchestratorService {
           state:project.observation_requested===1?'awaiting_external_authority':'paused',
           automaticGptDispatchAllowed:false,backgroundSchedulerActive:false},
         runtime:{grantVerified:false},
-        analysisEngine:{state:owner.status,available:true,mode:'app_owned',externalModelUsed:false},
+        analysisEngine:{state:'mcp_only',available:false,mode:'gpt_via_forge_mcp',externalModelUsed:false},
         work:{registered:Number(work.total),started:Number(work.started),unresolvedSends:Number(unresolved.total)},
         analysis:{attempts:Number(analysis.attempts),completed:Number(analysis.completed),
           lastStatus:analysis.last_status,lastAttemptAt:analysis.last_attempt_at},
@@ -1427,42 +1312,6 @@ export class OrchestratorService {
     });
   }
 
-  // Provider admission is owned by the canonical Electron scheduler.
-  // SQLite remains the durable Run/receipt authority, while capacity reflects
-  // physical WebContents lanes rather than imposing a false global lock.
-  executorAdmission() {
-    const activeRuns=Number(this.db.prepare(
-      "SELECT COUNT(*) n FROM runs WHERE status='running'"
-    ).get().n);
-    const activeCommands=Number(this.db.prepare(`SELECT COUNT(*) n
-      FROM lab_command_receipts WHERE status='running'
-      AND operation IN ('work_send','proposal_send','forjador_send')`).get().n);
-    const capacity=this.provider?.capacity?.()||null;
-    const maxConcurrentSends=Number.isSafeInteger(capacity?.maxConcurrentSends)&&
-      capacity.maxConcurrentSends>0?capacity.maxConcurrentSends:1;
-    const hostOccupied=Boolean(this.provider?.busy?.());
-    const capacityKnown=Number.isSafeInteger(capacity?.maxConcurrentSends)&&
-      Number.isSafeInteger(capacity?.availableSlots);
-    const fallbackActive=Math.min(maxConcurrentSends,
-      Math.max(activeRuns,activeCommands,hostOccupied?1:0));
-    const activeProviderSends=Number.isSafeInteger(capacity?.active)
-      ?Math.max(0,capacity.active):fallbackActive;
-    const queuedProviderSends=Number.isSafeInteger(capacity?.queued)
-      ?Math.max(0,capacity.queued):0;
-    const availableSlots=capacityKnown
-      ?Math.max(0,Math.min(maxConcurrentSends,capacity.availableSlots))
-      :Math.max(0,maxConcurrentSends-fallbackActive);
-    const parallel=maxConcurrentSends>1;
-    return Object.freeze({
-      mode:parallel?'embedded_chatgpt_worker_pool':'single_embedded_chatgpt_worker',
-      maxConcurrentSends,
-      activeRuns,activeCommands,activeProviderSends,queuedProviderSends,hostOccupied,
-      availableSlots,
-      isolatedWorkerSessions:parallel,
-      parallelProviderSendsEnabled:parallel
-    });
-  }
-
   monitor(task,runs,projectId) {
     const command=this.db.prepare(`SELECT status FROM lab_command_receipt_scope
       WHERE task_id=? OR (project_id=? AND unknown_work_target=1)
@@ -1512,12 +1361,9 @@ export class OrchestratorService {
           heartbeat_at:w.latest_heartbeat_at
         }],projectId)}))
       });
-      const executor=this.executorAdmission();
       return Object.freeze({...planning,
-        executor,
-        // Structural candidates are not permission to send. Only one candidate
-        // can occupy the real shared-browser lane, and zero when it is busy.
-        transportSlotCandidates:Object.freeze(planning.candidates.slice(0,executor.availableSlots)),
+        coordinationMode:'task_claims',
+        claimCandidates:Object.freeze([...planning.candidates]),
         automaticDispatchAllowed:false
       });
   }
@@ -1598,10 +1444,8 @@ export class OrchestratorService {
         verificationRequiredCount:plan.verificationRequired.filter(id=>ownerIds.has(id)).length,
         inFlight:owned.filter(worker=>worker.state==='running').length,
         workCount:totalWorkCount,
-        executorMode:plan.executor.mode,
-        physicalProviderLanes:plan.executor.maxConcurrentSends,
-        availablePhysicalSlots:plan.executor.availableSlots,
-        transportSlotCandidateCount:plan.transportSlotCandidates.filter(id=>ownerIds.has(id)).length,
+        coordinationMode:'task_claims',
+        claimCandidateCount:plan.claimCandidates.filter(id=>ownerIds.has(id)).length,
         automaticDispatchAllowed:false,qualityCertified:false};
     }catch(error){
       if(error?.message!=='orchestrator_work_plan_too_large')throw error;
@@ -1806,66 +1650,6 @@ export class OrchestratorService {
         .run(chat.id,input.projectId,orchestratorId,'orchestrator');
       return {orchestratorId,chatTaskId:chat.id};
     }
-    if(operation==='continuity_proposals_set') {
-      this.orchestrator(input.projectId,input.orchestratorId);
-      return this.continuation.configureProposals(input.projectId,input.orchestratorId,input.enabled);
-    }
-    if(operation==='continuity_set') {
-      this.orchestrator(input.projectId,input.orchestratorId);
-      return this.continuation.configure(input.projectId,input.orchestratorId,input.enabled,{
-        reviewIntervalMinutes:input.reviewIntervalMinutes??null
-      });
-    }
-    if(operation==='continuity_followup_prepare') {
-      const owner=this.orchestrator(input.projectId,input.orchestratorId);
-      if(owner.status!=='ready')throw Error('orchestrator_paused');
-      const policy=this.db.prepare('SELECT enabled FROM lab_continuation_policies WHERE project_id=? AND orchestrator_id=?')
-        .get(input.projectId,input.orchestratorId);
-      if(policy?.enabled!==1)throw Error('orchestrator_continuity_disabled');
-      const analyzed=this.db.prepare(`SELECT q.task_id,c.result
-        FROM lab_continuation_reviews q JOIN lab_command_receipts c ON c.id=q.command_id
-        WHERE q.run_id=? AND q.project_id=? AND q.orchestrator_id=?
-          AND q.state='analyzed' AND c.status='succeeded' AND c.operation='orchestrator_analyze'`)
-        .get(input.reviewRunId,input.projectId,input.orchestratorId);
-      let decision;
-      try{decision=JSON.parse(analyzed?.result||'{}').reviewDecision;}catch{}
-      const route=new Set(['continue_same_conversation','request_correction','new_conversation']);
-      if(!analyzed||!route.has(decision?.decision)||decision?.reviewOnly!==true||
-         decision.sourceRunId!==input.reviewRunId||decision.externalEffectVerified!==false||
-         decision.automaticGPTSendAuthorized!==false||
-         typeof decision.nextPrompt!=='string'||decision.nextPrompt.trim().length<20||
-         decision.nextPrompt.length>2200)throw Error('orchestrator_followup_decision_unavailable');
-      const source=this.reviewableGPTResult(input.projectId,input.orchestratorId,input.reviewRunId);
-      if(!source||source.taskId!==analyzed.task_id)throw Error('orchestrator_followup_source_stale');
-      this.assertProviderTaskAvailable(source.taskId);
-      if(this.hasUnresolvedWorkReceipt(input.projectId,source.taskId,{includeRunning:true}))
-        throw Error('orchestrator_reconciliation_required');
-      // A different requestId must never prepare or rotate this source Run
-      // twice. The durable event and draft update share the same transaction.
-      if(this.db.prepare(`SELECT 1 FROM events WHERE task_id=? AND kind='orchestrator.followup.prepared'
-        AND json_extract(payload,'$.source_run_id')=? LIMIT 1`)
-        .get(source.taskId,input.reviewRunId))throw Error('orchestrator_followup_already_prepared');
-      const draft=this.store.getTaskDraft(source.taskId);
-      if(draft.draft!=='')throw Error('orchestrator_followup_draft_not_empty');
-      if(!Number.isSafeInteger(draft.draft_revision+1))
-        throw Error('orchestrator_draft_revision_exhausted');
-      const rotate=decision.decision==='new_conversation';
-      if(rotate) {
-        if(this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
-           this.provider?.busy?.())throw Error('orchestrator_executor_busy');
-        this.store.rotateConversation(source.taskId,'orchestrator_review_approved');
-      }
-      const prepared=this.store.setDraft(source.taskId,decision.nextPrompt,draft.draft_revision+1);
-      if(prepared.draft!==decision.nextPrompt||prepared.draft_revision!==draft.draft_revision+1)
-        throw Error('orchestrator_followup_draft_conflict');
-      this.store.event(source.taskId,'orchestrator.followup.prepared',{
-        source_run_id:input.reviewRunId,decision:decision.decision,
-        draft_revision:prepared.draft_revision,conversation_rotated:rotate
-      });
-      return {taskId:source.taskId,sourceRunId:input.reviewRunId,decision:decision.decision,
-        draftRevision:prepared.draft_revision,conversationRotated:rotate,
-        providerMessagesSent:0,requiresUserSend:true};
-    }
     if(operation==='orchestrator_pause') {
       const owner=this.orchestrator(input.projectId,input.orchestratorId);
       this.db.prepare('UPDATE lab_orchestrators SET status=? WHERE id=?')
@@ -1980,8 +1764,8 @@ export class OrchestratorService {
       assertTaskHasNoUncertainTransport(this.store,input.taskId);
       if(this.hasUnresolvedWorkReceipt(input.projectId,input.taskId,{includeRunning:true}))
         throw Error('orchestrator_reconciliation_required');
-      if(this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||this.provider?.busy?.())
-        throw Error('orchestrator_executor_busy');
+      if(this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get())
+        throw Error('orchestrator_run_active');
       this.store.rotateConversation(input.taskId,'orchestrator_command');
       return {taskId:input.taskId,rotationPrepared:true,providerMessagesSent:0};
     }
@@ -2030,227 +1814,6 @@ export class OrchestratorService {
     throw Error('orchestrator_unknown_operation');
   }
 
-  inspectProposal(context,input) {
-    const owner=this.orchestrator(input.projectId,input.orchestratorId);
-    const action=this.db.prepare(`SELECT payload,status FROM action_ledger WHERE id=? AND task_id=?
-      AND action_type='orchestrator.work-proposal'`).get(input.actionId,owner.chat_task_id);
-    if(!action)throw Error('orchestrator_proposal_unavailable');
-    const payload=JSON.parse(action.payload);
-    if(payload.actorId!==context.actorId||payload.clientId!==context.clientId||
-      payload.projectId!==input.projectId||payload.orchestratorId!==input.orchestratorId)
-      throw Error('orchestrator_access_denied');
-    if(action.status!=='pending')throw Error('orchestrator_proposal_already_reviewed');
-    if(input.approved&&owner.status==='paused')throw Error('orchestrator_paused');
-    const approval=this.db.prepare(`SELECT id FROM approval_ledger WHERE action_id=? AND task_id=? AND status='pending'`)
-      .get(input.actionId,owner.chat_task_id);
-    if(!approval)throw Error('orchestrator_proposal_approval_missing');
-    const proposal=validateWorkProposal(payload.proposal);
-    return {owner,approval,proposal};
-  }
-
-  async confirmAndReviewProposal(context,input) {
-    const existing=this.db.prepare(`SELECT id FROM lab_command_receipts WHERE workspace_session_id=?
-      AND actor_id=? AND client_id=? AND request_id=?`).get(context.workspaceSessionId,
-      context.actorId,context.clientId,input.requestId);
-    if(existing)return this.transaction(()=>this.reserve(context,'proposal_review',input).existing);
-    const {proposal}=this.inspectProposal(context,input);
-    if(this.pendingProposalReviews.has(input.actionId))throw Error('orchestrator_proposal_review_busy');
-    this.pendingProposalReviews.add(input.actionId);
-    try {
-      // No SQLite transaction or main-thread blocking dialog during human review.
-      if(await this.confirmProposal?.({projectId:input.projectId,orchestratorId:input.orchestratorId,proposal})!==true)
-        throw Error('orchestrator_proposal_not_approved');
-      this.requireAccess(context,'proposal_review',input.projectId);
-      return this.transaction(()=>{
-        const reserved=this.reserve(context,'proposal_review',input);
-        if(reserved.existing)return reserved.existing;
-        return this.finish(reserved.commandId,this.reviewProposal(context,input,true));
-      });
-    } finally {this.pendingProposalReviews.delete(input.actionId);}
-  }
-
-  reviewProposal(context,input,nativeConfirmed=false) {
-    const {owner,approval,proposal}=this.inspectProposal(context,input);
-    let taskId=null;
-    if(input.approved) {
-      // A caller/model-supplied boolean is not approval. Only the trusted App
-      // process can supply the confirmation port; MCP uses this same gate.
-      if(nativeConfirmed!==true)
-        throw Error('orchestrator_proposal_not_approved');
-      taskId=this.mutate('work_create',{projectId:input.projectId,orchestratorId:input.orchestratorId,title:proposal.title}).taskId;
-      this.store.setDraft(taskId,proposal.content,1);
-    }
-    this.store.resolveApproval(owner.chat_task_id,approval.id,input.approved);
-    const result={taskId,approved:input.approved,providerMessagesSent:0};
-    this.store.finishAction(owner.chat_task_id,input.actionId,input.approved?'succeeded':'cancelled',result);
-    return result;
-  }
-
-  prepareParallelLaunch(input,commandId) {
-    if(typeof commandId!=='string'||!commandId)throw Error('orchestrator_parallel_launch_invalid');
-    const taskIds=[...new Set(input.taskIds)];
-    if(taskIds.length!==input.taskIds.length||taskIds.length<2||taskIds.length>16)
-      throw Error('orchestrator_parallel_tasks_invalid');
-    const tasks=taskIds.map(taskId=>this.task(input.projectId,taskId,'work'));
-    const orchestratorIds=new Set(tasks.map(task=>task.orchestrator_id));
-    if(orchestratorIds.size!==1)throw Error('orchestrator_parallel_owner_mismatch');
-    const owner=this.orchestrator(input.projectId,tasks[0].orchestrator_id);
-    if(owner.status!=='ready')throw Error('orchestrator_paused');
-    if(owner.continuous_execution_enabled!==1)
-      throw Error('orchestrator_parallel_launch_disabled');
-
-    // One Work may belong to only one durable launch intent. A failed or
-    // uncertain child is never retried under a second launch; create a new
-    // Work milestone instead.
-    const historical=this.db.prepare(`SELECT result FROM lab_command_receipts
-      WHERE project_id=? AND operation='work_parallel_launch' AND status='succeeded'`)
-      .all(input.projectId);
-    const already=new Set();
-    for(const row of historical){
-      let parsed=null;try{parsed=JSON.parse(row.result||'null');}catch{}
-      for(const entry of parsed?.tasks||[])if(typeof entry?.taskId==='string')already.add(entry.taskId);
-    }
-    if(taskIds.some(taskId=>already.has(taskId)))
-      throw Error('orchestrator_parallel_work_already_launched');
-
-    const entries=[];
-    for(const task of tasks){
-      // Queue the exact prepared GPT Work even when a prerequisite is still
-      // executing. The EXISTING dependency read model decides when this Work
-      // becomes eligible; a provider response alone never unlocks the child.
-      // There is no second queue, scheduler, Task, or automatic acceptance.
-      if(this.db.prepare('SELECT 1 FROM messages WHERE task_id=? LIMIT 1').get(task.id)||
-         this.db.prepare('SELECT 1 FROM runs WHERE task_id=? LIMIT 1').get(task.id)||
-         this.db.prepare(`SELECT 1 FROM lab_command_receipt_scope
-           WHERE project_id=? AND task_id=? AND operation IN ('work_send','proposal_send')
-           LIMIT 1`).get(input.projectId,task.id))
-        throw Error('orchestrator_parallel_work_already_started');
-      const draft=this.store.getTaskDraft(task.id);
-      if(typeof draft.draft!=='string'||!draft.draft.trim()||draft.draft.length>6000||
-         !Number.isSafeInteger(draft.draft_revision)||draft.draft_revision<1)
-        throw Error('orchestrator_parallel_draft_required');
-      const digest=createHash('sha256').update(draft.draft).digest('hex');
-      const requestId='parallel_'+createHash('sha256')
-        .update(commandId+'\0'+task.id).digest('hex').slice(0,48);
-      entries.push({taskId:task.id,orchestratorId:task.orchestrator_id,
-        content:draft.draft,draftRevision:draft.draft_revision,
-        contentSha256:digest,requestId});
-    }
-    const waitForRunIds=this.db.prepare(`SELECT r.id FROM runs r
-      JOIN lab_task_bindings b ON b.task_id=r.task_id
-      WHERE b.project_id=? AND r.status='running' ORDER BY r.started_at,r.id`)
-      .all(input.projectId).map(row=>row.id);
-    return {launchId:commandId,orchestratorId:owner.id,tasks:entries,waitForRunIds,
-      providerMessagesSent:0,dispatchQueued:true};
-  }
-
-  async tickParallelDispatch(context) {
-    const session=this.store.getWorkspaceSession();
-    if(session?.status!=='active'||context?.workspaceSessionId!==session.id)
-      return {state:'blocked_workspace'};
-    const admission=this.executorAdmission();
-    if(admission.availableSlots<1)return {state:'executor_busy',availableSlots:0};
-
-    // Select only launches with at least one child that has no command
-    // receipt. Completed historical launches must never occupy the first
-    // 32 rows and permanently starve later work after many mission cycles.
-    // Use the existing durable launch receipt as the only dispatch intent.
-    const launches=this.db.prepare(`SELECT l.id,l.project_id,l.result,l.created_at
-      FROM lab_command_receipts l
-      WHERE l.workspace_session_id=? AND l.actor_id=? AND l.client_id=?
-        AND l.operation='work_parallel_launch' AND l.status='succeeded'
-        AND EXISTS (
-          SELECT 1 FROM json_each(
-            CASE WHEN json_valid(l.result) THEN l.result ELSE '{"tasks":[]}' END,
-            '$.tasks'
-          ) child
-          WHERE json_type(child.value,'$.taskId')='text'
-            AND json_type(child.value,'$.requestId')='text'
-            AND NOT EXISTS (
-              SELECT 1 FROM lab_command_receipts sent
-              WHERE sent.workspace_session_id=l.workspace_session_id
-                AND sent.actor_id=l.actor_id AND sent.client_id=l.client_id
-                AND sent.request_id=json_extract(child.value,'$.requestId')
-            )
-        )
-      ORDER BY l.created_at,l.id`)
-      .all(context.workspaceSessionId,context.actorId,context.clientId);
-    const ready=[];
-    const planCache=new Map();
-    for(const launch of launches){
-      let result=null;try{result=JSON.parse(launch.result||'null');}catch{}
-      if(!Array.isArray(result?.tasks)||!Array.isArray(result?.waitForRunIds)||
-         typeof result?.orchestratorId!=='string')continue;
-      let owner=null;try{owner=this.orchestrator(launch.project_id,result.orchestratorId);}catch{continue;}
-      if(owner.status!=='ready'||owner.continuous_execution_enabled!==1)continue;
-      if(result.waitForRunIds.some(runId=>this.db.prepare(
-        "SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)))continue;
-      // Read readiness from the one canonical project DAG. Waiting children
-      // consume no GPT slot, so independent siblings and projects can run.
-      let workers=planCache.get(launch.project_id);
-      if(!workers){
-        try{
-          workers=new Map(this.projectPlan(launch.project_id,4)
-            .workers.map(worker=>[worker.taskId,worker]));
-        }catch{continue;}
-        planCache.set(launch.project_id,workers);
-      }
-      for(const entry of result.tasks){
-        if(ready.length>=admission.availableSlots)break;
-        if(!entry||typeof entry.taskId!=='string'||typeof entry.requestId!=='string'||
-           typeof entry.content!=='string'||!/^[a-f0-9]{64}$/.test(entry.contentSha256||'')||
-           !Number.isSafeInteger(entry.draftRevision))continue;
-        const existing=this.db.prepare(`SELECT status FROM lab_command_receipts
-          WHERE workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
-          .get(context.workspaceSessionId,context.actorId,context.clientId,entry.requestId);
-        if(existing)continue;
-        const worker=workers.get(entry.taskId);
-        if(worker?.state!=='pending'||worker.dependsOn.some(
-          dependency=>workers.get(dependency)?.state!=='succeeded'))continue;
-        // The launch is a durable intent, not authority to use another chat's
-        // Task. An active claim, even if expired, needs explicit release or
-        // takeover before the scheduler may send. Skipping it also prevents
-        // occupied Tasks from starving independent children in a full pool.
-        if(this.workClaims.row(launch.project_id,entry.taskId,
-          context.workspaceSessionId)?.status==='active')continue;
-        ready.push({launch,entry});
-      }
-      if(ready.length>=admission.availableSlots)break;
-    }
-    if(!ready.length)return {state:'idle',availableSlots:admission.availableSlots};
-
-    const start=async({launch,entry})=>{
-      this.requireAccess(context,'work_parallel_launch',launch.project_id);
-      const task=this.task(launch.project_id,entry.taskId,'work');
-      // Recheck immediately before any effect receipt: a claim may have been
-      // acquired after candidate selection, including on a changed draft.
-      this.workClaims.assertTaskMutation(context,{
-        projectId:launch.project_id,taskId:entry.taskId
-      });
-      const draft=this.store.getTaskDraft(entry.taskId);
-      const digest=createHash('sha256').update(String(draft.draft||'')).digest('hex');
-      const childInput={projectId:launch.project_id,taskId:entry.taskId,
-        content:entry.content,requestId:entry.requestId,draftRevision:entry.draftRevision+1};
-      if(draft.draft!==entry.content||draft.draft_revision!==entry.draftRevision||
-         digest!==entry.contentSha256){
-        return this.transaction(()=>{
-          const reserved=this.reserve(context,'work_send',childInput);
-          if(reserved.existing)return reserved.existing;
-          return this.finish(reserved.commandId,{taskId:entry.taskId,
-            reason:'parallel_launch_snapshot_changed',providerMessagesSent:0},'failed');
-        });
-      }
-      this.assertDependenciesSatisfied(launch.project_id,task.id);
-      return this.dispatch(context,'work_send',childInput,null,
-        {authorSourceOverride:'orchestrator'});
-    };
-    const settled=await Promise.allSettled(ready.map(start));
-    return {state:'dispatched',requested:ready.length,
-      fulfilled:settled.filter(item=>item.status==='fulfilled').length,
-      rejected:settled.filter(item=>item.status==='rejected').length,
-      availableSlots:Math.max(0,admission.availableSlots-ready.length)};
-  }
-
   preparedTask(projectId,orchestratorId,taskId) {
     return this.db.prepare(`SELECT t.id,t.title,t.draft,t.draft_revision,
       EXISTS(SELECT 1 FROM messages WHERE task_id=t.id) has_messages,
@@ -2261,313 +1824,4 @@ export class OrchestratorService {
       .get(taskId,projectId,orchestratorId,this.store.getWorkspaceSession().id);
   }
 
-  inspectPreparedSend(context,input) {
-    const owner=this.orchestrator(input.projectId,input.orchestratorId);
-    if(owner.status==='paused')throw Error('orchestrator_paused');
-    const action=this.db.prepare(`SELECT payload,result FROM action_ledger WHERE id=? AND task_id=?
-      AND action_type='orchestrator.work-proposal' AND status='succeeded'`).get(input.actionId,owner.chat_task_id);
-    if(!action)throw Error('orchestrator_proposal_unavailable');
-    const payload=JSON.parse(action.payload),result=JSON.parse(action.result||'null');
-    if(payload.actorId!==context.actorId||payload.clientId!==context.clientId||
-      payload.projectId!==input.projectId||payload.orchestratorId!==input.orchestratorId)
-      throw Error('orchestrator_access_denied');
-    if(!result?.approved||!this.db.prepare(`SELECT 1 FROM approval_ledger WHERE action_id=? AND task_id=? AND status='approved'`)
-      .get(input.actionId,owner.chat_task_id))throw Error('orchestrator_proposal_approval_missing');
-    const task=this.preparedTask(input.projectId,input.orchestratorId,result.taskId);
-    if(!task||task.has_messages||task.has_runs||task.has_send)throw Error('orchestrator_first_send_unavailable');
-    if(task.draft_revision!==input.draftRevision||!Number.isSafeInteger(task.draft_revision+1)||!task.draft.trim()||task.draft.length>6000)
-      throw Error('orchestrator_draft_changed');
-    // Existing executor consumes the NEXT revision when clearing the draft.
-    return {taskId:task.id,title:task.title,content:task.draft,reviewedDraftRevision:task.draft_revision,draftRevision:task.draft_revision+1};
-  }
-
-  async confirmAndSendProposal(context,input) {
-    const existing=this.db.prepare(`SELECT id FROM lab_command_receipts WHERE workspace_session_id=?
-      AND actor_id=? AND client_id=? AND request_id=?`).get(context.workspaceSessionId,
-      context.actorId,context.clientId,input.requestId);
-    if(existing)return this.transaction(()=>this.reserve(context,'proposal_send',input).existing);
-    this.requireAccess(context,'work_send',input.projectId);
-    const draft=this.inspectPreparedSend(context,input);
-    const repositoryUrl=this.projectRepositoryUrl(input.projectId);
-    const providerContent=appendRemoteRepositoryInstructions(draft.content,repositoryUrl);
-    const reviewedDraft={...draft,repositoryUrl,providerContent};
-    if(typeof this.provider?.send!=='function')throw Error('orchestrator_provider_unavailable');
-    if(this.executorAdmission().availableSlots===0)
-      throw Error('orchestrator_executor_busy');
-    if(this.pendingProposalReviews.has(input.actionId))throw Error('orchestrator_proposal_review_busy');
-    this.pendingProposalReviews.add(input.actionId);
-    try {
-      if(this.provider.ready&&await this.provider.ready()!==true)throw Error('orchestrator_provider_unavailable');
-      if(await this.confirmProposalSend?.({...draft,content:providerContent,sourceContent:draft.content,
-        repositoryUrl,projectId:input.projectId,orchestratorId:input.orchestratorId})!==true)
-        throw Error('orchestrator_proposal_not_approved');
-      this.requireAccess(context,'proposal_send',input.projectId);
-      this.requireAccess(context,'work_send',input.projectId);
-      const current=this.inspectPreparedSend(context,input);
-      if(current.content!==draft.content||this.projectRepositoryUrl(input.projectId)!==repositoryUrl)
-        throw Error('orchestrator_draft_changed');
-      return await this.dispatch(context,'proposal_send',input,{...current,...reviewedDraft});
-    }finally{this.pendingProposalReviews.delete(input.actionId);}
-  }
-
-  assertDependenciesSatisfied(projectId,taskId) {
-    const hasDependencies=this.db.prepare(
-      'SELECT 1 FROM lab_work_dependencies WHERE project_id=? AND task_id=? LIMIT 1'
-    ).get(projectId,taskId);
-    if(!hasDependencies)return;
-    const plan=this.projectPlan(projectId,4);
-    const states=new Map(plan.workers.map(worker=>[worker.taskId,worker.state]));
-    const target=plan.workers.find(worker=>worker.taskId===taskId);
-    if(!target||target.dependsOn.some(id=>states.get(id)!=='succeeded'))
-      throw Error('orchestrator_work_prerequisite_not_confirmed');
-  }
-
-  coordinatorTurnBusy(taskId) {
-    // orchestrator_chat remains queryable here only for receipts created by older
-    // versions. It is no longer a valid operation for new commands.
-    return this.activeCoordinatorTurns.has(taskId)||Boolean(this.db.prepare(`
-      SELECT 1 FROM lab_command_receipt_scope
-      WHERE status='running' AND operation IN
-        ('forjador_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare')
-      AND task_id=? LIMIT 1`).get(taskId));
-  }
-
-  // A running GPT Web action only defers bounded analysis/proposal work for
-  // its own project. Neither a global provider busy flag nor work in another
-  // project has authority to block unrelated read-only coordination.
-  projectWorkInProgress(projectId) {
-    return Boolean(this.db.prepare(`SELECT 1 FROM lab_command_receipts
-      WHERE project_id=? AND status='running'
-        AND operation IN ('work_send','proposal_send','forjador_send')
-      UNION ALL
-      SELECT 1 FROM runs r JOIN lab_task_bindings b ON b.task_id=r.task_id
-      WHERE b.project_id=? AND b.kind='work' AND r.status='running'
-      LIMIT 1`).get(projectId,projectId));
-  }
-
-  // Shared bounded-memory selector for app-owned reviews and proposals.
-  // No external coordinator/model participates in this queue.
-  selectContinuationCandidate(candidates) {
-    let blocked='idle';
-    for(const row of candidates) {
-      if(this.coordinatorTurnBusy(this.orchestrator(row.project_id,row.orchestrator_id).chat_task_id)) {
-        if(blocked==='idle')blocked='analysis_busy';
-        continue;
-      }
-      if(this.projectWorkInProgress(row.project_id)) {
-        if(blocked==='idle')blocked='executor_busy';
-        continue;
-      }
-      return {row};
-    }
-    return {state:blocked};
-  }
-
-  async withCoordinatorTurn(taskId,action) {
-    if(typeof taskId!=='string'||!taskId||typeof action!=='function')
-      throw Error('orchestrator_coordinator_ports_required');
-    // Fail closed BEFORE the model request. This is not a queue or a retry.
-    if(this.coordinatorTurnBusy(taskId)){
-      const error=Error('orchestrator_coordinator_busy');
-      error.orchestratorRequestOutcome='rejected';
-      throw error;
-    }
-    this.activeCoordinatorTurns.add(taskId);
-    try{return await action();}
-    finally{this.activeCoordinatorTurns.delete(taskId);}
-  }
-
-  async dispatch(context,operation,input,preparedSend=null,internal={}) {
-    if(operation==='work_send'||operation==='proposal_send'||operation==='forjador_send')
-      return this.dispatchCore(context,operation,input,preparedSend,internal);
-    if(operation!=='orchestrator_analyze'&&operation!=='orchestrator_prepare')
-      throw Error('orchestrator_unknown_operation');
-    const existing=this.db.prepare(`SELECT id FROM lab_command_receipts
-      WHERE workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
-      .get(context.workspaceSessionId,context.actorId,context.clientId,input.requestId);
-    if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
-    const chatTaskId=this.orchestrator(input.projectId,input.orchestratorId).chat_task_id;
-    return this.withCoordinatorTurn(chatTaskId,()=>this.dispatchLocalCoordination(
-      context,operation,input
-    ));
-  }
-
-  dispatchLocalCoordination(context,operation,input) {
-    const owner=this.orchestrator(input.projectId,input.orchestratorId);
-    if(owner.status==='paused')throw Error('orchestrator_paused');
-    const task=this.task(input.projectId,owner.chat_task_id,'orchestrator');
-    const prepareWork=operation==='orchestrator_prepare';
-    const reviewSource=operation==='orchestrator_analyze'&&input.reviewRunId
-      ?this.reviewableGPTResult(input.projectId,input.orchestratorId,input.reviewRunId):null;
-    if(input.reviewRunId&&!reviewSource)throw Error('orchestrator_review_source_unconfirmed');
-    const analysisContext=operation==='orchestrator_analyze'
-      ?this.analysisContext(input.projectId,input.orchestratorId):null;
-    if(operation==='orchestrator_analyze'&&analysisContext.works.length===0)
-      throw Error('orchestrator_works_unavailable');
-    const proposal=prepareWork?appOwnedProposal(input.content):null;
-    const reviewDecision=reviewSource?appOwnedRunReview(reviewSource):null;
-    const analysisSummary=operation==='orchestrator_analyze'&&!reviewSource
-      ?appOwnedAnalysisSummary(analysisContext):null;
-
-    return this.transaction(()=>{
-      this.requireAccess(context,operation,input.projectId);
-      if(reviewSource&&['running','uncertain','succeeded'].includes(
-        this.runReviewReceipt(context,input.projectId,reviewSource.runId).status))
-        throw Error('orchestrator_run_review_already_attempted');
-      const reservation=this.reserve(context,operation,input);
-      if(reservation.existing)return reservation.existing;
-
-      if(prepareWork&&input.draftRevision!==undefined) {
-        const draft=this.store.getTaskDraft(task.id);
-        if(draft.draft_revision!==input.draftRevision||
-           draft.draft.trim()!==String(input.content||'').trim())
-          throw Error('task_draft_revision_conflict');
-        if(!Number.isSafeInteger(input.draftRevision+1))
-          throw Error('invalid_task_draft_revision');
-      }
-
-      this.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
-        .run(JSON.stringify({taskId:task.id,...(reviewSource?{reviewRunId:reviewSource.runId}:{})}),
-          reservation.commandId);
-
-      let proposalActionId=null;
-      if(proposal) {
-        proposalActionId=this.store.beginAction(task.id,null,'orchestrator.work-proposal',
-          reservation.commandId,{projectId:input.projectId,orchestratorId:owner.id,
-            actorId:context.actorId,clientId:context.clientId,proposal});
-        this.store.requestApproval(task.id,proposalActionId,
-          'Revisar nova frente e rascunho; nenhum envio ao GPT');
-        if(input.draftRevision!==undefined) {
-          const cleared=this.store.setDraft(task.id,'',input.draftRevision+1);
-          if(cleared.draft!==''||cleared.draft_revision!==input.draftRevision+1)
-            throw Error('task_draft_revision_conflict');
-        }
-      }
-
-      if(analysisSummary)this.store.appendMessage(task.id,'assistant',analysisSummary);
-      return this.finish(reservation.commandId,{
-        taskId:task.id,analysisObserved:operation==='orchestrator_analyze',
-        appOwned:true,provider:'ordax_app_policy',
-        ...(analysisSummary?{analysisSummary}:{}),
-        ...(reviewSource?{reviewRunId:reviewSource.runId,reviewDecision}:{}),
-        ...(proposalActionId?{proposalActionId}:{}),proposalsExecuted:0,
-        ...(analysisContext?{analysis:{workCount:analysisContext.works.length,
-          messageCount:analysisContext.works.reduce((n,work)=>n+work.messages.length,0)}}:{})
-      });
-    });
-  }
-
-  async dispatchCore(context,operation,input,preparedSend=null,internal={}) {
-    const authorSourceOverride=internal?.authorSourceOverride??null;
-    if(authorSourceOverride!==null&&!['human','orchestrator'].includes(authorSourceOverride))
-      throw Error('invalid_message_author_source');
-    const existing=this.db.prepare(`SELECT id,input_hash FROM lab_command_receipts WHERE workspace_session_id=?
-      AND actor_id=? AND client_id=? AND request_id=?`).get(context.workspaceSessionId,
-      context.actorId,context.clientId,input.requestId);
-    // Return an accepted command even if the provider is now offline; never replay.
-    if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
-    const isWorkSend=operation==='work_send'||operation==='proposal_send';
-    const isForjadorSend=operation==='forjador_send';
-    const sendInput=preparedSend||input;
-    const orch=isWorkSend?null:this.orchestrator(input.projectId,input.orchestratorId);
-    const task=isWorkSend?this.task(input.projectId,sendInput.taskId,'work'):
-      this.task(input.projectId,orch.chat_task_id,'orchestrator');
-    const owner=orch||this.orchestrator(input.projectId,task.orchestrator_id);
-    if(isWorkSend) {
-      // A direct Work send or a proposal send cannot bypass the live lease.
-      // Existing idempotent receipts returned above remain read-only.
-      this.workClaims.assertTaskMutation(context,{...input,taskId:task.id});
-      this.assertDependenciesSatisfied(input.projectId,task.id);
-    }
-    if(isForjadorSend){
-      this.assertProviderTaskAvailable(task.id,{allowCoordinator:true});
-      if(sendInput.draftRevision!=null){
-        const draft=this.store.getTaskDraft(task.id);
-        if(draft.draft_revision!==sendInput.draftRevision||
-           draft.draft.trim()!==String(sendInput.content||'').trim())
-          throw Error('task_draft_revision_conflict');
-        if(!Number.isSafeInteger(sendInput.draftRevision+1))
-          throw Error('invalid_task_draft_revision');
-      }
-    }
-    const repositoryUrl=this.projectRepositoryUrl(input.projectId);
-    if(owner.status==='paused')throw Error('orchestrator_paused');
-    if(typeof this.provider?.send!=='function'||
-       (this.provider.available&&this.provider.available(input.projectId,owner.id)!==true))
-      throw Error('orchestrator_provider_unavailable');
-    const providerContent=preparedSend?.providerContent||
-      appendRemoteRepositoryInstructions(sendInput.content,repositoryUrl);
-    // GPT transport admission applies only to real GPT Web sends.
-    assertTaskHasNoUncertainTransport(this.store,task.id);
-    if(this.executorAdmission().availableSlots===0)throw Error('orchestrator_executor_busy');
-    if(isWorkSend&&this.hasUnresolvedWorkReceipt(input.projectId,task.id))
-      throw Error('orchestrator_reconciliation_required');
-    const reserved=this.transaction(()=>{
-      this.requireAccess(context,operation,input.projectId);
-      if(isWorkSend)this.assertDependenciesSatisfied(input.projectId,task.id);
-      const reservation=this.reserve(context,operation,input);
-      if(reservation.existing)return {existing:reservation.existing};
-      if(preparedSend) {
-        reservation.sendActionId=this.store.beginAction(task.id,null,'orchestrator.proposal-send',
-          reservation.commandId,{actorId:context.actorId,clientId:context.clientId,
-            sourceActionId:input.actionId,
-            contentSha256:createHash('sha256').update(providerContent).digest('hex'),
-            reviewedDraftRevision:sendInput.reviewedDraftRevision,
-            draftRevision:sendInput.draftRevision});
-        reservation.approvalId=this.store.requestApproval(task.id,reservation.sendActionId,
-          'Envio único confirmado em diálogo nativo');
-        this.store.resolveApproval(task.id,reservation.approvalId,true);
-        this.db.prepare("UPDATE action_ledger SET status='dispatching' WHERE id=?")
-          .run(reservation.sendActionId);
-      }
-      this.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
-        .run(JSON.stringify({taskId:task.id,...(reservation.sendActionId?{
-          sendActionId:reservation.sendActionId,approvalId:reservation.approvalId}: {})}),
-          reservation.commandId);
-      return reservation;
-    });
-    if(reserved.existing)return reserved.existing;
-    try {
-      // Fresh authorization immediately before a potentially external effect.
-      this.requireAccess(context,operation,input.projectId);
-      const reply=await this.provider.send({taskId:task.id,content:providerContent,
-        draftRevision:isForjadorSend&&sendInput.draftRevision!=null
-          ?sendInput.draftRevision+1:sendInput.draftRevision??null,
-        taskKind:isForjadorSend?'orchestrator':'work',
-        authorSource:authorSourceOverride||'human',
-        mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,
-        repositoryUrl});
-      this.requireAccess(context,operation,input.projectId);
-      // Existing runTask can return an error result instead of throwing.
-      requireConfirmedChatReceipt(reply);
-      const canonicalRun=this.db.prepare('SELECT status FROM runs WHERE id=? AND task_id=?').get(reply.runId,task.id);
-      if(canonicalRun?.status!=='succeeded')throw Error('orchestrator_effect_unconfirmed');
-      return this.transaction(()=>{
-        const result={taskId:task.id,runId:reply.runId,responseObserved:true,effectVerified:false,
-          provider:'chatgpt_web',
-          ...(reserved.sendActionId?{sendActionId:reserved.sendActionId,approvalId:reserved.approvalId}:{})};
-        if(reserved.sendActionId){
-          this.db.prepare('UPDATE action_ledger SET run_id=? WHERE id=?').run(reply.runId,reserved.sendActionId);
-          this.store.finishAction(task.id,reserved.sendActionId,'succeeded',result);
-        }
-        return this.finish(reserved.commandId,result);
-      });
-    } catch(error) {
-      const notSubmitted=error?.providerDeliveryState==='not_submitted';
-      const failureCode=/^[a-z][a-z0-9_]{1,80}$/i.test(String(error?.providerFailureCode||''))
-        ?String(error.providerFailureCode):'provider_send_unconfirmed';
-      const result={taskId:task.id,
-        reason:notSubmitted?'provider_not_submitted':'execution_unconfirmed',
-        ...(notSubmitted?{providerStage:String(error?.providerFailureStage||'unknown'),failureCode}:{}),
-        ...(reserved.sendActionId?{sendActionId:reserved.sendActionId,
-          approvalId:reserved.approvalId}:{})};
-      this.transaction(()=>{
-        if(reserved.sendActionId)this.store.finishAction(task.id,reserved.sendActionId,
-          notSubmitted?'failed':'indeterminate',result);
-        this.finish(reserved.commandId,result,notSubmitted?'failed':'uncertain');
-      });
-      this.requireAccess(context,operation,input.projectId);
-      return this.getReceipt(context,reserved.commandId);
-    }
-  }
 }

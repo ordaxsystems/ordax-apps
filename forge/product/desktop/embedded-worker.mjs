@@ -100,11 +100,12 @@ function cleanBodyCandidate(raw) {
 }
 
 export class EmbeddedChatWorker {
-  constructor({id='primary',partition='persist:ordax-forge-chatgpt'}={}) {
+  constructor({id='primary',partition='persist:ordax-forge-chatgpt',allowSend=true}={}) {
     if(typeof id!=='string'||!/^[a-zA-Z0-9_-]{1,80}$/.test(id)||
-       typeof partition!=='string'||!partition.startsWith('persist:'))
+       typeof partition!=='string'||!partition.startsWith('persist:')||typeof allowSend!=='boolean')
       throw new Error('provider_worker_identity_invalid');
     this.id = id;
+    this.allowSend = allowSend;
     this.partition = partition;
     this.session = session.fromPartition(this.partition);
     this.view = createView(this.partition);
@@ -1640,6 +1641,7 @@ export class EmbeddedChatWorker {
   async sendPrompt({ prompt, chatUrl = null, newSession = false, contextAttachment = null,
     onContextAttachmentObserved = null, onDeliveryObserved = null, onProvisionalProgress = null,
     requiresMcp = false, mcpApp='forge-mcp', onSubmissionIntent = null, onMcpSelectionObserved = null }) {
+    if(this.allowSend!==true)throw new Error('provider_send_disabled_for_passive_app');
     return this.enqueue(async () => {
       const wc = this.view.webContents;
       this.lastFailureMetrics = null;

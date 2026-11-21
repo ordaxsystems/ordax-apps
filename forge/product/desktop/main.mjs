@@ -1,22 +1,13 @@
 import { app, BrowserWindow, ipcMain, protocol, net, dialog, safeStorage, Tray, Menu, shell } from 'electron';
-import path from 'node:path';import os from 'node:os';import {existsSync} from 'node:fs';import {listLocalSupervisorRecoverable} from '../supervisor/recovery.mjs';
+import path from 'node:path';import {existsSync} from 'node:fs';import {listLocalSupervisorRecoverable} from '../supervisor/recovery.mjs';
 import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile.mjs';
-import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
-import { bindObservedSubmittedConversation } from '../src/provider-submitted-conversation.mjs';
-import { recordProviderSubmissionProvenance, recordProviderSubmissionIntent, findProviderSubmissionProvenance, providerPromptDigest } from '../src/provider-submission-provenance.mjs';
 import { inspectProviderLinkedThread, reconcileProviderLinkedReply, recoverVisibleLinkedProviderSubmission } from '../src/provider-linked-thread-recovery.mjs';
-import { assertTaskHasNoUncertainTransport } from '../src/provider-uncertain-run-policy.mjs';
-import { assertProviderSendReadiness, normalizeProviderFailure } from '../src/provider-observation-policy.mjs';
-import { assertContinuationContextReady } from '../src/continuation-context.mjs';
 import { safeTaskNavigationReason } from '../src/task-navigation-status.mjs';
 import { createOrchestratorKernel } from '../src/orchestrator-kernel.mjs';
-import {withForjadorMcpMention,mentionWasRequested,providerMcpMention} from '../src/provider-mcp-mention.mjs';
-import {requiresMcpForProjectPrompt,requireSelectedMcpForPrompt} from '../src/provider-mcp-selection.mjs';
 import { createProviderAwareTaskOpener, createTaskUiHandlers } from '../src/task-ui-handlers.mjs';
 import { ORCHESTRATOR_TOOLS } from '../src/forge-contract.mjs';
 import {assertPassiveUiOperation,assertPassiveUiMcpMessage} from '../src/forge-passive-ui-policy.mjs';
 import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,resolveOrchestratorRuntimeTransport,openOrchestratorRuntimeStreams } from '../src/orchestrator-runtime-bridge.mjs';
-import { observePostCommitNavigation } from '../src/provider-post-commit-navigation.mjs';
 
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -24,7 +15,6 @@ import { randomUUID, createHash } from 'node:crypto';
 import { Store, MESSAGE_PAGE_SIZE } from '../src/store.mjs';
 import {ForgeProjectFiles} from '../src/forge-project-files.mjs';
 import {ForgeLocalWorkspaces,resolveForgeWorkspaceDocumentsDirectory} from '../src/forge-local-workspaces.mjs';
-import {forgeFreshConversationContext} from '../src/forge-fresh-conversation-context.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {readForgeGitMemory} from '../src/forge-git-memory-view.mjs';
 import {createForgeLoopbackMcp,FORGE_APP_MCP_SCOPE,FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
@@ -34,24 +24,20 @@ import {createForgeProductSession} from '../src/forge-product-session.mjs';
 import {ForgeRemoteGatewayClient} from '../src/forge-remote-gateway-client.mjs';
 import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
 import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
-import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
+import {canonicalProviderChatUrl} from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
 import {IsolatedInteractiveHtmlPreview} from './isolated-interactive-preview.mjs';
 import {inspectForgeAppUiDom} from '../src/forge-app-ui-dom.mjs';
 import {boundedForgeViewImage,captureForgeProjectHtml} from './forge-view-capture.mjs';
 import { createProviderViewRegistry } from '../src/provider-view-registry.mjs';
 import { backgroundResidencyAllowed,backgroundStartupAllowed,backgroundModeRequested } from '../src/background-residency-policy.mjs';
-import { createProviderExecutionScheduler,resolveProviderWorkerCount } from '../src/provider-execution-scheduler.mjs';
 import { normalizeProviderViewBounds, providerAppPanelUsable } from '../src/provider-view-bounds.mjs';
-import { createProviderProvisionalRecorder } from '../src/provider-provisional-recorder.mjs';
 import { resolveLabUserRoot, labProfileFingerprint } from '../src/lab-profile-binding.mjs';
 import { PRODUCT_NAME } from '../src/product-brand.mjs';
 import { pruneDeletedProjectAssets } from '../src/project-assets-cleanup.mjs';
 import { verifyRuntimeManifest } from '../src/runtime-build-identity.mjs';
-import { assertTaskHandoffCoversOmissions, buildProviderContextAttachmentNotice, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
-import { removeStaleTaskHandoffFiles, removeTaskHandoffFile, resolveTaskHandoffRoot, writeTaskHandoffFile } from '../src/task-handoff-file.mjs';
+import {removeStaleTaskHandoffFiles,resolveTaskHandoffRoot} from '../src/task-handoff-file.mjs';
 import {verifyLocalHtmlArtifact,readVerifiedLocalHtmlArtifact,assertLocalArtifactPath} from '../src/provider-html-artifact.mjs';
-import {shouldAttemptAutomaticHtmlCapture} from '../src/automatic-html-capture-policy.mjs';
 
 if (process.env.ORDAX_DESKTOP_DEBUG === '1') {
   app.commandLine.appendSwitch('remote-debugging-port', '9445');
@@ -279,13 +265,8 @@ const MIME_EXT = new Map([
 let win;
 let providerHostWindow=null;
 const providerViewParents=new Map();
-let worker; // Primary provider view exposed in the human UI.
+let worker; // Single read-only provider view exposed in the human UI.
 let providerWorkers=[];
-const providerWorkerCount=resolveProviderWorkerCount({
-  requested:process.env.ORDAX_FORGE_PROVIDER_WORKERS,
-  cpuCount:os.availableParallelism(),totalMemoryBytes:os.totalmem(),
-  freeMemoryBytes:os.freemem()
-});
 let interactiveHtmlPreview=null;
 const providerViews=createProviderViewRegistry();
 let windowCreationPromise=null;
@@ -325,7 +306,6 @@ let observerMode = ['auto','fast','beta'].includes(persistedObserverMode) ? pers
 let workerPreload = { ready:false, url:null, at:null };
 let providerHealthInFlight = null;
 let providerHealthCache = null;
-let providerScheduler = null;
 let providerPoolHealthInFlight=null;
 let providerPoolHealthCache=new Map();
 let providerPoolHealthObservedAt=0;
@@ -370,26 +350,9 @@ function currentProviderPoolHealth(){
       provider_access_problem:state?.provider_access_problem||null};
   });
 }
-const providerCapacity=()=>{
-  const snapshot=providerScheduler?.snapshot?.()||{
-    lanes:providerWorkers.length||providerWorkerCount,active:0,queued:0,pendingTasks:0,closed:false
-  };
-  return Object.freeze({
-    maxConcurrentSends:snapshot.lanes,
-    active:snapshot.active,
-    queued:snapshot.queued,
-    pendingTasks:snapshot.pendingTasks,
-    availableSlots:Math.max(0,snapshot.lanes-snapshot.active),
-    closed:snapshot.closed===true
-  });
-};
-
-// One scheduler remains the sole transport admission authority. Multiple lanes
-// are physical EmbeddedChatWorker instances, never a second queue or ledger.
-function enqueueExecution(taskId,operation) {
-  if(!providerScheduler)return Promise.reject(Error('provider_worker_unavailable'));
-  return providerScheduler.enqueue(String(taskId),operation);
-}
+const providerCapacity=()=>Object.freeze({
+  maxConcurrentSends:0,active:0,queued:0,pendingTasks:0,availableSlots:0,closed:true
+});
 
 function assetUrl(id) {
   return `ordax-asset://local/${encodeURIComponent(id)}`;
@@ -441,365 +404,6 @@ function persistImages(taskId, messageId, images = [], writtenPaths = null) {
   }
 
   return out;
-}
-
-async function runTask(taskId, prompt, { newSession = false, draftRevision = null, allowCoordinatorTask = false, authorSource='human', mcpRequest = null } = {}, runWorker) {
-  // An execution is always owned by the physical worker selected by the
-  // canonical scheduler, never by whichever view happens to be visible.
-  if(!runWorker||providerViews.resolve(runWorker?.view?.webContents)!==runWorker)
-    throw Error('provider_run_worker_unregistered');
-  orchestratorService.assertProviderTaskAvailable(taskId,{allowCoordinator:allowCoordinatorTask});
-  // Before appending another user message or starting another Run, require
-  // reconciliation of any earlier uncertain transport effect on this Task.
-  // The single existing Store is authoritative; this performs no replay.
-  assertTaskHasNoUncertainTransport(store,taskId);
-  const task = store.getTaskExecutionSnapshot(taskId);
-  if (!task) throw new Error('task_not_found');
-  const mcpApp='forge-mcp';
-  // Validate only the CURRENT request for retired/foreign MCP mentions.
-  // Historical Task context is evidence and may legitimately contain retired
-  // integration names that must remain readable for continuity/reconciliation.
-  const currentRequest=withForjadorMcpMention(String(prompt||''),{authorSource,app:mcpApp});
-
-  const conversationPlan = planProviderConversation(task, {
-    forceNew:newSession,nextPromptBytes:Buffer.byteLength(currentRequest.trim(),'utf8')
-  });
-  const needsContinuation = Boolean(conversationPlan.newSession && task.has_messages);
-  const checkpointVersion = task.checkpoint_version;
-  let continuationPacket = needsContinuation ? store.buildContinuationPacket(taskId,prompt) : null;
-  if (continuationPacket) assertContinuationContextReady(continuationPacket);
-  let contextManifest=continuationPacket?.manifest || null;
-  let handoffSnapshot=null;
-  let contextAttachmentNotice='';
-  if(contextManifest?.attachmentUseful===true){
-    const buildSnapshot=manifest=>store.buildTaskHandoffSnapshot(taskId,{
-      request:prompt,includeMessageIds:manifest.omittedMessageIds||[]
-    });
-    handoffSnapshot=buildSnapshot(contextManifest);
-    const estimatedNotice=buildProviderContextAttachmentNotice({
-      filename:handoffSnapshot.filename,filePath:path.join(handoffRoot,handoffSnapshot.filename),
-      sha256:handoffSnapshot.manifest.sha256,taskId:taskId,
-      checkpointVersion:handoffSnapshot.manifest.checkpointVersion,
-      byteLength:handoffSnapshot.manifest.byteLength
-    });
-    const boundedPromptChars=16000-estimatedNotice.length-
-      (authorSource==='orchestrator'?providerMcpMention(mcpApp).length+2:0);
-    if(boundedPromptChars<1024)throw new Error('task_handoff_prompt_budget_exhausted');
-    continuationPacket=store.buildContinuationPacket(taskId,prompt,{maxChars:boundedPromptChars});
-    assertContinuationContextReady(continuationPacket);
-    contextManifest=continuationPacket.manifest;
-    handoffSnapshot=buildSnapshot(contextManifest);
-    assertTaskHandoffCoversOmissions(contextManifest,handoffSnapshot.manifest);
-    contextAttachmentNotice=buildProviderContextAttachmentNotice({
-      filename:handoffSnapshot.filename,filePath:path.join(handoffRoot,handoffSnapshot.filename),
-      sha256:handoffSnapshot.manifest.sha256,taskId:taskId,
-      checkpointVersion:handoffSnapshot.manifest.checkpointVersion,
-      byteLength:handoffSnapshot.manifest.byteLength
-    });
-  }
-  // All project conversations use Forge MCP; no second MCP provider is selected.
-  // Mentioning an app does not grant access or prove a tool was executed.
-  // A fresh Task chat inherits approved editorial context of its project.
-  // Established Task segments keep their existing checkpoint/handoff path.
-  const projectContext=!task.has_messages
-    ?forgeFreshConversationContext(store,taskId,{
-      // Only the canonical native workspace binding can supply the location.
-      // The user prompt, GPT response and device-online state are not grants.
-      resolveWorkspace:projectId=>forgeLocalWorkspaces.status(projectId)
-    }):null;
-  // Do not re-validate the assembled historical context as a new MCP request.
-  // Only currentRequest above can select/reject an integration.
-  let providerPrompt=(projectContext?.text||'')+(continuationPacket?.prompt || currentRequest)+contextAttachmentNotice;
-  if(contextManifest&&contextAttachmentNotice){
-    if(providerPrompt.length>16000)throw new Error('task_handoff_prompt_budget_exceeded');
-    contextManifest={...contextManifest,maxChars:16000,promptChars:providerPrompt.length,promptSha256:providerPromptDigest(providerPrompt)};
-  }
-  // Existing project continuations stay tool-dependent even for short prompts.
-  const projectContinuation=task.has_messages&&Boolean(store.db.prepare(
-    'SELECT 1 FROM lab_task_bindings WHERE task_id=? LIMIT 1').get(taskId));
-  // A Forjador conversation is not automatically a tool execution. Greetings,
-  // explanations and other text-only turns must reach GPT without opening
-  // ChatGPT's app picker. Actual project effects still require the real MCP.
-  const userRequest=typeof mcpRequest==='string'?mcpRequest:prompt;
-  const mcpWorkRequired=requiresMcpForProjectPrompt(userRequest,{projectContinuation})||
-    mentionWasRequested(userRequest,mcpApp);
-  // The provider is a native WebContentsView. Every selected lane gets a
-  // real off-canvas viewport before health/app-selection/submit. Scheduler +
-  // providerViews already prevent worker or Task reuse; independent Works do
-  // not need a global executor lock.
-  providerRunPresentationWorkers.add(runWorker);
-  layoutViews();
-  // Fail closed after bounded first-party readiness observation. Resizing is
-  // not proof of login; anonymous, verification and restricted states still
-  // fail before creating a user message, Task Run or submission intent.
-  try {
-    let health=null;
-    for(let attempt=0;attempt<10;attempt++){
-      health=await runWorker.health();
-      if(health?.auth_state==='session_present'&&health?.composer_ready===true)break;
-      if(health?.verification_required===true||
-        ['anonymous','authenticating'].includes(health?.auth_state))break;
-      if(attempt<9)await new Promise(resolve=>setTimeout(resolve,350));
-    }
-    assertProviderSendReadiness(health);
-  } catch(error) {
-    providerRunPresentationWorkers.delete(runWorker);
-    layoutViews();
-    throw normalizeProviderFailure(error,{stage:'health'});
-  }
-  // A normal request to BUILD a site needs Forge MCP even without a mention.
-  // Do not persist a user message or Run when no connected app was selected.
-  // The worker observes again immediately before submit to close the race.
-  if(mcpWorkRequired){
-    // The previous read-only gate could not succeed for a natural Forge request:
-    // the GPT composer was still empty. Prepare the REAL app token first,
-    // without submitting or altering the Store, then check it fail-closed.
-    let staged=null;
-    try{
-      staged=await runWorker.prepareMcpPrompt({
-        prompt:providerPrompt,chatUrl:task.chat_url,newSession:conversationPlan.newSession,mcpApp,
-        // A provider navigation may reset native view geometry after the first
-        // run layout. Reassert the existing canonical host layout before each
-        // hit-test; never bypass the provider-owned control verification.
-        ensureRunPresentation:layoutViews
-      });
-      providerPrompt=staged.providerPrompt;
-      if(contextManifest&&contextAttachmentNotice){
-        if(providerPrompt.length>16000)throw Error('task_handoff_prompt_budget_exceeded');
-        contextManifest={...contextManifest,promptChars:providerPrompt.length,
-          promptSha256:providerPromptDigest(providerPrompt)};
-      }
-      requireSelectedMcpForPrompt(providerPrompt,
-        await runWorker.inspectMcpSelectionReadOnly({app:mcpApp}),{requiresMcp:true,app:mcpApp});
-    }catch(error){
-      if(staged)await runWorker.discardPreparedMcpPrompt(staged.providerPrompt).catch(()=>{});
-      providerRunPresentationWorkers.delete(runWorker);
-      layoutViews();
-      throw error;
-    }
-  }
-  let contextAttachment=null;
-  try { contextAttachment=handoffSnapshot?writeTaskHandoffFile(handoffRoot,handoffSnapshot):null; }
-  catch(error){
-    if(mcpWorkRequired)
-      await runWorker.discardPreparedMcpPrompt(providerPrompt).catch(()=>{});
-    providerRunPresentationWorkers.delete(runWorker);
-    layoutViews();
-    throw error;
-  }
-  // The provider composer may be staged, but NO MESSAGE IS SUBMITTED before
-  // this atomic transaction commits. Draft-clear, message and Run stay atomic.
-  let begun;
-  try {
-    begun=store.beginProviderRun(taskId, prompt, {
-      draftRevision,workerId:'electron-embedded-chatgpt:'+runWorker.id,observerMode,authorSource
-    });
-  } catch(error) {
-    if(contextAttachment)try{removeTaskHandoffFile(handoffRoot,contextAttachment.filePath);}catch{}
-    if(mcpWorkRequired)
-      await runWorker.discardPreparedMcpPrompt(providerPrompt).catch(()=>{});
-    providerRunPresentationWorkers.delete(runWorker);
-    layoutViews();
-    throw error;
-  }
-  const { userMessage, runId } = begun;
-  let contextAttachmentReceipt=null;
-  const runContext = { taskId, runId, startedAt:Date.now(), firstDeltaAt:null };
-  const provisional=createProviderProvisionalRecorder({
-    save:(text,source)=>store.saveRunProvisionalOutput(taskId,runId,text,source)
-  });
-  const heartbeat = setInterval(() => store.heartbeatRun(taskId, runId), 5000);
-
-  try {
-    providerViews.bindRun(runWorker,runContext);
-    if (win && !win.isDestroyed()) emitRendererEvent('ordax:task:run-started', { taskId, runId, userMessage });
-    const projectId=store.db.prepare('SELECT project_id FROM lab_task_bindings WHERE task_id=? LIMIT 1')
-      .get(taskId)?.project_id||null;
-    lastGptDispatchByTask.set(taskId,{projectId,taskId,runId,authorSource,
-      originalRequest:prompt,composedPrompt:providerPrompt,
-      preparedAt:new Date().toISOString(),deliveryObserved:false});
-    const result = await runWorker.sendPrompt({
-      prompt:providerPrompt,chatUrl:task.chat_url,newSession:conversationPlan.newSession,
-      requiresMcp:mcpWorkRequired,mcpApp,
-      contextAttachment,
-      onContextAttachmentObserved:receipt=>{
-        if(providerViews.runForWorker(runWorker)!==runContext)throw new Error('context_attachment_run_context_changed');
-        const durableReceipt={
-          format:handoffSnapshot.manifest.format,deliveryState:'uploaded',
-          taskId:handoffSnapshot.manifest.taskId,filename:receipt.filename,
-          sha256:receipt.sha256,byteLength:receipt.byteLength,
-          checkpointVersion:receipt.checkpointVersion,uploadedAt:receipt.uploadedAt,
-          memoryIds:handoffSnapshot.manifest.memoryIds,
-          recentMessageIds:handoffSnapshot.manifest.recentMessageIds,
-          historicalMessageIds:handoffSnapshot.manifest.historicalMessageIds
-        };
-        store.event(taskId,'provider.context_attachment.uploaded',{
-          run_id:runId,filename:durableReceipt.filename,sha256:durableReceipt.sha256,
-          byte_length:durableReceipt.byteLength,checkpoint_version:durableReceipt.checkpointVersion,
-          uploaded_at:durableReceipt.uploadedAt,memory_ids:durableReceipt.memoryIds,
-          recent_message_ids:durableReceipt.recentMessageIds,
-          historical_message_ids:durableReceipt.historicalMessageIds
-        });
-        contextAttachmentReceipt=durableReceipt;
-      },
-      onProvisionalProgress:({text,source})=>{
-        if(providerViews.runForWorker(runWorker)===runContext)provisional.capture(text,source);
-      },
-      onMcpSelectionObserved:selection=>{
-        if(providerViews.runForWorker(runWorker)!==runContext)return;
-        const selectedState=['selection_visible','name_visible_unverified','not_observed','unavailable']
-          .includes(selection?.state)?selection.state:'unavailable';
-        const mentionRequested=mentionWasRequested(providerPrompt,mcpApp);
-        const state=selectedState==='not_observed'&&mentionRequested?'mention_requested':selectedState;
-        try {store.event(taskId,'provider.mcp.selection_observed',{
-          run_id:runId,state,app:mcpApp,mention_requested:mentionRequested,
-          selection_observed:selectedState==='selection_visible',invocation_verified:false
-        });}catch{/* diagnostic cannot affect delivery */}
-        emitRendererEvent('ordax:provider:mcp-observed',{state,app:mcpApp,taskId,runId});
-      },
-      onSubmissionIntent:({intentAt,chatUrl,baselineUserMessageId,baselineUserMessagePresent,baselinePromptMatches})=>{
-        if(providerViews.runForWorker(runWorker)!==runContext)throw new Error('submission_run_context_changed');
-        const requireRecordedIntent=intent=>{
-          if(intent.recorded)return intent;
-          // The reason is a closed-set local validation code, never the prompt,
-          // provider URL or any private identity. Recording diagnostics must
-          // not change the original fail-closed submit outcome.
-          const reason=['intent_incomplete','intent_reference_missing','intent_already_recorded']
-            .includes(intent.reason)?intent.reason:'intent_unavailable';
-          try {store.event(taskId,'provider.submission.intent_rejected',{run_id:runId,reason});}
-          catch {/* The send remains blocked even if diagnostics cannot persist. */}
-          throw new Error('provider_submission_intent_not_recorded');
-        };
-        if(conversationPlan.newSession) {
-          // A fresh GPT chat has no permalink before its first accepted send.
-          // Persist the exact dispatch intent against the official empty home
-          // and the previous task link; recovery can bind a new URL only after
-          // the unique prompt and one complete response are observed twice.
-          const intent=recordProviderSubmissionIntent({
-            store,taskId,runId,messageId:userMessage.id,providerPrompt,
-            chatUrl,intentAt,baselineUserMessageId,baselineUserMessagePresent,baselinePromptMatches,
-            newSession:true,previousConversationId:conversationPlan.previousConversationId,
-            previousChatUrl:task.chat_url,
-            contextCheckpointVersion:needsContinuation?checkpointVersion:null
-          });
-          return requireRecordedIntent(intent);
-        }
-        const expected=canonicalProviderChatUrl(task.chat_url);
-        if(!expected||canonicalProviderChatUrl(chatUrl)!==expected)
-          throw new Error('provider_submission_intent_target_mismatch');
-        const intent=recordProviderSubmissionIntent({
-          store,taskId,runId,messageId:userMessage.id,providerPrompt,
-          chatUrl:expected,intentAt,baselineUserMessageId,baselineUserMessagePresent,baselinePromptMatches
-        });
-        return requireRecordedIntent(intent);
-      },
-      onDeliveryObserved:({chatUrl,submittedAt}) => {
-        if (providerViews.runForWorker(runWorker)!==runContext) throw new Error('submission_run_context_changed');
-        const binding=bindObservedSubmittedConversation({
-          store,taskId,runId,chatUrl,submittedAt,
-          plannedNewSession:conversationPlan.newSession,
-          checkpointVersion:needsContinuation ? checkpointVersion : null
-        });
-        // Persist the exact provider-prompt digest only after observed delivery.
-        // Failure to record this optional evidence cannot trigger a resend.
-        try {
-          recordProviderSubmissionProvenance({
-            store,taskId,runId,messageId:userMessage.id,providerPrompt,
-            chatUrl,submittedAt,contextManifest,contextAttachmentReceipt
-          });
-        } catch {
-          // The provider already accepted the send. Never fail or retry it
-          // merely because optional local provenance could not be recorded.
-          try { store.event(taskId,'provider.submission.provenance_unavailable',{run_id:runId}); }
-          catch { /* Preserve transport result; reconcile conservatively. */ }
-        }
-        const dispatch=lastGptDispatchByTask.get(taskId);
-        if(dispatch?.runId===runId)
-          lastGptDispatchByTask.set(taskId,{...dispatch,deliveryObserved:true});
-        return binding;
-      }
-    });
-    const rotationOutcome = assessProviderRotation(conversationPlan, task.chat_url, result.chatUrl);
-    const confirmedChatUrl = canonicalProviderChatUrl(result.chatUrl);
-    // An observed answer is still persisted, but a home/share/login URL must
-    // never become the durable conversation identifier. No automatic resend.
-    const bound = confirmedChatUrl
-      ? store.setChatUrl(taskId, confirmedChatUrl, needsContinuation ? checkpointVersion : null)
-      : null;
-    if (!confirmedChatUrl) {
-      store.rotateConversation(taskId, 'provider_url_unconfirmed');
-      store.event(taskId, 'provider.conversation.url_unconfirmed', {
-        reason: result.chatUrl ? 'not_a_chat_permalink' : 'missing_url',
-        previous_conversation_id: conversationPlan.previousConversationId
-      });
-    }
-    if (conversationPlan.automaticRotation && rotationOutcome === 'rotated' && bound?.id !== conversationPlan.previousConversationId) {
-      store.event(taskId, 'provider.conversation.auto_rotated', {
-        reason:conversationPlan.reason,
-        previous_conversation_id:conversationPlan.previousConversationId,
-        new_conversation_id:bound?.id || null,
-        previous_completed_turns:conversationPlan.completedTurns
-      });
-    } else if (conversationPlan.automaticRotation) {
-      // Preserve the successful response; never resend a prompt merely because
-      // the provider returned the same conversation URL.
-      store.event(taskId, 'provider.conversation.rotation_unconfirmed', {
-        reason:rotationOutcome,
-        previous_conversation_id:conversationPlan.previousConversationId,
-        previous_completed_turns:conversationPlan.completedTurns
-      });
-    }
-    const runMetrics = store.recordRunMetrics(taskId, runId, observerMode, { ...(result.metrics || {}), runStartedAt: runContext.startedAt });
-    provisional.flush();
-    // File bytes live outside SQLite. Track new writes so an SQL rollback
-    // does not leave unnecessary assets in a normal (non-crash) failure.
-    const writtenPaths = [];
-    let assets;
-    try {
-      ({ assets } = store.commitObservedProviderReply(taskId, runId, {
-        text:result.text || '', observedAt:result.observedAt,
-        chatUrl:confirmedChatUrl, observerMode, runMetrics,
-        attachAssets:(messageId)=>persistImages(taskId, messageId,
-          result.images || [], writtenPaths)
-      }));
-    } catch (commitError) {
-      for (const assetPath of writtenPaths) {
-        try { fs.unlinkSync(assetPath); } catch { /* Orphan is never in the committed asset ledger. */ }
-      }
-      throw commitError;
-    }
-    const postCommitNavigation=await observePostCommitNavigation({worker:runWorker,chatUrl:confirmedChatUrl});
-    if(postCommitNavigation.navigated===false)
-      emitRendererEvent('ordax:task:provider-navigation',{
-        taskId,provider_navigation:'post_commit_failed',
-        provider_navigation_reason:postCommitNavigation.reason
-      });
-    return { result: { ...result, runId, assets,
-      ...(postCommitNavigation.navigated===false?{postCommitNavigation}:{}) },
-      task:getTaskView(taskId) };
-  } catch (error) {
-    // Persist the last pending observed text, never as a confirmed message.
-    provisional.flush();
-    if (runWorker.lastFailureMetrics) {
-      try { store.recordRunMetrics(taskId, runId, observerMode, {
-        ...runWorker.lastFailureMetrics,
-        runStartedAt:runContext.startedAt
-      }); } catch { /* preserve original failure */ }
-    }
-    store.finishRun(taskId, runId, String(error?.message || error));
-    if(error?.providerFailureCode==='send_confirmation_unknown'&&error?.providerDeliveryState==='uncertain') {
-      const recovered=await recoverFailedProviderSubmission({store,worker:runWorker,taskId,runId}).catch(()=>null);
-      if(recovered?.reconciled===true||recovered?.reason==='already_reconciled')
-        return {result:{runId,recovered:true},task:getTaskView(taskId)};
-    }
-    throw error;
-  } finally {
-    providerViews.unbindRun(runWorker,runId);
-    providerRunPresentationWorkers.delete(runWorker);
-    clearInterval(heartbeat);
-    if(contextAttachment)try{removeTaskHandoffFile(handoffRoot,contextAttachment.filePath);}catch{}
-    layoutViews();
-  }
 }
 
 function attachProviderView(candidate,targetWindow) {
@@ -904,56 +508,16 @@ async function createWindowOnce() {
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
 
   interactiveHtmlPreview=new IsolatedInteractiveHtmlPreview(()=>win);
-  providerWorkers=Array.from({length:providerWorkerCount},(_unused,index)=>
-    new EmbeddedChatWorker({id:index===0?'primary':'agent-'+String(index+1)}));
-  worker=providerWorkers[0];
-  for(const candidate of providerWorkers)providerViews.register(candidate);
-  providerScheduler=createProviderExecutionScheduler({
-    lanes:providerWorkers.map(candidate=>({id:candidate.id,worker:candidate}))
-  });
-  const registeredScheduler=providerScheduler;
-  let providerPoolFailure=false;
-  let windowClosing=false;
-  for(const registeredWorker of providerWorkers){
-    registeredWorker.view.webContents.once('destroyed',()=>{
-      providerViews.unregister(registeredWorker);
-      // A missing physical lane invalidates the configured pool topology.
-      // Close the one canonical scheduler, then cross the normal App shutdown
-      // boundary so accepted Runs are interrupted durably before the neutral
-      // dev supervisor rebuilds the complete pool. Never limp along at 3/4.
-      registeredScheduler.close('provider_worker_destroyed');
-      if(!quittingIntentionally&&!windowClosing&&!providerPoolFailure){
-        providerPoolFailure=true;
-        hostStartupLog('provider_worker_pool_degraded_'+registeredWorker.id);
-        setImmediate(()=>{
-          if(!win||win.isDestroyed()){app.quit();return;}
-          quittingIntentionally=true;
-          win.close();
-        });
-      }
-    });
-    registeredWorker.setObserverMode(observerMode);
-    registeredWorker.setStageSink(({ stage, at }) => {
-      const routed=providerViews.runForWorker(registeredWorker);
-      if (!routed || !win || win.isDestroyed()) return;
-      emitRendererEvent('ordax:task:stage', {
-        taskId:routed.taskId, runId:routed.runId, stage, at, runStartedAt:routed.startedAt,
-        workerId:registeredWorker.id
-      });
-    });
-    registeredWorker.setFastStreamSink(delta => {
-      const routed=providerViews.runForWorker(registeredWorker);
-      if (!routed || !win || win.isDestroyed()) return;
-      emitRendererEvent('ordax:task:stream', {
-        taskId:routed.taskId, runId:routed.runId, ...delta, mirrorAt:Date.now(),
-        runStartedAt:routed.startedAt,workerId:registeredWorker.id
-      });
-    });
-    // Provider lanes live in one hidden native host by default. The primary
-    // lane is re-parented into the App only while the user opens the Chat view.
-    attachProviderView(registeredWorker,providerHostWindow);
-  }
-  hostStartupLog('provider_worker_pool_constructed_'+String(providerWorkers.length));
+  // One observational ChatGPT view remains available for login/status and
+  // read-only historical inspection. The passive App starts no worker pool,
+  // scheduler or auxiliary provider agent sessions.
+  worker=new EmbeddedChatWorker({id:'primary',allowSend:false});
+  providerWorkers=[worker];
+  providerViews.register(worker);
+  worker.view.webContents.once('destroyed',()=>providerViews.unregister(worker));
+  worker.setObserverMode(observerMode);
+  attachProviderView(worker,providerHostWindow);
+  hostStartupLog('provider_observer_constructed');
   hostStartupLog('provider_views_attached');
   layoutViews();
   win.on('resize', layoutViews);
@@ -979,21 +543,19 @@ async function createWindowOnce() {
       win.hide();
       return;
     }
-    windowClosing=true;
-    if (!anyProviderRunActive()) {registeredScheduler.close();return;}
+    if(!anyProviderRunActive())return;
     try {
       const interrupted = store.recoverInterruptedRuns('app_shutdown');
-      registeredScheduler.close();
       for(const candidate of providerWorkers){
         const active=providerViews.runForWorker(candidate);
         if(active)providerViews.unbindRun(candidate,active.runId);
         providerRunPresentationWorkers.delete(candidate);
       }
-      if (interrupted) hostStartupLog('inflight_runs_interrupted_on_close');
+      if(interrupted)hostStartupLog('historical_inflight_runs_interrupted_on_close');
     } catch {
-      // Never let a failed SQLite transition silently discard an in-flight Run.
+      // Never let a failed SQLite transition silently discard a historical Run.
       event.preventDefault();
-      hostStartupLog('inflight_shutdown_recovery_failed');
+      hostStartupLog('historical_inflight_shutdown_recovery_failed');
     }
   });
 
@@ -1044,16 +606,9 @@ async function createWindowOnce() {
   }
   hostStartupLog('app_shell_loaded');
   layoutViews();
-  hostStartupLog('provider_worker_pool_load_started');
-  providerWorkers.forEach((candidate,index)=>{
-    // Stagger initial navigation slightly so one authenticated account does
-    // not burst four identical home loads at the provider in the same tick.
-    setTimeout(()=>{
-      void candidate.load('https://chatgpt.com/').catch(()=>{
-        if(candidate===worker)hostStartupLog('provider_primary_worker_load_failed');
-      });
-    },index*250);
-  });
+  hostStartupLog('provider_observer_load_started');
+  void worker.load('https://chatgpt.com/').catch(()=>
+    hostStartupLog('provider_observer_load_failed'));
   hostStartupLog('window_create_complete');
   return win;
 }
@@ -1115,9 +670,8 @@ registerUiHandler('ordax:tasks:reconcile-linked-reply', async (event, payload={}
   return {...result,commandReceiptReconciliation};
 });
 const htmlArtifactCaptureWorkers=new Set();
-// Canonical capture operation: both automatic post-Run completion and the
-// existing manual fallback use this SAME path, Store and result attribution.
-// It only downloads first-party output, never sends a prompt or creates a Run.
+// Canonical read-only capture operation for an already completed historical
+// Run. It only downloads first-party output, never sends a prompt or creates a Run.
 async function captureConfirmedHtmlArtifact(requestedId,{
   captureWorker=worker,allowConcurrentProviderRuns=false
 }={}) {
@@ -1125,8 +679,7 @@ async function captureConfirmedHtmlArtifact(requestedId,{
     throw Error('provider_html_capture_worker_invalid');
   if(hostBrowserMode||htmlArtifactCaptureWorkers.has(captureWorker)||
      captureWorker.active||providerViews.runForWorker(captureWorker)||
-     (!allowConcurrentProviderRuns&&
-       (anyProviderRunActive()||providerScheduler?.snapshot()?.pendingTasks)))
+     (!allowConcurrentProviderRuns&&anyProviderRunActive()))
     throw Error('provider_html_capture_unavailable');
   const taskId=String(requestedId||'');
   const task=store.getTask(taskId);
@@ -1170,8 +723,7 @@ async function captureConfirmedHtmlArtifact(requestedId,{
        inspection.inspectionReason!=='thread_rendered')
       throw Error('provider_html_thread_unverified');
     if(captureWorker.active||providerViews.runForWorker(captureWorker)||
-       (!allowConcurrentProviderRuns&&
-         (anyProviderRunActive()||providerScheduler?.snapshot()?.pendingTasks)))
+       (!allowConcurrentProviderRuns&&anyProviderRunActive()))
       throw Error('provider_html_capture_unavailable');
     const downloaded=await captureWorker.downloadLinkedHtmlArtifact({
       chatUrl:task.chat_url,expectedAnswer:response.content,
@@ -1388,12 +940,6 @@ registerUiHandler('ordax:chat:visible', (event, visible) => {
   layoutViews();
   return chatVisible&&Boolean(providerViewBounds);
 });
-registerUiHandler('ordax:tasks:send',event=>{
-  requireTrustedSupervisorRenderer(event);
-  // A renderer cannot submit GPT work; only the Forge MCP executor may do so.
-  throw Error('forge_passive_app_mcp_only');
-});
-
 // GPT Web is the sole execution model. The supervisor's legacy action
 // ledger remains readable for reconciliation, but no external AI can plan.
 const coordinatorChatStatus=()=>({enabled:false,configured:Boolean(worker),
@@ -1448,7 +994,6 @@ const forgeProjectDevelopment=new ForgeProjectDevelopment({
 const orchestratorKernel=createOrchestratorKernel({
   store,version:app.getVersion(),fileBroker:forgeProjectFiles,
   development:forgeProjectDevelopment,
-  continuousExecutionByDefault:forgeDevAutonomyEnabled,
   // Reuse the exact preview's path, symlink, structure and SHA-256 verifier.
   // Never expose HTML bytes to remote planning or arbitrary file reads.
   verifyLocalArtifact:({taskId,assetId})=>{
@@ -1459,87 +1004,7 @@ const orchestratorKernel=createOrchestratorKernel({
   // Destructive project deletion is authorized only from the local UI owner,
   // never delegated through the Runtime MCP bridge (even if a remote grant exists).
   authorize:({context,operation})=>context===localOrchestratorContext||
-    (!['project_delete','forjador_send'].includes(operation)&&
-      runtimeOrchestratorBridge?.allows(context,operation)===true),
-  confirmProposalSend:async({title,content})=>confirmInActiveUi({
-    title:'Confirmar primeiro envio ao ChatGPT',message:title,
-    detail:'Mensagem exata a enviar:\n\n'+content+'\n\nSerá enviada uma única mensagem pelo executor do App. Uma resposta observada não comprova alterações em arquivos ou outros efeitos.',
-    approveLabel:'Enviar ao ChatGPT'
-  }),
-  confirmProposal:async({proposal})=>confirmInActiveUi({
-    title:'Revisar nova frente',message:proposal.title,
-    detail:proposal.reason+'\n\nPrimeira mensagem (rascunho):\n'+proposal.content+'\n\nEsta ação cria uma frente local e salva o rascunho. Não envia ao ChatGPT.',
-    approveLabel:'Criar frente com rascunho'
-  }),
-  provider:{
-    capacity:()=>providerCapacity(),
-    sessionHealth:async()=>{
-      // Shared, non-blocking health snapshot for all workers. Never evaluate
-      // a WebContents while a generic Forge status/Task operation is pending.
-      return currentProviderPoolHealth();
-    },
-    busy:()=>{
-      const capacity=providerCapacity();
-      return capacity.closed||capacity.availableSlots===0;
-    },
-    ready:async()=>{assertProviderSendReadiness(await worker.health());return true;},
-    send:async({taskId,content,draftRevision,taskKind,authorSource='human'})=>{
-      // No provider interaction may occur before beginProviderRun commits a
-      // canonical Run. If the Run count did not change, a rejected preflight
-      // is PROVABLY not submitted and must not quarantine the project as an
-      // uncertain GPT delivery. Actual attempted sends remain fail-closed.
-      const countRuns=()=>store.db.prepare('SELECT COUNT(*) AS n FROM runs WHERE task_id=?')
-        .get(taskId)?.n??0;
-      const runsBefore=countRuns();
-      let execution,executionWorker=null;
-      try{
-        execution=await enqueueExecution(taskId,runWorker=>{
-          executionWorker=runWorker;
-          return runTask(taskId,content,{
-            newSession:false,draftRevision,allowCoordinatorTask:taskKind==='orchestrator',
-            authorSource,mcpRequest:content
-          },runWorker);
-        });
-      }catch(error){
-        if(!error?.providerDeliveryState&&countRuns()===runsBefore)
-          throw normalizeProviderFailure(error,{stage:'preflight'});
-        throw error;
-      }
-      // Completion is the ONLY automatic capture trigger. An interrupted
-      // Run, model proposal, failed send or historical recovery never triggers
-      // a download, and a missing official file card never becomes a result.
-      if(shouldAttemptAutomaticHtmlCapture({
-        authorSource,runId:execution?.result?.runId,text:execution?.result?.text,userRequest:content
-      })){
-        let verifiedSha=null;
-        try{
-          const captured=await captureConfirmedHtmlArtifact(taskId,{
-            captureWorker:executionWorker,allowConcurrentProviderRuns:true
-          });
-          if(captured?.verified){
-            verifiedSha=captured.sha256;
-            execution.task=getTaskView(taskId);
-          }
-        }catch{
-          // No file card or an invalid download cannot be called a site
-          // delivery. A GPT answer is preserved; no repeat send is allowed.
-          try{store.event(taskId,'provider.artifact.auto_capture_unavailable',{
-            run_id:execution.result.runId,reason:'attachment_not_verified'
-          });}catch{}
-        }
-        try{
-          orchestratorService.recordSiteDelivery({
-            taskId,runId:execution.result.runId,
-            verified:Boolean(verifiedSha),sha256:verifiedSha
-          });
-          notifyOrchestratorChanged();
-        }catch{
-          // A delivery notification never changes the already confirmed
-          // provider Run or launches a second provider request.
-        }
-      }
-      return chatReceiptFromRunTask(execution);
-    }}
+    (operation!=='project_delete'&&runtimeOrchestratorBridge?.allows(context,operation)===true),
 });
 localOrchestratorContext=orchestratorKernel.context;
 const {service:orchestratorService,mcp:localOrchestratorMcp}=orchestratorKernel;
@@ -1928,47 +1393,8 @@ const forgeLocalMcp=createForgeLoopbackMcp({
       approveLabel:'Autorizar vínculo único',cancelLabel:'Cancelar'
     });
     return approval===true&&isAuthorized()===true&&forgeMcpTrusted.isAppTrusted();
-  },
-  // Same Core, provider and SQLite as the native UI. This privileged route
-  // is never an MCP tool and cannot be called with a project-only grant.
-  ownerDispatch:async({projectId,taskId,content,draftRevision,requestId},{isAuthorized})=>{
-    const requireFreshDraft=()=>{
-      if(isAuthorized()!==true)throw Error('forge_owner_dispatch_revoked');
-      const task=orchestratorService.task(projectId,taskId,'work');
-      if(!task||task.status==='archived')throw Error('forge_owner_dispatch_task_unavailable');
-      const draft=store.getTaskDraft(taskId);
-      if(draft.draft_revision!==draftRevision||draft.draft!==content)
-        throw Error('task_draft_revision_conflict');
-      // Forge Git may start only an explicitly prepared, *unstarted* Work.
-      // Subsequent messages and failover remain native Core operations.
-      if(store.db.prepare('SELECT 1 FROM runs WHERE task_id=? LIMIT 1').get(taskId)||
-         store.db.prepare('SELECT 1 FROM messages WHERE task_id=? LIMIT 1').get(taskId)||
-         orchestratorService.hasUnresolvedWorkReceipt(projectId,taskId,{includeRunning:true}))
-        throw Error('forge_owner_dispatch_work_already_started');
-      orchestratorService.requireAccess(localOrchestratorContext,'work_send',projectId);
-      return task;
-    };
-    const task=requireFreshDraft();
-    const approval=forgeDevAutoPairMode||await confirmInActiveUi({
-      title:'Forge Core — autorizar execução',
-      message:'Enviar a Task canônica ao GPT Web?',
-      detail:'Projeto: '+projectId+'\nTask: '+taskId+
-        '\nRevisão do rascunho: '+draftRevision+
-        '\nTítulo: '+String(task.title||'')+
-        '\n\nConteúdo exato:\n'+content+
-        '\n\nO Core criará o Run/recibo. Um envio incerto NÃO será repetido.',
-      approveLabel:'Autorizar envio único',cancelLabel:'Cancelar'
-    });
-    if(approval!==true)throw Error('forge_owner_dispatch_not_approved');
-    // Recheck grants, project and same revision after the asynchronous dialog
-    // and immediately before the existing executor admission.
-    requireFreshDraft();
-    return orchestratorService.invoke(localOrchestratorContext,'work_send',{
-      projectId,taskId,content,draftRevision,requestId
-    });
   }
 });
-orchestratorService.autonomous.setNotifier(()=>notifyOrchestratorChanged());
 orchestratorService.recoverInterruptedCommands();
 // Off by default. This inherited private pipe is NOT a public MCP endpoint.
 // A Runtime launcher must supply the first bootstrap AFTER canonical owner
@@ -2489,7 +1915,11 @@ app.whenReady().then(async () => {
       // or background GPT execution. MCP calls own those transitions.
     })().catch(()=>{});
   },10000);
-}).catch(()=>{
+}).catch(error=>{
+  const detail=String(error?.stack||error?.message||error||'startup_failed');
+  try{fs.appendFileSync(path.join(userRoot,'startup-error.log'),
+    JSON.stringify({at:new Date().toISOString(),detail})+'\n',{encoding:'utf8'});}catch{}
+  try{process.stderr.write('OrdaX Forge startup failed: '+detail+'\n');}catch{}
   hostStartupLog('startup_failed');
   app.quit();
 });

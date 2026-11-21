@@ -34,21 +34,21 @@
         </section>
       </section>
 
-      <nav class="workspace-modes" aria-label="Selecionar destino da conversa">
+      <nav class="workspace-modes" aria-label="Selecionar área do projeto">
         <span class="workspace-modes-caption">Áreas do projeto</span>
         <button id="openOrchestrator" class="workspace-mode workspace-mode-coordinator" type="button" aria-pressed="false" disabled>
           <span class="workspace-mode-symbol" aria-hidden="true">◇</span>
-          <span class="workspace-mode-copy"><strong>Forjador</strong><small id="coordinatorNavProvider">GPT Web · Forge MCP</small></span>
+          <span class="workspace-mode-copy"><strong>Atividade</strong><small id="coordinatorNavProvider">Estado · Forge MCP</small></span>
           <span class="workspace-mode-arrow" aria-hidden="true">↗</span>
         </button>
         <button id="openWorks" class="workspace-mode workspace-mode-gpt" type="button" aria-pressed="false" aria-controls="orchestratorWorkRail" aria-expanded="false" disabled>
           <span class="workspace-mode-symbol" aria-hidden="true">⌘</span>
-          <span class="workspace-mode-copy"><strong>Atividades</strong><small>Tarefas e resultados</small></span>
+          <span class="workspace-mode-copy"><strong>Tarefas</strong><small>Claims, progresso e resultados</small></span>
           <span class="workspace-mode-arrow" aria-hidden="true">↗</span>
         </button>
         <button id="openHistory" class="workspace-mode" type="button" disabled>
           <span class="workspace-mode-symbol" aria-hidden="true">◷</span>
-          <span class="workspace-mode-copy"><strong>Histórico</strong><small>Conversas registradas</small></span>
+          <span class="workspace-mode-copy"><strong>Histórico</strong><small>Atividade persistida</small></span>
         </button>
         <button id="openEvidence" class="workspace-mode" type="button" disabled>
           <span class="workspace-mode-symbol" aria-hidden="true">✓</span>
@@ -112,16 +112,16 @@
         </section>
         </details>
       </section>
-      <button id="newTask" class="primary new-task">＋ Nova conversa GPT</button>
+      <button id="newTask" class="primary new-task">＋ Nova tarefa</button>
 
       <div class="search-wrap">
         <span aria-hidden="true">⌕</span>
-        <input id="taskSearch" type="search" placeholder="Buscar conversas" autocomplete="off" />
+        <input id="taskSearch" type="search" placeholder="Buscar tarefas" autocomplete="off" />
       </div>
 
       <section class="tasks-wrap">
         <div class="section-title-row">
-          <span>Histórico GPT</span>
+          <span>Tarefas registradas</span>
           <small id="taskCount">0</small>
         </div>
         <div id="tasks" class="tasks"></div>
@@ -172,23 +172,22 @@
           <span class="transport-symbol" aria-hidden="true">●</span>
           <span id="orchestrationConnection" class="orchestration-connection">Estado persistido pelo Forge MCP. O aplicativo apenas apresenta a atividade do projeto.</span>
         </div>
-        <details id="projectPulseDisclosure" class="command-advanced"><summary>Ferramentas de missão e diagnóstico local</summary>
-        <section id="projectPulse" class="project-pulse" aria-label="Resumo operacional das frentes de trabalho" hidden>
+        <details id="projectPulseDisclosure" class="command-advanced"><summary>Resumo e diagnóstico</summary>
+        <section id="projectPulse" class="project-pulse" aria-label="Resumo operacional das tarefas" hidden>
           <div class="project-pulse-heading">
-            <div><span class="project-pulse-kicker">VISÃO OPERACIONAL</span><strong>Frentes do projeto</strong></div>
-            <div class="project-pulse-actions"><button id="projectObservationToggle" type="button" class="mini-secondary" disabled>Iniciar</button><button id="inspectProjectAccess" type="button" class="mini-secondary" disabled>Verificar acesso</button><button id="analyzeWorks" type="button" class="mini-primary" disabled>Analisar frentes</button><button id="openProjectWork" class="mini-secondary" type="button" disabled>Ver frentes</button></div>
+            <div><span class="project-pulse-kicker">VISÃO OPERACIONAL</span><strong>Tarefas do projeto</strong></div>
+            <div class="project-pulse-actions"><button id="inspectProjectAccess" type="button" class="mini-secondary" disabled>Verificar acesso</button><button id="openProjectWork" class="mini-secondary" type="button" disabled>Ver tarefas</button></div>
           </div>
           <div id="projectPulseStats" class="project-pulse-stats" role="group" aria-label="Abrir frentes por estado">
-            <button type="button" data-work-filter="all" aria-label="Ver todas as frentes"><strong id="projectPulseTotal">0</strong><span>Registradas</span></button>
-            <button type="button" data-work-filter="running" aria-label="Ver frentes em andamento"><strong id="projectPulseRunning">0</strong><span>Em andamento</span></button>
-            <button type="button" data-work-filter="attention" aria-label="Ver frentes que precisam de revisão"><strong id="projectPulseAttention">0</strong><span>Revisar</span></button>
-            <button type="button" data-work-filter="ready" aria-label="Ver frentes aguardando"><strong id="projectPulseWaiting">0</strong><span>Aguardando</span></button>
+            <button type="button" data-work-filter="all" aria-label="Ver todas as tarefas"><strong id="projectPulseTotal">0</strong><span>Registradas</span></button>
+            <button type="button" data-work-filter="running" aria-label="Ver tarefas em andamento"><strong id="projectPulseRunning">0</strong><span>Em andamento</span></button>
+            <button type="button" data-work-filter="attention" aria-label="Ver tarefas que precisam de revisão"><strong id="projectPulseAttention">0</strong><span>Revisar</span></button>
+            <button type="button" data-work-filter="ready" aria-label="Ver tarefas aguardando"><strong id="projectPulseWaiting">0</strong><span>Aguardando</span></button>
           </div>
-          <p id="projectPulseNote">Resumo das frentes registradas, não uma confirmação de execução autônoma.</p>
-          <p id="projectObservationState" role="status" aria-live="polite" data-state="idle">Pausado. Iniciar registra a intenção, consulta o inventário local e pode solicitar uma análise ao Administrador Geral se os gates permitirem.</p>
+          <p id="projectPulseNote">Resumo das tarefas persistidas. O App não inicia execução, análise ou agentes.</p>
           <p id="projectPreflightState" class="project-preflight-state" data-state="idle" role="status" aria-live="polite">Diagnóstico ainda não solicitado. Uma URL GitHub não comprova acesso ao repositório.</p>
           <ul id="projectPreflightActions" class="project-preflight-actions" aria-label="Próximos passos verificados pelo diagnóstico local" hidden></ul>
-          <p id="analysisScopeHint">Iniciar consulta o estado local e os recibos. Análise por IA externa foi removida; as frentes GPT continuam disponíveis, sem reenvio de operações incertas.</p>
+          <p id="analysisScopeHint">O diagnóstico lê somente estado local e recibos. Decisões e ações pertencem aos chats GPT conectados ao Forge MCP.</p>
         </section>
         </details>
         <div id="orchestrationCapabilitySummary" class="orchestration-capabilities" aria-label="Capacidades disponíveis no Host" hidden>
@@ -198,7 +197,7 @@
           <span id="capabilityContinuity" data-state="blocked">24 h · não operacional</span>
         </div>
         <details id="orchestrationIntegrations" class="orchestration-integrations">
-          <summary><span>Projeto, conexões e automação</span><small>Configurações e limites de execução</small></summary>
+          <summary><span>Conexões e diagnóstico</span><small>Projeto, acesso e limites observáveis</small></summary>
           <div class="orchestration-integrations-content">
             <section id="remoteRepositoryOverview" class="coordinator-analysis-actions remote-repository-panel" aria-label="Repositório GitHub remoto do projeto">
               <strong>GitHub remoto do projeto</strong>
@@ -214,7 +213,7 @@
             </section>
             <section class="coordinator-analysis-actions" aria-label="Ferramentas do executor GPT">
               <strong>GPT Web · Forge MCP</strong>
-              <small>O Forjador e todas as conversas trabalham com o mesmo Forge MCP. Pastas e operações continuam restritas aos grants do projeto; nomes digitados não concedem acesso.</small>
+              <small>Os chats GPT e as tarefas deste projeto usam o mesmo Forge MCP. Pastas e operações continuam restritas aos grants do projeto; nomes digitados não concedem acesso.</small>
               <button id="forjadorMcpCheck" class="mini-secondary" type="button">Verificar seleção no GPT</button>
               <small id="forjadorMcpStatus" role="status" aria-live="polite">Seleção de ferramentas não verificada. Nenhuma execução MCP comprovada nesta conversa.</small>
             </section>
@@ -224,16 +223,10 @@
               <button id="inspectWorkspace" class="mini-secondary" type="button" disabled>Verificar workspace autorizado</button>
               <small id="workspaceEvidence" role="status" aria-live="polite">Nenhum snapshot autorizado verificado nesta sessão.</small>
             </section>
-            <div class="coordinator-analysis-actions">
-              <button id="continuityToggle" type="button" class="mini-secondary" disabled>Ativar análise automática</button>
-              <button id="continuityProposalsToggle" type="button" class="mini-secondary" disabled>Propor próximas frentes automaticamente</button>
-              <small id="continuityState" role="status">Análise automática desativada. Nunca envia mensagens ao GPT.</small>
-              <button id="continuityFollowupPrepare" type="button" class="mini-secondary" hidden disabled>Preparar próximo passo na conversa GPT</button>
-              <button id="prepareWork" type="button" class="mini-secondary" disabled>Preparar nova frente</button>
-              <button id="continueAutonomousTechnical" type="button" class="mini-secondary" hidden disabled>Continuar missão técnica · próximo ciclo seguro</button>
-              <small id="autonomousDialogueState" role="status" aria-live="polite">Descreva uma missão para iniciar. O GPT executa as etapas autorizadas; novas etapas dependem de progresso revisado, acesso MCP real e ausência de operações incertas.</small>
-              <div id="autonomousReviewActions" class="memory-review-actions" aria-label="Revisar conversas da missão" hidden></div>
-            </div>
+            <section class="coordinator-analysis-actions" aria-label="Fronteira de execução">
+              <strong>Execução MCP-first</strong>
+              <small>O aplicativo não inicia agentes, não chama GPT e não agenda ciclos. Tarefas, claims, progresso e memória são coordenados pelo Forge MCP a partir dos chats GPT.</small>
+            </section>
           </div>
         </details>
         <div id="coordinatorMessages" class="coordinator-messages" aria-live="polite">
@@ -250,7 +243,7 @@
           <div><strong>Somente observação e armazenamento</strong><p>Novas decisões e ações são iniciadas pelos chats GPT conectados ao Forge MCP. O App atualiza este histórico a partir do SQLite canônico.</p></div>
         </section>
         <form id="coordinatorComposer" hidden aria-hidden="true">
-          <label class="sr-only" for="coordinatorPrompt">Mensagem ao Forjador</label>
+          <label class="sr-only" for="coordinatorPrompt">Registro de atividade</label>
           <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="Descreva o que você quer criar ou mudar…" aria-describedby="orchestrationConnection" title="Enter para enviar; Shift+Enter para nova linha" required></textarea>
           <button id="coordinatorSend" class="send-button coordinator-send" type="submit" aria-label="Enviar mensagem" disabled>Enviar</button>
         </form>
@@ -260,12 +253,12 @@
       <p id="orchestrationNotice" class="orchestration-notice" role="status" aria-live="polite"></p>
       <section id="taskPanel" class="task-panel hidden">
         <header class="task-head">
-          <button id="taskBackToForjador" class="task-back-forjador" type="button" aria-label="Voltar ao chat do Forjador" title="Voltar ao Forjador">← Forjador</button>
+          <button id="taskBackToForjador" class="task-back-forjador" type="button" aria-label="Voltar à atividade do projeto" title="Voltar à atividade">← Atividade</button>
           <div class="task-identity">
             <div class="task-avatar">✦</div>
             <div>
               <div class="task-title-line">
-                <span class="route-kicker route-kicker-gpt">CONVERSA DE TRABALHO · CHATGPT WEB</span><h2 id="taskTitle"></h2>
+                <span class="route-kicker route-kicker-gpt">TAREFA · GPT / FORGE MCP</span><h2 id="taskTitle"></h2>
                 <button id="renameTask" class="rename-task" type="button" title="Renomear conversa" aria-label="Renomear conversa">✎</button>
               </div>
               <form id="renameTaskForm" class="task-rename-form hidden">
@@ -305,18 +298,22 @@
           <div id="messageList" class="message-list"></div>
         </div>
         <div class="composer-wrap">
-          <div id="composerConnection" class="composer-connection" data-state="unverified" role="status" aria-live="polite">
+          <section id="taskPassiveBoundary" class="coordinator-passive-boundary task-passive-boundary" aria-label="Limite passivo da conversa de trabalho">
+            <span class="coordinator-passive-mark" aria-hidden="true">MCP</span>
+            <div><strong>Conversa somente para acompanhamento</strong><p>O GPT conectado executa ferramentas pelo Forge MCP. O App apenas exibe histórico, memória, evidências e estado persistido.</p></div>
+          </section>
+          <div id="composerConnection" class="composer-connection" data-state="unverified" role="status" aria-live="polite" hidden aria-hidden="true">
             <span id="composerConnectionText">Verificando a sessão do ChatGPT. O rascunho é salvo localmente.</span>
             <button id="composerLogin" type="button" class="mini-secondary">Entrar no ChatGPT</button>
             <button id="recoverProviderConversation" type="button" class="mini-primary" hidden>Continuar em conversa nova</button>
           </div>
-          <form id="composer" class="composer">
+          <form id="composer" class="composer" hidden aria-hidden="true">
             <textarea id="prompt" rows="1" placeholder="Mensagem para esta conversa do ChatGPT Web…" aria-describedby="composerConnectionText"></textarea>
             <button id="send" class="send-button" type="submit" aria-label="Execução exclusiva pelo Forge MCP" disabled title="Somente o Forge MCP executa tarefas">Via Forge MCP</button>
             <div id="runStatus" class="run-status hidden"></div>
           </form>
-          <div class="composer-hint">Aplicativo passivo: acompanhe esta frente aqui. O GPT envia comandos e registra atividades pelo Forge MCP.</div>
-          <div id="draftState" class="draft-state" role="status" aria-live="polite"></div>
+          <div class="composer-hint">Aplicativo passivo: esta tela não envia mensagens ao GPT nem inicia execução.</div>
+          <div id="draftState" class="draft-state" role="status" aria-live="polite" hidden aria-hidden="true"></div>
         </div>
         <div class="task-meta">
           <span id="taskId"></span>
@@ -327,14 +324,14 @@
       <section id="empty" class="empty">
         <span class="empty-eyebrow">PRONTO PARA COMEÇAR</span>
         <h2>Seu próximo projeto começa aqui.</h2>
-        <p>Organize suas ideias, converse com o Forjador e acompanhe o trabalho real em um único lugar.</p>
+        <p>Organize projetos, distribua tarefas entre chats GPT e acompanhe memória, progresso e evidências em um único lugar.</p>
         <button class="primary empty-create" type="button" data-start-project>＋ Criar meu primeiro projeto</button>
       </section>
     </section>
 
     <aside id="contextRail" class="context-rail">
       <nav id="rightPaneTabs" class="right-pane-tabs" aria-label="Painel de trabalho" role="tablist">
-        <button id="executionPaneTab" class="right-pane-tab active" type="button" role="tab" aria-selected="true" aria-controls="executionOverview" data-pane="execution">Painel</button>
+        <button id="executionPaneTab" class="right-pane-tab active" type="button" role="tab" aria-selected="true" aria-controls="executionOverview" data-pane="execution">Coordenação</button>
         <button id="previewPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="previewPanel" data-pane="preview">Prévia</button>
         <button id="filesPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="filesPanel" data-pane="files">Arquivos</button>
         <button id="providerPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="providerPanel" data-pane="provider">GPT Web</button>
@@ -383,11 +380,6 @@
           <div class="execution-mission-label"><span class="execution-mission-icon" aria-hidden="true">◎</span><span>Contexto persistido</span><span id="executionMissionBadge" class="execution-badge" data-state="idle">Sem missão ativa</span></div>
           <h3 id="executionMissionTitle">Nenhuma missão técnica selecionada</h3>
           <p id="executionMissionDetail">Os estados serão apresentados conforme os registros do Forge.</p>
-          <div class="execution-autonomy-controls" hidden aria-hidden="true">
-            <button id="autonomousContinuousToggle" type="button" class="mini-secondary" disabled>Ativar continuidade automática da missão</button>
-            <small id="executionAutonomyState" class="execution-automation-state" role="status" aria-live="polite">Continuidade automática: desativada</small>
-            <small id="autonomousContinuousState" role="status" aria-live="polite">Desativada. Uma nova etapa GPT exige ação explícita. A ativação não concede acesso ao MCP nem repete resultados incertos.</small>
-          </div>
           <div class="execution-mission-metrics"><span><strong id="executionWorkCount">0</strong><small>trabalhos</small></span><span><strong id="executionClaimedCount">0</strong><small>chats ativos</small></span><span><strong id="executionRunningCount">0</strong><small>Runs ativos</small></span><span><strong id="executionReviewCount">0</strong><small>a revisar</small></span></div>
         </article>
         <section class="execution-monitor-section" aria-label="Frentes e executores observados">
@@ -425,16 +417,16 @@
         <button id="forgeFilesConnections" class="mini-secondary" type="button">Ver conexões</button>
       </section>
       <div id="contextPanel" class="right-pane-panel context-panel" role="tabpanel" aria-labelledby="contextPaneTab" hidden>
-      <section id="orchestratorWorkRail" class="orchestrator-work-rail" hidden aria-label="Conversas do projeto no GPT">
-        <header class="work-rail-head"><div><span class="eyebrow">Projeto ativo</span><h3 id="workRailTitle">Conversas no GPT</h3></div><div class="work-rail-head-actions"><button id="closeWorkRail" class="work-rail-close" type="button" aria-label="Fechar frentes de trabalho">×</button></div></header>
+      <section id="orchestratorWorkRail" class="orchestrator-work-rail" hidden aria-label="Tarefas do projeto">
+        <header class="work-rail-head"><div><span class="eyebrow">Projeto ativo</span><h3 id="workRailTitle">Tarefas do projeto</h3></div><div class="work-rail-head-actions"><button id="closeWorkRail" class="work-rail-close" type="button" aria-label="Fechar frentes de trabalho">×</button></div></header>
         <p id="workRailProject" class="work-rail-project"></p>
         <details class="work-plan-details">
           <summary>Planejamento consultivo · não autoriza envios</summary>
           <p id="workPlanSummary" class="work-plan-summary" role="status" aria-live="polite">Planejamento do projeto não consultado.</p>
         </details>
-        <button id="newScopedWorkButton" class="primary new-gpt-conversation" type="button">＋ Nova conversa no GPT</button>
+        <button id="newScopedWorkButton" class="primary new-gpt-conversation" type="button">＋ Nova tarefa</button>
         <details id="newScopedWorkDetails" class="new-work-details">
-          <summary>Configurar nome da conversa</summary>
+          <summary>Configurar tarefa</summary>
           <form id="newScopedWorkForm" class="new-work-form">
             <label for="scopedWorkTitle">Frente de trabalho</label>
             <input id="scopedWorkTitle" maxlength="140" placeholder="Ex.: Revisar inicialização USB" required />

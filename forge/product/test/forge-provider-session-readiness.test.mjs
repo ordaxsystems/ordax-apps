@@ -65,9 +65,10 @@ test('global banner uses same fail-closed status including the Forjador layout',
   assert.match(script,/composeAvailability = providerTaskComposeAvailability\(status/);
   assert.match(script,/forgeProviderGateLogin'\)\.addEventListener\('click',\(\)=>\$\('#login'\)\.click\(\)\)/);
   assert.match(css,/\.forge-provider-gate:not\(\[hidden\]\)/);
-  assert.match(main,/sessionHealth:async\(\)=>\{/);
+  assert.doesNotMatch(main,/createOrchestratorKernel\(\{[\s\S]{0,1600}\bprovider\s*:/);
+  assert.match(main,/new EmbeddedChatWorker\(\{id:'primary',allowSend:false\}\)/);
   assert.match(main,/const expected=providerWorkers.slice\(\)/);
-  assert.match(main,/sessionHealth:async\(\)=>\{[\s\S]*?return currentProviderPoolHealth\(\)/);
+  assert.match(main,/maxConcurrentSends:0,active:0,queued:0,pendingTasks:0,availableSlots:0,closed:true/);
   assert.match(script,/lastProviderPoolSession=Array.isArray\(status.worker_pool\)/);
   assert.doesNotMatch(main,/savePassword|setCookie\(/);
 });

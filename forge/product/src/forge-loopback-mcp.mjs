@@ -4,23 +4,19 @@ import {ORCHESTRATOR_TOOLS} from './forge-contract.mjs';
 import {inspectForgeGitPairRequest,sealExistingForgeMcpGrant} from './forge-git-owner-pair-crypto.mjs';
 
 export const FORGE_APP_MCP_SCOPE='forge_app';
-// One canonical App/ChatGPT projection. Provider-to-GPT dispatch remains
-// app-owned to prevent recursive model sends. Project bootstrapping also has
-// one external authority: mission_create. project_create/project_quick_create
-// and project_auto_title remain App-internal UI mechanics, not overlapping MCP
-// entrypoints. This keeps one shared remote catalog without transport-specific
-// truncation or duplicate project creation semantics.
+// One canonical App/ChatGPT projection. The passive App has no GPT dispatch
+// operations in the contract. Project bootstrapping has one external authority:
+// mission_create. project_create/project_quick_create/project_auto_title remain
+// App-internal storage/UI mechanics, not overlapping MCP entrypoints.
 const APP_MCP_EXCLUDED=new Set([
-  'work_send','proposal_send','forjador_send','autonomous_dialogue_continue',
   'project_create','project_quick_create','project_auto_title',
   // Project observation is only an intent flag today: there is no external
   // observation executor to authorize. Keep it in the owner App IPC, not in
   // the bounded public GPT MCP catalog. work_accept uses the reclaimed slot.
   'project_observation_set',
-  // The passive App must not offer autonomous dialogue scheduling through the
-  // public GPT catalog. Reuse these three bounded slots for Task coordination.
-  'autonomous_dialogue_status','autonomous_continuous_set','autonomous_dialogue_continue',
-  'continuity_proposals_set'
+  // Legacy autonomous-dialogue rows are readable only inside the passive App.
+  // GPT coordination uses Task claims/progress/memory instead.
+  'autonomous_dialogue_status'
 ]);
 export const FORGE_APP_MCP_OPERATIONS=Object.freeze(ORCHESTRATOR_TOOLS
   .map(tool=>tool.operation).filter(op=>!APP_MCP_EXCLUDED.has(op)));
@@ -68,17 +64,15 @@ async function bodyJson(req) {
 // No remote listening, auto-connect, browser origins, persistence or OAuth claim.
 export function createForgeLoopbackMcp({createMcp,authorizeProject,
   projectScope=projectId=>projectId,clock=Date.now,onProjectFileChanged=()=>{},
-  ownerDispatch=null,ownerPair=null}={}) {
+  ownerPair=null}={}) {
   if(typeof createMcp!=='function'||typeof authorizeProject!=='function'||
      typeof projectScope!=='function'||typeof clock!=='function'||
      typeof onProjectFileChanged!=='function'||
-     (ownerDispatch!==null&&typeof ownerDispatch!=='function')||
      (ownerPair!==null&&typeof ownerPair!=='function'))
     throw Error('forge_mcp_transport_ports_required');
   let server=null,port=null;
   let starting=false;
   const sessions=new Map(),grants=new Map();
-  const ownerDispatchInFlight=new Set();
   let ownerPairInFlight=false;
   let pendingInitializations=0;
   const bound=()=>server?.listening===true;
@@ -111,11 +105,9 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
   async function onRequest(req,res){
     try{
       if(!active())return json(res,503,{error:'forge_mcp_disabled'});
-      const ownerRoute=req.url==='/owner-dispatch';
       const pairRoute=req.url==='/owner-pair';
-      if((!ownerRoute&&!pairRoute&&req.url!=='/mcp')||
+      if((!pairRoute&&req.url!=='/mcp')||
          !['POST','DELETE','GET'].includes(req.method)||
-         (ownerRoute&&!['POST','GET'].includes(req.method))||
          (pairRoute&&req.method!=='POST'))
         return json(res,404,{error:'forge_mcp_route_unavailable'});
       // No browser origins: prevents web pages from using local owner powers.
@@ -167,21 +159,8 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
         req.headers.authorization,'Bearer '+item.token));
       if(!grant)return json(res,401,{error:'forge_mcp_authorization_required'});
       const sessionId=req.headers['mcp-session-id'];
-      if(req.method==='GET'){
-        if(!ownerRoute)return json(res,405,{error:'forge_mcp_sse_not_supported'},
-          {Allow:'POST, DELETE'});
-        if(grant.projectId!==FORGE_APP_MCP_SCOPE||typeof ownerDispatch!=='function')
-          return json(res,403,{error:'forge_owner_dispatch_scope_denied'});
-        if(typeof sessionId!=='string'||!SESSION.test(sessionId)||
-           sessions.get(sessionId)?.grant!==grant)
-          return json(res,404,{error:'forge_mcp_session_required'});
-        if(!authorizeProject(grant.projectId))
-          return json(res,403,{error:'forge_mcp_project_revoked'});
-        return json(res,200,{
-          schema:'ordax.forge.owner-dispatch-capability/1',
-          operation:'work_send',requiresNativeApproval:true
-        });
-      }
+      if(req.method==='GET')return json(res,405,{error:'forge_mcp_sse_not_supported'},
+        {Allow:'POST, DELETE'});
       if(req.method==='DELETE'){
         const entry=sessions.get(sessionId);
         if(typeof sessionId!=='string'||!entry||entry.grant!==grant)
@@ -199,56 +178,6 @@ export function createForgeLoopbackMcp({createMcp,authorizeProject,
       let message;
       try{message=await bodyJson(req);}
       catch{return json(res,400,{error:'forge_mcp_invalid_request'});}
-      // This is an OWNER-ONLY UI ingress on the existing loopback listener.
-      // It is deliberately NOT an MCP tool: a GPT MCP client cannot discover
-      // or invoke provider sends, and project-scoped grants are rejected.
-      if(ownerRoute){
-        if(grant.projectId!==FORGE_APP_MCP_SCOPE||typeof ownerDispatch!=='function')
-          return json(res,403,{error:'forge_owner_dispatch_scope_denied'});
-        if(typeof sessionId!=='string'||!SESSION.test(sessionId)||
-           sessions.get(sessionId)?.grant!==grant)
-          return json(res,404,{error:'forge_mcp_session_required'});
-        if(message?.schema!=='ordax.forge.owner-dispatch/1'||
-           message?.operation!=='work_send'||typeof message.projectId!=='string'||
-           !/^project_[A-Za-z0-9-]{1,100}$/.test(message.projectId)||
-           typeof message.taskId!=='string'||
-           !/^task_[A-Za-z0-9-]{1,120}$/.test(message.taskId)||
-           typeof message.content!=='string'||
-           message.content.trim().length<4||message.content.length>6000||
-           !Number.isSafeInteger(message.draftRevision)||message.draftRevision<1||
-           typeof message.requestId!=='string'||
-           !/^fg_dispatch_[0-9a-f-]{36}$/.test(message.requestId))
-          return json(res,400,{error:'forge_owner_dispatch_invalid_request'});
-        const authorized=()=>bound()&&valid(grant)&&
-          authorizeProject(grant.projectId)&&sessions.get(sessionId)?.grant===grant;
-        if(!authorized())return json(res,403,{error:'forge_mcp_project_revoked'});
-        const taskKey=message.projectId+'|'+message.taskId;
-        if(ownerDispatchInFlight.has(taskKey))
-          return json(res,409,{error:'forge_owner_dispatch_task_busy'});
-        ownerDispatchInFlight.add(taskKey);
-        let receipt;
-        try{receipt=await ownerDispatch({
-          projectId:message.projectId,taskId:message.taskId,
-          content:message.content,draftRevision:message.draftRevision,
-          requestId:message.requestId
-        },{isAuthorized:authorized});}
-        catch{return json(res,409,{error:'forge_owner_dispatch_rejected_or_uncertain'});}
-        finally{ownerDispatchInFlight.delete(taskKey);}
-        if(!authorized())return json(res,403,{error:'forge_mcp_project_revoked'});
-        if(!receipt||typeof receipt!=='object'||receipt.operation!=='work_send'||
-           !['succeeded','failed','uncertain','running'].includes(receipt.status))
-          return json(res,409,{error:'forge_owner_dispatch_receipt_unavailable'});
-        // Return only canonical receipt identifiers/states. No provider text.
-        return json(res,200,{
-          schema:'ordax.forge.owner-dispatch-receipt/1',
-          commandId:receipt.commandId,status:receipt.status,
-          taskId:receipt.result?.taskId??message.taskId,
-          runId:receipt.result?.runId??null,
-          responseObserved:receipt.result?.responseObserved===true,
-          effectVerified:false,
-          providerMessagesSent:receipt.status==='succeeded'?1:null
-        });
-      }
       let session;
       let newSessionId=null;
       if(message.method==='initialize'){

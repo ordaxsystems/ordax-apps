@@ -5,259 +5,69 @@ import os from 'node:os';
 import path from 'node:path';
 import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
-import {LabContinuation} from '../src/lab-continuation.mjs';
 import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
 
-function setup(t,{confirmProposal=async()=>true,provider=null}={}) {
-  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'lab-continuity-'));
-  const store=new Store(path.join(dir,'lab.sqlite'));
-  const context={actorId:'owner-test',clientId:'app-test',
-    workspaceSessionId:store.getWorkspaceSession().id};
-  const service=new OrchestratorService({store,authorize:()=>true,confirmProposal,provider});
+function fixture(t){
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'forge-continuation-history-'));
+  const store=new Store(path.join(dir,'store.sqlite'));
+  const context=Object.freeze({actorId:'owner',clientId:'test',
+    workspaceSessionId:store.getWorkspaceSession().id});
+  const service=new OrchestratorService({store,authorize:({context:who})=>who===context});
+  let seq=0;
+  const call=(operation,input={})=>service.invoke(context,operation,{
+    ...(!ORCHESTRATOR_TOOLS.find(tool=>tool.operation===operation)?.readOnly
+      ?{requestId:'continuation_'+(++seq)}:{}),...input
+  });
   t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true});});
-  let n=0;
-  const call=(op,data={})=>service.invoke(context,op,{
-    ...data,
-    ...(ORCHESTRATOR_TOOLS.find(tool=>tool.operation===op)?.readOnly
-      ?{}
-      :{requestId:'test_'+(++n)})
-  });
-  return {dir,store,service,context,call};
+  return {store,context,service,call};
+}
+async function setup(f){
+  return (await f.call('mission_create',{name:'Continuidade',mission:'Registro histórico'})).result;
 }
 
-async function prepare(f,name='VESTE') {
-  const projectId=(await f.call('project_create',{name,objective:'Validar projeto'})).result.projectId;
-  const orchestratorId=(await f.call('orchestrator_create',{
-    projectId,name:'Forjador',mission:'Verificar entregas'
-  })).result.orchestratorId;
-  const taskId=(await f.call('work_create',{
-    projectId,orchestratorId,title:'Site'
-  })).result.taskId;
-  return {projectId,orchestratorId,taskId};
-}
-
-function finish(store,taskId) {
-  const runId=store.startRun(taskId);
-  store.finishRun(taskId,runId);
-  return runId;
-}
-
-test('opt-in analyzes confirmed Runs locally without any second model or GPT send',async t=>{
-  const f=setup(t);
-  const a=await prepare(f);
-  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
-  const running=f.store.startRun(a.taskId);
-  assert.equal((await f.service.continuation.tick(f.context)).state,'idle');
-  f.store.finishRun(a.taskId,running);
-  const reviewed=await f.service.continuation.tick(f.context);
-  assert.equal(reviewed.state,'analyzed');
-  const status=await f.call('continuity_status',{projectId:a.projectId,orchestratorId:a.orchestratorId});
-  assert.equal(status.enabled,true);
-  assert.equal(status.latest.run_id,running);
-  assert.equal(status.latest.state,'analyzed');
-  const receipt=f.store.db.prepare('SELECT status,result FROM lab_command_receipts WHERE id=?')
-    .get(status.latest.command_id);
-  const result=JSON.parse(receipt.result);
-  assert.equal(receipt.status,'succeeded');
-  assert.equal(result.appOwned,true);
-  assert.equal(result.provider,'ordax_app_policy');
-  assert.equal(result.analysisObserved,true);
-  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM runs WHERE status='running'").get().n,0);
+test('continuation module is read-only compatibility and contains no scheduler',()=>{
+  const source=fs.readFileSync(new URL('../src/lab-continuation.mjs',import.meta.url),'utf8');
+  const proposals=fs.readFileSync(new URL('../src/lab-next-proposal.mjs',import.meta.url),'utf8');
+  assert.doesNotMatch(source,/\bconfigure\(|\bscan\(|\btick\(|tickPeriodic\(|service\.invoke\(context,'orchestrator_analyze'/);
+  assert.doesNotMatch(proposals,/\bconfigure\(|\btick\(|service\.invoke\(context,'orchestrator_prepare'/);
+  assert.match(source,/legacyRecordOnly:true/);
+  assert.match(proposals,/legacyRecordOnly:true/);
 });
 
-test('periodic coordinator review is configurable and analyzes only changed project state',async t=>{
-  const f=setup(t);
-  const a=await prepare(f);
-  const enabled=await f.call('continuity_set',{
-    projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true,
-    reviewIntervalMinutes:60
-  });
-  assert.equal(enabled.result.periodicReview.intervalMinutes,60);
-  assert.equal(enabled.result.periodicReview.state,'scheduled');
-  const forceDue=()=>f.store.db.prepare(
-    "UPDATE lab_continuation_policies SET last_periodic_review_at='2000-01-01T00:00:00.000Z' WHERE orchestrator_id=?"
-  ).run(a.orchestratorId);
-  forceDue();
-  const unchanged=await f.service.continuation.tick(f.context);
-  assert.equal(unchanged.state,'periodic_unchanged');
-  assert.equal(f.store.db.prepare(
-    "SELECT COUNT(*) n FROM lab_command_receipts WHERE project_id=? AND operation='orchestrator_analyze'"
-  ).get(a.projectId).n,0);
-
-  await f.call('work_create',{
-    projectId:a.projectId,orchestratorId:a.orchestratorId,title:'Nova frente verificável'
-  });
-  forceDue();
-  const changed=await f.service.continuation.tick(f.context);
-  assert.equal(changed.state,'periodic_analyzed');
-  const receipt=f.store.db.prepare(
-    "SELECT status,result FROM lab_command_receipts WHERE project_id=? AND operation='orchestrator_analyze' ORDER BY rowid DESC LIMIT 1"
-  ).get(a.projectId);
-  assert.equal(receipt.status,'succeeded');
-  const result=JSON.parse(receipt.result);
-  assert.equal(result.appOwned,true);
-  assert.equal(result.provider,'ordax_app_policy');
-  assert.equal(result.analysisObserved,true);
+test('old enabled policies are reported as historical and never active',async t=>{
+  const f=fixture(t),p=await setup(f),now=f.store.now();
+  f.store.db.prepare(`INSERT INTO lab_continuation_policies
+    (orchestrator_id,project_id,enabled,enabled_at,start_run_rowid,review_interval_minutes,
+     last_periodic_review_at,last_periodic_state_hash)
+    VALUES(?,?,?,?,?,?,?,?)`).run(
+      p.orchestratorId,p.projectId,1,now,0,60,now,'a'.repeat(64));
+  f.store.db.prepare(`INSERT INTO lab_next_proposal_policy
+    (orchestrator_id,project_id,enabled,start_review_rowid) VALUES(?,?,?,?)`)
+    .run(p.orchestratorId,p.projectId,1,0);
   const status=await f.call('continuity_status',{
-    projectId:a.projectId,orchestratorId:a.orchestratorId
+    projectId:p.projectId,orchestratorId:p.orchestratorId
   });
-  assert.equal(status.periodicReview.intervalMinutes,60);
-  assert.equal(status.periodicReview.state,'scheduled');
-  assert.equal(status.periodicReview.stateFingerprintRecorded,true);
-  assert.equal((await f.service.continuation.tick(f.context)).state,'idle');
+  assert.equal(status.enabled,false);
+  assert.equal(status.historicalEnabled,true);
+  assert.equal(status.legacyRecordOnly,true);
+  assert.equal(status.mode,'legacy_record_only');
+  assert.equal(status.automaticGPTSends,false);
+  assert.equal(status.periodicReview.state,'disabled');
+  assert.equal(status.nextProposals.enabled,false);
+  assert.equal(status.nextProposals.historicalEnabled,true);
+  assert.equal(status.nextProposals.legacyRecordOnly,true);
 });
 
-test('periodic review interval rejects values outside the bounded policy',async t=>{
-  const f=setup(t);
-  const a=await prepare(f);
-  await assert.rejects(()=>f.call('continuity_set',{
-    projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true,
-    reviewIntervalMinutes:4
-  }),/orchestrator_invalid_input|continuation_review_interval_invalid/);
-  await assert.rejects(()=>f.call('continuity_set',{
-    projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true,
-    reviewIntervalMinutes:1441
-  }),/orchestrator_invalid_input|continuation_review_interval_invalid/);
-});
-
-test('local proposal is review-only and creates no Work or GPT Run before approval',async t=>{
-  const f=setup(t);
-  const a=await prepare(f);
-  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
-  await f.call('continuity_proposals_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
-  const runId=finish(f.store,a.taskId);
-  assert.equal((await f.service.continuation.tick(f.context)).state,'analyzed');
-  const proposal=await f.service.continuation.tick(f.context);
-  assert.equal(proposal.state,'proposed');
-  assert.equal(proposal.runId,runId);
-  const action=f.store.db.prepare(
-    "SELECT id,status,payload FROM action_ledger WHERE action_type='orchestrator.work-proposal' ORDER BY rowid DESC LIMIT 1"
-  ).get();
-  assert.equal(action.status,'pending');
-  const before=f.store.db.prepare(
-    "SELECT COUNT(*) n FROM lab_task_bindings WHERE project_id=? AND kind='work'"
-  ).get(a.projectId).n;
-  assert.equal(before,1);
-  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,1);
-});
-
-test('approved local proposal creates one durable Work draft and still sends nothing',async t=>{
-  const f=setup(t);
-  const a=await prepare(f);
-  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
-  await f.call('continuity_proposals_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
-  finish(f.store,a.taskId);
-  await f.service.continuation.tick(f.context);
-  await f.service.continuation.tick(f.context);
-  const action=f.store.db.prepare(
-    "SELECT id FROM action_ledger WHERE action_type='orchestrator.work-proposal' AND status='pending' ORDER BY rowid DESC LIMIT 1"
-  ).get();
-  assert.ok(action?.id);
-  const reviewed=await f.call('proposal_review',{
-    projectId:a.projectId,orchestratorId:a.orchestratorId,actionId:action.id,approved:true
-  });
-  assert.equal(reviewed.status,'succeeded');
-  const works=await f.call('work_list',{projectId:a.projectId,orchestratorId:a.orchestratorId});
-  assert.equal(works.works.length,2);
-  const created=works.works.find(work=>work.id!==a.taskId);
-  assert.ok(created);
-  const draft=f.store.getTaskDraft(created.id);
-  assert.ok(draft.draft.length>0);
-  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,1);
-});
-
-test('paused Forjador does not enqueue or analyze new Runs',async t=>{
-  const f=setup(t);
-  const a=await prepare(f);
-  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
-  finish(f.store,a.taskId);
-  await f.call('orchestrator_pause',{
-    projectId:a.projectId,orchestratorId:a.orchestratorId,paused:true
-  });
-  assert.equal((await f.service.continuation.tick(f.context)).state,'idle');
-  assert.equal(f.store.db.prepare(
-    'SELECT COUNT(*) n FROM lab_continuation_reviews WHERE project_id=?'
-  ).get(a.projectId).n,0);
-});
-
-test('restart quarantines an unfinished local analysis and never replays it',async t=>{
-  const f=setup(t);
-  const a=await prepare(f);
-  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
-  const runId=finish(f.store,a.taskId);
-  f.service.continuation.scan();
-  f.store.db.prepare(
-    "UPDATE lab_continuation_reviews SET state='analyzing' WHERE run_id=?"
-  ).run(runId);
-  const reopened=new LabContinuation({store:f.store,service:f.service,context:f.context});
-  const row=f.store.db.prepare(
-    'SELECT state,reason FROM lab_continuation_reviews WHERE run_id=?'
-  ).get(runId);
-  assert.equal(row.state,'reconciliation_required');
-  assert.equal(row.reason,'interrupted_review');
-  assert.equal(reopened.status(a.projectId,a.orchestratorId).state,'reconciliation_required');
-  assert.equal((await reopened.tick(f.context)).state,'idle');
-});
-
-test('uncertain transport blocks only its own project continuation',async t=>{
-  const f=setup(t,{provider:{send:async()=>({})}});
-  const a=await prepare(f,'A');
-  const b=await prepare(f,'B');
-  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
-  await f.call('continuity_set',{projectId:b.projectId,orchestratorId:b.orchestratorId,enabled:true});
-  const runA=finish(f.store,a.taskId);
-  const runB=finish(f.store,b.taskId);
-  f.service.continuation.scan();
-  const uncertain=await f.call('work_send',{
-    projectId:a.projectId,taskId:a.taskId,content:'Envio intencionalmente sem confirmação'
-  });
-  assert.equal(uncertain.status,'uncertain');
-  const result=await f.service.continuation.tick(f.context);
-  assert.equal(result.state,'analyzed');
-  assert.equal(result.runId,runB);
-  assert.equal(f.store.db.prepare(
-    'SELECT state FROM lab_continuation_reviews WHERE run_id=?'
-  ).get(runA).state,'queued');
-});
-
-test('proposal policy is capped at two proposals per activation',async t=>{
-  const f=setup(t);
-  const a=await prepare(f);
-  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
-  await f.call('continuity_proposals_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
-  const extra1=(await f.call('work_create',{projectId:a.projectId,orchestratorId:a.orchestratorId,title:'B'})).result.taskId;
-  const extra2=(await f.call('work_create',{projectId:a.projectId,orchestratorId:a.orchestratorId,title:'C'})).result.taskId;
-  finish(f.store,a.taskId);finish(f.store,extra1);finish(f.store,extra2);
-  for(let i=0;i<3;i++)assert.equal((await f.service.continuation.tick(f.context)).state,'analyzed');
-  assert.equal((await f.service.continuation.tick(f.context)).state,'proposed');
-  const first=f.store.db.prepare(
-    "SELECT id FROM action_ledger WHERE action_type='orchestrator.work-proposal' AND status='pending' ORDER BY rowid LIMIT 1"
-  ).get();
-  assert.ok(first?.id);
-  await f.call('proposal_review',{projectId:a.projectId,orchestratorId:a.orchestratorId,
-    actionId:first.id,approved:false});
-  assert.equal((await f.service.continuation.tick(f.context)).state,'proposed');
-  const status=await f.call('continuity_status',{projectId:a.projectId,orchestratorId:a.orchestratorId});
-  assert.equal(status.nextProposals.proposed,2);
-  assert.equal(status.nextProposals.remaining,0);
-  assert.equal(f.store.db.prepare(
-    "SELECT COUNT(*) n FROM action_ledger WHERE action_type='orchestrator.work-proposal'"
-  ).get().n,2);
-});
-
-test('disabling continuity keeps history but stops future local analysis',async t=>{
-  const f=setup(t);
-  const a=await prepare(f);
-  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
-  const first=finish(f.store,a.taskId);
-  assert.equal((await f.service.continuation.tick(f.context)).state,'analyzed');
-  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:false});
-  const second=finish(f.store,a.taskId);
-  assert.equal((await f.service.continuation.tick(f.context)).state,'idle');
-  assert.equal(f.store.db.prepare(
-    'SELECT state FROM lab_continuation_reviews WHERE run_id=?'
-  ).get(first).state,'analyzed');
-  assert.equal(f.store.db.prepare(
-    'SELECT COUNT(*) n FROM lab_continuation_reviews WHERE run_id=?'
-  ).get(second).n,0);
+test('removed continuation and App-owned decision operations are unknown',async t=>{
+  const f=fixture(t),p=await setup(f);
+  for(const operation of [
+    'continuity_set','continuity_proposals_set','continuity_followup_prepare',
+    'orchestrator_analyze','orchestrator_prepare','proposal_review'
+  ]){
+    await assert.rejects(
+      f.service.invoke(f.context,operation,{projectId:p.projectId,orchestratorId:p.orchestratorId}),
+      /orchestrator_unknown_operation/,
+      operation
+    );
+  }
 });

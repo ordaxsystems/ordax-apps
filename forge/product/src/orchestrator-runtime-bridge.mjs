@@ -15,7 +15,7 @@ export const RUNTIME_CONTROL_OPERATIONS=Object.freeze([
   ...RUNTIME_READ_OPERATIONS,
   'project_create','project_quick_create','mission_create','orchestrator_create',
   'project_memory_propose','work_create','work_batch_create','work_draft_set',
-  'work_dependency_set','work_parallel_launch','work_plan'
+  'work_dependency_set','work_plan'
 ]);
 if(RUNTIME_READ_OPERATIONS.some(operation=>!ORCHESTRATOR_TOOLS.some(t=>t.operation===operation&&t.readOnly))||
    RUNTIME_CONTROL_OPERATIONS.some(operation=>!ORCHESTRATOR_TOOLS.some(t=>t.operation===operation)))

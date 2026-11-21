@@ -51,7 +51,6 @@ export const HOST_BROWSER_METHODS = Object.freeze({
   archiveProjectMemory:['ordax:tasks:memory:archive',a=>[{taskId:a[0],memoryId:a[1]}]],
   scanMemoryCandidates:['ordax:tasks:memory:candidates:scan',a=>[a[0]]],
   reviewMemoryCandidate:['ordax:tasks:memory:candidates:review',a=>[{taskId:a[0],candidateId:a[1],action:a[2],changes:a[3]}]],
-  send:['ordax:tasks:send',a=>[a[0]]],
   labProfileProof:['ordax:lab:profile-proof',()=>[]],
   labBuildProof:['ordax:lab:build-proof',()=>[]],
   providerStatus:['ordax:provider:status',()=>[]],
