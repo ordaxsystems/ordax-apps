@@ -339,3 +339,44 @@ test('more than 32 fully consumed historical launches never starve a new indepen
   assert.equal(f.starts.length,2,'no duplicate messages after the new launch settles');
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
+
+test('the parallel scheduler defers a claimed Task and dispatches an independent sibling',async t=>{
+  const f=fixture(t,{lanes:2});
+  const projectId=(await f.call('project_create',{name:'Claim fanout',objective:'Avoid duplicate GPT sends'})).result.projectId;
+  const orchestratorId=(await f.call('orchestrator_create',{
+    projectId,name:'Forjador',mission:'Run separate GPT Tasks'
+  })).result.orchestratorId;
+  await f.call('autonomous_continuous_set',{projectId,orchestratorId,enabled:true});
+  const [claimed,other]=(await f.call('work_batch_create',{
+    projectId,orchestratorId,titles:['Reserved','Independent']
+  })).result.taskIds;
+  for(const taskId of [claimed,other])
+    await f.call('work_draft_set',{projectId,taskId,content:'Prepare '+taskId,draftRevision:1});
+  const own=await f.call('work_claim',{projectId,taskId:claimed,action:'acquire',chatLabel:'GPT A'});
+  const proof={claimToken:own.result.claimToken,claimGeneration:own.result.claim.generation};
+  const launched=await f.call('work_parallel_launch',{projectId,taskIds:[claimed,other],
+    claimProofs:[{taskId:claimed,...proof}]});
+  assert.equal(launched.status,'succeeded');
+  const first=f.service.tickParallelDispatch(f.context);
+  await tick();await tick();
+  assert.deepEqual(f.starts.map(x=>x.taskId),[other]);
+  f.complete(0);
+  const completed=await first;
+  assert.equal(completed.requested,1);
+  assert.equal(completed.fulfilled,1);
+  assert.equal(completed.rejected,0);
+  assert.equal((await f.service.tickParallelDispatch(f.context)).state,'idle');
+  assert.equal(f.store.db.prepare(
+    "SELECT count(*) n FROM lab_command_receipt_scope WHERE task_id=? AND operation='work_send'"
+  ).get(claimed).n,0,'a claimed Work must have no failed send receipts');
+  const released=await f.call('work_claim',{projectId,taskId:claimed,action:'release',
+    claimToken:proof.claimToken,generation:proof.claimGeneration});
+  assert.equal(released.result.status,'released');
+  const second=f.service.tickParallelDispatch(f.context);
+  await tick();await tick();
+  assert.equal(f.starts[1].taskId,claimed);
+  f.complete(1);
+  assert.equal((await second).rejected,0);
+  assert.equal((await f.service.tickParallelDispatch(f.context)).state,'idle');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
