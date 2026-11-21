@@ -99,6 +99,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(advancedContent&&node)advancedContent.append(node);
   }
   let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
+  let dedicatedProject=false;
   let projectRefreshGeneration=0,orchestratorRefreshGeneration=0,autonomousRefreshGeneration=0;
   let coordinatorRecoveryRevision=0;
   let workspaceInspectionGeneration=0,workspacePortAvailable=false;
@@ -263,11 +264,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('activeProjectName').textContent=current?.name||'Conecte seu projeto';
     const otherProjects=projects.filter(project=>project.id!==projectId);
     const repository=current?.repository_url?'GitHub vinculado por URL · leitura não verificada':'Repositório GitHub ainda não vinculado';
-    $('activeProjectDetail').textContent=current?.name==='Novo projeto'
-      ?'Projeto vazio · crie uma tarefa quando houver trabalho real.'
-      :current?repository:'Crie seu primeiro projeto usando Novo projeto.';
-    // One canonical Store supplies the active project and switchable others.
-    // Previously created projects are first-class, never hidden as legacy.
+    $('activeProjectDetail').textContent=dedicatedProject&&current
+      ?'Instância dedicada · um projeto, múltiplos repositórios OrdaX'
+      :current?.name==='Novo projeto'
+        ?'Projeto vazio · crie uma tarefa quando houver trabalho real.'
+        :current?repository:'Crie seu primeiro projeto usando Novo projeto.';
+    // The Store retains archival acceptance records; the dedicated Owner
+    // deployment projects only its active OrdaX OS identity.
     $('projectSwitcher').hidden=otherProjects.length===0;
     const list=$('projectNavList');list.replaceChildren();
     for(const project of otherProjects){
@@ -1145,12 +1148,62 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     // Only the newest discovery may repopulate the project selector.
     if(generation!==projectRefreshGeneration)return projectsCache;
     projectsCache=result.projects;
+    dedicatedProject=result.projectScope?.mode==='dedicated';
+    for(const id of ['addProject','quickNewProject','renameProjectButton',
+       'deleteProjectButton','projectSetup','projectRenameSetup',
+       'projectDeleteSetup','projectRepositoryForm']){
+      const node=$(id);
+      if(!node)continue;
+      if(id==='projectSetup'||id==='projectRenameSetup'||id==='projectDeleteSetup')
+        node.open=false;
+      node.hidden=dedicatedProject;
+    }
+    $('projectSelect').disabled=dedicatedProject;
     options($('projectSelect'),projectsCache,'Conversas sem projeto');
     if(projectsCache.some(p=>p.id===projectId))$('projectSelect').value=projectId;
     renderProjectNavigation(projectsCache);
     syncProjectRepository();
     return projectsCache;
   }
+  async function refreshDedicatedRepositories(){
+    const host=$('orchestrationIntegrations');
+    let section=$('dedicatedRepositoryCatalog');
+    if(!dedicatedProject||!host||!projectId){
+      section?.remove();
+      return;
+    }
+    if(!section){
+      section=document.createElement('section');
+      section.id='dedicatedRepositoryCatalog';
+      section.className='forge-dedicated-repositories';
+      host.prepend(section);
+    }
+    const currentProjectId=projectId;
+    let response;
+    try{response=await call('project_repositories',{projectId:currentProjectId});}
+    catch{response={available:false,repositories:[]};}
+    if(currentProjectId!==projectId||!dedicatedProject)return;
+    section.replaceChildren();
+    const heading=document.createElement('h3');
+    heading.textContent='Repositórios do OrdaX OS';
+    section.append(heading);
+    const note=document.createElement('p');
+    note.textContent=response?.available
+      ?'Catálogo do contrato canônico OrdaX OS. A lista não concede acesso ao GitHub, arquivos ou terminal.'
+      :'Catálogo canônico indisponível neste Host. Verifique o checkout OrdaX OS; nenhuma autorização foi presumida.';
+    section.append(note);
+    if(response?.available&&Array.isArray(response.repositories)){
+      const list=document.createElement('ul');
+      for(const entry of response.repositories){
+        const item=document.createElement('li');
+        item.textContent=entry.displayName+' · '+entry.role.replaceAll('_',' ')+
+          ' · acesso não concedido pelo catálogo';
+        list.append(item);
+      }
+      section.append(list);
+    }
+  }
+
   async function refreshOrchestrators() {
     const generation=++orchestratorRefreshGeneration,p=projectId;
     const result=p?await call('orchestrators_list',{projectId:p}):{orchestrators:[]};
@@ -1586,10 +1639,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   return Object.freeze({
     async start({restoreNavigation=null}={}){const projects=await refreshProjects();
-      const saved=restoreNavigation?.schema==='ordax.workspace-navigation.v1'?restoreNavigation:null;
+      const saved=!dedicatedProject&&restoreNavigation?.schema==='ordax.workspace-navigation.v1'?restoreNavigation:null;
       projectId=projects.some(project=>project.id===saved?.projectId)
         ?saved.projectId:projects[0]?.id||null;
       $('projectSelect').value=projectId||'';
+      await refreshDedicatedRepositories();
       if(saved?.projectId===projectId)orchestratorId=saved.orchestratorId||null;
       renderProjectNavigation(projects);
       syncProjectRepository();
@@ -1615,7 +1669,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
           do {
             refreshRequested=false;
             await refreshApiStatus();
-            await refreshProjects();await refreshOrchestrators();
+            await refreshProjects();await refreshDedicatedRepositories();await refreshOrchestrators();
             if(coordinatorOpen)await renderCoordinator();
           } while(refreshRequested);
         } catch {error();}

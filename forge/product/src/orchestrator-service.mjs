@@ -23,6 +23,7 @@ import {forgeVerifiedWorkAcceptances} from './forge-work-acceptance-evidence.mjs
 import {forgeMcpWorkObservation} from './forge-mcp-observation.mjs';
 import {ForgeWorkClaims} from './forge-work-claims.mjs';
 import {normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
+import {readDedicatedForgeProject,enforceDedicatedForgeProject} from './forge-dedicated-project.mjs';
 
 function missionProjectName(mission) {
   const firstLine=String(mission||'').trim().split(/\r?\n/u,1)[0].trim();
@@ -38,6 +39,7 @@ export class OrchestratorService {
     this.store=store; this.db=store.db; this.authorize=authorize;
     // Optional native Forge MCP projection of the separately owned Forge Git checkpoint.
     this.forgeGitMemoryPort=null;
+    this.repositoryCatalogPort=null;
     // Native renderer proof is an optional App-owned read-only port. It is
     // never used as project authorization or as evidence of publication.
     this.viewPort=null;
@@ -503,6 +505,7 @@ export class OrchestratorService {
 
   async invoke(context,operation,raw={}) {
     const {tool,input}=validateOrchestratorInput(operation,raw);
+    enforceDedicatedForgeProject(this.store,operation,input);
     // A completed delete has a projectless tombstone so the same requestId
     // can be inspected without restoring the deleted project's authority.
     if(operation==='project_delete') {
@@ -690,6 +693,45 @@ export class OrchestratorService {
         :operation==='work_progress'?this.workClaims.progress(context,input)
         :this.workClaims.memory(context,input);
       return this.finish(reserved.commandId,result);
+    });
+    if(operation==='work_repositories_set')return this.transaction(()=>{
+      const dedicated=readDedicatedForgeProject(this.store);
+      if(!dedicated||dedicated.projectId!==input.projectId)
+        throw Error('forge_dedicated_project_required');
+      this.task(input.projectId,input.taskId,'work');
+      const reserved=this.reserve(context,operation,input);
+      if(reserved.existing)return reserved.existing;
+      this.workClaims.assertTaskMutation(context,input);
+      const catalog=this.repositoryCatalogPort?.read();
+      if(catalog?.available!==true||catalog.checkedOrigin!==true)
+        throw Error('forge_ordax_catalog_verified_origin_required');
+      const members=new Set(catalog.repositories.map(item=>item.repo));
+      const selected=[...new Set(input.repositories)].sort();
+      if(selected.length!==input.repositories.length||selected.some(repo=>!members.has(repo)))
+        throw Error('forge_task_repository_scope_invalid');
+      const rows=this.db.prepare('SELECT repository FROM forge_work_repository_scope WHERE task_id=? ORDER BY repository')
+        .all(input.taskId).map(row=>row.repository);
+      if(rows.length){
+        if(JSON.stringify(rows)!==JSON.stringify(selected))
+          throw Error('forge_task_repository_scope_already_set');
+        return this.finish(reserved.commandId,{
+          projectId:input.projectId,taskId:input.taskId,repositories:rows,
+          unchanged:true,executionAuthorized:false
+        });
+      }
+      const effect=this.db.prepare(`SELECT 1 FROM lab_command_receipt_scope
+        WHERE task_id=? AND operation IN (
+          'project_file_write','project_command_run','project_worktree_prepare',
+          'project_worktree_integrate','project_worktree_verify','work_accept'
+        ) LIMIT 1`).get(input.taskId);
+      if(effect)throw Error('forge_task_repository_scope_after_effect_denied');
+      const insert=this.db.prepare('INSERT INTO forge_work_repository_scope (task_id,project_id,repository) VALUES(?,?,?)');
+      for(const repo of selected)insert.run(input.taskId,input.projectId,repo);
+      return this.finish(reserved.commandId,{
+        projectId:input.projectId,taskId:input.taskId,repositories:selected,
+        binding:'canonical_ownership_manifest',executionAuthorized:false,
+        filesystemAccessGranted:false
+      });
     });
     if(operation==='project_file_write')return this.writeProjectFile(context,input);
     if(operation==='project_development_status')return this.development?.status(input.projectId,{taskId:input.taskId??null})??{projectId:input.projectId,available:false,reason:'native_owner_port_unavailable'};
@@ -1119,6 +1161,29 @@ export class OrchestratorService {
     if(operation==='project_memory')return forgeProjectMemoryView(this.store,input.projectId);
     if(operation==='project_administrator_snapshot')return forgeProjectAdministratorView(this.store,input.projectId);
     if(operation==='project_activity')return forgeProjectActivityView(this.store,input.projectId);
+    if(operation==='work_repositories'){
+      const dedicated=readDedicatedForgeProject(this.store);
+      if(!dedicated||dedicated.projectId!==input.projectId)
+        throw Error('forge_dedicated_project_required');
+      this.task(input.projectId,input.taskId,'work');
+      return {schema:'ordax.forge.work-repositories/1',
+        projectId:input.projectId,taskId:input.taskId,
+        repositories:this.db.prepare(
+          'SELECT repository FROM forge_work_repository_scope WHERE task_id=? ORDER BY repository'
+        ).all(input.taskId).map(item=>item.repository),
+        executionAuthorized:false,filesystemAccessGranted:false,
+        multiRepositoryWorktreeExecutionAvailable:false};
+    }
+    if(operation==='project_repositories'){
+      const scope=readDedicatedForgeProject(this.store);
+      if(!scope||scope.projectId!==input.projectId)
+        return {schema:'ordax.forge.repository-catalog/1',available:false,
+          reason:'dedicated_ordax_project_required',repositories:[],executionAuthorized:false};
+      return this.repositoryCatalogPort?.read()??{
+        schema:'ordax.forge.repository-catalog/1',available:false,
+        reason:'ordax_owner_repository_catalog_port_unavailable',
+        repositories:[],executionAuthorized:false};
+    }
     if(operation==='project_files_status'){
       const taskId=this.scopedTaskId(input);
       return this.files?.status(input.projectId,taskId)||{
@@ -1187,9 +1252,15 @@ export class OrchestratorService {
         uncertainByProject
       };
     }
-    if(operation==='projects_list')return {projects:this.db.prepare(
-      'SELECT id,name,objective,repository_url,created_at,observation_requested FROM lab_projects WHERE workspace_session_id=? ORDER BY created_at,id LIMIT 200')
-      .all(context.workspaceSessionId).filter(row=>this.authorize({context,operation,projectId:row.id})===true)};
+    if(operation==='projects_list'){
+      const dedicated=readDedicatedForgeProject(this.store);
+      return {projects:this.db.prepare(
+        'SELECT id,name,objective,repository_url,created_at,observation_requested FROM lab_projects WHERE workspace_session_id=? ORDER BY created_at,id LIMIT 200')
+        .all(context.workspaceSessionId)
+        .filter(row=>(!dedicated||row.id===dedicated.projectId)&&
+          this.authorize({context,operation,projectId:row.id})===true),
+        ...(dedicated?{projectScope:dedicated}:{})};
+    }
     if(operation==='project_preflight') {
       // Read-only, project-scoped projection of the canonical Store. A saved
       // repository URL is NOT authenticated GitHub access; an injected Runtime

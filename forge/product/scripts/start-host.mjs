@@ -44,7 +44,7 @@ const shutdown=()=>{
 };
 try {
   application=createHostApplication({productRoot,dataRoot,remoteSession,
-    nativeOwner:mode.owner?{userRoot:mode.userRoot,
+    nativeOwner:mode.owner?{userRoot:mode.userRoot,dedicatedProject:true,
       documentsDirectory:resolveForgeNodeOwnerDocumentsDirectory()}:null});
   if(mode.owner)await application.startRemoteGateway();
   server=application.createServer({onShutdown:()=>{void shutdown();}});

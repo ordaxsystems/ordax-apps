@@ -10,6 +10,8 @@ import {createHostBrowserServer} from './host-browser-server.mjs';
 import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
 import {createForgeRemoteMcpOwner,FORGE_NODE_REMOTE_MCP_OPERATIONS,FORGE_NODE_NATIVE_REMOTE_MCP_OPERATIONS} from '../src/forge-remote-mcp-owner.mjs';
 import {createForgeNodeNativeOwnerPorts} from '../src/forge-node-native-owner-ports.mjs';
+import {activateDedicatedForgeProject} from '../src/forge-dedicated-project.mjs';
+import {createForgeOrdaxRepositoryCatalog} from '../src/forge-ordax-repository-catalog.mjs';
 
 const MIME_EXT=new Map([['image/png','png'],['image/jpeg','jpg'],['image/webp','webp'],['image/gif','gif'],['image/avif','avif']]);
 const providerUnavailable=()=>{throw Error('provider_transport_unavailable_on_host');};
@@ -58,6 +60,12 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
     version:'node-host'
   });
   const {context,service,mcp}=kernel;
+  if(nativeOwner?.dedicatedProject===true){
+    activateDedicatedForgeProject(service);
+    service.repositoryCatalogPort=createForgeOrdaxRepositoryCatalog({
+      documentsDirectory:nativeOwner.documentsDirectory
+    });
+  }
   service.recoverInterruptedCommands();
 
   const assetUrl=id=>`/assets/${encodeURIComponent(id)}`;

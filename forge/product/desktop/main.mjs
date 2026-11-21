@@ -25,6 +25,8 @@ import {createForgeProductSession} from '../src/forge-product-session.mjs';
 import {createForgeRemoteMcpOwner} from '../src/forge-remote-mcp-owner.mjs';
 import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
 import {forgeOwnerWorkspaceScope} from '../src/forge-owner-workspace-scope.mjs';
+import {activateDedicatedForgeProject,dedicatedForgeMcpOperations} from '../src/forge-dedicated-project.mjs';
+import {createForgeOrdaxRepositoryCatalog} from '../src/forge-ordax-repository-catalog.mjs';
 import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
 import {canonicalProviderChatUrl} from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
@@ -1007,6 +1009,15 @@ const orchestratorKernel=createOrchestratorKernel({
 });
 localOrchestratorContext=orchestratorKernel.context;
 const {service:orchestratorService,mcp:localOrchestratorMcp}=orchestratorKernel;
+// This owner installation is now dedicated to one OrdaX OS development
+// project. Keep the six historical acceptance projects untouched in SQLite.
+// Candidate/staged profiles retain their ordinary isolated project behavior.
+if(!stagedProfile){
+  activateDedicatedForgeProject(orchestratorService);
+  orchestratorService.repositoryCatalogPort=createForgeOrdaxRepositoryCatalog({
+    documentsDirectory:app.getPath('documents')
+  });
+}
 // Read the exact Forge Git checkpoint; no second store or external writes.
 orchestratorService.forgeGitMemoryPort=Object.freeze({
   isOwnerContext:context=>context===localOrchestratorContext,
@@ -1319,7 +1330,8 @@ let forgeMcpResumeError=null;
 const forgeLocalMcp=createForgeLoopbackMcp({
   createMcp:({projectId,allowedOperations})=>createOrchestratorMcp({
     service:orchestratorService,getContext:()=>localOrchestratorContext,
-    version:app.getVersion(),allowedProjectId:projectId,allowedOperations,
+    version:app.getVersion(),allowedProjectId:projectId,
+    allowedOperations:dedicatedForgeMcpOperations(store,allowedOperations),
     afterToolInvoke:({operation,args,output})=>{
       try{observeMcpToolCall({store,operation,output,ingress:'owner_loopback'});}catch{}
       announcePersistedMcpMutation(operation,args,output);

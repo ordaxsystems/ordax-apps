@@ -1,0 +1,72 @@
+// Dedicated deployment scope stored in the SAME Forge workspace-session
+// metadata as every other process-local product setting. No second Store,
+// per-repository project records or parallel coordination DB.
+export const ORDAX_FORGE_PROJECT_KEY='ordax-os';
+export const ORDAX_FORGE_PROJECT_NAME='OrdaX OS';
+const SCHEMA='ordax.forge.dedicated-project/1';
+const FORBIDDEN=new Set([
+  'project_create','project_quick_create','mission_create',
+  'project_delete','project_rename','project_auto_title',
+  'project_repository_set','project_observation_set'
+]);
+export function readDedicatedForgeProject(store){
+  const session=store?.getWorkspaceSession?.();
+  const state=session?.metadata?.forgeDedicatedProject;
+  if(state===undefined)return null;
+  if(!state||state.schema!==SCHEMA||state.key!==ORDAX_FORGE_PROJECT_KEY||
+     typeof state.projectId!=='string'||!/^project_[A-Za-z0-9-]{1,100}$/.test(state.projectId))
+    throw Error('forge_dedicated_project_metadata_invalid');
+  const row=store.db.prepare(
+    'SELECT id,name FROM lab_projects WHERE id=? AND workspace_session_id=?'
+  ).get(state.projectId,session.id);
+  if(!row||row.name!==ORDAX_FORGE_PROJECT_NAME)
+    throw Error('forge_dedicated_project_binding_invalid');
+  return Object.freeze({schema:SCHEMA,key:state.key,mode:'dedicated',
+    projectId:state.projectId,name:row.name,repositoryAuthority:'ordax_os_ownership_contract'});
+}
+export function activateDedicatedForgeProject(service){
+  const store=service?.store;
+  if(!store?.db||typeof service.transaction!=='function'||typeof service.createProjectRecord!=='function')
+    throw Error('forge_dedicated_project_owner_required');
+  return service.transaction(()=>{
+    // Only Task→repository membership is stored here. Names, owners, repo
+    // URLs and capabilities remain defined exclusively by the OS manifest.
+    store.db.exec(`CREATE TABLE IF NOT EXISTS forge_work_repository_scope(
+      task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      project_id TEXT NOT NULL REFERENCES lab_projects(id) ON DELETE CASCADE,
+      repository TEXT NOT NULL,
+      PRIMARY KEY(task_id,repository)
+    )`);
+    const existing=readDedicatedForgeProject(store);
+    if(existing)return existing;
+    // The Owner opts this *installation* into the new format. Historical
+    // projects, Tasks, claims, receipts and assets remain unchanged on disk;
+    // they are not promoted as current development work.
+    const projectId=service.createProjectRecord(ORDAX_FORGE_PROJECT_NAME,
+      'Evolução integrada do OrdaX OS e seus repositórios canônicos, com SSOT, claims, evidências e MCP-First.',
+      null,store.now());
+    // Reuse the existing canonical coordinator creation mechanics. No
+    // speculative GPT message, Work Task, provider send or remote operation.
+    service.mutate('orchestrator_create',{
+      projectId,name:'Administrador OrdaX OS',
+      mission:'Coordenar o desenvolvimento dos repositórios OrdaX por Tasks, claims e evidências; não inferir permissões ou concluir efeitos sem recibo.'
+    });
+    store.updateWorkspaceMetadata({forgeDedicatedProject:{
+      schema:SCHEMA,key:ORDAX_FORGE_PROJECT_KEY,projectId
+    }});
+    return readDedicatedForgeProject(store);
+  });
+}
+export function enforceDedicatedForgeProject(store,operation,input){
+  const scope=readDedicatedForgeProject(store);
+  if(!scope)return null;
+  if(FORBIDDEN.has(operation))
+    throw Error('forge_dedicated_project_operation_unavailable');
+  if(input?.projectId!=null&&input.projectId!==scope.projectId)
+    throw Error('forge_dedicated_project_scope_denied');
+  return scope;
+}
+export function dedicatedForgeMcpOperations(store,operations){
+  const scope=readDedicatedForgeProject(store);
+  return scope?operations.filter(op=>!FORBIDDEN.has(op)):operations;
+}

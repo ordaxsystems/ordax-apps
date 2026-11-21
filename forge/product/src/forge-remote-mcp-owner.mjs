@@ -2,6 +2,7 @@ import {createOrchestratorMcp} from './orchestrator-mcp.mjs';
 import {ForgeRemoteGatewayClient} from './forge-remote-gateway-client.mjs';
 import {FORGE_APP_MCP_OPERATIONS} from './forge-loopback-mcp.mjs';
 import {observeMcpToolCall} from './forge-mcp-observation.mjs';
+import {readDedicatedForgeProject,dedicatedForgeMcpOperations} from './forge-dedicated-project.mjs';
 
 /**
  * One ingress for the canonical Forge MCP gateway, composable by either
@@ -25,7 +26,9 @@ export function createForgeRemoteMcpOwner({
     throw Error('forge_remote_mcp_owner_ports_required');
 
   const mcp=createOrchestratorMcp({
-    service,getContext,version,allowedOperations,authorizeFileRead,
+    service,getContext,version,
+    allowedProjectId:readDedicatedForgeProject(store)?.projectId??null,
+    allowedOperations:dedicatedForgeMcpOperations(store,allowedOperations),authorizeFileRead,
     afterToolInvoke:({operation,args,output,transportReceipt})=>{
       try {
         observeMcpToolCall({store,operation,output,ingress:'remote_gateway',
@@ -80,14 +83,14 @@ export function createForgeRemoteMcpOwner({
  * to ports unavailable in a plain Node Host and are NOT advertised remotely.
  */
 const NODE_SQLITE_OPERATIONS=new Set([
-  'status','projects_list','forge_discover','project_context',
+  'status','projects_list','forge_discover','project_context','project_repositories',
   'project_memory','project_memory_propose','project_administrator_snapshot',
   'project_handoff','project_activity','project_preflight',
   'mission_create','project_rename',
   'orchestrators_list','orchestrator_create','orchestrator_pause',
   'continuity_status','work_claim','work_progress','work_memory_set',
   'work_create','work_batch_create','work_draft_set','work_dependency_set',
-  'work_list','work_plan','work_get','work_messages','conversation_rotate',
+  'work_list','work_plan','work_get','work_messages','work_repositories','work_repositories_set','conversation_rotate',
   'work_failover_prepare','proposals_list','command_get'
 ]);
 const NODE_NATIVE_OPERATIONS=new Set([

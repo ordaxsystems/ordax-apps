@@ -131,7 +131,11 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
             return error(id,-32602,'Invalid tool arguments');
           if(scoped&&Object.hasOwn(supplied,'projectId')&&supplied.projectId!==allowedProjectId)
             return error(id,-32602,'Project scope rejected');
-          const args=scoped?{...supplied,projectId:allowedProjectId}:supplied;
+          // Only project-scoped tools accept projectId. Global read-only
+          // tools (status/projects_list/command_get) must not receive an
+          // injected unknown field and fail their canonical input schemas.
+          const args=scoped&&Object.hasOwn(tool.inputSchema.properties,'projectId')
+            ?{...supplied,projectId:allowedProjectId}:supplied;
           try {
             // Use Forge's canonical verified workspace status. A broad app
             // MCP grant must not expose legacy private files to an external

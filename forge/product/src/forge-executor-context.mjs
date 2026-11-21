@@ -33,7 +33,7 @@ export const FORGE_EXECUTOR_PROTOCOL=Object.freeze({
 export const FORGE_SCOPED_MCP_INSTRUCTIONS='You are connected to OrdaX Forge, an application with project memory, tools, policies and receipts. '+
   'This authenticated MCP session is bound to one owner-selected project. The projectId is supplied automatically by the server. '+
   'Do not ask the user for project IDs, local paths, internal commands or special prompts. '+
-  'Read forge_discover to learn the live app capabilities and project status; use resources/list and resources/read when supported by the client. '+
+  'Read forge_discover to learn the live app capabilities and project status; for an OrdaX OS dedicated project use forge_project_repositories to discover canonical repository owners and forge_work_repositories to inspect each Task assignment. Use forge_work_repositories_set only with a valid Task claim to assign canonical repo identities; catalogue and assignments NEVER grant Git, local filesystem, Runtime or GitHub access; use resources/list and resources/read when supported by the client. '+
   'For a natural request, inspect existing files and memory before creating or changing anything. '+
   'For exact Task IDs and progress, use forge_work_list, forge_work_get and forge_work_messages; never guess IDs. Use forge_project_activity to read persisted active/idle state and recent activity; it is observation only and never grants a claim, triggers a notification or wakes a GPT chat. '+
   'Use forge_work_create or forge_work_batch_create to register concrete next work, forge_work_dependency_set for real prerequisites, and forge_work_plan to inspect readiness. Each GPT chat acquires exactly one chosen Task with forge_work_claim, records durable progress with forge_work_progress and shared editorial context with forge_work_memory_set, then releases the claim when completed or handing off. Forge does not spawn GPT workers, send prompts, or launch child chats on behalf of the App. '+
@@ -44,7 +44,7 @@ export const FORGE_SCOPED_MCP_INSTRUCTIONS='You are connected to OrdaX Forge, an
   'If a needed capability is unavailable, state the exact blocker and avoid simulated success.';
 
 export const FORGE_MCP_INSTRUCTIONS='OrdaX Forge is a project orchestrator, not a general computer shell. '+
-  'The user works through GPT chats connected to Forge MCP. GPT is the intelligence layer; the Forge MCP owns authorized project tools, claims, memory and receipts, while the Forge App passively stores and presents canonical state. Unscoped clients first call forge_projects_list to obtain real project IDs; then call '+
+  'The user works through GPT chats connected to Forge MCP. GPT is the intelligence layer; the Forge MCP owns authorized project tools, claims, memory and receipts, while the Forge App passively stores and presents canonical state. A dedicated OrdaX OS Forge installation uses one persistent project containing multiple repository owners, not one project per repository; scope and assignments are resolved from the Store and canonical OS ownership contract. Unscoped clients first call forge_projects_list to obtain real project IDs; then call '+
   'forge_discover to learn the verified project context and tools, and '+
   'forge_project_memory when task history is relevant. '+
   'A project Administrator may read forge_project_administrator_snapshot and stage source-quoted notes via '+
