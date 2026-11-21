@@ -1,3 +1,5 @@
+import {forgeMcpWorkObservation} from './forge-mcp-observation.mjs';
+
 // Evidence-backed Task acceptance from the canonical Forge command ledger.
 // A past native Git/test proof never asserts current GitHub HEAD or publication.
 const SHA=/^[a-f0-9]{40}$/;
@@ -57,6 +59,8 @@ export function forgeVerifiedWorkAcceptances(db,projectId,sessionId){
         prior.verifiedBranchHeadSha===integration.branchHeadSha;
     }))continue;
     if(accepted.has(row.taskId)){accepted.delete(row.taskId);continue;}
+    const observed=forgeMcpWorkObservation(db,{projectId,taskId:row.taskId,
+      operation:'work_accept',commandId:row.id});
     accepted.set(row.taskId,Object.freeze({
       schema:'ordax.forge.work-acceptance-evidence/1',
       scope:'verified_integrated_git_milestone',
@@ -65,7 +69,10 @@ export function forgeVerifiedWorkAcceptances(db,projectId,sessionId){
       sourceRunId:row.latestRunId,
       historical:true,currentGitHeadVerified:false,
       productCriteriaCertified:false,websitePublished:false,
-      providerMessagesSent:0
+      providerMessagesSent:0,
+      ...(observed||{mcpToolCallObserved:false,mcpIngress:null,
+        gatewayLeaseStartObserved:false,gatewayRequestId:null,gatewayAttemptId:null,
+        gatewayAgentInstanceId:null,gptRunIdentityVerified:false,chatIdentityVerified:false})
     }));
   }
   return accepted;

@@ -7,8 +7,9 @@ import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {ForgeProjectFiles} from '../src/forge-project-files.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
-import {observeMcpFileWrite} from '../src/forge-mcp-write-observation.mjs';
+import {observeMcpFileWrite,observeMcpToolCall} from '../src/forge-mcp-observation.mjs';
 import {forgeProjectFileReceiptView} from '../src/forge-project-file-receipts.mjs';
+import {forgeProjectHandoffView} from '../src/forge-project-handoff-view.mjs';
 
 function fixture(t) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'forge-mcp-ingress-proof-'));
@@ -20,7 +21,7 @@ function fixture(t) {
   const service=new OrchestratorService({store,fileBroker:files,authorize:({context:who})=>who===context});
   let transport='remote_gateway';
   const mcp=createOrchestratorMcp({service,getContext:()=>context,afterToolInvoke:({operation,output,transportReceipt})=>{
-    observeMcpFileWrite({store,operation,output,ingress:transport,transportReceipt});
+    observeMcpToolCall({store,operation,output,ingress:transport,transportReceipt});
     return output;
   }});
   const project=async nonce=>{
@@ -37,7 +38,8 @@ function fixture(t) {
   return {store,service,context,files,mcp,project,call,
     setIngress:x=>{transport=x},
     view:id=>forgeProjectFileReceiptView(store,id,{limit:24}),
-    events:()=>store.db.prepare("SELECT task_id,payload FROM events WHERE kind='forge.mcp.file_write_observed' ORDER BY seq").all()
+    events:()=>store.db.prepare("SELECT task_id,payload FROM events WHERE kind='forge.mcp.file_write_observed' ORDER BY seq").all(),
+    workEvents:()=>store.db.prepare("SELECT task_id,payload FROM events WHERE kind='forge.mcp.work_tool_observed' ORDER BY seq").all()
   };
 }
 
@@ -190,4 +192,55 @@ test('client-forged JSON-RPC fields, incomplete lease and loopback cannot fabric
   assert.equal(local.mcpIngress,'owner_loopback');
   assert.equal(local.gatewayLeaseStartObserved,false);
   assert.equal(local.gatewayRequestId,null);
+});
+
+test('work claims distinguish leased remote gateway ingress from direct in-process service calls',async t=>{
+  const f=fixture(t),p=await f.project('claims');
+  await f.mcp.handle({jsonrpc:'2.0',id:1,method:'initialize',params:{
+    protocolVersion:'2025-11-25',clientInfo:{name:'test',version:'1'},capabilities:{}
+  }});
+  await f.mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
+  const orchestratorId=f.store.db.prepare('SELECT id FROM lab_orchestrators WHERE project_id=?')
+    .get(p).id;
+  const directWork=(await f.service.invoke(f.context,'work_create',{
+    projectId:p,orchestratorId,title:'Direct claim',requestId:'direct_work'
+  })).result;
+  const remoteWork=(await f.service.invoke(f.context,'work_create',{
+    projectId:p,orchestratorId,title:'Remote claim',requestId:'remote_work'
+  })).result;
+  const direct=await f.service.invoke(f.context,'work_claim',{
+    projectId:p,taskId:directWork.taskId,action:'acquire',
+    chatLabel:'in-process',requestId:'direct_claim'
+  });
+  assert.equal(direct.status,'succeeded');
+  const gateway={gatewayRequestId:'40000000-0000-4000-8000-000000000001',
+    gatewayAttemptId:'40000000-0000-4000-8000-000000000002',
+    gatewayAgentInstanceId:'40000000-0000-4000-8000-000000000003',
+    leaseStartObserved:true};
+  const remote=await f.call(2,'work_claim',{
+    projectId:p,taskId:remoteWork.taskId,action:'acquire',
+    chatLabel:'remote-chat-label',requestId:'remote_claim'
+  },gateway);
+  assert.equal(remote.status,'succeeded');
+  assert.equal(remote.result.status,'acquired');
+  const handoff=forgeProjectHandoffView(f.store,p);
+  const directClaim=handoff.tasks.find(x=>x.taskId===directWork.taskId).claim;
+  const remoteClaim=handoff.tasks.find(x=>x.taskId===remoteWork.taskId).claim;
+  assert.equal(directClaim.mcpToolCallObserved,false);
+  assert.equal(directClaim.chatIdentityVerified,false);
+  assert.equal(remoteClaim.mcpToolCallObserved,true);
+  assert.equal(remoteClaim.mcpIngress,'remote_gateway');
+  assert.equal(remoteClaim.gatewayLeaseStartObserved,true);
+  assert.equal(remoteClaim.gatewayRequestId,gateway.gatewayRequestId);
+  assert.equal(remoteClaim.gatewayAttemptId,gateway.gatewayAttemptId);
+  assert.equal(remoteClaim.gatewayAgentInstanceId,gateway.gatewayAgentInstanceId);
+  assert.equal(remoteClaim.gptRunIdentityVerified,false);
+  assert.equal(remoteClaim.chatIdentityVerified,false);
+  assert.equal(f.workEvents().length,1);
+  const payload=JSON.parse(f.workEvents()[0].payload);
+  assert.equal(payload.operation,'work_claim');
+  assert.equal(payload.outcome,'acquired');
+  assert.equal(payload.claim_generation,1);
+  assert.ok(!JSON.stringify(payload).includes('remote-chat-label'));
+  assert.ok(!JSON.stringify(payload).includes(remote.result.claimToken));
 });

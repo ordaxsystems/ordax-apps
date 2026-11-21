@@ -18,7 +18,7 @@ import {ForgeLocalWorkspaces,resolveForgeWorkspaceDocumentsDirectory} from '../s
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {readForgeGitMemory} from '../src/forge-git-memory-view.mjs';
 import {createForgeLoopbackMcp,FORGE_APP_MCP_SCOPE,FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
-import {observeMcpFileWrite} from '../src/forge-mcp-write-observation.mjs';
+import {observeMcpToolCall} from '../src/forge-mcp-observation.mjs';
 import {ForgeProjectDevelopment} from '../src/forge-project-development.mjs';
 import {createForgeProductSession} from '../src/forge-product-session.mjs';
 import {ForgeRemoteGatewayClient} from '../src/forge-remote-gateway-client.mjs';
@@ -1305,7 +1305,7 @@ const forgeRemoteMcp=createOrchestratorMcp({
   service:orchestratorService,getContext:()=>localOrchestratorContext,
   version:app.getVersion(),allowedOperations:FORGE_APP_MCP_OPERATIONS,
   afterToolInvoke:({operation,args,output,transportReceipt})=>{
-    try{observeMcpFileWrite({store,operation,output,ingress:'remote_gateway',
+    try{observeMcpToolCall({store,operation,output,ingress:'remote_gateway',
       transportReceipt});}catch{}
     announcePersistedMcpMutation(operation,args,output);
     return attachDefaultWorkspaceToProjectCreation(operation,output);
@@ -1351,7 +1351,7 @@ const forgeLocalMcp=createForgeLoopbackMcp({
     service:orchestratorService,getContext:()=>localOrchestratorContext,
     version:app.getVersion(),allowedProjectId:projectId,allowedOperations,
     afterToolInvoke:({operation,args,output})=>{
-      try{observeMcpFileWrite({store,operation,output,ingress:'owner_loopback'});}catch{}
+      try{observeMcpToolCall({store,operation,output,ingress:'owner_loopback'});}catch{}
       announcePersistedMcpMutation(operation,args,output);
       return attachDefaultWorkspaceToProjectCreation(operation,output);
     },

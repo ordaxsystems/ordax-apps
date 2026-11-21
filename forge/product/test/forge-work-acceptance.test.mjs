@@ -10,6 +10,8 @@ import {ForgeProjectDevelopment} from '../src/forge-project-development.mjs';
 import {ForgeLocalWorkspaces} from '../src/forge-local-workspaces.mjs';
 import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
 import {FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
+import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
+import {observeMcpToolCall} from '../src/forge-mcp-observation.mjs';
 
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8'}).trim();
 async function fixture(t){
@@ -49,6 +51,21 @@ async function fixture(t){
   await invoke('work_dependency_set',{
     projectId,taskId:dependent,dependsOn:[taskId],requestId:'accept_deps'});
   const accept=(requestId,options)=>invoke('work_accept',{projectId,taskId,requestId,...options});
+  const mcp=createOrchestratorMcp({service,getContext:()=>context,
+    afterToolInvoke:({operation,output,transportReceipt})=>{
+      observeMcpToolCall({store,operation,output,ingress:'remote_gateway',transportReceipt});
+      return output;
+    }});
+  await mcp.handle({jsonrpc:'2.0',id:1,method:'initialize',params:{
+    protocolVersion:'2025-11-25',clientInfo:{name:'acceptance-test',version:'1'},capabilities:{}
+  }});
+  await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
+  let mcpSeq=1;
+  const mcpCall=async(operation,args,transportReceipt=null)=>{
+    const response=await mcp.handle({jsonrpc:'2.0',id:++mcpSeq,method:'tools/call',
+      params:{name:'forge_'+operation,arguments:args}},transportReceipt);
+    return response?.result?.structuredContent;
+  };
   const reopen=()=>{
     store.close();
     store=new Store(dbFile);
@@ -56,7 +73,7 @@ async function fixture(t){
   };
   t.after(()=>{try{store.close();}catch{}fs.rmSync(dir,{recursive:true,force:true})});
   return {folder,context,projectId,taskId,dependent,workspaces,development,
-    accept,invoke,reopen,getStore:()=>store};
+    accept,invoke,mcpCall,reopen,getStore:()=>store};
 }
 
 test('Task acceptance requires real native test on integrated main, persists in SQLite and unlocks DAG',async t=>{
@@ -118,7 +135,13 @@ test('Task acceptance requires real native test on integrated main, persists in 
   assert.equal(failed.status,'failed');
   assert.equal(failed.result.accepted,false);
   assert.equal(f.getStore().db.prepare('SELECT status FROM tasks WHERE id=?').get(taskId).status!=='completed',true);
-  const accepted=await f.accept('verified_after_merge',input);
+  const gateway={gatewayRequestId:'50000000-0000-4000-8000-000000000001',
+    gatewayAttemptId:'50000000-0000-4000-8000-000000000002',
+    gatewayAgentInstanceId:'50000000-0000-4000-8000-000000000003',
+    leaseStartObserved:true};
+  const accepted=await f.mcpCall('work_accept',{
+    projectId:p,taskId,requestId:'verified_after_merge',...input
+  },gateway);
   assert.equal(accepted.status,'succeeded');
   assert.equal(accepted.result.verified,true);
   assert.equal(accepted.result.accepted,true);
@@ -141,6 +164,14 @@ test('Task acceptance requires real native test on integrated main, persists in 
   assert.equal(task.acceptanceEvidence.scope,'verified_integrated_git_milestone');
   assert.equal(task.acceptanceEvidence.currentGitHeadVerified,false);
   assert.equal(task.acceptanceEvidence.websitePublished,false);
+  assert.equal(task.acceptanceEvidence.mcpToolCallObserved,true);
+  assert.equal(task.acceptanceEvidence.mcpIngress,'remote_gateway');
+  assert.equal(task.acceptanceEvidence.gatewayLeaseStartObserved,true);
+  assert.equal(task.acceptanceEvidence.gatewayRequestId,gateway.gatewayRequestId);
+  assert.equal(task.acceptanceEvidence.gatewayAttemptId,gateway.gatewayAttemptId);
+  assert.equal(task.acceptanceEvidence.gatewayAgentInstanceId,gateway.gatewayAgentInstanceId);
+  assert.equal(task.acceptanceEvidence.gptRunIdentityVerified,false);
+  assert.equal(task.acceptanceEvidence.chatIdentityVerified,false);
   assert.equal(f.getStore().db.prepare('PRAGMA quick_check').get().quick_check,'ok');
   f.reopen();
   const persisted=(await f.invoke('work_plan',{projectId:p})).plan;

@@ -1,6 +1,7 @@
 import {forgeProjectFileReceiptView} from './forge-project-file-receipts.mjs';
 import {forgeProjectMissionsView} from './forge-project-missions-view.mjs';
 import {forgeVerifiedWorkAcceptances} from './forge-work-acceptance-evidence.mjs';
+import {forgeMcpWorkObservation} from './forge-mcp-observation.mjs';
 
 // Deterministic handoff read model. Rehydrates one project from canonical SQLite;
 // it does not summarize with a model, rotate chats or verify external artifacts.
@@ -45,10 +46,15 @@ export function forgeProjectHandoffView(store,projectId,{taskId=null}={}) {
     FROM lab_work_claims WHERE project_id=? AND workspace_session_id=?`)
     .all(projectId,session):[]).map(row=>{
       const expired=row.status==='active'&&Date.parse(row.leaseUntil)<=Date.now();
+      const observed=forgeMcpWorkObservation(db,{projectId,taskId:row.taskId,
+        operation:'work_claim',claimGeneration:row.generation});
       return [row.taskId,{chatLabel:row.chatLabel,generation:row.generation,
         state:row.status==='released'?'released':expired?'expired':'occupied',
         heartbeatAt:row.heartbeatAt,leaseUntil:row.leaseUntil,lastProgress:row.lastProgress,
-        chatIdentityVerified:false,externalEffectVerified:false}];
+        ...(observed||{mcpToolCallObserved:false,mcpIngress:null,
+          gatewayLeaseStartObserved:false,gatewayRequestId:null,gatewayAttemptId:null,
+          gatewayAgentInstanceId:null,gptRunIdentityVerified:false,chatIdentityVerified:false}),
+        externalEffectVerified:false}];
     }));
   const acceptedWorks=forgeVerifiedWorkAcceptances(db,projectId,session);
   const branches=new Map(worktreeRows.map(row=>[row.taskId,{
