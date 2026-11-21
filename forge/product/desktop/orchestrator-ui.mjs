@@ -1231,13 +1231,55 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       box.append(note);
     }
     if(page.messages.length===0) {
-      const empty=document.createElement('div');empty.className='coordinator-empty forge-welcome';
-      const mark=document.createElement('span');mark.className='forge-welcome-mark';
-      mark.textContent='◇';mark.setAttribute('aria-hidden','true');
-      const title=document.createElement('strong');title.textContent='Nenhuma atividade registrada';
-      const copy=document.createElement('p');
-      copy.textContent='Quando um chat GPT usar o Forge MCP neste projeto, decisões, progresso e resultados persistidos aparecerão aqui.';
-      empty.append(mark,title,copy);box.append(empty);
+      // Show the existing canonical Task projection instead of a false
+      // empty-state whenever MCP work exists without historical GPT messages.
+      const scope=executionScope(),works=executionWorkScope===scope?visibleWorkItems:[];
+      const memory=executionMemoryScope===scope?executionMemory:null;
+      const notes=memory?.canonical?.length||0;
+      if(works.length||notes){
+        const panel=document.createElement('section');panel.className='coordinator-project-overview';
+        panel.setAttribute('aria-label','Frentes e continuidade do projeto');
+        const title=document.createElement('h3');title.textContent='Frentes e continuidade';
+        const description=document.createElement('p');
+        description.textContent='Estado persistido pelo Forge MCP. Nenhuma mensagem GPT foi registrada nesta coordenação; claims, checkpoints e memórias não comprovam efeitos externos.';
+        const counts=document.createElement('small');
+        const occupied=works.filter(w=>w.claim?.state==='occupied').length;
+        counts.textContent=works.length+' tarefas · '+occupied+' reservas vigentes · '+notes+' notas compartilhadas';
+        panel.append(title,description,counts);
+        const list=document.createElement('div');list.className='coordinator-project-list';list.setAttribute('role','list');
+        for(const work of works.slice(0,12)){
+          const card=document.createElement('button');card.type='button';card.className='execution-work-item coordinator-project-task';
+          card.setAttribute('role','listitem');
+          const copy=document.createElement('span');copy.className='execution-work-copy';
+          const name=document.createElement('strong');name.textContent=work.title;
+          const detail=document.createElement('small');
+          detail.textContent=work.claim?.state==='occupied'?'Reserva vigente; GPT ativo não atestado':
+            work.claim?.state==='expired'?'Reserva expirada; confira recibos antes de retomar':
+            work.claim?.state==='released'?'Reserva liberada; continuidade preservada':
+            work.latest_run_status==='succeeded'?'Run GPT registrado; aceite não presumido':
+            'Aguardando trabalho pelo Forge MCP';
+          if(work.claim?.lastProgress)detail.textContent+=' · checkpoint: '+String(work.claim.lastProgress).slice(0,140);
+          const state=document.createElement('span');state.className='execution-work-state';
+          state.textContent=work.acceptanceEvidence?'Aceita no Git':work.claim?.state==='occupied'?'Reservada':
+            work.claim?.state==='expired'?'Expirada':work.claim?.state==='released'?'Liberada':'Pendente';
+          copy.append(name,detail);card.append(copy,state);
+          card.addEventListener('click',async()=>{
+            if(scope!==executionScope()||!coordinatorOpen)return;
+            try{coordinatorOpen=false;await onOpenWork(work.id);}
+            catch{status('Não foi possível abrir a tarefa. Nenhuma ação foi executada.');}
+          });
+          list.append(card);
+        }
+        panel.append(list);box.append(panel);
+      }else{
+        const empty=document.createElement('div');empty.className='coordinator-empty forge-welcome';
+        const mark=document.createElement('span');mark.className='forge-welcome-mark';
+        mark.textContent='◇';mark.setAttribute('aria-hidden','true');
+        const title=document.createElement('strong');title.textContent='Nenhum registro neste projeto';
+        const copy=document.createElement('p');
+        copy.textContent='As tarefas e eventos aparecerão aqui quando forem registrados pelo Forge MCP.';
+        empty.append(mark,title,copy);box.append(empty);
+      }
     }
     for(const message of page.messages) {
       const article=document.createElement('article');article.className='coordinator-message';

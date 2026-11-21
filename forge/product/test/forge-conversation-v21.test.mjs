@@ -23,8 +23,8 @@ test('central Forge UI has a single optional tools menu, not permanent diagnosti
 
 test('empty project activity stays passive and does not mount draft suggestions',()=>{
   const js=read('orchestrator-ui.mjs'),html=read('ui.html'),css=read('ui.css');
-  assert.match(js,/Nenhuma atividade registrada/);
-  assert.match(js,/Quando um chat GPT usar o Forge MCP neste projeto/);
+  assert.match(js,/Nenhum registro neste projeto/);
+  assert.match(js,/As tarefas e eventos aparecerão aqui quando forem registrados pelo Forge MCP/);
   const start=js.indexOf('if(page.messages.length===0)');
   const end=js.indexOf('for(const message of page.messages)',start);
   assert.ok(start>=0&&end>start);

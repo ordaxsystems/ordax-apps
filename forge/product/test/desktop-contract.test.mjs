@@ -512,6 +512,15 @@ test('command centre uses one real project projection without fictional agents o
       id+' must have one canonical DOM owner');
   }
   assert.match(ui,/function renderExecutionMonitor\(\)/);
+  assert.ok(ui.includes("if(works.length||notes)"),'project with MCP records must not show empty historical-chat state');
+  assert.ok(ui.includes("panel.className='coordinator-project-overview'"));
+  assert.ok(ui.includes('Frentes e continuidade'));
+  assert.ok(ui.includes('Nenhuma mensagem GPT foi registrada nesta coordenação'));
+  assert.ok(ui.includes('checkpoint: '));
+  assert.ok(ui.includes('Nenhum registro neste projeto'));
+  assert.doesNotMatch(ui,/Nenhuma atividade registrada/);
+  assert.match(css,/\.coordinator-project-overview\{/);
+  assert.match(css,/\.coordinator-project-task\{/);
   assert.match(html,/Execução pertence ao Forge MCP/);
   assert.match(html,/O aplicativo persiste e apresenta o estado/);
   assert.doesNotMatch(html,/execution-autonomy-controls|autonomousContinuousToggle|continueAutonomousTechnical/);
@@ -807,8 +816,8 @@ test('coordinator shows a passive empty state and keeps mobile controls inside t
   assert.match(orchestration,/page\.messages\.length===0/);
   assert.match(orchestration,/uncertainCommands/);
   assert.match(orchestration,/nada foi reenviado automaticamente/);
-  assert.match(orchestration,/Nenhuma atividade registrada/);
-  assert.match(orchestration,/Quando um chat GPT usar o Forge MCP neste projeto/);
+  assert.match(orchestration,/Nenhum registro neste projeto/);
+  assert.match(orchestration,/As tarefas e eventos aparecerão aqui quando forem registrados pelo Forge MCP/);
   assert.doesNotMatch(orchestration,/Criar um site|Desenvolver um app|Planejar um projeto/);
   assert.match(orchestration,/GPT Web · disponível no aplicativo desktop/);
   assert.match(html,/id="coordinatorApiSettings"[^>]*>Ajustes</);
