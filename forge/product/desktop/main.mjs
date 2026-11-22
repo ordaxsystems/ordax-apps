@@ -1035,17 +1035,20 @@ if(!stagedProfile){
       process.env['ProgramFiles(x86)']]
       .filter(value=>typeof value==='string'&&path.isAbsolute(value))
   });
-  // The MCP gateway's catalogue is created once at Owner startup. A folder
-  // selected later is visible as consent immediately but only becomes an MCP
-  // capability after a controlled gateway/Owner restart, never implicitly.
+}
+function refreshLocalRepositoryOwnerPort(){
   const scope=readDedicatedForgeProject(store);
-  if(scope&&forgeLocalRepositoryOwners.hasApprovedRoot(scope.projectId)){
-    orchestratorService.repositoryReadPort=new ForgeRepositoryOwnerReadPort({
+  const approved=Boolean(forgeLocalRepositoryOwners&&scope&&
+    forgeLocalRepositoryOwners.hasApprovedRoot(scope.projectId));
+  orchestratorService.repositoryReadPort=approved
+    ?new ForgeRepositoryOwnerReadPort({
       store,repositoryCatalog:orchestratorService.repositoryCatalogPort,
       resolveOwnerBinding:input=>forgeLocalRepositoryOwners.resolve(input)
-    });
-  }
+    })
+    :null;
+  return approved;
 }
+if(!stagedProfile)refreshLocalRepositoryOwnerPort();
 // Read the exact Forge Git checkpoint; no second store or external writes.
 orchestratorService.forgeGitMemoryPort=Object.freeze({
   isOwnerContext:context=>context===localOrchestratorContext,
@@ -1492,7 +1495,11 @@ const currentForgeRepositoryOwner=(event,repository)=>{
 };
 registerUiHandler('ordax:forge:repository-owner:status',(event,repository)=>{
   const projectId=currentForgeRepositoryOwner(event,repository);
-  return forgeLocalRepositoryOwners.status({projectId,repository});
+  const state=forgeLocalRepositoryOwners.status({projectId,repository});
+  const gateway=forgeRemoteGateway.status();
+  return {...state,catalogSynchronized:gateway.running===true&&
+    gateway.catalogSynchronized===true&&
+    Boolean(orchestratorService.repositoryReadPort)};
 });
 registerUiHandler('ordax:forge:repository-owner:choose',async(event,repository)=>{
   const projectId=currentForgeRepositoryOwner(event,repository);
@@ -1517,9 +1524,16 @@ registerUiHandler('ordax:forge:repository-owner:choose',async(event,repository)=
   if(!confirmed)return {cancelled:true};
   // Recheck Owner UI and catalog after the human interaction.
   currentForgeRepositoryOwner(event,repository);
-  return forgeLocalRepositoryOwners.bindSelected({
+  const granted=forgeLocalRepositoryOwners.bindSelected({
     projectId,repository,selectedRoot:chosen.filePaths[0]
   });
+  refreshLocalRepositoryOwnerPort();
+  let catalogSynchronized=false;
+  try{
+    const state=await forgeRemoteGateway.refreshCatalog();
+    catalogSynchronized=state.catalogSynchronized===true;
+  }catch{/* Existing gateway heartbeat retries; never reinterpret a grant. */}
+  return {...granted,catalogSynchronized};
 });
 registerUiHandler('ordax:forge:repository-owner:revoke',async(event,repository)=>{
   const projectId=currentForgeRepositoryOwner(event,repository);
@@ -1533,7 +1547,14 @@ registerUiHandler('ordax:forge:repository-owner:revoke',async(event,repository)=
   });
   if(!approved)return {cancelled:true};
   currentForgeRepositoryOwner(event,repository);
-  return forgeLocalRepositoryOwners.revoke({projectId,repository});
+  const revoked=forgeLocalRepositoryOwners.revoke({projectId,repository});
+  refreshLocalRepositoryOwnerPort(); // cut local execution authority BEFORE network I/O
+  let catalogSynchronized=false;
+  try{
+    const state=await forgeRemoteGateway.refreshCatalog();
+    catalogSynchronized=state.catalogSynchronized===true;
+  }catch{/* Remote may still list stale tools; all local calls fail closed. */}
+  return {...revoked,catalogSynchronized};
 });
 registerUiHandler('ordax:forge:workspace:migrate',async(event,projectId)=>{
   requireTrustedSupervisorRenderer(event);
