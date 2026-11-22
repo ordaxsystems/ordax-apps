@@ -188,7 +188,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         const result=await api.forgeRepositoryOwnerStatus(repo);
         if(!controls.isConnected)return;
         state.textContent=result?.verified===true
-          ?'Leitura local aprovada · disponível no MCP após iniciar o Owner'
+          ?(result?.catalogSynchronized===true
+            ?'Leitura local autorizada · catálogo MCP sincronizado'
+            :'Leitura local autorizada · aguardando sincronização MCP')
           :result?.configured===true?'Vínculo existente, mas não verificado'
             :'Nenhuma pasta local autorizada';
         choose.disabled=busy||result?.configured===true;
