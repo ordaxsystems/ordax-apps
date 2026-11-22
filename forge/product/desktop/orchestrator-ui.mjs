@@ -166,7 +166,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       // mutation. The dashboard only shows the controls on the repo page.
       const repo=item.repo;
       if(limit!==Infinity||fdView!=='repositories'||
-         typeof repo!=='string'||!/^ordaxsystems\\/ordax-[a-z0-9-]{2,101}$/.test(repo)||
+         typeof repo!=='string'||!/^ordaxsystems\/ordax-[a-z0-9-]{2,101}$/.test(repo)||
          typeof api.forgeRepositoryOwnerStatus!=='function'||
          typeof api.forgeRepositoryOwnerChoose!=='function'||
          typeof api.forgeRepositoryOwnerRevoke!=='function')continue;
