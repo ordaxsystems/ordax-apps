@@ -1,3 +1,8 @@
 # Public provider artifacts carry SHA-256 pins over these exact source bytes.
 # Windows checkouts must preserve the same LF bytes used by release/SDK checks.
+# Runtime manifests, JSON imports, presentation CSS and JavaScript enter
+# verified application ZIPs as physical bytes; Git autocrlf cannot change them.
 *.mjs text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.css text eol=lf
