@@ -170,6 +170,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
          typeof api.forgeRepositoryOwnerStatus!=='function'||
          typeof api.forgeRepositoryOwnerChoose!=='function'||
          typeof api.forgeRepositoryOwnerRevoke!=='function')continue;
+      row.classList.add('fd-repo-owner-row');
       const controls=document.createElement('div');
       controls.className='fd-repo-owner-actions';
       const state=document.createElement('span');
