@@ -58,7 +58,7 @@ test('Forge-native read port verifies exact Task, owner grant, Git origin/HEAD a
   assert.match(proof.headSha,/^[a-f0-9]{40}$/);
   const file=f.port.read({...args,path:'README.md'});
   assert.equal(file.content,'read-only contract\n');
-  assert.equal(file.sha256,'8dc68b33fbdc22638834df64fe7fa1274580f4917ac9dfa57d5db2ef486007a3f');
+  assert.equal(file.sha256,'e42a6beff992cb7c7934a00d2431525575034e299ffa008031ee3b67906f8f6a');
   assert.equal(file.gitHeadSha,proof.headSha);
   assert.equal(file.rootPathExposed,false);
   const list=f.port.list({...args,directory:''});
