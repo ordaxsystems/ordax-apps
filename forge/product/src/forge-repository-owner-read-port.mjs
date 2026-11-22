@@ -174,6 +174,51 @@ export class ForgeRepositoryOwnerReadPort {
       ownerGrantVerified:true,rootPathExposed:false,
       source:'forge_native_owner_read_port'};
   }
+  async gitLog(input={}){
+    const scope=await this.authorize(input);
+    // Read only the current, already-verified HEAD. No input-supplied ref,
+    // revspec, Git flags or path can expand this authority.
+    const output=this.gitOutput(scope,['-c','log.showSignature=false',
+      'log','--no-color','--max-count=21',
+      '--format=%H%x09%ct%x09%s','HEAD','--']);
+    const rows=output.split(/\r?\n/u).filter(Boolean);
+    const commits=rows.slice(0,20).map(line=>{
+      const [sha,unixTime,...subjectParts]=line.split('\t');
+      if(!SHA.test(sha)||!/^\d{1,12}$/.test(unixTime))
+        throw Error('forge_repository_git_log_invalid');
+      return {sha,committedAtUnix:Number(unixTime),
+        subject:subjectParts.join('\t').slice(0,180)};
+    });
+    const after=await this.authorize(input);
+    if(!same(after.root,scope.root)||after.head!==scope.head)
+      throw Error('forge_repository_read_scope_changed');
+    return {schema:'ordax.forge.repository-git-log/1',
+      repository:scope.repository,taskId:scope.taskId,gitHeadSha:scope.head,
+      commits,returned:commits.length,truncated:rows.length>20,
+      ownerGrantVerified:true,rootPathExposed:false,
+      source:'forge_native_owner_read_port'};
+  }
+  async gitBranches(input={}){
+    const scope=await this.authorize(input);
+    const output=this.gitOutput(scope,['for-each-ref','--count=41',
+      '--sort=-committerdate','--format=%(refname:short)%09%(objectname)',
+      'refs/heads']);
+    const rows=output.split(/\r?\n/u).filter(Boolean);
+    const branches=rows.slice(0,40).map(line=>{
+      const separator=line.lastIndexOf('\t');
+      if(separator<1||!SHA.test(line.slice(separator+1)))
+        throw Error('forge_repository_git_branches_invalid');
+      return {name:line.slice(0,separator),sha:line.slice(separator+1)};
+    });
+    const after=await this.authorize(input);
+    if(!same(after.root,scope.root)||after.head!==scope.head)
+      throw Error('forge_repository_read_scope_changed');
+    return {schema:'ordax.forge.repository-git-branches/1',
+      repository:scope.repository,taskId:scope.taskId,gitHeadSha:scope.head,
+      branches,returned:branches.length,truncated:rows.length>40,
+      ownerGrantVerified:true,rootPathExposed:false,
+      source:'forge_native_owner_read_port'};
+  }
   async inspect(args){
     const verified=await this.authorize(args);
     return {schema:'ordax.forge.repository-read-proof/1',

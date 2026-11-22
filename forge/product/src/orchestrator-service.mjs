@@ -1355,14 +1355,16 @@ export class OrchestratorService {
       };
     }
     if(['repository_inspect','repository_file_read','repository_files_list',
-      'repository_git_status','repository_git_diff'].includes(operation)){
+      'repository_git_status','repository_git_diff',
+      'repository_git_log','repository_git_branches'].includes(operation)){
       if(!this.repositoryReadPort)
         throw Error('forge_repository_owner_port_and_grant_required');
       this.task(input.projectId,input.taskId,'work');
       this.workClaims.assertActiveTaskLease(context,input);
       const reader={repository_inspect:'inspect',repository_file_read:'read',
         repository_files_list:'list',repository_git_status:'gitStatus',
-        repository_git_diff:'gitDiff'}[operation];
+        repository_git_diff:'gitDiff',repository_git_log:'gitLog',
+        repository_git_branches:'gitBranches'}[operation];
       const read=this.repositoryReadPort[reader](input);
       // A grant check may be asynchronous. Revalidate the same claim before
       // revealing content, so a handoff/revocation during I/O never leaks it.

@@ -84,6 +84,68 @@ test('Forge-native read port verifies exact Task, owner grant, Git origin/HEAD a
   await assert.rejects(f.port.read({...args,path:'.git/config'}),/forge_file_path_invalid/);
 });
 
+test('R2 Git log and branch discovery use only scoped Owner read and exact HEAD',async t=>{
+  const f=await fixture(t);
+  const args={projectId:f.scope.projectId,taskId:f.taskId,repository:REPO};
+  fs.writeFileSync(path.join(f.root,'README.md'),'new git history proof\n');
+  run(f.root,'add','README.md');
+  run(f.root,'commit','-qm','Second verified commit');
+  run(f.root,'branch','review-audit');
+  const expectedHead=run(f.root,'rev-parse','HEAD');
+  const log=await f.port.gitLog(args);
+  assert.equal(log.gitHeadSha,expectedHead);
+  assert.equal(log.commits[0].sha,expectedHead);
+  assert.equal(log.commits[0].subject,'Second verified commit');
+  assert.equal(log.commits.length,2);
+  assert.equal(log.truncated,false);
+  assert.equal(log.rootPathExposed,false);
+  const branches=await f.port.gitBranches(args);
+  assert.equal(branches.gitHeadSha,expectedHead);
+  assert.ok(branches.branches.some(b=>b.name==='review-audit'&&b.sha===expectedHead));
+  assert.equal(branches.rootPathExposed,false);
+  f.service.repositoryReadPort=f.port;
+  const claimArgs={...args,claimToken:f.claim.claimToken,
+    claimGeneration:f.claim.claim.generation};
+  assert.equal((await f.service.invoke(f.context,'repository_git_log',claimArgs))
+    .commits[0].sha,expectedHead);
+  assert.ok((await f.service.invoke(f.context,'repository_git_branches',claimArgs))
+    .branches.some(b=>b.name==='review-audit'));
+  const catalog=dedicatedForgeMcpOperations(f.store,FORGE_APP_MCP_OPERATIONS,
+    {repositoryReadPortAvailable:true});
+  assert.ok(catalog.includes('repository_git_log'));
+  assert.ok(catalog.includes('repository_git_branches'));
+  const mcp=createOrchestratorMcp({service:f.service,
+    getContext:()=>f.context,allowedOperations:catalog});
+  const initialized=await mcp.handle({jsonrpc:'2.0',id:1,method:'initialize',
+    params:{protocolVersion:'2025-06-18',capabilities:{},
+      clientInfo:{name:'r2-history',version:'1'}}});
+  assert.ok(initialized.result);
+  await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
+  const tools=await mcp.handle({jsonrpc:'2.0',id:2,method:'tools/list'});
+  assert.ok(tools.result.tools.some(x=>x.name==='forge_repository_git_log'));
+  assert.ok(tools.result.tools.some(x=>x.name==='forge_repository_git_branches'));
+  assert.equal(run(f.root,'rev-parse','HEAD'),expectedHead);
+});
+test('R2 Git history fails closed when grant expires or Task claim is released',async t=>{
+  const f=await fixture(t);
+  const args={projectId:f.scope.projectId,taskId:f.taskId,repository:REPO};
+  const revoked=new ForgeRepositoryOwnerReadPort({store:f.store,
+    repositoryCatalog:f.catalog,resolveOwnerBinding:()=>null});
+  await assert.rejects(revoked.gitLog(args),/forge_repository_owner_port_and_grant_required/);
+  await assert.rejects(revoked.gitBranches(args),/forge_repository_owner_port_and_grant_required/);
+  f.service.repositoryReadPort=f.port;
+  await f.service.invoke(f.context,'work_claim',{
+    action:'release',projectId:f.scope.projectId,taskId:f.taskId,
+    requestId:'r2_history_release',claimToken:f.claim.claimToken,
+    generation:f.claim.claim.generation});
+  const claimArgs={...args,claimToken:f.claim.claimToken,
+    claimGeneration:f.claim.claim.generation};
+  await assert.rejects(f.service.invoke(f.context,'repository_git_log',claimArgs),
+    /forge_work_claim_not_owned/);
+  await assert.rejects(f.service.invoke(f.context,'repository_git_branches',claimArgs),
+    /forge_work_claim_not_owned/);
+});
+
 test('R2 Git status and diff stay Owner/Task scoped, bounded and read-only',async t=>{
   const f=await fixture(t);
   const args={projectId:f.scope.projectId,taskId:f.taskId,repository:REPO};

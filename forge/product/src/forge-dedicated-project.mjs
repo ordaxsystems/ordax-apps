@@ -81,7 +81,8 @@ export function enforceDedicatedForgeProject(store,operation,input){
   return scope;
 }
 const REPOSITORY_READ_PORTS=new Set(['repository_inspect','repository_files_list',
-  'repository_file_read','repository_git_status','repository_git_diff']);
+  'repository_file_read','repository_git_status','repository_git_diff',
+  'repository_git_log','repository_git_branches']);
 const REPOSITORY_WRITE_PORTS=new Set(['repository_file_write']);
 export function dedicatedForgeMcpOperations(store,operations,
   {repositoryReadPortAvailable=false,repositoryWritePortAvailable=false}={}){
