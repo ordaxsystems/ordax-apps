@@ -28,6 +28,7 @@ import {forgeOwnerWorkspaceScope} from '../src/forge-owner-workspace-scope.mjs';
 import {activateDedicatedForgeProject,dedicatedForgeMcpOperations,readDedicatedForgeProject} from '../src/forge-dedicated-project.mjs';
 import {createForgeOrdaxRepositoryCatalog} from '../src/forge-ordax-repository-catalog.mjs';
 import {createForgeOrdaxProductMcp} from '../src/forge-ordax-product-mcp.mjs';
+import {ForgeLocalRepositoryOwnerBindings} from '../src/forge-local-repository-owner-bindings.mjs';
 import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
 import {canonicalProviderChatUrl} from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
@@ -1012,9 +1013,10 @@ const orchestratorKernel=createOrchestratorKernel({
 });
 localOrchestratorContext=orchestratorKernel.context;
 const {service:orchestratorService,mcp:localOrchestratorMcp}=orchestratorKernel;
-// This owner installation is now dedicated to one OrdaX OS development
-// project. Keep the six historical acceptance projects untouched in SQLite.
-// Candidate/staged profiles retain their ordinary isolated project behavior.
+// This Owner installation is dedicated to one OrdaX OS development
+// project. Physical Git roots belong to explicit Owner UI consent, never
+// the repository catalogue or the GPT client.
+let forgeLocalRepositoryOwners=null;
 if(!stagedProfile){
   activateDedicatedForgeProject(orchestratorService);
   orchestratorService.repositoryCatalogPort=createForgeOrdaxRepositoryCatalog({
@@ -1022,6 +1024,15 @@ if(!stagedProfile){
   });
   orchestratorService.ordaxProductMcp=createForgeOrdaxProductMcp({
     session:forgeProductSession
+  });
+  forgeLocalRepositoryOwners=new ForgeLocalRepositoryOwnerBindings({
+    store,ownerTrust:forgeMcpTrusted,
+    repositoryCatalog:orchestratorService.repositoryCatalogPort,
+    session:forgeProductSession,
+    forbiddenRoots:[userRoot,path.dirname(process.execPath),
+      process.env.SystemRoot,process.env.ProgramFiles,process.env.ProgramData,
+      process.env['ProgramFiles(x86)']]
+      .filter(value=>typeof value==='string'&&path.isAbsolute(value))
   });
 }
 // Read the exact Forge Git checkpoint; no second store or external writes.
@@ -1455,6 +1466,63 @@ registerUiHandler('ordax:forge:workspace:choose',async(event,projectId)=>{
   // to another project or mutate the root after a prior successful grant.
   orchestratorService.requireAccess(localOrchestratorContext,'project_file_write',projectId);
   return forgeLocalWorkspaces.bindSelected(projectId,chosen.filePaths[0]);
+});
+// Human-operated Owner consent for the independent Forge MCP. This action
+// lives ONLY in the native App renderer; no MCP tool accepts a local root.
+// The App stores permissions; GPT/Forge MCP perform and record work elsewhere.
+const currentForgeRepositoryOwner=(event,repository)=>{
+  requireTrustedSupervisorRenderer(event);
+  const scope=readDedicatedForgeProject(store);
+  if(hostBrowserMode||!forgeLocalRepositoryOwners||!scope||
+     typeof repository!=='string'||
+     !/^ordaxsystems\\/ordax-[a-z0-9-]{2,101}$/.test(repository))
+    throw Error('forge_native_repository_owner_ui_unavailable');
+  return scope.projectId;
+};
+registerUiHandler('ordax:forge:repository-owner:status',(event,repository)=>{
+  const projectId=currentForgeRepositoryOwner(event,repository);
+  return forgeLocalRepositoryOwners.status({projectId,repository});
+});
+registerUiHandler('ordax:forge:repository-owner:choose',async(event,repository)=>{
+  const projectId=currentForgeRepositoryOwner(event,repository);
+  const state=forgeLocalRepositoryOwners.status({projectId,repository});
+  if(state.configured)throw Error('forge_local_repository_already_bound');
+  // The path is selected manually by the Owner in the native OS dialog.
+  // Do not accept paths from IPC, MCP, URL, GitHub catalogue or prompts.
+  const chosen=await dialog.showOpenDialog(win,{
+    title:'Autorizar checkout local · '+repository,
+    defaultPath:app.getPath('documents'),
+    properties:['openDirectory'],
+    buttonLabel:'Selecionar checkout Git'
+  });
+  if(chosen.canceled||chosen.filePaths.length!==1)return {cancelled:true};
+  const confirmed=await confirmInActiveUi({
+    title:'Autorizar leitura local pelo Forge MCP',
+    message:'Vincular somente este repositório?',
+    detail:repository+'\\nPasta selecionada: '+chosen.filePaths[0]+
+      '\\nO Forge MCP terá somente leitura nesta pasta, sob Task e claim ativos. Revogável na mesma tela.',
+    approveLabel:'Autorizar leitura'
+  });
+  if(!confirmed)return {cancelled:true};
+  // Recheck Owner UI and catalog after the human interaction.
+  currentForgeRepositoryOwner(event,repository);
+  return forgeLocalRepositoryOwners.bindSelected({
+    projectId,repository,selectedRoot:chosen.filePaths[0]
+  });
+});
+registerUiHandler('ordax:forge:repository-owner:revoke',async(event,repository)=>{
+  const projectId=currentForgeRepositoryOwner(event,repository);
+  const status=forgeLocalRepositoryOwners.status({projectId,repository});
+  if(!status.configured)return {projectId,repository,revoked:false};
+  const approved=await confirmInActiveUi({
+    title:'Revogar leitura local do Forge MCP',
+    message:'Revogar o acesso deste repositório?',
+    detail:'O vínculo físico de '+repository+' será removido da SQLite canônica. Nenhum arquivo será apagado.',
+    approveLabel:'Revogar acesso'
+  });
+  if(!approved)return {cancelled:true};
+  currentForgeRepositoryOwner(event,repository);
+  return forgeLocalRepositoryOwners.revoke({projectId,repository});
 });
 registerUiHandler('ordax:forge:workspace:migrate',async(event,projectId)=>{
   requireTrustedSupervisorRenderer(event);
