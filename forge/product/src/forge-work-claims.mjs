@@ -74,6 +74,16 @@ export class ForgeWorkClaims {
     if(Date.parse(row.lease_until)<=Date.now())
       throw Error('forge_work_claim_renew_required');
   }
+  // Strict for native repository reads: a released, absent or expired lease
+  // must NEVER authorize observing another chat's assigned physical files.
+  // Unlike assertTaskMutation, historical unclaimed Tasks do not pass.
+  assertActiveTaskLease(context,input){
+    const row=this.row(input.projectId,input.taskId,context.workspaceSessionId);
+    this.authorized(row,{claimToken:input.claimToken,generation:input.claimGeneration});
+    if(Date.parse(row.lease_until)<=Date.now())
+      throw Error('forge_work_claim_renew_required');
+    return true;
+  }
   claim(context,input){
     const now=this.store.now();
     const previous=this.row(input.projectId,input.taskId,context.workspaceSessionId);
