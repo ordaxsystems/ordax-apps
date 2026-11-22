@@ -84,6 +84,28 @@ export class ForgeLocalRepositoryOwnerBindings {
     if(!SHA.test(head))throw Error('forge_local_repository_head_invalid');
     return {root,identity:identityOf(root),head};
   }
+  status({projectId,repository}={}){
+    try{
+      const owner=this.owner(projectId,repository);
+      const row=this.db.prepare('SELECT canonical_root AS root,physical_identity AS identity FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=? AND repository=? AND owner_subject_id=?')
+        .get(projectId,owner.sessionId,repository,owner.ownerSubjectId);
+      if(!row)return {projectId,repository,configured:false,verified:false,
+        reason:'forge_local_repository_owner_binding_required'};
+      try{
+        const current=this.verifiedRoot(repository,row.root);
+        if(current.identity!==row.identity)throw Error('forge_local_repository_physical_identity_changed');
+        return {projectId,repository,configured:true,verified:true,readGranted:true,
+          writeGranted:false,headSha:current.head};
+      }catch{
+        return {projectId,repository,configured:true,verified:false,
+          readGranted:false,writeGranted:false,
+          reason:'forge_local_repository_grant_not_verified'};
+      }
+    }catch{
+      return {projectId,repository,configured:false,verified:false,
+        readGranted:false,writeGranted:false,reason:'forge_local_repository_owner_authorization_required'};
+    }
+  }
   // Trusted native Owner UI only; the OS picker supplies selectedRoot.
   bindSelected({projectId,repository,selectedRoot}={}){
     const owner=this.owner(projectId,repository);
