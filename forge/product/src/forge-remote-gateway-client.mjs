@@ -60,7 +60,10 @@ export class ForgeRemoteGatewayClient {
     this.startPromise=null;this.stopRequested=false;
     this.presenceTimer=null;this.retryTimer=null;this.retryAttempt=0;this.nextRetryAt=null;
     this.retryBaseMs=retryBaseMs;this.retryMaxMs=retryMaxMs;
-    this.catalog=null;this.catalogDigest=null;
+    this.catalog=null;this.catalogDigest=null;this.catalogPublishedDigest=null;
+    // Serialize presence/catalog writes so an older heartbeat cannot
+    // re-publish a stale permission set after a native Owner grant change.
+    this.presencePublication=Promise.resolve();
     this.lastSeenAt=null;this.lastError=null;this.activeRequestIds=new Set();
     this.db.exec(`CREATE TABLE IF NOT EXISTS forge_remote_gateway_identity(
       singleton INTEGER PRIMARY KEY CHECK(singleton=1),
@@ -80,7 +83,9 @@ export class ForgeRemoteGatewayClient {
     const account=this.session.status();
     return {configured:true,running:this.running,connected:this.running&&this.lastError===null,
       instanceId:this.instanceId(),agentInstanceId:this.agentInstanceId,
-      catalogDigest:this.catalogDigest,lastSeenAt:this.lastSeenAt,lastError:this.lastError,
+      catalogDigest:this.catalogDigest,
+      catalogSynchronized:this.catalogDigest===this.catalogPublishedDigest,
+      lastSeenAt:this.lastSeenAt,lastError:this.lastError,
       workers:this.agentInstanceIds.length,reconnectScheduled:this.retryTimer!==null,
       nextRetryAt:this.nextRetryAt,
       activeRequestIds:[...this.activeRequestIds],accountConnected:account.connected===true};
@@ -149,18 +154,40 @@ export class ForgeRemoteGatewayClient {
       catalog:this.catalog,catalog_digest:this.catalogDigest
     });
     this.bindOwnerIdentity({subjectId:account.subjectId,issuer:account.issuer});
+    this.catalogPublishedDigest=this.catalogDigest;
     this.lastSeenAt=result.last_seen_at||new Date(this.now()).toISOString();
     this.lastError=null;
     return result;
   }
   async presence(online=true){
     if(!this.catalog)await this.loadCatalog();
-    const result=await this.request('/v1/forge/instance/presence',{
+    const body={
       instance_id:this.instanceId(),online:Boolean(online),app_version:this.appVersion,
       catalog:this.catalog,catalog_digest:this.catalogDigest
-    });
+    };
+    const pending=this.presencePublication.then(()=>
+      this.request('/v1/forge/instance/presence',body));
+    this.presencePublication=pending.catch(()=>{});
+    const result=await pending;
+    this.catalogPublishedDigest=body.catalog_digest;
     this.lastSeenAt=result.last_seen_at||new Date(this.now()).toISOString();
     this.lastError=null;return result;
+  }
+  // Native Owner binding/revocation changes one capability on the SAME live
+  // gateway. No new executor, OAuth session, timer, database or app restart.
+  // On publication failure, the current catalog remains queued for the
+  // ordinary heartbeat; remote tools still recheck live Owner authority.
+  async refreshCatalog(){
+    if(!this.running)return {refreshed:false,reason:'forge_remote_gateway_not_running'};
+    const catalog=await this.catalogProvider();
+    if(!validCatalog(catalog))throw Error('forge_remote_catalog_invalid');
+    const digest=forgeRemoteCatalogDigest(catalog);
+    if(digest===this.catalogPublishedDigest)
+      return {refreshed:false,catalogDigest:digest,catalogSynchronized:true};
+    this.catalog=structuredClone(catalog);
+    this.catalogDigest=digest;
+    await this.presence(true);
+    return {refreshed:true,catalogDigest:digest,catalogSynchronized:true};
   }
   jobEnvelope(job,agentInstanceId=this.agentInstanceId){
     if(!this.agentInstanceIds.includes(agentInstanceId)||
