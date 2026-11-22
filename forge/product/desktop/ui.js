@@ -11,7 +11,7 @@ const $ = selector => document.querySelector(selector);
 document.title = PRODUCT_NAME;
 for(const id of ['productNameHeader','productNameSettings']) {
   const target=document.getElementById(id);
-  if(target)target.textContent=id==='productNameHeader'?PRODUCT_SHORT_NAME:PRODUCT_NAME;
+  if(target)target.textContent=PRODUCT_NAME;
 }
 const brandEyebrow=document.getElementById('productBrandEyebrow');
 if(brandEyebrow)brandEyebrow.textContent=PRODUCT_NAME.toUpperCase();
@@ -2034,7 +2034,7 @@ document.getElementById('backgroundExitApp')?.addEventListener('click',async()=>
   catch {button.disabled=false;backgroundMessage.textContent='Saída não confirmada: o processo permanece ativo.';}
 });
 
-document.getElementById('brandMode').textContent='ESTÚDIO DE PROJETOS';
+document.getElementById('brandMode').textContent='WORKSPACE DE DESENVOLVIMENTO';
 document.getElementById('labVersion').textContent=PRODUCT_NAME+' • GPT único';
 labRecoverButton.disabled=false;
 labRecoverButton.addEventListener("click", async () => {
