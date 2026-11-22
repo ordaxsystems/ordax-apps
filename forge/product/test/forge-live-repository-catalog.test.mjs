@@ -33,7 +33,7 @@ test('live MCP tools/list and tools/call revoke a native reader without restarti
     capabilities:{},clientInfo:{name:'test',version:'1'}});
   assert.ok(init.result);
   await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
-  const hasRead=async id=2=>(await invoke(id,'tools/list',{}))
+  const hasRead=async(id=2)=>(await invoke(id,'tools/list',{}))
     .result.tools.some(x=>x.name==='forge_repository_file_read');
   assert.equal(await hasRead(),false);
   const unknown=()=>invoke(5,'tools/call',{name:'forge_repository_file_read',arguments:{}});
