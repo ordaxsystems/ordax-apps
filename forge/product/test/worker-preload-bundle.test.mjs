@@ -12,7 +12,7 @@ test('sandboxed ChatGPT preload bundles local selectors and keeps Electron as it
   const temp = fs.mkdtempSync(path.join(staging, 'worker-preload-test-'));
   t.after(() => fs.rmSync(temp, {force:true, recursive:true}));
   const outfile = path.join(temp, 'worker-preload.bundle.cjs');
-  buildWorkerPreload({outfile});
+  await buildWorkerPreload({outfile});
   const bundle = fs.readFileSync(outfile, 'utf8');
   assert.match(bundle, /require\(["']electron["']\)/);
   assert.match(bundle, /\[data-message-author-role="assistant"\]/);
