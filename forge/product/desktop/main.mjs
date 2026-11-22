@@ -29,6 +29,7 @@ import {activateDedicatedForgeProject,dedicatedForgeMcpOperations,readDedicatedF
 import {createForgeOrdaxRepositoryCatalog} from '../src/forge-ordax-repository-catalog.mjs';
 import {createForgeOrdaxProductMcp} from '../src/forge-ordax-product-mcp.mjs';
 import {ForgeLocalRepositoryOwnerBindings} from '../src/forge-local-repository-owner-bindings.mjs';
+import {ForgeRepositoryOwnerReadPort} from '../src/forge-repository-owner-read-port.mjs';
 import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
 import {canonicalProviderChatUrl} from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
@@ -1034,6 +1035,16 @@ if(!stagedProfile){
       process.env['ProgramFiles(x86)']]
       .filter(value=>typeof value==='string'&&path.isAbsolute(value))
   });
+  // The MCP gateway's catalogue is created once at Owner startup. A folder
+  // selected later is visible as consent immediately but only becomes an MCP
+  // capability after a controlled gateway/Owner restart, never implicitly.
+  const scope=readDedicatedForgeProject(store);
+  if(scope&&forgeLocalRepositoryOwners.hasApprovedRoot(scope.projectId)){
+    orchestratorService.repositoryReadPort=new ForgeRepositoryOwnerReadPort({
+      store,repositoryCatalog:orchestratorService.repositoryCatalogPort,
+      resolveOwnerBinding:input=>forgeLocalRepositoryOwners.resolve(input)
+    });
+  }
 }
 // Read the exact Forge Git checkpoint; no second store or external writes.
 orchestratorService.forgeGitMemoryPort=Object.freeze({
