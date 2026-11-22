@@ -1232,3 +1232,15 @@ test('self-contained Forge package skips npm dependency traversal through offici
   assert.equal(pkg.build.beforePack,'./scripts/attest-packaged-asar.cjs');
   assert.equal(pkg.build.afterPack,'./scripts/attest-packaged-asar.cjs');
 });
+
+test('dedicated Forge presents task state without inventing activity events',()=>{
+  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  const style=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  assert.doesNotMatch(uiHtml,/id="fdActivityList"/);
+  assert.doesNotMatch(source,/fd\('fdActivityList'\)/);
+  assert.match(source,/if\(fdView==='tasks'\)fdTaskRows\(list\)/);
+  assert.match(source,/else if\(fdView==='history'\)\s*fdEmpty\(list,/);
+  assert.match(source,/className='fd-empty'/);
+  assert.match(style,/\.fd-detail\{padding:24px;min-height:0\}/);
+  assert.match(style,/\.fd-empty\{max-width:640px/);
+});
