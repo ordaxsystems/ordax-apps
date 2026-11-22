@@ -83,10 +83,12 @@ test('dedicated MCP rejects old one-root Git, terminal and file operations befor
       projectId:scope.projectId
     });
     assert.equal(discovered.development.available,false);
-    assert.equal(discovered.limitations.shell,'ordax_mcp_repository_scoped_grant_required');
+    assert.equal(discovered.limitations.shell,'forge_repository_owner_port_and_grant_required');
     assert.equal(discovered.limitations.externalFilesystem,
-      'ordax_mcp_repository_scoped_grant_required');
+      'forge_repository_owner_port_and_grant_required');
     assert.equal(discovered.workspace.projectFileReadAvailable,false);
+    assert.doesNotMatch(JSON.stringify(discovered.protocol),/perform physical operations using separate authorized OrdaX MCP/i);
+    assert.match(JSON.stringify(discovered.protocol),/Forge MCP.*per-repository|per-repository Forge MCP/i);
     const advertised=dedicatedForgeMcpOperations(store,FORGE_APP_MCP_OPERATIONS);
     for(const operation of ['project_file_read','project_file_write',
       'project_worktree_prepare','project_worktree_integrate','project_command_run',
