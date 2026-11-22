@@ -27,6 +27,10 @@ contextBridge.exposeInMainWorld('ordax', {
   forgeWorkspaceStatus: projectId => ipcRenderer.invoke('ordax:forge:workspace:status',projectId),
   forgeWorkspaceCreate: projectId => ipcRenderer.invoke('ordax:forge:workspace:create',projectId),
   forgeWorkspaceChoose: projectId => ipcRenderer.invoke('ordax:forge:workspace:choose',projectId),
+  // Owner-approved local folder picker; no raw path is accepted over IPC.
+  forgeRepositoryOwnerStatus: repo => ipcRenderer.invoke('ordax:forge:repository-owner:status',repo),
+  forgeRepositoryOwnerChoose: repo => ipcRenderer.invoke('ordax:forge:repository-owner:choose',repo),
+  forgeRepositoryOwnerRevoke: repo => ipcRenderer.invoke('ordax:forge:repository-owner:revoke',repo),
   forgeWorkspaceMigrate: projectId => ipcRenderer.invoke('ordax:forge:workspace:migrate',projectId),
   forgeDevelopmentStatus: projectId => ipcRenderer.invoke('ordax:forge:development:status',projectId),
   forgeDevelopmentApprove: projectId => ipcRenderer.invoke('ordax:forge:development:approve',projectId),
