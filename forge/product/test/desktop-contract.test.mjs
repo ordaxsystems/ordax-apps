@@ -206,7 +206,7 @@ test('desktop package ships only canonical desktop runtime', () => {
   assert.match(main,/const hostBrowserMode=!app\.isPackaged&&/);
   assert.match(main,/await import\('\.\.\/host\/host-browser-server\.mjs'\)/);
   assert.match(main,/createTaskUiHandlers/);
-  assert.match(ui,/brandMode'\)\.textContent='ESTÚDIO DE PROJETOS'/);
+  assert.match(ui,/brandMode'\)\.textContent='WORKSPACE DE DESENVOLVIMENTO'/);
   assert.match(uiHtml,/GPT Web \+ Forge MCP/);
   assert.equal(pkg.build.productName,PRODUCT_NAME);
   assert.match(ui,/const observer=\$\('\.observer-row'\);/);
