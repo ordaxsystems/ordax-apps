@@ -2192,7 +2192,10 @@ body.forge-dedicated-dashboard .fd-nav{order:2}
   background:transparent;color:#b1c1c8;display:flex;gap:12px;align-items:center;
   font-size:13px;text-align:left;cursor:pointer;transition:background .15s ease;
 }
-.fd-nav button::first-letter{font-size:18px}
+.fd-nav-icon{width:19px;height:19px;flex:0 0 19px;display:inline-flex;align-items:center;justify-content:center;color:#849ca8}
+.fd-nav-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.fd-nav button.active .fd-nav-icon{color:#5ae1a1}
+.fd-nav button:hover .fd-nav-icon{color:#d2e5e4}
 .fd-nav button:hover{background:#1a2931;color:#f2faf7}
 .fd-nav button.active{
   background:#183a2e;border-color:#256a4d;color:#effcf5;font-weight:700;
