@@ -1046,6 +1046,13 @@ body.orchestrator-focus .command-advanced>summary::before{content:"▸";color:#d
 body.orchestrator-focus .command-advanced[open]>summary::before{content:"▾"}
 body.orchestrator-focus .command-advanced>summary::-webkit-details-marker{display:none}
 body.orchestrator-focus .command-advanced .project-pulse{max-height:32vh;overflow:auto}
+/* Dedicated project: the persisted status overview is first-class content,
+   not a cramped diagnostics drawer. The same existing Work cards drive it. */
+body.orchestrator-focus .forge-project-overview{flex:none;border-bottom:1px solid var(--border-soft);background:var(--panel)}
+body.orchestrator-focus .forge-project-overview>summary{padding:12px 25px;color:var(--text);font-size:var(--type-label)}
+body.orchestrator-focus .forge-project-overview .project-pulse{max-height:none;overflow:visible;background:var(--panel);padding:12px 25px 18px}
+body.orchestrator-focus .forge-project-overview .project-pulse-stats>button{min-width:0}
+
 body.orchestrator-focus .coordinator-messages{padding:24px 30px;gap:15px}
 body.orchestrator-focus .coordinator-message{background:var(--panel);border-color:var(--border);border-radius:12px;box-shadow:0 6px 18px rgba(15,61,37,.04)}
 body.orchestrator-focus .coordinator-message strong{color:var(--accent)}
