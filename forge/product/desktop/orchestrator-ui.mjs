@@ -1165,7 +1165,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     }
     const projectHeading=document.querySelector('.project-hub-heading strong');
     if(projectHeading)projectHeading.textContent=dedicatedProject?'Projeto':'Projetos';
-    for(const id of ['addProject','quickNewProject','renameProjectButton',
+    for(const id of ['newTask','addProject','quickNewProject','renameProjectButton',
        'deleteProjectButton','projectSetup','projectRenameSetup',
        'projectDeleteSetup','projectRepositoryForm',
        'newScopedWorkButton','newScopedWorkDetails','batchWorkDetails',
