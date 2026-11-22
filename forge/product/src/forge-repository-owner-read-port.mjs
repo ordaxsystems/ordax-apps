@@ -64,7 +64,7 @@ export class ForgeRepositoryOwnerReadPort {
        grant.readAuthorized!==true||grant.authority!=='forge_native_owner'||
        !Number.isFinite(expiry)||expiry<=now||expiry>now+MAX_GRANT_FUTURE_MS||
        typeof grant.root!=='string'||!path.isAbsolute(grant.root)||
-       typeof grant.rootIdentity!=='string'||!/^\\d+:\\d+$/.test(grant.rootIdentity)||
+       typeof grant.rootIdentity!=='string'||!/^\d+:\d+$/.test(grant.rootIdentity)||
        proof?.schema!==ATTESTATION||proof.source!=='forge_platform_runtime'||
        proof.forgeClientId!==FORGE_NATIVE_OAUTH_CLIENT_ID||
        proof.projectId!==projectId||proof.taskId!==taskId||
