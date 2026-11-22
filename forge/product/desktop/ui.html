@@ -55,6 +55,15 @@
           <span class="workspace-mode-copy"><strong>Evidências</strong><small>Resultados a verificar</small></span>
         </button>
       </nav>
+      <nav id="forgeDashboardNav" class="fd-nav" aria-label="Áreas OrdaX OS" hidden>
+        <button type="button" data-fd-view="overview" aria-current="page">⌂ <span>Visão geral</span></button>
+        <button type="button" data-fd-view="tasks">☑ <span>Tarefas</span></button>
+        <button type="button" data-fd-view="agents">♧ <span>Agentes</span></button>
+        <button type="button" data-fd-view="repositories">⑂ <span>Repositórios</span></button>
+        <button type="button" data-fd-view="memory">▤ <span>Memória</span></button>
+        <button type="button" data-fd-view="evidence">◇ <span>Evidências</span></button>
+        <button type="button" data-fd-view="history">◷ <span>Histórico</span></button>
+      </nav>
       <section class="orchestration-navigation" aria-label="Configuração do projeto e administração">
         <details id="projectSetup" class="nav-setup">
           <summary>Novo projeto</summary>
@@ -147,6 +156,29 @@
     </aside>
 
     <section class="chat-column">
+      <section id="forgeDedicatedDashboard" class="fd-dashboard" aria-label="Painel OrdaX OS" hidden>
+        <header class="fd-header">
+          <div><span id="fdBreadcrumb">OrdaX OS / Visão geral</span>
+          <h2 id="fdHeading">Painel do projeto — OrdaX OS</h2>
+          <p>Acompanhamento dos dados persistidos pelo Forge MCP.</p></div>
+          <span class="fd-readonly">● Consulta e apresentação</span>
+        </header>
+        <div id="fdKpis" class="fd-kpis">
+          <article class="fd-card fd-kpi"><small>Tarefas</small><strong id="fdTotal">—</strong><span id="fdTotalNote">Aguardando leitura</span></article>
+          <article class="fd-card fd-kpi"><small>Em andamento</small><strong id="fdRunning">—</strong><span>Estado registrado, não execução atestada</span></article>
+          <article class="fd-card fd-kpi"><small>Repositórios</small><strong id="fdRepos">—</strong><span>Catálogo canônico</span></article>
+          <article class="fd-card fd-kpi"><small>Para revisar</small><strong id="fdAttention">—</strong><span>Pendências registradas</span></article>
+        </div>
+        <div id="fdOverview" class="fd-overview">
+          <section class="fd-card fd-work-card"><h3>Frentes de trabalho</h3><p>Tarefas por estado e responsáveis registrados</p><div id="fdWorkList" class="fd-list"></div></section>
+          <section class="fd-card fd-chart-card"><h3>Tarefas por estado</h3><p>Distribuição dos registros</p><div class="fd-chart-row"><div id="fdDonut" class="fd-donut"><span id="fdDonutCount">—</span></div><div id="fdLegend" class="fd-legend"></div></div></section>
+          <section class="fd-card fd-repos-card"><h3>Repositórios do projeto</h3><p>O catálogo não concede permissões</p><div id="fdRepoList" class="fd-list"></div></section>
+          <section class="fd-card fd-activity-card"><h3>Atividade registrada</h3><p>Progresso sem simulação de eventos</p><div id="fdActivityList" class="fd-list"></div></section>
+          <section class="fd-card fd-evidence-card"><h3>Memória e evidências</h3><p>Consultas e recibos verificáveis</p><div id="fdEvidenceList" class="fd-list"></div></section>
+        </div>
+        <section id="fdDetail" class="fd-card fd-detail" hidden><h3 id="fdDetailHeading"></h3><p id="fdDetailHint"></p><div id="fdDetailList" class="fd-list"></div></section>
+        <footer class="fd-footer"><span>OrdaX Forge · Interface de acompanhamento</span><span>GPT (decisão) → Forge MCP (execução) → SQLite (persistência)</span></footer>
+      </section>
       <div id="forgeProviderGate" class="forge-provider-gate" role="status" aria-live="polite">
         <span id="forgeProviderGateText">Verificando o login do GPT Web antes de liberar os agentes.</span>
         <button id="forgeProviderGateLogin" type="button" class="mini-secondary" hidden>Abrir GPT Web</button>
