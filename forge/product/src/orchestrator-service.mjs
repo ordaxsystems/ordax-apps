@@ -1308,9 +1308,16 @@ export class OrchestratorService {
       if(!this.repositoryReadPort)
         throw Error('forge_repository_owner_port_and_grant_required');
       this.task(input.projectId,input.taskId,'work');
-      return operation==='repository_file_read'
+      this.workClaims.assertActiveTaskLease(context,input);
+      const read=operation==='repository_file_read'
         ?this.repositoryReadPort.read(input)
         :this.repositoryReadPort.list(input);
+      // A grant check may be asynchronous. Revalidate the same claim before
+      // revealing content, so a handoff/revocation during I/O never leaks it.
+      return Promise.resolve(read).then(result=>{
+        this.workClaims.assertActiveTaskLease(context,input);
+        return result;
+      });
     }
     if(operation==='project_repositories'){
       const scope=readDedicatedForgeProject(this.store);
