@@ -637,7 +637,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('projectPulseNote').textContent=counts.attention
       ?'Há frentes que exigem revisão do histórico e dos recibos. Nenhum reenvio é automático.'
       :total===0
-        ?'Nenhuma tarefa registrada. Crie uma tarefa para acompanhar o progresso.'
+        ?dedicatedProject
+          ?'Nenhuma tarefa registrada. As tarefas são criadas pelo GPT usando o Forge MCP; o aplicativo somente acompanha.'
+          :'Nenhuma tarefa registrada. Crie uma tarefa para acompanhar o progresso.'
         :'Estados das tarefas persistidas; não comprovam execução externa nem conclusão do projeto.';
   }
   function applyWorkFilters(){
@@ -1157,9 +1159,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(pulse&&messages&&advancedContent){
       if(dedicatedProject){
         messages.before(pulse);
+        pulse.classList.add('forge-project-overview');
+        pulse.querySelector('summary').textContent='Visão geral · OrdaX OS';
         pulse.open=true;
       }else{
         advancedContent.prepend(pulse);
+        pulse.classList.remove('forge-project-overview');
+        pulse.querySelector('summary').textContent='Resumo e diagnóstico';
         pulse.open=false;
       }
     }
