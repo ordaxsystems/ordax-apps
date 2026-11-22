@@ -107,6 +107,26 @@ export class ForgeLocalRepositoryOwnerBindings {
       .run(projectId,owner.sessionId,repository,owner.ownerSubjectId).changes;
     return {projectId,repository,revoked:changed===1};
   }
+  // Evaluate at native Host startup. A port is not advertised merely because
+  // a database table or OAuth login exists; at least one live root must pass
+  // the exact local Owner identity, origin and physical identity checks.
+  hasApprovedRoot(projectId){
+    try {
+      const ws=this.store.getWorkspaceSession();
+      if(ws?.status!=='active')return false;
+      const rows=this.db.prepare(
+        'SELECT repository,canonical_root AS root,physical_identity AS identity FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=?'
+      ).all(projectId,ws.id);
+      for(const row of rows){
+        try{
+          this.owner(projectId,row.repository);
+          const current=this.verifiedRoot(row.repository,row.root);
+          if(current.identity===row.identity)return true;
+        }catch{}
+      }
+      return false;
+    }catch{return false;}
+  }
   async resolve({projectId,taskId,repository,access}={}){
     if(access!=='read')throw Error('forge_local_repository_access_denied');
     const owner=this.owner(projectId,repository);
