@@ -2281,3 +2281,22 @@ body.forge-dedicated-dashboard .chat-column > :not(#forgeDedicatedDashboard){dis
   .fd-header{align-items:flex-start;flex-direction:column}
   .fd-chart-row{flex-wrap:wrap}
 }
+
+/* Native Owner consent for local Git roots; never an MCP command surface. */
+.fd-repo-owner-row{flex-wrap:wrap}
+.fd-repo-owner-actions{
+  flex:1 0 100%;width:100%;display:flex!important;
+  flex-direction:row!important;align-items:center!important;
+  flex-wrap:wrap;gap:8px!important;padding-left:21px
+}
+.fd-repo-owner-actions span{
+  flex:1 1 230px;min-width:0;color:#aabdc5;
+  font-size:11px;line-height:1.5
+}
+.fd-repo-owner-actions button{
+  border:1px solid #36505a;border-radius:7px;
+  background:#1d3039;color:#e1eaed;padding:6px 10px;
+  font-size:11px;font-weight:600;cursor:pointer
+}
+.fd-repo-owner-actions button:hover:not(:disabled){background:#2a444f}
+.fd-repo-owner-actions button:disabled{opacity:.48;cursor:not-allowed}
