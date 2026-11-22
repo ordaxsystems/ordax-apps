@@ -2163,7 +2163,7 @@ body.forge-dedicated-dashboard #openAppSettings{
   border:1px solid #33444e;background:#17232d;color:#d2dee0;
 }
 body.forge-dedicated-dashboard .project-hub{
-  padding:0;border:0;margin:0 0 16px;background:transparent;
+  order:1;padding:0;border:0;margin:0 0 16px;background:transparent;
 }
 body.forge-dedicated-dashboard .project-hub-heading,
 body.forge-dedicated-dashboard .project-chooser,
@@ -2175,17 +2175,18 @@ body.forge-dedicated-dashboard .tasks-wrap,
 body.forge-dedicated-dashboard .left-footer,
 body.forge-dedicated-dashboard .context-rail,
 body.forge-dedicated-dashboard #contextRail{display:none!important}
-body.forge-dedicated-dashboard .project-identity{
+body.forge-dedicated-dashboard .project-hub .project-identity{
   margin:0;padding:15px 16px;border-radius:13px;border:1px solid #30433f;
-  background:#142820;display:grid;gap:6px;
+  background:#142820;display:grid;gap:6px;box-shadow:none;
 }
 body.forge-dedicated-dashboard .project-identity-kicker{
-  color:#64dca9;font-size:10px;font-weight:750;letter-spacing:.09em;
+  color:#64dca9!important;font-size:10px;font-weight:750;letter-spacing:.09em;
 }
 body.forge-dedicated-dashboard #activeProjectName{color:#f3faf5;font-size:17px}
 body.forge-dedicated-dashboard #activeProjectDetail{color:#90b6a4;font-size:11px}
 .fd-nav[hidden],.fd-dashboard[hidden],.fd-kpis[hidden],.fd-overview[hidden],.fd-detail[hidden]{display:none!important}
 .fd-nav{display:flex;flex-direction:column;gap:5px;margin:6px 0}
+body.forge-dedicated-dashboard .fd-nav{order:2}
 .fd-nav button{
   width:100%;padding:11px 16px;border:1px solid transparent;border-radius:10px;
   background:transparent;color:#b1c1c8;display:flex;gap:12px;align-items:center;
