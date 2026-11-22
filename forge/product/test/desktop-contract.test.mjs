@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import {createRequire} from 'node:module';
 import {resolveProjectOnboardingMission,describeExecutionMonitor,describeUncertainReceiptNotice} from '../desktop/orchestrator-ui.mjs';
 import {PRODUCT_NAME,PRODUCT_SHORT_NAME} from '../src/product-brand.mjs';
 const root = path.resolve(import.meta.dirname, '..');
@@ -1214,4 +1215,20 @@ test('passive activity center has no coordinator keyboard or submit handler',()=
   assert.equal((source.match(/\$\('coordinatorPrompt'\)\.addEventListener\('keydown'/g)||[]).length,0);
   assert.equal((source.match(/\$\('coordinatorComposer'\)\.addEventListener\('submit'/g)||[]).length,0);
   assert.doesNotMatch(source,/requestSubmit\(\)|command\('forjador_send'/);
+});
+
+test('self-contained Forge package skips npm dependency traversal through official hook',async()=>{
+  const hook=createRequire(import.meta.url)('../scripts/skip-empty-prod-deps.cjs');
+  assert.equal(pkg.build.npmRebuild,true);
+  assert.equal(pkg.build.beforeBuild,'./scripts/skip-empty-prod-deps.cjs');
+  assert.deepEqual(Object.keys(pkg.dependencies||{}),[]);
+  assert.deepEqual(Object.keys(pkg.optionalDependencies||{}),[]);
+  assert.equal(await hook.default({appDir:root}),false);
+  assert.throws(()=>hook.assertNoProductionDependencies({dependencies:{'native-addon':'1.0.0'}}),
+    /forge_packaging_production_dependencies_require_review/);
+  assert.throws(()=>hook.assertNoProductionDependencies({optionalDependencies:{'native-addon':'1.0.0'}}),
+    /forge_packaging_production_dependencies_require_review/);
+  // Existing ASAR attestation hooks remain the sole source of build provenance.
+  assert.equal(pkg.build.beforePack,'./scripts/attest-packaged-asar.cjs');
+  assert.equal(pkg.build.afterPack,'./scripts/attest-packaged-asar.cjs');
 });
