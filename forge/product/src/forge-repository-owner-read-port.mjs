@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {ForgeProjectFiles} from './forge-project-files.mjs';
+import {forgeExternalProcessEnvironment} from './forge-external-process-environment.mjs';
 import {FORGE_NATIVE_OAUTH_CLIENT_ID} from './forge-product-session.mjs';
 import {canonicalOrdaxRepositoryRemote} from './forge-ordax-repository-proof.mjs';
 
@@ -95,7 +96,9 @@ export class ForgeRepositoryOwnerReadPort {
        physicalIdentity(root)!==grant.rootIdentity)
       throw Error('forge_repository_root_reparse_denied');
     const cmd=args=>String(this.git('git',['-C',root,...args],{
-      encoding:'utf8',timeout:4000,maxBuffer:2048,windowsHide:true
+      encoding:'utf8',timeout:4000,maxBuffer:2048,windowsHide:true,
+      env:{...forgeExternalProcessEnvironment(),GIT_OPTIONAL_LOCKS:'0',
+        GIT_TERMINAL_PROMPT:'0'}
     })).trim();
     const top=cmd(['rev-parse','--show-toplevel']);
     if(!path.isAbsolute(top)||!same(top,root))
@@ -105,6 +108,71 @@ export class ForgeRepositoryOwnerReadPort {
     const head=cmd(['rev-parse','--verify','HEAD']);
     if(!SHA.test(head))throw Error('forge_repository_head_invalid');
     return {projectId,taskId,repository,root,head};
+  }
+  // Reuse the same exact owner-verified Git root. No arbitrary command
+  // execution, shell or second repository authority is introduced.
+  gitOutput(scope,args){
+    let output;
+    try {
+      output=String(this.git('git',['-C',scope.root,'-c','core.fsmonitor=false',...args],{
+        encoding:'utf8',timeout:10000,maxBuffer:256*1024,windowsHide:true,
+        env:{...forgeExternalProcessEnvironment(),GIT_OPTIONAL_LOCKS:'0',
+        GIT_TERMINAL_PROMPT:'0'}
+      }));
+    } catch(error) {
+      if(error?.code==='ENOBUFS')throw Error('forge_repository_git_output_too_large');
+      throw Error('forge_repository_git_read_failed');
+    }
+    if(Buffer.byteLength(output,'utf8')>192*1024)
+      throw Error('forge_repository_git_output_too_large');
+    return output;
+  }
+  async gitStatus(input={}){
+    const scope=await this.authorize(input);
+    const porcelain=this.gitOutput(scope,['status','--porcelain=v1',
+      '--untracked-files=normal','--ignore-submodules=all']);
+    const branch=this.gitOutput(scope,['branch','--show-current']).trim();
+    const entries=porcelain.split(/\r?\n/u).filter(Boolean);
+    const after=await this.authorize(input);
+    if(!same(after.root,scope.root)||after.head!==scope.head)
+      throw Error('forge_repository_read_scope_changed');
+    return {schema:'ordax.forge.repository-git-status/1',
+      repository:scope.repository,taskId:scope.taskId,gitHeadSha:scope.head,
+      branch:branch||null,clean:entries.length===0,
+      entries:entries.slice(0,80),totalEntries:entries.length,
+      returned:Math.min(entries.length,80),truncated:entries.length>80,
+      ownerGrantVerified:true,rootPathExposed:false,
+      source:'forge_native_owner_read_port'};
+  }
+  async gitDiff(input={}){
+    const relative=input.path??'';
+    if(typeof relative!=='string'||relative.length>240||
+       relative.includes('\u0000')||relative.includes('\\')||
+       relative.startsWith('/')||relative.includes(':')||
+       (relative&&relative.split('/').some(part=>
+         !part||part==='.'||part==='..'||part==='.git')))
+      throw Error('forge_repository_git_path_invalid');
+    if(input.staged!==undefined&&typeof input.staged!=='boolean')
+      throw Error('forge_repository_git_stage_invalid');
+    const scope=await this.authorize(input);
+    const cmd=['diff','--no-ext-diff','--no-textconv','--no-color',
+      '--ignore-submodules=all','--unified=3'];
+    if(input.staged===true)cmd.push('--cached');
+    cmd.push('--');
+    if(relative)cmd.push(':(top,literal)'+relative);
+    const output=this.gitOutput(scope,cmd);
+    const bytes=Buffer.from(output,'utf8');
+    const after=await this.authorize(input);
+    if(!same(after.root,scope.root)||after.head!==scope.head)
+      throw Error('forge_repository_read_scope_changed');
+    const max=32*1024;
+    return {schema:'ordax.forge.repository-git-diff/1',
+      repository:scope.repository,taskId:scope.taskId,gitHeadSha:scope.head,
+      path:relative,staged:input.staged===true,
+      patch:bytes.subarray(0,max).toString('utf8'),
+      bytes:bytes.length,truncated:bytes.length>max,
+      ownerGrantVerified:true,rootPathExposed:false,
+      source:'forge_native_owner_read_port'};
   }
   async inspect(args){
     const verified=await this.authorize(args);

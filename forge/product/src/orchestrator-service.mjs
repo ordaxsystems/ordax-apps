@@ -1354,16 +1354,16 @@ export class OrchestratorService {
         requiredProfile:'repository-catalog-read',devices:[]
       };
     }
-    if(operation==='repository_inspect'||operation==='repository_file_read'||operation==='repository_files_list'){
+    if(['repository_inspect','repository_file_read','repository_files_list',
+      'repository_git_status','repository_git_diff'].includes(operation)){
       if(!this.repositoryReadPort)
         throw Error('forge_repository_owner_port_and_grant_required');
       this.task(input.projectId,input.taskId,'work');
       this.workClaims.assertActiveTaskLease(context,input);
-      const read=operation==='repository_inspect'
-        ?this.repositoryReadPort.inspect(input)
-        :operation==='repository_file_read'
-          ?this.repositoryReadPort.read(input)
-          :this.repositoryReadPort.list(input);
+      const reader={repository_inspect:'inspect',repository_file_read:'read',
+        repository_files_list:'list',repository_git_status:'gitStatus',
+        repository_git_diff:'gitDiff'}[operation];
+      const read=this.repositoryReadPort[reader](input);
       // A grant check may be asynchronous. Revalidate the same claim before
       // revealing content, so a handoff/revocation during I/O never leaks it.
       return Promise.resolve(read).then(result=>{

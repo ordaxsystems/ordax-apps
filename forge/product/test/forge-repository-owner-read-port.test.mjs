@@ -12,6 +12,7 @@ import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {dedicatedForgeMcpOperations} from '../src/forge-dedicated-project.mjs';
 import {FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
 import {FORGE_NATIVE_OAUTH_CLIENT_ID} from '../src/forge-product-session.mjs';
+import {forgeExternalProcessEnvironment} from '../src/forge-external-process-environment.mjs';
 
 const REPO='ordaxsystems/ordax-apps';
 const run=(cwd,...argv)=>execFileSync('git',argv,{cwd,encoding:'utf8',timeout:10000,windowsHide:true}).trim();
@@ -83,6 +84,64 @@ test('Forge-native read port verifies exact Task, owner grant, Git origin/HEAD a
   await assert.rejects(f.port.read({...args,path:'.git/config'}),/forge_file_path_invalid/);
 });
 
+test('R2 Git status and diff stay Owner/Task scoped, bounded and read-only',async t=>{
+  const f=await fixture(t);
+  const args={projectId:f.scope.projectId,taskId:f.taskId,repository:REPO};
+  fs.writeFileSync(path.join(f.root,'README.md'),'changed by R2 git read proof\n');
+  fs.writeFileSync(path.join(f.root,'NEWFILE.md'),'untracked\n');
+  const before=run(f.root,'rev-parse','HEAD');
+  const status=await f.port.gitStatus(args);
+  assert.equal(status.clean,false);
+  assert.equal(status.rootPathExposed,false);
+  assert.equal(status.gitHeadSha,before);
+  assert.equal(status.branch!==null,true);
+  f.service.repositoryReadPort=f.port;
+  const serviceStatus=await f.service.invoke(f.context,'repository_git_status',{
+    ...args,claimToken:f.claim.claimToken,
+    claimGeneration:f.claim.claim.generation});
+  assert.equal(serviceStatus.clean,false);
+  assert.equal(serviceStatus.rootPathExposed,false);
+  assert.ok(status.entries.some(entry=>entry.includes('README.md')));
+  assert.ok(status.entries.some(entry=>entry.includes('NEWFILE.md')));
+  const diff=await f.port.gitDiff({...args,path:'README.md'});
+  assert.equal(diff.gitHeadSha,before);
+  assert.equal(diff.staged,false);
+  assert.equal(diff.truncated,false);
+  assert.match(diff.patch,/changed by R2 git read proof/);
+  assert.equal(diff.rootPathExposed,false);
+  assert.equal((await f.port.gitDiff({...args,path:'README.md',staged:true})).patch,'');
+  for(const badPath of ['../README.md','.git/config','src/../README.md',':(top)README.md',
+    '/etc/passwd','dir\\file.md']){
+    await assert.rejects(f.port.gitDiff({...args,path:badPath}),
+      /forge_repository_git_path_invalid/);
+  }
+  await assert.rejects(f.port.gitDiff({...args,staged:'yes'}),
+    /forge_repository_git_stage_invalid/);
+  assert.equal(run(f.root,'rev-parse','HEAD'),before);
+  assert.equal(fs.readFileSync(path.join(f.root,'README.md'),'utf8'),
+    'changed by R2 git read proof\n');
+});
+test('R2 Git reads reject revoked Owner grant and stale Task claim',async t=>{
+  const f=await fixture(t),args={projectId:f.scope.projectId,taskId:f.taskId,repository:REPO};
+  const port=new ForgeRepositoryOwnerReadPort({
+    store:f.store,repositoryCatalog:f.catalog,resolveOwnerBinding:()=>null});
+  await assert.rejects(port.gitStatus(args),/forge_repository_owner_port_and_grant_required/);
+  await assert.rejects(port.gitDiff(args),/forge_repository_owner_port_and_grant_required/);
+  f.service.repositoryReadPort=f.port;
+  await f.service.invoke(f.context,'work_claim',{projectId:f.scope.projectId,taskId:f.taskId,
+    action:'release',claimToken:f.claim.claimToken,
+    generation:f.claim.claim.generation,requestId:'r2_git_read_release'});
+  await assert.rejects(f.service.invoke(f.context,'repository_git_status',{
+    ...args,claimToken:f.claim.claimToken,claimGeneration:f.claim.claim.generation}),
+    /forge_work_claim/);
+});
+
+test('Forge native external child environment strips privileged bridge and provider tokens',()=>{
+  const env=forgeExternalProcessEnvironment({PATH:'C:/Windows',HOME:'C:/profile',
+    ORDAX_BRIDGE_TOKEN:'secret',FORGE_MCP_OAUTH:'secret',
+    NODE_OPTIONS:'--require secret.js',ELECTRON_RUN_AS_NODE:'1'});
+  assert.deepEqual(env,{PATH:'C:/Windows',HOME:'C:/profile'});
+});
 test('Forge-native per-repository reader fails closed without exact owner grant, manifest scope or verified root',async t=>{
   const f=await fixture(t),args={projectId:f.scope.projectId,taskId:f.taskId,repository:REPO};
   const port=grant=>new ForgeRepositoryOwnerReadPort({store:f.store,
@@ -113,11 +172,15 @@ test('dedicated MCP hides native reads without Owner port and serves only scoped
   const f=await fixture(t);
   const missing=dedicatedForgeMcpOperations(f.store,FORGE_APP_MCP_OPERATIONS);
   assert.equal(missing.includes('repository_file_read'),false);
+  assert.equal(missing.includes('repository_git_status'),false);
+  assert.equal(missing.includes('repository_git_diff'),false);
   assert.equal(missing.includes('repository_inspect'),false);
   assert.equal(missing.includes('repository_files_list'),false);
   const present=dedicatedForgeMcpOperations(f.store,FORGE_APP_MCP_OPERATIONS,
     {repositoryReadPortAvailable:true});
   assert.equal(present.includes('repository_file_read'),true);
+  assert.equal(present.includes('repository_git_status'),true);
+  assert.equal(present.includes('repository_git_diff'),true);
   assert.equal(present.includes('repository_inspect'),true);
   assert.equal(present.includes('repository_files_list'),true);
   await assert.rejects(f.service.invoke(f.context,'repository_file_read',{
@@ -137,6 +200,8 @@ test('dedicated MCP hides native reads without Owner port and serves only scoped
   const tools=await mcp.handle({jsonrpc:'2.0',id:2,method:'tools/list'});
   assert.equal(tools.result.tools.some(x=>x.name==='forge_repository_file_read'),true);
   assert.equal(tools.result.tools.some(x=>x.name==='forge_repository_inspect'),true);
+  assert.equal(tools.result.tools.some(x=>x.name==='forge_repository_git_status'),true);
+  assert.equal(tools.result.tools.some(x=>x.name==='forge_repository_git_diff'),true);
   const output=await mcp.handle({jsonrpc:'2.0',id:3,method:'tools/call',
     params:{name:'forge_repository_file_read',arguments:{
       projectId:f.scope.projectId,taskId:f.taskId,repository:REPO,

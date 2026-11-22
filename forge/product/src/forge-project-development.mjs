@@ -3,16 +3,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {spawn,execFileSync} from 'node:child_process';
+import {forgeExternalProcessEnvironment} from './forge-external-process-environment.mjs';
 
 const DEFAULT_TIMEOUT_MS=120_000;
 const MAX_TIMEOUT_MS=1_800_000;
 const MAX_OUTPUT_BYTES=48*1024;
-const ENVIRONMENT_KEYS=['PATH','Path','PATHEXT','SystemRoot','SYSTEMROOT','WINDIR',
-  'COMSPEC','TEMP','TMP','USERPROFILE','HOMEDRIVE','HOMEPATH',
-  'APPDATA','LOCALAPPDATA','PROGRAMFILES','PROCESSOR_ARCHITECTURE',
-  'NUMBER_OF_PROCESSORS','LANG','HOME'];
-const childEnvironment=()=>Object.fromEntries(
-  ENVIRONMENT_KEYS.filter(key=>typeof process.env[key]==='string').map(key=>[key,process.env[key]]));
+const childEnvironment=forgeExternalProcessEnvironment;
 
 function checkedDirectory(root,relative='') {
   if(typeof relative!=='string'||relative.length>1000||relative.includes('\0')||

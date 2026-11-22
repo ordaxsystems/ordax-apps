@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
+import {forgeExternalProcessEnvironment} from './forge-external-process-environment.mjs';
 import {FORGE_NATIVE_OAUTH_CLIENT_ID} from './forge-product-session.mjs';
 import {canonicalOrdaxRepositoryRemote} from './forge-ordax-repository-proof.mjs';
 import {readDedicatedForgeProject} from './forge-dedicated-project.mjs';
@@ -77,7 +78,9 @@ export class ForgeLocalRepositoryOwnerBindings {
        this.forbidden.some(blocked=>within(blocked,root)||within(root,blocked)))
       throw Error('forge_local_repository_root_denied');
     const git=args=>String(this.git('git',['-C',root,...args],{
-      encoding:'utf8',timeout:4000,maxBuffer:4096,windowsHide:true
+      encoding:'utf8',timeout:4000,maxBuffer:4096,windowsHide:true,
+       env:{...forgeExternalProcessEnvironment(),GIT_OPTIONAL_LOCKS:'0',
+        GIT_TERMINAL_PROMPT:'0'}
     })).trim();
     const top=git(['rev-parse','--show-toplevel']);
     if(!path.isAbsolute(top)||!same(path.resolve(top),root))
