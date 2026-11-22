@@ -144,3 +144,71 @@ test('dedicated MCP hides native reads without Owner port and serves only scoped
   assert.equal(output.result.structuredContent.rootPathExposed,false);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) AS n FROM lab_command_receipts').get().n>0,true);
 });
+
+
+test('native repository read rejects forged or stale Forge OAuth/Runtime claims',async t=>{
+  const f=await fixture(t);
+  const args={projectId:f.scope.projectId,taskId:f.taskId,repository:REPO};
+  const cases=[
+    {...f.binding,attestation:{...f.binding.attestation,forgeClientId:'22222222-2222-4222-8222-222222222222'}},
+    {...f.binding,attestation:{...f.binding.attestation,deviceBindingAttested:false}},
+    {...f.binding,attestation:{...f.binding.attestation,repositoryReadGranted:false}},
+    {...f.binding,attestation:{...f.binding.attestation,ownerConfirmed:false}},
+    {...f.binding,attestation:{...f.binding.attestation,taskId:'task_other'}},
+    {...f.binding,attestation:{...f.binding.attestation,source:'forge_prompt_not_authority'}},
+    {...f.binding,attestation:{...f.binding.attestation,verifiedAt:'2020-01-01T00:00:00Z'}},
+    {...f.binding,validUntil:'2099-01-01T00:00:00Z'},
+    {...f.binding,rootIdentity:'0:0'}
+  ];
+  for(let i=0;i<cases.length;i++){
+    const port=new ForgeRepositoryOwnerReadPort({store:f.store,
+      repositoryCatalog:f.catalog,resolveOwnerBinding:async()=>cases[i]});
+    await assert.rejects(port.inspect(args),
+      /forge_repository_owner_port_and_grant_required|forge_repository_root_reparse_denied/,
+      'forged grant case '+i);
+  }
+});
+
+test('released Task claim cannot read files even while a valid Owner binding remains',async t=>{
+  const f=await fixture(t);
+  const input={projectId:f.scope.projectId,taskId:f.taskId,repository:REPO,
+    claimToken:f.claim.claimToken,claimGeneration:f.claim.claim.generation,
+    path:'README.md'};
+  f.service.repositoryReadPort=f.port;
+  const result=await f.service.invoke(f.context,'repository_file_read',input);
+  assert.equal(result.content,'read-only contract\n');
+  await f.service.invoke(f.context,'work_claim',{
+    action:'release',projectId:f.scope.projectId,taskId:f.taskId,
+    requestId:'read_port_release_claim',
+    claimToken:f.claim.claimToken,generation:f.claim.claim.generation
+  });
+  await assert.rejects(f.service.invoke(f.context,'repository_file_read',input),
+    /forge_work_claim_not_owned/);
+});
+
+test('claim revoked during asynchronous Owner verification never reveals physical file bytes',async t=>{
+  const f=await fixture(t);
+  let resume=()=>{},started=()=>{};
+  const entered=new Promise(resolve=>{started=resolve});
+  const paused=new Promise(resolve=>{resume=resolve});
+  let count=0;
+  f.service.repositoryReadPort=new ForgeRepositoryOwnerReadPort({
+    store:f.store,repositoryCatalog:f.catalog,
+    resolveOwnerBinding:async()=>{
+      if(++count===1){started();await paused}
+      return f.binding;
+    }
+  });
+  const input={projectId:f.scope.projectId,taskId:f.taskId,repository:REPO,
+    claimToken:f.claim.claimToken,claimGeneration:f.claim.claim.generation,
+    path:'README.md'};
+  const pending=f.service.invoke(f.context,'repository_file_read',input);
+  await entered;
+  await f.service.invoke(f.context,'work_claim',{
+    action:'release',projectId:f.scope.projectId,taskId:f.taskId,
+    requestId:'read_port_revoke_inflight',
+    claimToken:f.claim.claimToken,generation:f.claim.claim.generation
+  });
+  resume();
+  await assert.rejects(pending,/forge_work_claim_not_owned/);
+});
