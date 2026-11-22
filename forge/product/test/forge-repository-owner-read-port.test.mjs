@@ -11,6 +11,7 @@ import {ForgeRepositoryOwnerReadPort} from '../src/forge-repository-owner-read-p
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {dedicatedForgeMcpOperations} from '../src/forge-dedicated-project.mjs';
 import {FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
+import {FORGE_NATIVE_OAUTH_CLIENT_ID} from '../src/forge-product-session.mjs';
 
 const REPO='ordaxsystems/ordax-apps';
 const run=(cwd,...argv)=>execFileSync('git',argv,{cwd,encoding:'utf8',timeout:10000,windowsHide:true}).trim();
@@ -43,46 +44,57 @@ async function fixture(t){
   await svc.invoke(ctx,'work_repositories_set',{projectId:scope.projectId,taskId,
     claimToken:claim.result.claimToken,claimGeneration:claim.result.claim.generation,
     repositories:[REPO],requestId:'read_port_assign'});
+  const stat=fs.statSync(root,{bigint:true});
+  const identity=stat.dev.toString()+':'+stat.ino.toString();
   const binding={projectId:scope.projectId,taskId,repository:REPO,
-    root,ownerApproved:true,readAuthorized:true,authority:'forge_native_owner',
-    validUntil:'2099-01-01T00:00:00Z'};
+    root,rootIdentity:identity,ownerApproved:true,readAuthorized:true,
+    authority:'forge_native_owner',
+    validUntil:new Date(Date.now()+120000).toISOString(),
+    attestation:{
+      schema:'ordax.forge.owner-repository-read-attestation/1',
+      source:'forge_platform_runtime',forgeClientId:FORGE_NATIVE_OAUTH_CLIENT_ID,
+      deviceId:'33333333-3333-4333-8333-333333333333',
+      projectId:scope.projectId,taskId,repository:REPO,
+      ownerConfirmed:true,deviceBindingAttested:true,
+      repositoryReadGranted:true,verifiedAt:new Date().toISOString()
+    }};
   const grant=()=>binding;
   const port=new ForgeRepositoryOwnerReadPort({
     store,repositoryCatalog:catalog,resolveOwnerBinding:grant});
-  return {store,root,scope,taskId,binding,port,dir,catalog,service:svc,context:ctx};
+  return {store,root,scope,taskId,binding,port,dir,catalog,service:svc,context:ctx,claim:claim.result};
 }
 
 test('Forge-native read port verifies exact Task, owner grant, Git origin/HEAD and reuses existing safe file broker',async t=>{
   const f=await fixture(t),args={projectId:f.scope.projectId,taskId:f.taskId,repository:REPO};
-  const proof=f.port.inspect(args);
+  const proof=await f.port.inspect(args);
   assert.equal(proof.originVerified,true);
   assert.equal(proof.ownerGrantVerified,true);
   assert.equal(proof.rootPathExposed,false);
   assert.match(proof.headSha,/^[a-f0-9]{40}$/);
-  const file=f.port.read({...args,path:'README.md'});
+  const file=await f.port.read({...args,path:'README.md'});
   assert.equal(file.content,'read-only contract\n');
   assert.equal(file.sha256,'e42a6beff992cb7c7934a00d2431525575034e299ffa008031ee3b67906f8f6a');
   assert.equal(file.gitHeadSha,proof.headSha);
   assert.equal(file.rootPathExposed,false);
-  const list=f.port.list({...args,directory:''});
+  const list=await f.port.list({...args,directory:''});
   assert.equal(list.entries.some(entry=>entry.name==='README.md'),true);
   assert.equal(list.entries.find(entry=>entry.name==='.git')?.kind,'directory');
-  assert.throws(()=>f.port.read({...args,path:'../README.md'}),/forge_file_path_invalid/);
-  assert.throws(()=>f.port.read({...args,path:'.git/config'}),/forge_file_path_invalid/);
+  await assert.rejects(f.port.read({...args,path:'../README.md'}),/forge_file_path_invalid/);
+  await assert.rejects(f.port.read({...args,path:'.git/config'}),/forge_file_path_invalid/);
 });
 
 test('Forge-native per-repository reader fails closed without exact owner grant, manifest scope or verified root',async t=>{
   const f=await fixture(t),args={projectId:f.scope.projectId,taskId:f.taskId,repository:REPO};
   const port=grant=>new ForgeRepositoryOwnerReadPort({store:f.store,
     repositoryCatalog:f.catalog,resolveOwnerBinding:()=>grant});
-  assert.throws(()=>port(null).inspect(args),/forge_repository_owner_port_and_grant_required/);
-  assert.throws(()=>port({...f.binding,ownerApproved:false}).inspect(args),/forge_repository_owner_port_and_grant_required/);
-  assert.throws(()=>port({...f.binding,readAuthorized:false}).inspect(args),/forge_repository_owner_port_and_grant_required/);
-  assert.throws(()=>port({...f.binding,validUntil:'2000-01-01T00:00:00Z'}).inspect(args),/forge_repository_owner_port_and_grant_required/);
-  assert.throws(()=>port({...f.binding,taskId:'task_other'}).inspect(args),/forge_repository_owner_port_and_grant_required/);
-  assert.throws(()=>f.port.inspect({...args,repository:'ordaxsystems/ordax-os'}),/forge_task_repository_scope_not_assigned/);
+  await assert.rejects(port(null).inspect(args),/forge_repository_owner_port_and_grant_required/);
+  await assert.rejects(port({...f.binding,ownerApproved:false}).inspect(args),/forge_repository_owner_port_and_grant_required/);
+  await assert.rejects(port({...f.binding,readAuthorized:false}).inspect(args),/forge_repository_owner_port_and_grant_required/);
+  await assert.rejects(port({...f.binding,validUntil:'2000-01-01T00:00:00Z'}).inspect(args),/forge_repository_owner_port_and_grant_required/);
+  await assert.rejects(port({...f.binding,taskId:'task_other'}).inspect(args),/forge_repository_owner_port_and_grant_required/);
+  await assert.rejects(f.port.inspect({...args,repository:'ordaxsystems/ordax-os'}),/forge_task_repository_scope_not_assigned/);
   run(f.root,'remote','set-url','origin','https://github.com/unknown/other.git');
-  assert.throws(()=>f.port.inspect(args),/forge_repository_origin_mismatch/);
+  await assert.rejects(f.port.inspect(args),/forge_repository_origin_mismatch/);
 });
 
 test('Forge-native reader rechecks authorization after I/O and does not reveal file after revocation',async t=>{
@@ -93,7 +105,7 @@ test('Forge-native reader rechecks authorization after I/O and does not reveal f
       calls++;
       return calls===1?f.binding:null;
     }});
-  assert.throws(()=>port.read({...args,path:'README.md'}),
+  await assert.rejects(port.read({...args,path:'README.md'}),
     /forge_repository_owner_port_and_grant_required/);
 });
 
@@ -107,7 +119,9 @@ test('dedicated MCP hides native reads without Owner port and serves only scoped
   assert.equal(present.includes('repository_file_read'),true);
   assert.equal(present.includes('repository_files_list'),true);
   await assert.rejects(f.service.invoke(f.context,'repository_file_read',{
-    projectId:f.scope.projectId,taskId:f.taskId,repository:REPO,path:'README.md'
+    projectId:f.scope.projectId,taskId:f.taskId,repository:REPO,
+    claimToken:f.claim.claimToken,claimGeneration:f.claim.claim.generation,
+    path:'README.md'
   }),/forge_repository_owner_port_and_grant_required/);
   f.service.repositoryReadPort=f.port;
   const mcp=createOrchestratorMcp({
@@ -122,7 +136,9 @@ test('dedicated MCP hides native reads without Owner port and serves only scoped
   assert.equal(tools.result.tools.some(x=>x.name==='forge_repository_file_read'),true);
   const output=await mcp.handle({jsonrpc:'2.0',id:3,method:'tools/call',
     params:{name:'forge_repository_file_read',arguments:{
-      projectId:f.scope.projectId,taskId:f.taskId,repository:REPO,path:'README.md'
+      projectId:f.scope.projectId,taskId:f.taskId,repository:REPO,
+    claimToken:f.claim.claimToken,claimGeneration:f.claim.claim.generation,
+    path:'README.md'
     }}});
   assert.equal(output.result.structuredContent.content,'read-only contract\n');
   assert.equal(output.result.structuredContent.rootPathExposed,false);
