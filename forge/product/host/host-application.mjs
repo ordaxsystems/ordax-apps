@@ -14,6 +14,7 @@ import {activateDedicatedForgeProject,readDedicatedForgeProject} from '../src/fo
 import {createForgeOrdaxRepositoryCatalog} from '../src/forge-ordax-repository-catalog.mjs';
 import {createForgeOrdaxProductMcp} from '../src/forge-ordax-product-mcp.mjs';
 import {ForgeRepositoryOwnerReadPort} from '../src/forge-repository-owner-read-port.mjs';
+import {ForgeLocalRepositoryOwnerBindings} from '../src/forge-local-repository-owner-bindings.mjs';
 import {FORGE_NATIVE_OAUTH_CLIENT_ID} from '../src/forge-product-session.mjs';
 
 const MIME_EXT=new Map([['image/png','png'],['image/jpeg','jpg'],['image/webp','webp'],['image/gif','gif'],['image/avif','avif']]);
@@ -76,6 +77,23 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
     // repository catalog and Task assignment cannot construct a grant.
     // The production launcher supplies no resolver until Platform/Runtime
     // confirms a real per-repository Forge grant and Owner-selected root.
+    const localRoots=new ForgeLocalRepositoryOwnerBindings({
+      store,ownerTrust:native.ownerTrust,repositoryCatalog:service.repositoryCatalogPort,
+      session:remoteSession,
+      forbiddenRoots:[resolvedDataRoot,nativeOwner.userRoot,
+        path.dirname(process.execPath),environment.SystemRoot,
+        environment.ProgramFiles,environment.ProgramData,
+        environment['ProgramFiles(x86)']].filter(x=>
+          typeof x==='string'&&path.isAbsolute(x))
+    });
+    // A live, Owner-selected root in the single SQLite makes the local port
+    // available. Neither Login nor the catalog alone can announce it.
+    if(localRoots.hasApprovedRoot(readDedicatedForgeProject(store)?.projectId)){
+      service.repositoryReadPort=new ForgeRepositoryOwnerReadPort({
+        store,repositoryCatalog:service.repositoryCatalogPort,
+        resolveOwnerBinding:scope=>localRoots.resolve(scope)
+      });
+    }
     const resolver=nativeOwner.repositoryReadGrantResolver;
     if(resolver!==undefined&&resolver!==null){
       if(typeof resolver!=='function')
