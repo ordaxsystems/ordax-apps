@@ -24,7 +24,7 @@
           <button id="quickNewProject" type="button" aria-controls="projectSetup" aria-label="Criar novo projeto">＋ Novo projeto</button>
         </div>
         <section class="project-identity" aria-label="Projeto selecionado">
-          <span class="project-identity-kicker">EM FOCO</span>
+          <span class="project-identity-kicker">PROJETO ATIVO</span>
           <strong id="activeProjectName">Nenhum projeto selecionado</strong>
           <small id="activeProjectDetail">Crie um projeto para começar</small>
         </section>
@@ -56,15 +56,14 @@
         </button>
       </nav>
       <nav id="forgeDashboardNav" class="fd-nav" aria-label="Áreas OrdaX OS" hidden>
-        <button type="button" data-fd-view="overview" aria-current="page">⌂ <span>Visão geral</span></button>
-        <button type="button" data-fd-view="tasks">☑ <span>Tarefas</span></button>
-        <button type="button" data-fd-view="agents">♧ <span>Agentes</span></button>
-        <button type="button" data-fd-view="repositories">⑂ <span>Repositórios</span></button>
-        <button type="button" data-fd-view="memory">▤ <span>Memória</span></button>
-        <button type="button" data-fd-view="evidence">◇ <span>Evidências</span></button>
-        <button type="button" data-fd-view="history">◷ <span>Histórico</span></button>
-      </nav>
-      <section class="orchestration-navigation" aria-label="Configuração do projeto e administração">
+        <button type="button" data-fd-view="overview" aria-current="page"><span class="fd-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7"/><path d="M5 9v12h14V9"/><path d="M9 21v-7h6v7"/></svg></span><span>Visão geral</span></button>
+        <button type="button" data-fd-view="tasks"><span class="fd-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="m7 9 1.5 1.5L11 8"/><path d="M13 10h4M7 15h10"/></svg></span><span>Tarefas</span></button>
+        <button type="button" data-fd-view="agents"><span class="fd-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 20v-2a5.5 5.5 0 0 1 11 0v2"/><path d="M16 5a3 3 0 0 1 0 6M16 14a5 5 0 0 1 4.5 5"/></svg></span><span>Agentes</span></button>
+        <button type="button" data-fd-view="repositories"><span class="fd-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10M8 5h3a7 7 0 0 1 7 3M8 19h4a6 6 0 0 0 6-6v-3"/></svg></span><span>Repositórios</span></button>
+        <button type="button" data-fd-view="memory"><span class="fd-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 6a4 4 0 0 0-7.4-2A4.5 4.5 0 0 0 3 11a4.5 4.5 0 0 0 2 8 4 4 0 0 0 7-1M12 6a4 4 0 0 1 7.4-2A4.5 4.5 0 0 1 21 11a4.5 4.5 0 0 1-2 8 4 4 0 0 1-7-1M12 6v12"/><path d="M8 9a3 3 0 0 0 2 3M16 9a3 3 0 0 1-2 3"/></svg></span><span>Memória</span></button>
+        <button type="button" data-fd-view="evidence"><span class="fd-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2 20 6v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span><span>Evidências</span></button>
+        <button type="button" data-fd-view="history"><span class="fd-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 11a9 9 0 1 1 2 6"/><path d="M3 4v7h7"/><path d="M12 7v5l3 2"/></svg></span><span>Histórico</span></button>
+      </nav>     <section class="orchestration-navigation" aria-label="Configuração do projeto e administração">
         <details id="projectSetup" class="nav-setup">
           <summary>Novo projeto</summary>
           <form id="newProjectForm">
