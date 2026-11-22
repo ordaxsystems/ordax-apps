@@ -1881,6 +1881,13 @@ app.whenReady().then(async () => {
     }
   }
   await createWindow();
+  // Explicit manual launches must activate the already-created native window.
+  // With several GPT chats/windows active, show:true alone can leave Forge
+  // behind another app; reuse the same single-window recovery as the tray.
+  // Never steal focus from an intentional background start, browser Host,
+  // or supervised resident process.
+  if(!hostBrowserMode&&!backgroundStartupRequested&&!supervisedDevelopmentResident)
+    showCanonicalWindow();
   if(backgroundOptedIn){
     const trayReady=await ensureBackgroundTray();
     if(!trayReady&&win&&!win.isDestroyed())win.show();
