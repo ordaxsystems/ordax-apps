@@ -9,6 +9,9 @@ export const PASSIVE_UI_STORAGE_OPERATIONS=Object.freeze([
   'work_create','work_batch_create','work_draft_set','work_dependency_set'
 ]);
 const STORAGE=new Set(PASSIVE_UI_STORAGE_OPERATIONS);
+// Native repository reads are read-only, but remain MCP-ONLY. The passive
+// renderer must not proxy them with a claimed Task lease from a GPT client.
+const MCP_ONLY_READS=new Set(['repository_files_list','repository_file_read']);
 const TOOL_BY_OPERATION=new Map(ORCHESTRATOR_TOOLS.map(tool=>[tool.operation,tool]));
 const TOOL_BY_NAME=new Map(ORCHESTRATOR_TOOLS.map(tool=>[tool.name,tool]));
 
@@ -18,6 +21,7 @@ export function assertPassiveUiOperation(operation,{dedicatedProject=false}={}) 
   // In this installation the App only displays canonical OrdaX OS state.
   // Tasks, drafts, dependencies, claims and work all enter through Forge MCP,
   // not through a renderer IPC shortcut to the same Store.
+  if(MCP_ONLY_READS.has(operation))throw Error('forge_passive_app_mcp_only');
   if(dedicatedProject===true&&!tool.readOnly)
     throw Error('forge_dedicated_app_mcp_only');
   if(tool.readOnly||STORAGE.has(operation))return;
@@ -29,5 +33,6 @@ export function assertPassiveUiMcpMessage(message) {
   // tools/call envelope must not bypass the native UI dispatch boundary.
   if(message?.method!=='tools/call')return;
   const tool=TOOL_BY_NAME.get(message?.params?.name);
-  if(tool&&!tool.readOnly)throw Error('forge_passive_app_mcp_only');
+  if(tool&&(!tool.readOnly||MCP_ONLY_READS.has(tool.operation)))
+    throw Error('forge_passive_app_mcp_only');
 }
