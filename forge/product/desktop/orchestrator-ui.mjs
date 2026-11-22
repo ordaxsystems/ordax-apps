@@ -113,6 +113,126 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   const requestKeys=new Map();
   const status=text=>{$('orchestrationNotice').textContent=text;};
   const call=(operation,input={})=>api.orchestratorInvoke(operation,input);
+  // The dedicated dashboard is a read-only projection of the existing Work,
+  // repository and memory results. No second store, timer, GPT dispatch or IPC write.
+  let fdView='overview',fdWorks=null,fdRepositories=null,fdCoordinations=null,fdMemory=null;
+  const fd=id=>$(id);
+  const fdLabels={running:'Em andamento',ready:'Aguardando',attention:'Revisar',completed:'Concluída'};
+  const fdSections={overview:'Visão geral',tasks:'Tarefas',agents:'Agentes',
+    repositories:'Repositórios',memory:'Memória',evidence:'Evidências',history:'Histórico'};
+  const fdNotes={
+    tasks:'Estados persistidos; ações somente pelo Forge MCP.',
+    agents:'Coordenações registradas não comprovam disponibilidade de uma sessão GPT.',
+    repositories:'Um repositório no catálogo não implica grant ou leitura autenticada do GitHub.',
+    memory:'Fonte única: memória persistida pelo Forge MCP.',
+    evidence:'Recibos incertos não são reenviados automaticamente.',
+    history:'Consulta aos registros de tarefas; nenhuma execução é iniciada pelo aplicativo.'
+  };
+  function fdLine(host,title,description,state=''){
+    const row=document.createElement('div');
+    row.className='fd-item';
+    const marker=document.createElement('span');
+    marker.className='fd-item-marker '+(state?'fd-'+state:'');
+    marker.setAttribute('aria-hidden','true');
+    const copy=document.createElement('div');
+    const name=document.createElement('strong');
+    name.textContent=String(title||'Registro sem título');
+    const detail=document.createElement('small');
+    detail.textContent=String(description||'');
+    copy.append(name,detail);row.append(marker,copy);host.append(row);
+  }
+  function fdEmpty(host,description){host.replaceChildren();fdLine(host,description,'', 'idle');}
+  function fdTaskRows(host,limit=Infinity){
+    host.replaceChildren();
+    if(!fdWorks){fdEmpty(host,'Aguardando consulta das tarefas do projeto.');return;}
+    if(!fdWorks.length){fdEmpty(host,'Nenhuma tarefa registrada. O GPT cria tarefas pelo Forge MCP.');return;}
+    for(const work of fdWorks.slice(0,limit))
+      fdLine(host,work.title,fdLabels[work.state]||'Estado não confirmado',work.state);
+  }
+  function fdRepositoryRows(host,limit=Infinity){
+    host.replaceChildren();
+    if(!fdRepositories){fdEmpty(host,'Catálogo ainda indisponível. Nenhum acesso foi presumido.');return;}
+    if(!fdRepositories.length){fdEmpty(host,'Nenhum repositório retornado.');return;}
+    for(const item of fdRepositories.slice(0,limit))
+      fdLine(host,item.displayName||item.repositoryFullName||'Repositório',
+        String(item.role||'Owner não informado').replaceAll('_',' ')+' · acesso não concedido pelo catálogo');
+  }
+  function renderFDDashboard(){
+    const root=fd('forgeDedicatedDashboard');
+    const nav=fd('forgeDashboardNav');
+    if(!root||!nav)return;
+    document.body.classList.toggle('forge-dedicated-dashboard',dedicatedProject);
+    root.hidden=!dedicatedProject;nav.hidden=!dedicatedProject;
+    if(!dedicatedProject)return;
+    const currentLabel=fdSections[fdView]||'Visão geral';
+    fd('fdBreadcrumb').textContent='OrdaX OS / '+currentLabel;
+    fd('fdHeading').textContent=fdView==='overview'?'Painel do projeto — OrdaX OS':currentLabel+' — OrdaX OS';
+    for(const button of nav.querySelectorAll('button')){
+      const active=button.dataset.fdView===fdView;
+      button.classList.toggle('active',active);
+      if(active)button.setAttribute('aria-current','page');
+      else button.removeAttribute('aria-current');
+    }
+    const overview=fdView==='overview';
+    fd('fdKpis').hidden=!overview;
+    fd('fdOverview').hidden=!overview;
+    fd('fdDetail').hidden=overview;
+    const states={running:0,ready:0,attention:0,completed:0};
+    for(const work of fdWorks||[])if(Object.hasOwn(states,work.state))states[work.state]++;
+    const total=fdWorks?.length??null;
+    fd('fdTotal').textContent=total===null?'—':String(total);
+    fd('fdRunning').textContent=total===null?'—':String(states.running);
+    fd('fdAttention').textContent=total===null?'—':String(states.attention);
+    fd('fdRepos').textContent=fdRepositories?String(fdRepositories.length):'—';
+    fd('fdTotalNote').textContent=total===null?'Aguardando leitura':states.ready+' aguardando · '+states.completed+' concluídas';
+    fd('fdDonutCount').textContent=total===null?'—':String(total);
+    const palette=[['running','#31d690'],['ready','#4aa7ef'],
+      ['attention','#e8b64d'],['completed','#a97bf2']];
+    let start=0;const segments=[];const legend=fd('fdLegend');legend.replaceChildren();
+    for(const [name,color] of palette){
+      const end=start+(states[name]/Math.max(1,total||0))*100;
+      segments.push(color+' '+start+'% '+end+'%');
+      const line=document.createElement('div');line.className='fd-legend-line';
+      const dot=document.createElement('i');dot.style.background=color;
+      const label=document.createElement('span');label.textContent=fdLabels[name];
+      const count=document.createElement('strong');count.textContent=String(states[name]);
+      line.append(dot,label,count);legend.append(line);start=end;
+    }
+    fd('fdDonut').style.background=total
+      ?'conic-gradient('+segments.join(',')+')'
+      :'conic-gradient(#2a3642 0% 100%)';
+    fdTaskRows(fd('fdWorkList'),5);
+    fdRepositoryRows(fd('fdRepoList'),5);
+    const activity=fd('fdActivityList');activity.replaceChildren();
+    if(!fdWorks?.length)fdEmpty(activity,'Não há atividade confirmada para apresentar.');
+    else for(const work of fdWorks.slice(0,4))
+      fdLine(activity,work.title,fdLabels[work.state]||'Estado registrado',work.state);
+    const evidence=fd('fdEvidenceList');evidence.replaceChildren();
+    fdLine(evidence,'Memória do projeto',fdMemory?'Projeção de memória disponível':'Nenhuma projeção confirmada');
+    fdLine(evidence,'Evidências e recibos','Resultados exigem comprovação; o App não executa tarefas.');
+    fdLine(evidence,'Sessões GPT',fdCoordinations
+      ?fdCoordinations.length+' coordenação(ões) registradas; sessão GPT não verificada'
+      :'Nenhum status de sessão atestado');
+    if(overview)return;
+    fd('fdDetailHeading').textContent=currentLabel;
+    fd('fdDetailHint').textContent=fdNotes[fdView]||'Consulta ao projeto';
+    const list=fd('fdDetailList');list.replaceChildren();
+    if(fdView==='tasks'||fdView==='history')fdTaskRows(list);
+    else if(fdView==='repositories')fdRepositoryRows(list);
+    else if(fdView==='agents'){
+      if(!fdCoordinations?.length)fdEmpty(list,'Nenhuma coordenação consultada.');
+      else for(const coordinator of fdCoordinations)
+        fdLine(list,coordinator.name||'Coordenação registrada','Sessão GPT não comprovada');
+    }else if(fdView==='memory'){
+      fdLine(list,'Memória do OrdaX OS',fdMemory?'Projeção canônica disponível':'Ainda não consultada ou indisponível');
+    }else if(fdView==='evidence'){
+      fdLine(list,'Recibos de execução','Consultar o estado canônico pelo Forge MCP antes de qualquer nova ação.');
+      fdLine(list,'Execuções incertas','Nunca repetir uma operação somente porque falta o resultado.');
+    }
+  }
+  for(const button of document.querySelectorAll('#forgeDashboardNav button')){
+    button.addEventListener('click',()=>{fdView=button.dataset.fdView||'overview';renderFDDashboard();});
+  }
   function syncCapabilitySummary() {
     const summary=$('orchestrationCapabilitySummary');
     if(!summary)return;
@@ -1129,6 +1249,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     ]);
     if(generation!==epoch||p!==projectId||o!==orchestratorId)return;
     const works=result.works;
+    fdWorks=works.map(work=>({title:work.title,state:workClassForPlan(work)}));
+    fdMemory=memory?.schema==='ordax.forge.project-memory/1'&&memory.projectId===p?memory:null;
+    renderFDDashboard();
     workCount=works.length;
     $('openWorks').disabled=!projectId||!orchestratorId;
     $('openHistory').disabled=!projectId||!orchestratorId;
@@ -1151,6 +1274,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(generation!==projectRefreshGeneration)return projectsCache;
     projectsCache=result.projects;
     dedicatedProject=result.projectScope?.mode==='dedicated';
+    renderFDDashboard();
     // In dedicated passive mode the activity summary belongs to the main
     // project view, not behind the optional engineering diagnostics menu.
     // Move the existing node: preserve its listeners, state and read model.
@@ -1209,6 +1333,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     try{response=await call('project_repositories',{projectId:currentProjectId});}
     catch{response={available:false,repositories:[]};}
     if(currentProjectId!==projectId||!dedicatedProject)return;
+    fdRepositories=response?.available===true&&Array.isArray(response.repositories)?response.repositories:null;
+    renderFDDashboard();
     section.replaceChildren();
     const heading=document.createElement('h3');
     heading.textContent='Repositórios do OrdaX OS';
@@ -1272,6 +1398,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     // A late response from project A must never overwrite project B's state.
     if(generation!==orchestratorRefreshGeneration||p!==projectId)return [];
     orchestrators=result.orchestrators;
+    fdCoordinations=orchestrators;
+    renderFDDashboard();
     if(!orchestrators.some(o=>o.id===orchestratorId))orchestratorId=orchestrators[0]?.id||null;
     options($('orchestratorSelect'),orchestrators,'Selecione uma coordenação');
     $('orchestratorSelect').value=orchestratorId||'';
