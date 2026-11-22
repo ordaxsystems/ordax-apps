@@ -35,12 +35,15 @@ function missionProjectName(mission) {
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
 export class OrchestratorService {
-  constructor({store,authorize,workspacePort=null,fileBroker=null,development=null,repositoryPort=null,verifyLocalArtifact=null}={}) {
+  constructor({store,authorize,workspacePort=null,fileBroker=null,development=null,repositoryPort=null,repositoryReadPort=null,verifyLocalArtifact=null}={}) {
     if(!store?.db || typeof authorize!=='function')throw Error('orchestrator_ports_required');
     this.store=store; this.db=store.db; this.authorize=authorize;
     // Optional native Forge MCP projection of the separately owned Forge Git checkpoint.
     this.forgeGitMemoryPort=null;
     this.repositoryCatalogPort=null;
+    // Optional Forge-native, owner-approved per-repository reader. No default
+    // binding, no path selected by MCP or derived from the ownership catalog.
+    this.repositoryReadPort=repositoryReadPort;
     // Native renderer proof is an optional App-owned read-only port. It is
     // never used as project authorization or as evidence of publication.
     this.viewPort=null;
@@ -1300,6 +1303,14 @@ export class OrchestratorService {
         executionAuthorized:false,deviceBindingCreated:false,
         requiredProfile:'repository-catalog-read',devices:[]
       };
+    }
+    if(operation==='repository_file_read'||operation==='repository_files_list'){
+      if(!this.repositoryReadPort)
+        throw Error('forge_repository_owner_port_and_grant_required');
+      this.task(input.projectId,input.taskId,'work');
+      return operation==='repository_file_read'
+        ?this.repositoryReadPort.read(input)
+        :this.repositoryReadPort.list(input);
     }
     if(operation==='project_repositories'){
       const scope=readDedicatedForgeProject(this.store);
