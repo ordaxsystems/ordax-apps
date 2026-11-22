@@ -163,9 +163,14 @@ test('native catalog is additive and never enables Electron-only control',()=>{
 });
 
 
-test('Node Owner only composes multi-repository reads from its private Forge OAuth grant resolver',async t=>{
+test('Node Owner only composes multi-repository reads from its private Forge OAuth grant resolver',{timeout:60000},async t=>{
   const folder=await fsp.mkdtemp(path.join(os.tmpdir(),'forge-node-repository-owner-'));
-  t.after(()=>fsp.rm(folder,{recursive:true,force:true,maxRetries:4,retryDelay:100}));
+  let withResolver=null;
+  // Release the Owner SQLite/Core before attempting Windows directory removal.
+  t.after(async()=>{
+    withResolver?.close();
+    await fsp.rm(folder,{recursive:true,force:true,maxRetries:4,retryDelay:100});
+  });
   let connected=true,reads=0;
   const session={status:()=>({connected,mode:'oauth',
     clientId:FORGE_NATIVE_OAUTH_CLIENT_ID}),
@@ -183,11 +188,10 @@ test('Node Owner only composes multi-repository reads from its private Forge OAu
   assert.equal(without.service.repositoryReadPort,null,
     'the Node Owner must not invent a permission from its OAuth connection');
   without.close();
-  const withResolver=create('trusted-resolver',async scope=>{
+  withResolver=create('trusted-resolver',async scope=>{
     reads++;
     return {observed:scope.repository};
   });
-  t.after(()=>withResolver.close());
   assert.equal(typeof withResolver.service.repositoryReadPort?.read,'function');
   const argument={projectId:'project_abc',taskId:'task_abc',
     repository:'ordaxsystems/ordax-os',access:'read'};
