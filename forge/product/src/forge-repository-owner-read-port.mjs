@@ -14,6 +14,7 @@ const REPO=/^ordaxsystems\/ordax-[a-z0-9-]{2,101}$/;
 const SHA=/^[0-9a-f]{40}$/;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ATTESTATION='ordax.forge.owner-repository-read-attestation/1';
+const WRITE_ATTESTATION='ordax.forge.owner-repository-write-attestation/1';
 const MAX_ATTESTATION_AGE_MS=120_000;
 const MAX_GRANT_FUTURE_MS=5*60_000;
 const physicalIdentity=folder=>{const stat=fs.statSync(folder,{bigint:true});
@@ -35,7 +36,8 @@ export class ForgeRepositoryOwnerReadPort {
     this.git=git;
     this.clock=clock;
   }
-  async authorize({projectId,taskId,repository}={}){
+  async authorize({projectId,taskId,repository}={},access='read'){
+    if(!['read','write'].includes(access))throw Error('forge_repository_access_invalid');
     if(!PROJECT.test(projectId)||!TASK.test(taskId)||!REPO.test(repository))
       throw Error('forge_repository_read_scope_invalid');
     const session=this.store.getWorkspaceSession();
@@ -55,7 +57,7 @@ export class ForgeRepositoryOwnerReadPort {
     // A trusted Owner/Runtime adapter must recheck its signed Forge OAuth
     // device binding and repository-specific grant for EACH call. It may
     // perform network I/O. We never infer or cache permission from SQLite.
-    const grant=await this.resolveOwnerBinding({projectId,taskId,repository,access:'read'});
+    const grant=await this.resolveOwnerBinding({projectId,taskId,repository,access});
     const now=this.clock(),proof=grant?.attestation;
     // Independent local Owner approval is a physical Windows/Node authority,
     // not a claimed Runtime device attestation. Remote Runtime proof remains
@@ -71,15 +73,18 @@ export class ForgeRepositoryOwnerReadPort {
     const expiry=Date.parse(grant?.validUntil||'');
     if(!grant||grant.projectId!==projectId||grant.taskId!==taskId||
        grant.repository!==repository||grant.ownerApproved!==true||
-       grant.readAuthorized!==true||grant.authority!=='forge_native_owner'||
+       (access==='write'?grant.writeAuthorized!==true:grant.readAuthorized!==true)||
+       grant.authority!=='forge_native_owner'||
        !Number.isFinite(expiry)||expiry<=now||expiry>now+MAX_GRANT_FUTURE_MS||
        typeof grant.root!=='string'||!path.isAbsolute(grant.root)||
        typeof grant.rootIdentity!=='string'||!/^\d+:\d+$/.test(grant.rootIdentity)||
-       proof?.schema!==ATTESTATION||(!localOwner&&!runtimeOwner)||
+       proof?.schema!==(access==='write'?WRITE_ATTESTATION:ATTESTATION)||
+       (!localOwner&&!runtimeOwner)||
        proof.forgeClientId!==FORGE_NATIVE_OAUTH_CLIENT_ID||
        proof.projectId!==projectId||proof.taskId!==taskId||
        proof.repository!==repository||proof.ownerConfirmed!==true||
-       proof.repositoryReadGranted!==true||
+       (access==='write'?proof.repositoryWriteGranted!==true:
+         proof.repositoryReadGranted!==true)||
        !Number.isFinite(issuedAt)||issuedAt>now||
        now-issuedAt>MAX_ATTESTATION_AGE_MS)
       throw Error('forge_repository_owner_port_and_grant_required');
@@ -140,5 +145,46 @@ export class ForgeRepositoryOwnerReadPort {
       entries:result.entries,truncated:result.truncated,
       gitHeadSha:scope.head,ownerGrantVerified:true,
       rootPathExposed:false,source:'forge_native_owner_read_port'};
+  }
+}
+
+/**
+ * Forge-native write capability. Never advertised unless a trusted Owner
+ * process injects a separately approved WRITE port. The read-only local
+ * binding cannot mint or satisfy this permission.
+ */
+export class ForgeRepositoryOwnerWritePort extends ForgeRepositoryOwnerReadPort {
+  async write(input={}) {
+    const scope=await this.authorize(input,'write');
+    if(input.expectedHeadSha!==scope.head)
+      throw Error('forge_repository_head_version_conflict');
+    const broker=new ForgeProjectFiles({root:scope.root,
+      workspaceLookup:()=>scope.root,requireOwnerBinding:true});
+    // No filesystem mutation has been attempted before this last preflight.
+    const before=await this.authorize(input,'write');
+    if(!same(before.root,scope.root)||before.head!==scope.head)
+      throw Error('forge_repository_write_scope_changed');
+    let attempted=false;
+    try {
+      attempted=true;
+      const result=broker.write(scope.projectId,input.path,input.content,
+        input.expectedSha256??null,scope.taskId);
+      // A revoked grant, changed root or Git HEAD after the write produces an
+      // UNCERTAIN receipt, not a false failure or permission to repeat effects.
+      const after=await this.authorize(input,'write');
+      if(!same(after.root,scope.root)||after.head!==scope.head)
+        throw Error('forge_repository_write_scope_changed');
+      return {schema:'ordax.forge.repository-file-write/1',
+        projectId:scope.projectId,taskId:scope.taskId,
+        repository:scope.repository,path:result.path,
+        bytes:result.bytes,sha256:result.sha256,created:result.created,
+        gitHeadSha:scope.head,verified:result.verified,
+        verification:result.verification,externalEffectVerified:result.verified===true,
+        ownerGrantVerified:true,rootPathExposed:false,
+        source:'forge_native_owner_write_port'};
+    } catch(error) {
+      if(attempted)error.repositoryEffectUncertain=true;
+      throw error;
+    }
   }
 }

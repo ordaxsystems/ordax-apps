@@ -7,7 +7,7 @@ import {execFileSync} from 'node:child_process';
 import {Store} from '../src/store.mjs';
 import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
 import {ForgeLocalRepositoryOwnerBindings} from '../src/forge-local-repository-owner-bindings.mjs';
-import {ForgeRepositoryOwnerReadPort} from '../src/forge-repository-owner-read-port.mjs';
+import {ForgeRepositoryOwnerReadPort,ForgeRepositoryOwnerWritePort} from '../src/forge-repository-owner-read-port.mjs';
 import {createOrchestratorKernel} from '../src/orchestrator-kernel.mjs';
 import {activateDedicatedForgeProject} from '../src/forge-dedicated-project.mjs';
 import {FORGE_NATIVE_OAUTH_CLIENT_ID} from '../src/forge-product-session.mjs';
@@ -141,4 +141,42 @@ test('App Owner revocation denies new reads without a second grant database',asy
   await assert.rejects(f.roots.resolve({
     projectId,taskId:f.taskId,repository:REPO,access:'read'
   }),/forge_local_repository_owner_oauth_required/);
+});
+
+test('local write approval is independent, persisted, per-repository and revocable without losing read',async t=>{
+  const f=await fixture(t),projectId=f.scope.projectId;
+  f.trust.trustApp({expectedScopeHash:f.trust.appScopeHash()});
+  f.trust.bindRemoteOwnerIdentity({subjectId:SUBJECT,issuer:ISSUER});
+  f.roots.bindSelected({projectId,repository:REPO,selectedRoot:f.root});
+  assert.equal(f.roots.hasApprovedRoot(projectId,{access:'write'}),false);
+  await assert.rejects(f.roots.resolve({projectId,taskId:f.taskId,
+    repository:REPO,access:'write'}),/forge_local_repository_write_approval_required/);
+  const approved=f.roots.approveWrite({projectId,repository:REPO});
+  assert.equal(approved.writeGranted,true);
+  assert.equal(f.roots.hasApprovedRoot(projectId,{access:'write'}),true);
+  assert.equal(f.roots.status({projectId,repository:REPO}).writeGranted,true);
+  const writePort=new ForgeRepositoryOwnerWritePort({
+    store:f.store,repositoryCatalog:f.catalog,
+    resolveOwnerBinding:scope=>f.roots.resolve(scope)
+  });
+  f.kernel.service.repositoryWritePort=writePort;
+  const args={projectId,taskId:f.taskId,repository:REPO,
+    claimToken:f.claim.claimToken,claimGeneration:f.claim.claim.generation,
+    requestId:'owner_write_permission_e2e',path:'WRITE.md',
+    content:'owner approval proof\n',expectedHeadSha:git(f.root,'rev-parse','HEAD')};
+  const proof=await f.kernel.service.invoke(f.kernel.context,'repository_file_write',args);
+  assert.equal(proof.status,'succeeded');
+  assert.equal(proof.result.verified,true);
+  assert.equal(fs.readFileSync(path.join(f.root,'WRITE.md'),'utf8'),args.content);
+  const revoked=f.roots.revokeWrite({projectId,repository:REPO});
+  assert.equal(revoked.writeRevoked,true);
+  assert.equal(f.roots.hasApprovedRoot(projectId,{access:'read'}),true);
+  assert.equal(f.roots.hasApprovedRoot(projectId,{access:'write'}),false);
+  assert.equal(f.roots.status({projectId,repository:REPO}).readGranted,true);
+  await assert.rejects(f.roots.resolve({projectId,taskId:f.taskId,
+    repository:REPO,access:'write'}),/forge_local_repository_write_approval_required/);
+  await assert.rejects(f.kernel.service.invoke(f.kernel.context,'repository_file_write',{
+    ...args,requestId:'owner_write_after_revoke',content:'forbidden'
+  }),/forge_local_repository_write_approval_required/);
+  assert.equal(fs.readFileSync(path.join(f.root,'WRITE.md'),'utf8'),args.content);
 });

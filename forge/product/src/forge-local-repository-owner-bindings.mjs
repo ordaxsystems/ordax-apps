@@ -43,6 +43,10 @@ export class ForgeLocalRepositoryOwnerBindings {
     this.forbidden=forbiddenRoots.filter(p=>typeof p==='string'&&path.isAbsolute(p))
       .map(p=>path.resolve(p));
     this.db.exec('CREATE TABLE IF NOT EXISTS forge_local_repository_roots (project_id TEXT NOT NULL REFERENCES lab_projects(id) ON DELETE CASCADE, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id), repository TEXT NOT NULL, canonical_root TEXT NOT NULL COLLATE NOCASE UNIQUE, physical_identity TEXT NOT NULL, owner_subject_id TEXT NOT NULL, approved_at TEXT NOT NULL, PRIMARY KEY(project_id,repository))');
+    // Same consent table. Existing READ grants remain READ-ONLY.
+    if(!this.db.prepare('PRAGMA table_info(forge_local_repository_roots)').all()
+      .some(column=>column.name==='write_approved_at'))
+      this.db.exec('ALTER TABLE forge_local_repository_roots ADD COLUMN write_approved_at TEXT');
   }
   owner(projectId,repository){
     const ws=this.store.getWorkspaceSession();
@@ -87,7 +91,7 @@ export class ForgeLocalRepositoryOwnerBindings {
   status({projectId,repository}={}){
     try{
       const owner=this.owner(projectId,repository);
-      const row=this.db.prepare('SELECT canonical_root AS root,physical_identity AS identity FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=? AND repository=? AND owner_subject_id=?')
+      const row=this.db.prepare('SELECT canonical_root AS root,physical_identity AS identity,write_approved_at AS writeApprovedAt FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=? AND repository=? AND owner_subject_id=?')
         .get(projectId,owner.sessionId,repository,owner.ownerSubjectId);
       if(!row)return {projectId,repository,configured:false,verified:false,
         reason:'forge_local_repository_owner_binding_required'};
@@ -95,7 +99,9 @@ export class ForgeLocalRepositoryOwnerBindings {
         const current=this.verifiedRoot(repository,row.root);
         if(current.identity!==row.identity)throw Error('forge_local_repository_physical_identity_changed');
         return {projectId,repository,configured:true,verified:true,readGranted:true,
-          writeGranted:false,headSha:current.head};
+          writeGranted:typeof row.writeApprovedAt==='string'&&
+            Number.isFinite(Date.parse(row.writeApprovedAt))&&
+            Date.parse(row.writeApprovedAt)<=this.clock(),headSha:current.head};
       }catch{
         return {projectId,repository,configured:true,verified:false,
           readGranted:false,writeGranted:false,
@@ -123,6 +129,29 @@ export class ForgeLocalRepositoryOwnerBindings {
       rootIdentityVerified:true,readGranted:true,writeGranted:false,
       headSha:proof.head};
   }
+  // Native Owner UI calls this only after a separate, explicit WRITE
+  // confirmation. A prior read/root approval never escalates automatically.
+  approveWrite({projectId,repository}={}) {
+    const owner=this.owner(projectId,repository);
+    const row=this.db.prepare('SELECT canonical_root AS root,physical_identity AS identity,write_approved_at AS approvedAt FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=? AND repository=? AND owner_subject_id=?')
+      .get(projectId,owner.sessionId,repository,owner.ownerSubjectId);
+    if(!row)throw Error('forge_local_repository_owner_binding_required');
+    const current=this.verifiedRoot(repository,row.root);
+    if(current.identity!==row.identity)
+      throw Error('forge_local_repository_physical_identity_changed');
+    if(row.approvedAt)return {projectId,repository,writeGranted:true,unchanged:true};
+    const changed=this.db.prepare('UPDATE forge_local_repository_roots SET write_approved_at=? WHERE project_id=? AND workspace_session_id=? AND repository=? AND owner_subject_id=? AND physical_identity=? AND write_approved_at IS NULL')
+      .run(new Date(this.clock()).toISOString(),projectId,owner.sessionId,
+        repository,owner.ownerSubjectId,row.identity).changes;
+    if(changed!==1)throw Error('forge_local_repository_write_authorization_conflict');
+    return {projectId,repository,writeGranted:true,headSha:current.head};
+  }
+  revokeWrite({projectId,repository}={}) {
+    const owner=this.owner(projectId,repository);
+    const changed=this.db.prepare('UPDATE forge_local_repository_roots SET write_approved_at=NULL WHERE project_id=? AND workspace_session_id=? AND repository=? AND owner_subject_id=? AND write_approved_at IS NOT NULL')
+      .run(projectId,owner.sessionId,repository,owner.ownerSubjectId).changes;
+    return {projectId,repository,writeRevoked:changed===1};
+  }
   revoke({projectId,repository}={}){
     const owner=this.owner(projectId,repository);
     const changed=this.db.prepare('DELETE FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=? AND repository=? AND owner_subject_id=?')
@@ -132,14 +161,17 @@ export class ForgeLocalRepositoryOwnerBindings {
   // Evaluate at native Host startup. A port is not advertised merely because
   // a database table or OAuth login exists; at least one live root must pass
   // the exact local Owner identity, origin and physical identity checks.
-  hasApprovedRoot(projectId){
+  hasApprovedRoot(projectId,{access='read'}={}){
+    if(!['read','write'].includes(access))return false;
     try {
       const ws=this.store.getWorkspaceSession();
       if(ws?.status!=='active')return false;
       const rows=this.db.prepare(
-        'SELECT repository,canonical_root AS root,physical_identity AS identity,owner_subject_id AS ownerSubjectId FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=?'
+        'SELECT repository,canonical_root AS root,physical_identity AS identity,owner_subject_id AS ownerSubjectId,write_approved_at AS writeApprovedAt FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=?'
       ).all(projectId,ws.id);
       for(const row of rows){
+        if(access==='write'&&(!Number.isFinite(Date.parse(row.writeApprovedAt||''))||
+          Date.parse(row.writeApprovedAt)>this.clock()))continue;
         try{
           const verified=this.owner(projectId,row.repository);
           if(verified.ownerSubjectId!==row.ownerSubjectId)continue;
@@ -151,24 +183,31 @@ export class ForgeLocalRepositoryOwnerBindings {
     }catch{return false;}
   }
   async resolve({projectId,taskId,repository,access}={}){
-    if(access!=='read')throw Error('forge_local_repository_access_denied');
+    if(!['read','write'].includes(access))throw Error('forge_local_repository_access_denied');
     const owner=this.owner(projectId,repository);
-    const row=this.db.prepare('SELECT canonical_root AS root,physical_identity AS identity FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=? AND repository=? AND owner_subject_id=?')
+    const row=this.db.prepare('SELECT canonical_root AS root,physical_identity AS identity,write_approved_at AS writeApprovedAt FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=? AND repository=? AND owner_subject_id=?')
       .get(projectId,owner.sessionId,repository,owner.ownerSubjectId);
     if(!row)throw Error('forge_local_repository_owner_binding_required');
+    if(access==='write'&&(!Number.isFinite(Date.parse(row.writeApprovedAt||''))||
+       Date.parse(row.writeApprovedAt)>this.clock()))
+      throw Error('forge_local_repository_write_approval_required');
     const current=this.verifiedRoot(repository,row.root);
     if(current.identity!==row.identity)throw Error('forge_local_repository_physical_identity_changed');
     const now=this.clock();
     return {projectId,taskId,repository,authority:'forge_native_owner',
-      ownerApproved:true,readAuthorized:true,root:current.root,
+      ownerApproved:true,readAuthorized:access==='read',
+      writeAuthorized:access==='write',root:current.root,
       rootIdentity:current.identity,validUntil:new Date(now+60_000).toISOString(),
       attestation:{
-        schema:'ordax.forge.owner-repository-read-attestation/1',
+        schema:access==='write'?'ordax.forge.owner-repository-write-attestation/1':
+          'ordax.forge.owner-repository-read-attestation/1',
         source:'forge_native_local_owner',forgeClientId:FORGE_NATIVE_OAUTH_CLIENT_ID,
         projectId,taskId,repository,ownerConfirmed:true,ownerIdentityBound:true,
         ownerSubjectId:owner.ownerSubjectId,
         localHostVerified:true,deviceBindingAttested:false,
-        repositoryReadGranted:true,verifiedAt:new Date(now).toISOString()
+        repositoryReadGranted:access==='read',
+        repositoryWriteGranted:access==='write',
+        verifiedAt:new Date(now).toISOString()
       }};
   }
 }

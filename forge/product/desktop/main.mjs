@@ -29,7 +29,7 @@ import {activateDedicatedForgeProject,dedicatedForgeMcpOperations,readDedicatedF
 import {createForgeOrdaxRepositoryCatalog} from '../src/forge-ordax-repository-catalog.mjs';
 import {createForgeOrdaxProductMcp} from '../src/forge-ordax-product-mcp.mjs';
 import {ForgeLocalRepositoryOwnerBindings} from '../src/forge-local-repository-owner-bindings.mjs';
-import {ForgeRepositoryOwnerReadPort} from '../src/forge-repository-owner-read-port.mjs';
+import {ForgeRepositoryOwnerReadPort,ForgeRepositoryOwnerWritePort} from '../src/forge-repository-owner-read-port.mjs';
 import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
 import {canonicalProviderChatUrl} from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
@@ -1046,6 +1046,14 @@ function refreshLocalRepositoryOwnerPort(){
       resolveOwnerBinding:input=>forgeLocalRepositoryOwners.resolve(input)
     })
     :null;
+  const writeApproved=approved&&forgeLocalRepositoryOwners.hasApprovedRoot(
+    scope.projectId,{access:'write'});
+  orchestratorService.repositoryWritePort=writeApproved
+    ?new ForgeRepositoryOwnerWritePort({
+      store,repositoryCatalog:orchestratorService.repositoryCatalogPort,
+      resolveOwnerBinding:input=>forgeLocalRepositoryOwners.resolve(input)
+    })
+    :null;
   return approved;
 }
 if(!stagedProfile)refreshLocalRepositoryOwnerPort();
@@ -1499,7 +1507,10 @@ registerUiHandler('ordax:forge:repository-owner:status',(event,repository)=>{
   const gateway=forgeRemoteGateway.status();
   return {...state,catalogSynchronized:gateway.running===true&&
     gateway.catalogSynchronized===true&&
-    Boolean(orchestratorService.repositoryReadPort)};
+    Boolean(orchestratorService.repositoryReadPort),
+    writeCatalogSynchronized:gateway.running===true&&
+      gateway.catalogSynchronized===true&&
+      Boolean(orchestratorService.repositoryWritePort)};
 });
 registerUiHandler('ordax:forge:repository-owner:choose',async(event,repository)=>{
   const projectId=currentForgeRepositoryOwner(event,repository);
@@ -1534,6 +1545,50 @@ registerUiHandler('ordax:forge:repository-owner:choose',async(event,repository)=
     catalogSynchronized=state.catalogSynchronized===true;
   }catch{/* Existing gateway heartbeat retries; never reinterpret a grant. */}
   return {...granted,catalogSynchronized};
+});
+registerUiHandler('ordax:forge:repository-owner:write-approve',async(event,repository)=>{
+  const projectId=currentForgeRepositoryOwner(event,repository);
+  const status=forgeLocalRepositoryOwners.status({projectId,repository});
+  if(status.verified!==true)
+    throw Error('forge_local_repository_read_binding_required');
+  if(status.writeGranted===true)return {...status,unchanged:true};
+  const approved=await confirmInActiveUi({
+    title:'Autorizar escrita local pelo Forge MCP',
+    message:'Permitir que Tasks com claim válido alterem arquivos deste repositório?',
+    detail:repository+'\nA permissão é limitada a este checkout Git autorizado, com controle de SHA-256 e HEAD, recibos idempotentes e revogação independente. Não autoriza outros repositórios nem publicação automática.',
+    approveLabel:'Autorizar escrita'
+  });
+  if(!approved)return {cancelled:true};
+  currentForgeRepositoryOwner(event,repository);
+  const granted=forgeLocalRepositoryOwners.approveWrite({projectId,repository});
+  refreshLocalRepositoryOwnerPort();
+  let catalogSynchronized=false;
+  try{
+    const state=await forgeRemoteGateway.refreshCatalog();
+    catalogSynchronized=state.catalogSynchronized===true;
+  }catch{/* Existing presence heartbeat retries; local Owner gate is authoritative. */}
+  return {...granted,catalogSynchronized};
+});
+registerUiHandler('ordax:forge:repository-owner:write-revoke',async(event,repository)=>{
+  const projectId=currentForgeRepositoryOwner(event,repository);
+  const status=forgeLocalRepositoryOwners.status({projectId,repository});
+  if(status.writeGranted!==true)return {projectId,repository,writeRevoked:false};
+  const approved=await confirmInActiveUi({
+    title:'Revogar escrita do Forge MCP',
+    message:'Revogar a escrita, mantendo somente a leitura neste repositório?',
+    detail:'A autorização física de escrita de '+repository+' será revogada na SQLite canônica. Arquivos existentes não serão alterados.',
+    approveLabel:'Revogar escrita'
+  });
+  if(!approved)return {cancelled:true};
+  currentForgeRepositoryOwner(event,repository);
+  const revoked=forgeLocalRepositoryOwners.revokeWrite({projectId,repository});
+  refreshLocalRepositoryOwnerPort(); // remove write authority before gateway update
+  let catalogSynchronized=false;
+  try{
+    const state=await forgeRemoteGateway.refreshCatalog();
+    catalogSynchronized=state.catalogSynchronized===true;
+  }catch{/* Stale remote catalog cannot bypass local write revocation. */}
+  return {...revoked,catalogSynchronized};
 });
 registerUiHandler('ordax:forge:repository-owner:revoke',async(event,repository)=>{
   const projectId=currentForgeRepositoryOwner(event,repository);

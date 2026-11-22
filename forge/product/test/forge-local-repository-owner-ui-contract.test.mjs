@@ -24,6 +24,13 @@ test('only native Owner picker may create or revoke a local repository root',()=
   assert.match(ui,/api\.forgeRepositoryOwnerChoose\(repo\)|act\(api\.forgeRepositoryOwnerChoose\)/);
   assert.match(host,/localRoots\.hasApprovedRoot\(readDedicatedForgeProject\(store\)\?\.projectId\)/);
   assert.match(host,/resolveOwnerBinding:scope=>localRoots\.resolve\(scope\)/);
+  assert.match(main,/forgeLocalRepositoryOwners\.approveWrite\(\{projectId,repository\}\)/);
+  assert.match(main,/forgeLocalRepositoryOwners\.revokeWrite\(\{projectId,repository\}\)/);
+  assert.match(main,/title:'Autorizar escrita local pelo Forge MCP'/);
+  assert.match(preload,/forgeRepositoryOwnerApproveWrite: repo => ipcRenderer\.invoke\('ordax:forge:repository-owner:write-approve',repo\)/);
+  assert.match(preload,/forgeRepositoryOwnerRevokeWrite: repo => ipcRenderer\.invoke\('ordax:forge:repository-owner:write-revoke',repo\)/);
+  assert.match(ui,/writeGranted\?api\.forgeRepositoryOwnerRevokeWrite/);
+  assert.match(host,/service\.repositoryWritePort=new ForgeRepositoryOwnerWritePort/);
 });
 test('local permissions remain distinct from remote Runtime attestation',()=>{
   const reader=read('../src/forge-repository-owner-read-port.mjs');

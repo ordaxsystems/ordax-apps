@@ -13,7 +13,7 @@ import {createForgeNodeNativeOwnerPorts} from '../src/forge-node-native-owner-po
 import {activateDedicatedForgeProject,readDedicatedForgeProject} from '../src/forge-dedicated-project.mjs';
 import {createForgeOrdaxRepositoryCatalog} from '../src/forge-ordax-repository-catalog.mjs';
 import {createForgeOrdaxProductMcp} from '../src/forge-ordax-product-mcp.mjs';
-import {ForgeRepositoryOwnerReadPort} from '../src/forge-repository-owner-read-port.mjs';
+import {ForgeRepositoryOwnerReadPort,ForgeRepositoryOwnerWritePort} from '../src/forge-repository-owner-read-port.mjs';
 import {ForgeLocalRepositoryOwnerBindings} from '../src/forge-local-repository-owner-bindings.mjs';
 import {FORGE_NATIVE_OAUTH_CLIENT_ID} from '../src/forge-product-session.mjs';
 
@@ -90,6 +90,13 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
     // available. Neither Login nor the catalog alone can announce it.
     if(localRoots.hasApprovedRoot(readDedicatedForgeProject(store)?.projectId)){
       service.repositoryReadPort=new ForgeRepositoryOwnerReadPort({
+        store,repositoryCatalog:service.repositoryCatalogPort,
+        resolveOwnerBinding:scope=>localRoots.resolve(scope)
+      });
+    }
+    if(localRoots.hasApprovedRoot(readDedicatedForgeProject(store)?.projectId,
+      {access:'write'})){
+      service.repositoryWritePort=new ForgeRepositoryOwnerWritePort({
         store,repositoryCatalog:service.repositoryCatalogPort,
         resolveOwnerBinding:scope=>localRoots.resolve(scope)
       });

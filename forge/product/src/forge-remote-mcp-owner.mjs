@@ -32,7 +32,8 @@ export function createForgeRemoteMcpOwner({
     // JSON schema would reject those tools at the gateway before they reach
     // the canonical dedicated-project access guard in OrchestratorService.
     allowedOperations:()=>dedicatedForgeMcpOperations(store,allowedOperations,
-      {repositoryReadPortAvailable:Boolean(service.repositoryReadPort)}),authorizeFileRead,
+      {repositoryReadPortAvailable:Boolean(service.repositoryReadPort),
+       repositoryWritePortAvailable:Boolean(service.repositoryWritePort)}),authorizeFileRead,
     afterToolInvoke:({operation,args,output,transportReceipt})=>{
       try {
         observeMcpToolCall({store,operation,output,ingress:'remote_gateway',
@@ -98,7 +99,7 @@ const NODE_SQLITE_OPERATIONS=new Set([
   'work_failover_prepare','proposals_list','command_get'
 ]);
 const NODE_NATIVE_OPERATIONS=new Set([
-  'repository_inspect','repository_files_list','repository_file_read',
+  'repository_inspect','repository_files_list','repository_file_read','repository_file_write',
   'project_files_status','project_files_list','project_file_read','project_file_write',
   'project_development_status','project_command_run',
   'project_worktree_prepare','project_worktree_review',

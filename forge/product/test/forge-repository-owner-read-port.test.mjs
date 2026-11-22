@@ -7,7 +7,7 @@ import {execFileSync} from 'node:child_process';
 import {Store} from '../src/store.mjs';
 import {createOrchestratorKernel} from '../src/orchestrator-kernel.mjs';
 import {activateDedicatedForgeProject} from '../src/forge-dedicated-project.mjs';
-import {ForgeRepositoryOwnerReadPort} from '../src/forge-repository-owner-read-port.mjs';
+import {ForgeRepositoryOwnerReadPort,ForgeRepositoryOwnerWritePort} from '../src/forge-repository-owner-read-port.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {dedicatedForgeMcpOperations} from '../src/forge-dedicated-project.mjs';
 import {FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
@@ -227,4 +227,104 @@ test('claim revoked during asynchronous Owner verification never reveals physica
   });
   resume();
   await assert.rejects(pending,/forge_work_claim_not_owned/);
+});
+
+const writableGrant=f=>({
+  ...f.binding,writeAuthorized:true,
+  attestation:{...f.binding.attestation,
+    schema:'ordax.forge.owner-repository-write-attestation/1',
+    repositoryWriteGranted:true}
+});
+const newWriteInput=f=>({
+  projectId:f.scope.projectId,taskId:f.taskId,repository:REPO,
+  claimToken:f.claim.claimToken,claimGeneration:f.claim.claim.generation,
+  requestId:'r1_owner_write_first',path:'NEWFILE.md',content:'Forge CAS proof\n',
+  expectedHeadSha:run(f.root,'rev-parse','HEAD')
+});
+const makeWritePort=(f,resolver)=>new ForgeRepositoryOwnerWritePort({
+  store:f.store,repositoryCatalog:f.catalog,resolveOwnerBinding:resolver
+});
+
+test('R1 write port stays hidden without Owner WRITE authority and never upgrades a read grant',async t=>{
+  const f=await fixture(t);
+  assert.equal(dedicatedForgeMcpOperations(f.store,FORGE_APP_MCP_OPERATIONS)
+    .includes('repository_file_write'),false);
+  assert.equal(dedicatedForgeMcpOperations(f.store,FORGE_APP_MCP_OPERATIONS,
+    {repositoryReadPortAvailable:true}).includes('repository_file_write'),false);
+  const input=newWriteInput(f);
+  f.service.repositoryWritePort=makeWritePort(f,()=>f.binding);
+  await assert.rejects(f.service.invoke(f.context,'repository_file_write',input),
+    /forge_repository_owner_port_and_grant_required/);
+  assert.equal(fs.existsSync(path.join(f.root,input.path)),false);
+});
+
+test('R1 native repository write is CAS, HEAD-fenced, idempotent and receipt-backed',async t=>{
+  const f=await fixture(t),grant=writableGrant(f);
+  f.service.repositoryWritePort=makeWritePort(f,()=>grant);
+  const input=newWriteInput(f);
+  const enabled=dedicatedForgeMcpOperations(f.store,FORGE_APP_MCP_OPERATIONS,
+    {repositoryWritePortAvailable:true});
+  assert.equal(enabled.includes('repository_file_write'),true);
+  const first=await f.service.invoke(f.context,'repository_file_write',input);
+  assert.equal(first.status,'succeeded');
+  assert.equal(first.result.verified,true);
+  assert.equal(first.result.rootPathExposed,false);
+  assert.equal(first.result.gitHeadSha,input.expectedHeadSha);
+  assert.equal(fs.readFileSync(path.join(f.root,input.path),'utf8'),input.content);
+  const replay=await f.service.invoke(f.context,'repository_file_write',input);
+  assert.equal(replay.commandId,first.commandId);
+  assert.equal(replay.status,'succeeded');
+  assert.equal(fs.readFileSync(path.join(f.root,input.path),'utf8'),input.content);
+  await assert.rejects(f.service.invoke(f.context,'repository_file_write',{
+    ...input,requestId:'r1_write_stale_head',expectedHeadSha:'a'.repeat(40)
+  }),/forge_repository_head_version_conflict/);
+  const stale=await f.service.invoke(f.context,'repository_file_write',{
+    ...input,requestId:'r1_write_bad_cas',content:'change without SHA\n'
+  }).catch(error=>error);
+  assert.match(String(stale?.message||''),/forge_file_version_conflict/);
+  assert.equal(fs.readFileSync(path.join(f.root,input.path),'utf8'),input.content);
+  const second=await f.service.invoke(f.context,'repository_file_write',{
+    ...input,requestId:'r1_write_compare_swap',content:'second revision\n',
+    expectedSha256:first.result.sha256
+  });
+  assert.equal(second.status,'succeeded');
+  assert.equal(second.result.created,false);
+  assert.equal(fs.readFileSync(path.join(f.root,input.path),'utf8'),'second revision\n');
+  await assert.rejects(f.service.invoke(f.context,'repository_file_write',{
+    ...input,requestId:'r1_write_traversal',path:'../escape.md'
+  }),/orchestrator_invalid_input|forge_file_path_invalid/);
+});
+
+test('R1 uncertain write is recorded and never replayed after grant revocation',async t=>{
+  const f=await fixture(t),grant=writableGrant(f);
+  let checks=0;
+  f.service.repositoryWritePort=makeWritePort(f,()=>{
+    checks++;
+    return checks<=2?grant:null;
+  });
+  const input=newWriteInput(f);
+  await assert.rejects(f.service.invoke(f.context,'repository_file_write',input),
+    /forge_repository_owner_port_and_grant_required/);
+  const saved=f.store.db.prepare('SELECT id,status FROM lab_command_receipts WHERE request_id=?')
+    .get(input.requestId);
+  assert.equal(saved.status,'uncertain');
+  assert.equal(fs.readFileSync(path.join(f.root,input.path),'utf8'),input.content);
+  const replay=await f.service.invoke(f.context,'repository_file_write',input);
+  assert.equal(replay.commandId,saved.id);
+  assert.equal(replay.status,'uncertain');
+  assert.equal(checks,3,'same requestId must never attempt a second physical write');
+});
+
+test('R1 released claim cannot perform an Owner-approved write',async t=>{
+  const f=await fixture(t),grant=writableGrant(f);
+  f.service.repositoryWritePort=makeWritePort(f,()=>grant);
+  await f.service.invoke(f.context,'work_claim',{
+    action:'release',projectId:f.scope.projectId,taskId:f.taskId,
+    requestId:'r1_release_before_write',
+    claimToken:f.claim.claimToken,generation:f.claim.claim.generation
+  });
+  const input=newWriteInput(f);
+  await assert.rejects(f.service.invoke(f.context,'repository_file_write',input),
+    /forge_work_claim_not_owned/);
+  assert.equal(fs.existsSync(path.join(f.root,input.path)),false);
 });

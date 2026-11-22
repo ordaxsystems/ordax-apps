@@ -35,7 +35,7 @@ function missionProjectName(mission) {
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
 export class OrchestratorService {
-  constructor({store,authorize,workspacePort=null,fileBroker=null,development=null,repositoryPort=null,repositoryReadPort=null,verifyLocalArtifact=null}={}) {
+  constructor({store,authorize,workspacePort=null,fileBroker=null,development=null,repositoryPort=null,repositoryReadPort=null,repositoryWritePort=null,verifyLocalArtifact=null}={}) {
     if(!store?.db || typeof authorize!=='function')throw Error('orchestrator_ports_required');
     this.store=store; this.db=store.db; this.authorize=authorize;
     // Optional native Forge MCP projection of the separately owned Forge Git checkpoint.
@@ -44,6 +44,8 @@ export class OrchestratorService {
     // Optional Forge-native, owner-approved per-repository reader. No default
     // binding, no path selected by MCP or derived from the ownership catalog.
     this.repositoryReadPort=repositoryReadPort;
+    // Independent, opt-in Owner WRITE port. A read approval never enables this.
+    this.repositoryWritePort=repositoryWritePort;
     // Native renderer proof is an optional App-owned read-only port. It is
     // never used as project authorization or as evidence of publication.
     this.viewPort=null;
@@ -766,7 +768,7 @@ export class OrchestratorService {
       }
       const effect=this.db.prepare(`SELECT 1 FROM lab_command_receipt_scope
         WHERE task_id=? AND operation IN (
-          'project_file_write','project_command_run','project_worktree_prepare',
+          'project_file_write','repository_file_write','project_command_run','project_worktree_prepare',
           'project_worktree_integrate','project_worktree_verify','work_accept'
         ) LIMIT 1`).get(input.taskId);
       if(effect)throw Error('forge_task_repository_scope_after_effect_denied');
@@ -778,6 +780,7 @@ export class OrchestratorService {
         filesystemAccessGranted:false
       });
     });
+    if(operation==='repository_file_write')return this.writeRepositoryFile(context,input);
     if(operation==='project_file_write')return this.writeProjectFile(context,input);
     if(operation==='project_development_status')
       return readDedicatedForgeProject(this.store)
@@ -1094,6 +1097,53 @@ export class OrchestratorService {
         reason:deterministic.has(error?.message)?error.message:'forge_development_command_outcome_uncertain',
         externalEffectsVerified:false},deterministic.has(error?.message)?'failed':'uncertain'));}
       catch{}
+      throw error;
+    }
+  }
+
+  // Per-repository writes use the same canonical command ledger and Task
+  // claim. An indeterminate physical write remains UNCERTAIN and is never
+  // repeated just because the MCP transport or GPT conversation disconnected.
+  async writeRepositoryFile(context,input) {
+    if(typeof this.repositoryWritePort?.write!=='function')
+      throw Error('forge_repository_write_owner_grant_required');
+    const reserved=this.transaction(()=>this.reserve(context,'repository_file_write',input));
+    if(reserved.existing)return reserved.existing;
+    try {
+      this.requireAccess(context,'repository_file_write',input.projectId);
+      this.task(input.projectId,input.taskId,'work');
+      this.workClaims.assertActiveTaskLease(context,input);
+      const proof=await this.repositoryWritePort.write(input);
+      this.workClaims.assertActiveTaskLease(context,input);
+      return this.transaction(()=>this.finish(reserved.commandId,proof));
+    } catch(error) {
+      // Revocation after the physical replacement is NOT a safe failed
+      // operation. The port annotates attempted writes for reconciliation.
+      const beforeEffect=new Set([
+        'forge_repository_write_owner_grant_required',
+        'forge_repository_owner_port_and_grant_required',
+        'forge_local_repository_write_approval_required',
+        'forge_local_repository_owner_binding_required',
+        'forge_local_repository_owner_oauth_required',
+        'forge_local_repository_physical_identity_changed',
+        'forge_repository_session_unavailable',
+        'forge_repository_head_version_conflict',
+        'forge_task_repository_scope_not_assigned',
+        'forge_repository_ownership_contract_unavailable',
+        'forge_work_claim_not_owned','forge_work_claim_renew_required',
+        'orchestrator_task_unavailable'
+      ]);
+      const failed=error?.repositoryEffectUncertain!==true&&
+        beforeEffect.has(error?.message);
+      try {
+        this.transaction(()=>this.finish(reserved.commandId,{
+          projectId:input.projectId,taskId:input.taskId,
+          repository:input.repository,path:input.path,
+          reason:failed?error.message:'forge_repository_file_effect_uncertain',
+          verified:false,externalEffectVerified:false,
+          requiresReconciliation:!failed
+        },failed?'failed':'uncertain'));
+      }catch{}
       throw error;
     }
   }

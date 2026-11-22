@@ -65,6 +65,9 @@ test('local Owner root becomes a real Forge MCP read port only after the Owner r
     repositoryCatalog:app.service.repositoryCatalogPort,session});
   assert.equal(selected.hasApprovedRoot(projectId),false);
   selected.bindSelected({projectId,repository:REPO,selectedRoot:local});
+  assert.equal(selected.hasApprovedRoot(projectId,{access:'write'}),false);
+  selected.approveWrite({projectId,repository:REPO});
+  assert.equal(selected.hasApprovedRoot(projectId,{access:'write'}),true);
   assert.equal(selected.hasApprovedRoot(projectId),true);
   const coordinator=await app.service.invoke(app.context,'orchestrators_list',{projectId});
   const work=await app.service.invoke(app.context,'work_create',{
@@ -95,6 +98,14 @@ test('local Owner root becomes a real Forge MCP read port only after the Owner r
   assert.equal(data.rootPathExposed,false);
   assert.equal(data.ownerGrantVerified,true);
   assert.match(data.sha256,/^[0-9a-f]{64}$/);
+  assert.equal(typeof app.service.repositoryWritePort?.write,'function');
+  const written=await app.service.invoke(app.context,'repository_file_write',{
+    ...proof,requestId:'owner_restart_write',path:'EDIT.md',
+    content:'persisted separate consent\n',expectedHeadSha:git(local,'rev-parse','HEAD')
+  });
+  assert.equal(written.status,'succeeded');
+  assert.equal(written.result.verified,true);
+  assert.equal(fs.readFileSync(path.join(local,'EDIT.md'),'utf8'),'persisted separate consent\n');
   const after=new ForgeLocalRepositoryOwnerBindings({
     store:app.store,
     ownerTrust:new ForgeMcpOwnerTrust({
@@ -103,6 +114,11 @@ test('local Owner root becomes a real Forge MCP read port only after the Owner r
     }),
     repositoryCatalog:app.service.repositoryCatalogPort,session
   });
+  assert.equal(after.revokeWrite({projectId,repository:REPO}).writeRevoked,true);
+  await assert.rejects(app.service.invoke(app.context,'repository_file_write',{
+    ...proof,requestId:'owner_restart_denied_write',path:'OTHER.md',
+    content:'denied',expectedHeadSha:git(local,'rev-parse','HEAD')
+  }),/forge_local_repository_write_approval_required/);
   assert.equal(after.revoke({projectId,repository:REPO}).revoked,true);
   await assert.rejects(app.service.invoke(app.context,'repository_file_read',{
     ...proof,path:'README.md'

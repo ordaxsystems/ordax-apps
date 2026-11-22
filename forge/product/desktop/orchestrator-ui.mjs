@@ -169,7 +169,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
          typeof repo!=='string'||!/^ordaxsystems\/ordax-[a-z0-9-]{2,101}$/.test(repo)||
          typeof api.forgeRepositoryOwnerStatus!=='function'||
          typeof api.forgeRepositoryOwnerChoose!=='function'||
-         typeof api.forgeRepositoryOwnerRevoke!=='function')continue;
+         typeof api.forgeRepositoryOwnerRevoke!=='function'||
+         typeof api.forgeRepositoryOwnerApproveWrite!=='function'||
+         typeof api.forgeRepositoryOwnerRevokeWrite!=='function')continue;
       row.classList.add('fd-repo-owner-row');
       const controls=document.createElement('div');
       controls.className='fd-repo-owner-actions';
@@ -179,11 +181,14 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const choose=document.createElement('button');
       choose.type='button';choose.className='mini-secondary';
       choose.textContent='Vincular pasta local';
+      const write=document.createElement('button');
+      write.type='button';write.className='mini-secondary';
+      write.textContent='Autorizar escrita';
       const revoke=document.createElement('button');
       revoke.type='button';revoke.className='mini-secondary';
       revoke.textContent='Revogar';
-      controls.append(state,choose,revoke);row.append(controls);
-      let busy=false;
+      controls.append(state,choose,write,revoke);row.append(controls);
+      let busy=false,writeGranted=false;
       const refresh=async()=>{
         const result=await api.forgeRepositoryOwnerStatus(repo);
         if(!controls.isConnected)return;
@@ -193,27 +198,36 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
             :'Leitura local autorizada · aguardando sincronização MCP')
           :result?.configured===true?'Vínculo existente, mas não verificado'
             :'Nenhuma pasta local autorizada';
+        writeGranted=result?.verified===true&&result?.writeGranted===true;
+        if(writeGranted)state.textContent+=result?.writeCatalogSynchronized===true
+          ?' · escrita MCP sincronizada':' · escrita autorizada, aguardando catálogo';
+        write.textContent=writeGranted?'Revogar escrita':'Autorizar escrita';
+        write.disabled=busy||result?.verified!==true;
         choose.disabled=busy||result?.configured===true;
         revoke.disabled=busy||result?.configured!==true;
       };
       const act=async(action)=>{
         if(busy)return;
-        busy=true;choose.disabled=true;revoke.disabled=true;
+        busy=true;choose.disabled=true;write.disabled=true;revoke.disabled=true;
         try{
           const reply=await action(repo);
           if(reply?.cancelled===true){state.textContent='Operação cancelada pelo proprietário';}
           await refresh();
         }catch{
           state.textContent='Não foi possível confirmar a alteração. Confira a autorização Owner.';
-          choose.disabled=false;revoke.disabled=false;
+          choose.disabled=false;write.disabled=false;revoke.disabled=false;
         }finally{busy=false;void refresh().catch(()=>{});}
       };
       choose.addEventListener('click',()=>{void act(api.forgeRepositoryOwnerChoose);});
+      write.addEventListener('click',()=>{
+        void act(writeGranted?api.forgeRepositoryOwnerRevokeWrite:
+          api.forgeRepositoryOwnerApproveWrite);
+      });
       revoke.addEventListener('click',()=>{void act(api.forgeRepositoryOwnerRevoke);});
       void refresh().catch(()=>{
         if(controls.isConnected){
           state.textContent='Autoridade local indisponível';
-          choose.disabled=true;revoke.disabled=true;
+          choose.disabled=true;write.disabled=true;revoke.disabled=true;
         }
       });
     }
