@@ -12,7 +12,11 @@ import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 
 test('canonical instructions reference only real typed MCP tool names, never invented names',()=>{
   const catalog=new Map(ORCHESTRATOR_TOOLS.map(tool=>[tool.name,tool.operation]));
-  const mentioned=text=>[...new Set([...text.matchAll(/\bforge_[a-z][a-z0-9_]*\b/g)].map(m=>m[0]))];
+  // A diagnostic error code is NOT a callable MCP tool. Keep strict checks
+  // for every other forge_* name in the user-facing instructions.
+  const diagnosticCodes=new Set(['forge_repository_owner_port_and_grant_required']);
+  const mentioned=text=>[...new Set([...text.matchAll(/\bforge_[a-z][a-z0-9_]*\b/g)].map(m=>m[0]))]
+    .filter(name=>!diagnosticCodes.has(name));
   const scoped=[...FORGE_EXECUTOR_PROTOCOL.flow,FORGE_SCOPED_MCP_INSTRUCTIONS].join(' ');
   for(const name of mentioned(scoped)){
     assert.ok(catalog.has(name),'scoped instructions refer to missing MCP tool: '+name);
