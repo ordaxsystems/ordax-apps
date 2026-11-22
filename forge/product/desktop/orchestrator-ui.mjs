@@ -126,7 +126,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     repositories:'Um repositório no catálogo não implica grant ou leitura autenticada do GitHub.',
     memory:'Fonte única: memória persistida pelo Forge MCP.',
     evidence:'Recibos incertos não são reenviados automaticamente.',
-    history:'Consulta aos registros de tarefas; nenhuma execução é iniciada pelo aplicativo.'
+    history:'Estados de tarefas não são eventos históricos. Consulte os recibos pelo Forge MCP.'
   };
   function fdLine(host,title,description,state=''){
     const row=document.createElement('div');
@@ -141,7 +141,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     detail.textContent=String(description||'');
     copy.append(name,detail);row.append(marker,copy);host.append(row);
   }
-  function fdEmpty(host,description){host.replaceChildren();fdLine(host,description,'', 'idle');}
+  function fdEmpty(host,description){
+    host.replaceChildren();
+    const note=document.createElement('p');
+    note.className='fd-empty';
+    note.textContent=String(description||'Nenhum registro disponível.');
+    host.append(note);
+  }
   function fdTaskRows(host,limit=Infinity){
     host.replaceChildren();
     if(!fdWorks){fdEmpty(host,'Aguardando consulta das tarefas do projeto.');return;}
@@ -203,10 +209,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       :'conic-gradient(#2a3642 0% 100%)';
     fdTaskRows(fd('fdWorkList'),5);
     fdRepositoryRows(fd('fdRepoList'),5);
-    const activity=fd('fdActivityList');activity.replaceChildren();
-    if(!fdWorks?.length)fdEmpty(activity,'Não há atividade confirmada para apresentar.');
-    else for(const work of fdWorks.slice(0,4))
-      fdLine(activity,work.title,fdLabels[work.state]||'Estado registrado',work.state);
     const evidence=fd('fdEvidenceList');evidence.replaceChildren();
     fdLine(evidence,'Memória do projeto',fdMemory?'Projeção de memória disponível':'Nenhuma projeção confirmada');
     fdLine(evidence,'Evidências e recibos','Resultados exigem comprovação; o App não executa tarefas.');
@@ -215,9 +217,16 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       :'Nenhum status de sessão atestado');
     if(overview)return;
     fd('fdDetailHeading').textContent=currentLabel;
-    fd('fdDetailHint').textContent=fdNotes[fdView]||'Consulta ao projeto';
+    const detailCount=fdView==='tasks'?(fdWorks?.length??null)
+      :fdView==='repositories'?(fdRepositories?.length??null)
+      :fdView==='agents'?(fdCoordinations?.length??null):null;
+    const detailSummary=detailCount===null?''
+      :' · '+detailCount+(fdView==='repositories'?' repositório(s)':fdView==='agents'?' coordenação(ões)':' tarefa(s)')+' registrada(s)';
+    fd('fdDetailHint').textContent=(fdNotes[fdView]||'Consulta ao projeto')+detailSummary;
     const list=fd('fdDetailList');list.replaceChildren();
-    if(fdView==='tasks'||fdView==='history')fdTaskRows(list);
+    if(fdView==='tasks')fdTaskRows(list);
+    else if(fdView==='history')
+      fdEmpty(list,'A linha do tempo de eventos não foi consultada nesta tela. Consulte os recibos canônicos no Forge MCP.');
     else if(fdView==='repositories')fdRepositoryRows(list);
     else if(fdView==='agents'){
       if(!fdCoordinations?.length)fdEmpty(list,'Nenhuma coordenação consultada.');
