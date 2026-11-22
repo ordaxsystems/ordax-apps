@@ -57,6 +57,16 @@ export class ForgeRepositoryOwnerReadPort {
     // perform network I/O. We never infer or cache permission from SQLite.
     const grant=await this.resolveOwnerBinding({projectId,taskId,repository,access:'read'});
     const now=this.clock(),proof=grant?.attestation;
+    // Independent local Owner approval is a physical Windows/Node authority,
+    // not a claimed Runtime device attestation. Remote Runtime proof remains
+    // a distinct, stricter branch; neither can impersonate the other.
+    const localOwner=(proof?.source==='forge_native_local_owner'&&
+      proof.localHostVerified===true&&proof.deviceBindingAttested===false&&
+      proof.ownerIdentityBound===true&&
+      typeof proof.ownerSubjectId==='string'&&UUID.test(proof.ownerSubjectId));
+    const runtimeOwner=(proof?.source==='forge_platform_runtime'&&
+      proof.deviceBindingAttested===true&&
+      typeof proof.deviceId==='string'&&UUID.test(proof.deviceId));
     const issuedAt=Date.parse(proof?.verifiedAt||'');
     const expiry=Date.parse(grant?.validUntil||'');
     if(!grant||grant.projectId!==projectId||grant.taskId!==taskId||
@@ -65,12 +75,11 @@ export class ForgeRepositoryOwnerReadPort {
        !Number.isFinite(expiry)||expiry<=now||expiry>now+MAX_GRANT_FUTURE_MS||
        typeof grant.root!=='string'||!path.isAbsolute(grant.root)||
        typeof grant.rootIdentity!=='string'||!/^\d+:\d+$/.test(grant.rootIdentity)||
-       proof?.schema!==ATTESTATION||proof.source!=='forge_platform_runtime'||
+       proof?.schema!==ATTESTATION||(!localOwner&&!runtimeOwner)||
        proof.forgeClientId!==FORGE_NATIVE_OAUTH_CLIENT_ID||
        proof.projectId!==projectId||proof.taskId!==taskId||
        proof.repository!==repository||proof.ownerConfirmed!==true||
-       proof.deviceBindingAttested!==true||proof.repositoryReadGranted!==true||
-       typeof proof.deviceId!=='string'||!UUID.test(proof.deviceId)||
+       proof.repositoryReadGranted!==true||
        !Number.isFinite(issuedAt)||issuedAt>now||
        now-issuedAt>MAX_ATTESTATION_AGE_MS)
       throw Error('forge_repository_owner_port_and_grant_required');
