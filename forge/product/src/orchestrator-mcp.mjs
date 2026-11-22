@@ -30,7 +30,8 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
   allowedOperations=null,allowedProjectId=null,authorizeFileRead=null,afterToolInvoke=null}={}) {
   if(typeof service?.invoke!=='function'||typeof getContext!=='function')
     throw Error('orchestrator_mcp_ports_required');
-  if(allowedOperations!==null&&(!Array.isArray(allowedOperations)||
+  if(allowedOperations!==null&&typeof allowedOperations!=='function'&&
+     (!Array.isArray(allowedOperations)||
       allowedOperations.some(op=>typeof op!=='string')))
     throw Error('orchestrator_mcp_scope_invalid');
   if(allowedProjectId!==null&&(typeof allowedProjectId!=='string'||!allowedProjectId))
@@ -39,7 +40,17 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
     throw Error('orchestrator_mcp_file_guard_invalid');
   if(afterToolInvoke!==null&&typeof afterToolInvoke!=='function')
     throw Error('orchestrator_mcp_after_invoke_invalid');
-  const allow=allowedOperations===null?null:new Set(allowedOperations);
+  // Owner-scoped live capability projection. A function is supplied ONLY by
+  // the trusted local Owner composition, never by JSON-RPC input. Resolve it
+  // on discovery AND execution so a revoked port cannot remain callable.
+  const currentAllowed=()=>{
+    if(allowedOperations===null)return null;
+    const ops=typeof allowedOperations==='function'
+      ?allowedOperations():allowedOperations;
+    if(!Array.isArray(ops)||ops.some(op=>typeof op!=='string'))
+      return new Set(); // invalid live authority always fails closed
+    return new Set(ops);
+  };
   const scoped=allowedProjectId!==null;
   const resources=Object.freeze([
     {uri:'forge://app/guide',name:'OrdaX Forge — regras e operação',mimeType:'application/json',
@@ -108,6 +119,7 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
         }
         if(method==='tools/list') {
           if(message.params?.cursor!==undefined)return error(id,-32602,'Invalid cursor');
+          const allow=currentAllowed();
           const tools=ORCHESTRATOR_TOOLS.filter(tool=>{
             if((tool.operation==='project_command_run'&&!service.development)||
               (allow!==null&&!allow.has(tool.operation)))return false;
@@ -124,6 +136,7 @@ export function createOrchestratorMcp({service,getContext,version='0.2.0-alpha.2
         }
         if(method==='tools/call') {
           const tool=ORCHESTRATOR_TOOLS.find(t=>t.name===message.params?.name);
+          const allow=currentAllowed();
           if(!tool||(allow!==null&&!allow.has(tool.operation)))
             return error(id,-32602,'Unknown tool');
           const supplied=message.params?.arguments??{};
