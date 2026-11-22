@@ -9,6 +9,7 @@ import {execFileSync} from 'node:child_process';
 import {createHostApplication} from '../host/host-application.mjs';
 import {ForgeLocalWorkspaces} from '../src/forge-local-workspaces.mjs';
 import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
+import {FORGE_NATIVE_OAUTH_CLIENT_ID} from '../src/forge-product-session.mjs';
 import {ForgeProjectDevelopment} from '../src/forge-project-development.mjs';
 import {forgeOwnerWorkspaceScope} from '../src/forge-owner-workspace-scope.mjs';
 import {
@@ -159,4 +160,42 @@ test('native catalog is additive and never enables Electron-only control',()=>{
     assert.ok(FORGE_NODE_NATIVE_REMOTE_MCP_OPERATIONS.includes(operation),operation);
   for(const operation of ['app_ui_click','app_ui_inspect','project_delete','workspace_bind'])
     assert.equal(FORGE_NODE_NATIVE_REMOTE_MCP_OPERATIONS.includes(operation),false);
+});
+
+
+test('Node Owner only composes multi-repository reads from its private Forge OAuth grant resolver',async t=>{
+  const folder=await fsp.mkdtemp(path.join(os.tmpdir(),'forge-node-repository-owner-'));
+  t.after(()=>fsp.rm(folder,{recursive:true,force:true,maxRetries:4,retryDelay:100}));
+  let connected=true,reads=0;
+  const session={status:()=>({connected,mode:'oauth',
+    clientId:FORGE_NATIVE_OAUTH_CLIENT_ID}),
+    accessToken:async()=> 'SYNTHETIC_TOKEN_NOT_VALID_FOR_NETWORK'};
+  const create=(suffix,resolver)=>{
+    const userRoot=path.join(folder,suffix,'OrdaX','Forge');
+    const dataRoot=path.join(userRoot,'data');
+    const documentsDirectory=path.join(folder,suffix,'Documents');
+    const nativeOwner={userRoot,documentsDirectory,dedicatedProject:true,
+      ...(resolver===undefined?{}:{repositoryReadGrantResolver:resolver})};
+    return createHostApplication({productRoot:product,dataRoot,
+      nativeOwner,remoteSession:session,environment:{}});
+  };
+  const without=create('no-grant');
+  assert.equal(without.service.repositoryReadPort,null,
+    'the Node Owner must not invent a permission from its OAuth connection');
+  without.close();
+  const withResolver=create('trusted-resolver',async scope=>{
+    reads++;
+    return {observed:scope.repository};
+  });
+  t.after(()=>withResolver.close());
+  assert.equal(typeof withResolver.service.repositoryReadPort?.read,'function');
+  const argument={projectId:'project_abc',taskId:'task_abc',
+    repository:'ordaxsystems/ordax-os',access:'read'};
+  assert.deepEqual(await withResolver.service.repositoryReadPort.resolveOwnerBinding(argument),
+    {observed:'ordaxsystems/ordax-os'});
+  assert.equal(reads,1);
+  connected=false;
+  await assert.rejects(withResolver.service.repositoryReadPort.resolveOwnerBinding(argument),
+    /forge_native_repository_oauth_unavailable/);
+  assert.equal(reads,1,'revoked Forge OAuth must fail before touching the native adapter');
 });
