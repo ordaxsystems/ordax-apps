@@ -304,12 +304,20 @@ test('OrdaX ownership catalogue is read-only and rejects an unrelated repository
   execFileSync('git',['init'],{cwd:checkout,windowsHide:true});
   execFileSync('git',['remote','add','origin','https://github.com/ordaxsystems/ordax-os.git'],
     {cwd:checkout,windowsHide:true});
+  execFileSync('git',['config','user.name','Forge Test'],{cwd:checkout,windowsHide:true});
+  execFileSync('git',['config','user.email','forge-test@example.invalid'],
+    {cwd:checkout,windowsHide:true});
   const source=path.join(checkout,'docs','contracts','repository-ownership.json');
   fs.writeFileSync(source,JSON.stringify({status:'canonical',repositories:{
     platform:{repo:'ordaxsystems/ordax-os',owns:['base']},
     apps:{repo:'ordaxsystems/ordax-apps',owns:['first-party']}
   }}));
-  const broker=createForgeOrdaxRepositoryCatalog({documentsDirectory:dir});
+  execFileSync('git',['add','.'],{cwd:checkout,windowsHide:true});
+  execFileSync('git',['commit','-qm','fixture'],{cwd:checkout,windowsHide:true});
+  execFileSync('git',['update-ref','refs/remotes/origin/main','HEAD'],
+    {cwd:checkout,windowsHide:true});
+  const broker=createForgeOrdaxRepositoryCatalog({documentsDirectory:dir,
+    fetchMain:async()=>{}});
   const result=broker.read();
   assert.equal(result.available,true);
   assert.equal(result.repositories.length,2);
@@ -323,4 +331,75 @@ test('OrdaX ownership catalogue is read-only and rejects an unrelated repository
   const rejected=broker.read();
   assert.equal(rejected.available,false);
   assert.equal(rejected.executionAuthorized,false);
+});
+
+
+test('Forge catalog tracks remote main monorepo ownership without changing stale local checkout',async t=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'forge-canonical-monorepo-'));
+  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+  const checkout=path.join(dir,'GitHub','ordax-os');
+  const contracts=path.join(checkout,'docs','contracts');
+  fs.mkdirSync(contracts,{recursive:true});
+  const g=(...args)=>execFileSync('git',args,{
+    cwd:checkout,encoding:'utf8',windowsHide:true
+  }).trim();
+  g('init','-q');g('config','user.name','Forge Test');
+  g('config','user.email','forge-test@example.invalid');
+  g('remote','add','origin','https://github.com/ordaxsystems/ordax-os.git');
+  const source=path.join(contracts,'repository-ownership.json');
+  const write=entries=>fs.writeFileSync(source,JSON.stringify({
+    status:'canonical',repositories:entries
+  }));
+  write({
+    platform:{repo:'ordaxsystems/ordax-os'},
+    surface:{repo:'ordaxsystems/ordax-surface'},
+    apps:{repo:'ordaxsystems/ordax-apps'}
+  });
+  g('add','.');g('commit','-qm','historical owners');
+  const oldHead=g('rev-parse','HEAD');
+  g('update-ref','refs/remotes/origin/main',oldHead);
+  write({
+    platform:{repo:'ordaxsystems/ordax-os'},
+    surface:{repo:'ordaxsystems/ordax-os'},
+    apps:{repo:'ordaxsystems/ordax-apps'},
+    runtime:{repo:'ordaxsystems/ordax-runtime'},
+    control_plane:{repo:'ordaxsystems/ordax-platform'},
+    public_site:{repo:'ordaxsystems/ordax-os'},
+    creator:{repo:'ordaxsystems/ordax-os'},
+    desktop:{repo:'ordaxsystems/ordax-os'}
+  });
+  g('add','.');g('commit','-qm','integrate four modules into OS');
+  const remoteHead=g('rev-parse','HEAD');
+  g('reset','--hard',oldHead);
+  const localFile=fs.readFileSync(source,'utf8');
+  let changes=0;
+  const broker=createForgeOrdaxRepositoryCatalog({documentsDirectory:dir,
+    refreshIntervalMs:60_000,onUpdate:()=>{changes++;},
+    fetchMain:async root=>{
+      assert.equal(root,checkout);
+      g('update-ref','refs/remotes/origin/main',remoteHead);
+    }});
+  const before=broker.read();
+  assert.equal(before.repositories.length,3,'local main cache starts historical');
+  await broker.refresh({force:true});
+  const after=broker.read();
+  assert.equal(after.available,true);
+  assert.equal(after.mainCommitVerified,true);
+  assert.equal(after.sourceCommit,remoteHead);
+  assert.equal(after.repositories.length,4,'modules are grouped by canonical Git repo');
+  assert.deepEqual(after.repositories.map(row=>row.repo),[
+    'ordaxsystems/ordax-os','ordaxsystems/ordax-apps',
+    'ordaxsystems/ordax-runtime','ordaxsystems/ordax-platform'
+  ]);
+  assert.deepEqual(after.repositories[0].roles,[
+    'platform','surface','public_site','creator','desktop'
+  ]);
+  assert.equal(after.repositories[0].repositoryAccessGranted,false);
+  assert.equal(after.executionAuthorized,false);
+  assert.equal(g('rev-parse','HEAD'),oldHead,'fetch must not alter Owner HEAD');
+  assert.equal(fs.readFileSync(source,'utf8'),localFile,
+    'remote main projection must not rewrite the working tree');
+  assert.equal(changes,1,'one UI/MCP refresh signal on actual source change');
+  assert.equal(JSON.stringify(after).includes(checkout),false);
+  assert.equal((await broker.refresh()).refreshed,false,'no repeated Git fetch');
 });

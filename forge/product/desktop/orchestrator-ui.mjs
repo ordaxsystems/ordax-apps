@@ -160,8 +160,16 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(!fdRepositories){fdEmpty(host,'Catálogo ainda indisponível. Nenhum acesso foi presumido.');return;}
     if(!fdRepositories.length){fdEmpty(host,'Nenhum repositório retornado.');return;}
     for(const item of fdRepositories.slice(0,limit)){
+      // One card per canonical Git repository. Source roles are components
+      // of that repository, not independent Owner grants or extra checkouts.
+      const componentNames={platform:'OS',surface:'Surface',apps:'Apps / Forge',
+        runtime:'Runtime',control_plane:'Platform',public_site:'Site',
+        creator:'Creator',desktop:'Desktop'};
+      const components=(Array.isArray(item.roles)?item.roles:[item.role])
+        .filter(role=>typeof role==='string')
+        .map(role=>componentNames[role]||role.replaceAll('_',' '));
       const row=fdLine(host,item.displayName||item.repositoryFullName||'Repositório',
-        String(item.role||'Owner não informado').replaceAll('_',' ')+' · acesso não concedido pelo catálogo');
+        components.join(' · ')+' · acesso local exige autorização Owner');
       // Human Owner setup is a native OS folder picker, NOT a GPT/MCP
       // mutation. The dashboard only shows the controls on the repo page.
       const repo=item.repo;

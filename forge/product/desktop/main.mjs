@@ -1021,8 +1021,11 @@ let forgeLocalRepositoryOwners=null;
 if(!stagedProfile){
   activateDedicatedForgeProject(orchestratorService);
   orchestratorService.repositoryCatalogPort=createForgeOrdaxRepositoryCatalog({
-    documentsDirectory:app.getPath('documents')
+    documentsDirectory:app.getPath('documents'),
+    // Refresh the same origin/main ref, never the Owner's working tree.
+    onUpdate:()=>notifyOrchestratorChanged()
   });
+  void orchestratorService.repositoryCatalogPort.refresh().catch(()=>{});
   orchestratorService.ordaxProductMcp=createForgeOrdaxProductMcp({
     session:forgeProductSession
   });
