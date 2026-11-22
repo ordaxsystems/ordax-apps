@@ -5,12 +5,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {ForgeProjectFiles} from './forge-project-files.mjs';
+import {FORGE_NATIVE_OAUTH_CLIENT_ID} from './forge-product-session.mjs';
 import {canonicalOrdaxRepositoryRemote} from './forge-ordax-repository-proof.mjs';
 
 const PROJECT=/^project_[A-Za-z0-9-]{1,100}$/;
 const TASK=/^task_[A-Za-z0-9-]{1,120}$/;
 const REPO=/^ordaxsystems\/ordax-[a-z0-9-]{2,101}$/;
 const SHA=/^[0-9a-f]{40}$/;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ATTESTATION='ordax.forge.owner-repository-read-attestation/1';
+const MAX_ATTESTATION_AGE_MS=120_000;
+const MAX_GRANT_FUTURE_MS=5*60_000;
+const physicalIdentity=folder=>{const stat=fs.statSync(folder,{bigint:true});
+  return stat.dev.toString()+':'+stat.ino.toString();};
 const same=(a,b)=>process.platform==='win32'
   ?path.resolve(a).toLowerCase()===path.resolve(b).toLowerCase()
   :path.resolve(a)===path.resolve(b);
@@ -28,7 +35,7 @@ export class ForgeRepositoryOwnerReadPort {
     this.git=git;
     this.clock=clock;
   }
-  authorize({projectId,taskId,repository}={}){
+  async authorize({projectId,taskId,repository}={}){
     if(!PROJECT.test(projectId)||!TASK.test(taskId)||!REPO.test(repository))
       throw Error('forge_repository_read_scope_invalid');
     const session=this.store.getWorkspaceSession();
@@ -45,18 +52,33 @@ export class ForgeRepositoryOwnerReadPort {
       !catalog.repositories?.some(row=>row.repo===repository))
       throw Error('forge_repository_ownership_contract_unavailable');
     // This is a trusted local Owner port, NOT an MCP argument or manifest field.
-    const grant=this.resolveOwnerBinding({projectId,taskId,repository,access:'read'});
+    // A trusted Owner/Runtime adapter must recheck its signed Forge OAuth
+    // device binding and repository-specific grant for EACH call. It may
+    // perform network I/O. We never infer or cache permission from SQLite.
+    const grant=await this.resolveOwnerBinding({projectId,taskId,repository,access:'read'});
+    const now=this.clock(),proof=grant?.attestation;
+    const issuedAt=Date.parse(proof?.verifiedAt||'');
+    const expiry=Date.parse(grant?.validUntil||'');
     if(!grant||grant.projectId!==projectId||grant.taskId!==taskId||
        grant.repository!==repository||grant.ownerApproved!==true||
        grant.readAuthorized!==true||grant.authority!=='forge_native_owner'||
-       typeof grant.validUntil!=='string'||!Number.isFinite(Date.parse(grant.validUntil))||
-       Date.parse(grant.validUntil)<=this.clock()||
-       typeof grant.root!=='string'||!path.isAbsolute(grant.root))
+       !Number.isFinite(expiry)||expiry<=now||expiry>now+MAX_GRANT_FUTURE_MS||
+       typeof grant.root!=='string'||!path.isAbsolute(grant.root)||
+       typeof grant.rootIdentity!=='string'||!/^\\d+:\\d+$/.test(grant.rootIdentity)||
+       proof?.schema!==ATTESTATION||proof.source!=='forge_platform_runtime'||
+       proof.forgeClientId!==FORGE_NATIVE_OAUTH_CLIENT_ID||
+       proof.projectId!==projectId||proof.taskId!==taskId||
+       proof.repository!==repository||proof.ownerConfirmed!==true||
+       proof.deviceBindingAttested!==true||proof.repositoryReadGranted!==true||
+       typeof proof.deviceId!=='string'||!UUID.test(proof.deviceId)||
+       !Number.isFinite(issuedAt)||issuedAt>now||
+       now-issuedAt>MAX_ATTESTATION_AGE_MS)
       throw Error('forge_repository_owner_port_and_grant_required');
     const root=path.resolve(grant.root);
     const stat=fs.lstatSync(root);
     if(!stat.isDirectory()||stat.isSymbolicLink()||
-       !same(fs.realpathSync.native(root),root))
+       !same(fs.realpathSync.native(root),root)||
+       physicalIdentity(root)!==grant.rootIdentity)
       throw Error('forge_repository_root_reparse_denied');
     const cmd=args=>String(this.git('git',['-C',root,...args],{
       encoding:'utf8',timeout:4000,maxBuffer:2048,windowsHide:true
@@ -70,8 +92,8 @@ export class ForgeRepositoryOwnerReadPort {
     if(!SHA.test(head))throw Error('forge_repository_head_invalid');
     return {projectId,taskId,repository,root,head};
   }
-  inspect(args){
-    const verified=this.authorize(args);
+  async inspect(args){
+    const verified=await this.authorize(args);
     return {schema:'ordax.forge.repository-read-proof/1',
       projectId:verified.projectId,taskId:verified.taskId,
       repository:verified.repository,headSha:verified.head,
@@ -79,13 +101,13 @@ export class ForgeRepositoryOwnerReadPort {
       readAvailable:true,writeAuthorized:false,rootPathExposed:false,
       source:'forge_native_owner_read_port'};
   }
-  read({...args}){
-    const scope=this.authorize(args);
+  async read({...args}){
+    const scope=await this.authorize(args);
     const broker=new ForgeProjectFiles({root:scope.root,
       workspaceLookup:()=>scope.root,requireOwnerBinding:true});
     const result=broker.read(scope.projectId,args.path,scope.taskId);
     // Verify the original binding and Git identity again after file I/O.
-    const after=this.authorize(args);
+    const after=await this.authorize(args);
     if(!same(after.root,scope.root)||after.head!==scope.head)
       throw Error('forge_repository_read_scope_changed');
     return {schema:'ordax.forge.repository-file-read/1',
@@ -95,12 +117,12 @@ export class ForgeRepositoryOwnerReadPort {
       source:'forge_native_owner_read_port',ownerGrantVerified:true,
       externalEffectVerified:false,rootPathExposed:false};
   }
-  list({...args}){
-    const scope=this.authorize(args);
+  async list({...args}){
+    const scope=await this.authorize(args);
     const broker=new ForgeProjectFiles({root:scope.root,
       workspaceLookup:()=>scope.root,requireOwnerBinding:true});
     const result=broker.list(scope.projectId,args.directory||'',scope.taskId);
-    const after=this.authorize(args);
+    const after=await this.authorize(args);
     if(!same(after.root,scope.root)||after.head!==scope.head)
       throw Error('forge_repository_read_scope_changed');
     return {schema:'ordax.forge.repository-file-list/1',
