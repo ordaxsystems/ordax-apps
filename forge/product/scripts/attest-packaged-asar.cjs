@@ -107,7 +107,7 @@ exports.beforePack=async function beforePack(){
   // Windows made otherwise healthy builds fail on a fixed 30s startup timeout.
   // The same canonical esbuild entrypoint is reused, not reimplemented.
   const {buildWorkerPreload}=await import('./build-worker-preload.mjs');
-  buildWorkerPreload();
+  await buildWorkerPreload();
   const sourceCommit=sourceCommitFromGit(productRoot);
   if(buildSourceCommit!==null && buildSourceCommit!==sourceCommit)
     throw Error('packaged_build_source_changed');
