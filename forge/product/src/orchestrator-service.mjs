@@ -1204,7 +1204,7 @@ export class OrchestratorService {
         latestRunStatus:last?.status||null});
       return {...view,
         ...(dedicated?{limitations:{...view.limitations,
-          physicalFileAccess:'ordax_mcp_repository_scoped_grant_required'}}:{}),
+          physicalFileAccess:'forge_repository_owner_port_and_grant_required'}}:{}),
         projectMissions:forgeProjectMissionsView(this.store,input.projectId),
         development:dedicated?{projectId:input.projectId,available:false,
           nativeProcessExecution:false,
