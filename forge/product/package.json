@@ -78,7 +78,8 @@
       "executableName": "OrdaX Forge"
     },
     "compression": "normal",
-    "npmRebuild": false,
+    "npmRebuild": true,
+    "beforeBuild": "./scripts/skip-empty-prod-deps.cjs",
     "beforePack": "./scripts/attest-packaged-asar.cjs",
     "afterPack": "./scripts/attest-packaged-asar.cjs"
   }
