@@ -11,7 +11,7 @@ export const PASSIVE_UI_STORAGE_OPERATIONS=Object.freeze([
 const STORAGE=new Set(PASSIVE_UI_STORAGE_OPERATIONS);
 // Native repository reads are read-only, but remain MCP-ONLY. The passive
 // renderer must not proxy them with a claimed Task lease from a GPT client.
-const MCP_ONLY_READS=new Set(['repository_files_list','repository_file_read']);
+const MCP_ONLY_READS=new Set(['repository_inspect','repository_files_list','repository_file_read']);
 const TOOL_BY_OPERATION=new Map(ORCHESTRATOR_TOOLS.map(tool=>[tool.operation,tool]));
 const TOOL_BY_NAME=new Map(ORCHESTRATOR_TOOLS.map(tool=>[tool.name,tool]));
 

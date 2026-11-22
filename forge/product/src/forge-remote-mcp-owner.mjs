@@ -98,7 +98,7 @@ const NODE_SQLITE_OPERATIONS=new Set([
   'work_failover_prepare','proposals_list','command_get'
 ]);
 const NODE_NATIVE_OPERATIONS=new Set([
-  'repository_files_list','repository_file_read',
+  'repository_inspect','repository_files_list','repository_file_read',
   'project_files_status','project_files_list','project_file_read','project_file_write',
   'project_development_status','project_command_run',
   'project_worktree_prepare','project_worktree_review',

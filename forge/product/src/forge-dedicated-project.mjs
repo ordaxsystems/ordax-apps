@@ -80,7 +80,7 @@ export function enforceDedicatedForgeProject(store,operation,input){
     throw Error('forge_dedicated_project_scope_denied');
   return scope;
 }
-const REPOSITORY_READ_PORTS=new Set(['repository_files_list','repository_file_read']);
+const REPOSITORY_READ_PORTS=new Set(['repository_inspect','repository_files_list','repository_file_read']);
 export function dedicatedForgeMcpOperations(store,operations,
   {repositoryReadPortAvailable=false}={}){
   const scope=readDedicatedForgeProject(store);

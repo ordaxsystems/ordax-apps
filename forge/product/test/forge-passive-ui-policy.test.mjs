@@ -8,9 +8,9 @@ import {assertPassiveUiOperation,assertPassiveUiMcpMessage,
 
 test('App native renderer can read canonical data, but not execute GPT, agents or terminal',()=>{
   for(const tool of ORCHESTRATOR_TOOLS.filter(x=>x.readOnly&&
-      !['repository_file_read','repository_files_list'].includes(x.operation)))
+      !['repository_file_read','repository_files_list','repository_inspect'].includes(x.operation)))
     assert.doesNotThrow(()=>assertPassiveUiOperation(tool.operation),tool.operation);
-  for(const operation of ['repository_file_read','repository_files_list'])
+  for(const operation of ['repository_file_read','repository_files_list','repository_inspect'])
     assert.throws(()=>assertPassiveUiOperation(operation),
       /forge_passive_app_mcp_only/,operation);
   for(const name of PASSIVE_UI_STORAGE_OPERATIONS)
@@ -47,7 +47,7 @@ test('MCP protocol bridge from renderer cannot bypass the passive UI boundary',(
   assert.doesNotThrow(()=>assertPassiveUiMcpMessage({method:'tools/call',
     params:{name:'forge_work_list'}}));
   for(const name of ['forge_project_command_run','forge_work_claim','forge_project_file_write',
-    'forge_repository_file_read','forge_repository_files_list']){
+    'forge_repository_file_read','forge_repository_files_list','forge_repository_inspect']){
     assert.throws(()=>assertPassiveUiMcpMessage({method:'tools/call',params:{name}}),
       /forge_passive_app_mcp_only/,name);
   }

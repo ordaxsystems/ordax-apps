@@ -113,10 +113,12 @@ test('dedicated MCP hides native reads without Owner port and serves only scoped
   const f=await fixture(t);
   const missing=dedicatedForgeMcpOperations(f.store,FORGE_APP_MCP_OPERATIONS);
   assert.equal(missing.includes('repository_file_read'),false);
+  assert.equal(missing.includes('repository_inspect'),false);
   assert.equal(missing.includes('repository_files_list'),false);
   const present=dedicatedForgeMcpOperations(f.store,FORGE_APP_MCP_OPERATIONS,
     {repositoryReadPortAvailable:true});
   assert.equal(present.includes('repository_file_read'),true);
+  assert.equal(present.includes('repository_inspect'),true);
   assert.equal(present.includes('repository_files_list'),true);
   await assert.rejects(f.service.invoke(f.context,'repository_file_read',{
     projectId:f.scope.projectId,taskId:f.taskId,repository:REPO,
@@ -134,6 +136,7 @@ test('dedicated MCP hides native reads without Owner port and serves only scoped
   await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
   const tools=await mcp.handle({jsonrpc:'2.0',id:2,method:'tools/list'});
   assert.equal(tools.result.tools.some(x=>x.name==='forge_repository_file_read'),true);
+  assert.equal(tools.result.tools.some(x=>x.name==='forge_repository_inspect'),true);
   const output=await mcp.handle({jsonrpc:'2.0',id:3,method:'tools/call',
     params:{name:'forge_repository_file_read',arguments:{
       projectId:f.scope.projectId,taskId:f.taskId,repository:REPO,
@@ -142,6 +145,15 @@ test('dedicated MCP hides native reads without Owner port and serves only scoped
     }}});
   assert.equal(output.result.structuredContent.content,'read-only contract\n');
   assert.equal(output.result.structuredContent.rootPathExposed,false);
+  const inspected=await mcp.handle({jsonrpc:'2.0',id:4,method:'tools/call',
+    params:{name:'forge_repository_inspect',arguments:{
+      projectId:f.scope.projectId,taskId:f.taskId,repository:REPO,
+      claimToken:f.claim.claimToken,claimGeneration:f.claim.claim.generation
+    }}});
+  assert.equal(inspected.result.structuredContent.originVerified,true);
+  assert.equal(inspected.result.structuredContent.ownerGrantVerified,true);
+  assert.equal(inspected.result.structuredContent.rootPathExposed,false);
+  assert.match(inspected.result.structuredContent.headSha,/^[a-f0-9]{40}$/);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) AS n FROM lab_command_receipts').get().n>0,true);
 });
 
@@ -184,6 +196,10 @@ test('released Task claim cannot read files even while a valid Owner binding rem
   });
   await assert.rejects(f.service.invoke(f.context,'repository_file_read',input),
     /forge_work_claim_not_owned/);
+  await assert.rejects(f.service.invoke(f.context,'repository_inspect',{
+    projectId:input.projectId,taskId:input.taskId,repository:input.repository,
+    claimToken:input.claimToken,claimGeneration:input.claimGeneration
+  }),/forge_work_claim_not_owned/);
 });
 
 test('claim revoked during asynchronous Owner verification never reveals physical file bytes',async t=>{
