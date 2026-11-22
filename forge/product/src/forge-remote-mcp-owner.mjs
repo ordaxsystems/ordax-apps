@@ -14,13 +14,14 @@ export function createForgeRemoteMcpOwner({
   store,service,getContext,ownerTrust,session,version,
   allowedOperations=FORGE_APP_MCP_OPERATIONS,
   authorizeFileRead=()=>false,onMutation=({output})=>output,
-  fetchImpl=globalThis.fetch
+  onOwnerIdentityBound=()=>{},fetchImpl=globalThis.fetch
 }={}) {
   if(!store?.db||typeof service?.invoke!=='function'||
      typeof getContext!=='function'||typeof ownerTrust?.isAppTrusted!=='function'||
      typeof ownerTrust?.bindRemoteOwnerIdentity!=='function'||
      typeof session?.status!=='function'||typeof session?.accessToken!=='function'||
      typeof onMutation!=='function'||typeof authorizeFileRead!=='function'||
+     typeof onOwnerIdentityBound!=='function'||
      !Array.isArray(allowedOperations)||
      allowedOperations.some(op=>!FORGE_APP_MCP_OPERATIONS.includes(op)))
     throw Error('forge_remote_mcp_owner_ports_required');
@@ -71,7 +72,12 @@ export function createForgeRemoteMcpOwner({
     catalogProvider:async()=>(await invoke('tools/list',{})).result.tools,
     toolInvoker:(name,args,receipt)=>invoke('tools/call',
       {name,arguments:args},receipt),
-    bindOwnerIdentity:value=>ownerTrust.bindRemoteOwnerIdentity(value)
+    bindOwnerIdentity:value=>{
+      ownerTrust.bindRemoteOwnerIdentity(value);
+      // After remote registration resolves the actual Owner identity, native
+      // ports may be restored from EXISTING SQLite consent. Never mint a grant.
+      onOwnerIdentityBound();
+    }
   });
   const start=async()=>{
     if(!ownerTrust.isAppTrusted())throw Error('forge_mcp_app_untrusted');

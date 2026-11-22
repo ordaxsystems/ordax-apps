@@ -133,3 +133,40 @@ test('failed catalog publication preserves fail-closed transport state and retri
   assert.equal(calls.at(-1).body.catalog.length,2);
   client.running=false;
 });
+
+test('gateway republishes persisted Owner tools after remote identity binds on registration',async t=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'forge-owner-boot-rehydrate-'));
+  const store=new Store(path.join(dir,'forge.sqlite'));
+  t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true})});
+  let ownerIdentityBound=false;
+  const base=[tool('forge_status')];
+  const read=[...base,tool('forge_repository_inspect')];
+  const calls=[];
+  const client=new ForgeRemoteGatewayClient({
+    store,session:{status:()=>({connected:true,subjectId:subject,issuer}),
+      accessToken:async()=> 'OWNED_TEST_OAUTH_TOKEN'},
+    catalogProvider:async()=>ownerIdentityBound?read:base,
+    toolInvoker:async()=>{throw Error('not_called')},
+    bindOwnerIdentity:identity=>{
+      assert.equal(identity.subjectId,subject);
+      assert.equal(identity.issuer,issuer);
+      ownerIdentityBound=true;
+    },
+    fetchImpl:async(url,options)=>{
+      const route=new URL(url).pathname,body=JSON.parse(options.body);
+      calls.push({route,body});
+      return response({ok:true,last_seen_at:'2026-11-22T20:00:00Z'});
+    }
+  });
+  await client.register();
+  assert.equal(ownerIdentityBound,true);
+  assert.deepEqual(calls.map(x=>x.route.split('/').at(-1)),
+    ['register','presence'],'register existing gateway, then publish the granted tools');
+  assert.deepEqual(calls.map(x=>x.body.catalog.map(y=>y.name)),[
+    ['forge_status'],['forge_status','forge_repository_inspect']
+  ]);
+  assert.equal(calls[1].body.catalog_digest,forgeRemoteCatalogDigest(read));
+  assert.equal(client.status().catalogSynchronized,true);
+  assert.equal(client.status().catalogDigest,forgeRemoteCatalogDigest(read));
+  assert.equal(client.running,false,'registration must not start a parallel worker');
+});

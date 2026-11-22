@@ -11,6 +11,12 @@ test('only native Owner picker may create or revoke a local repository root',()=
   const ui=read('../desktop/orchestrator-ui.mjs');
   const host=read('../host/host-application.mjs');
   assert.match(main,/new ForgeLocalRepositoryOwnerBindings\(/);
+  const remote=read('../src/forge-remote-mcp-owner.mjs');
+  const gateway=read('../src/forge-remote-gateway-client.mjs');
+  assert.match(main,/onOwnerIdentityBound:\(\)=>\{if\(!stagedProfile\)refreshLocalRepositoryOwnerPort\(\);\}/);
+  assert.match(remote,/ownerTrust\.bindRemoteOwnerIdentity\(value\);[\s\S]*?onOwnerIdentityBound\(\)/);
+  assert.match(gateway,/this\.bindOwnerIdentity\(\{subjectId:account\.subjectId,issuer:account\.issuer\}\)/);
+
   // Reuse the existing remote and loopback Owner ports; tool publication
   // must be recalculated after physical approval and revocation.
   assert.match(main,/allowedOperations:\(\)=>dedicatedForgeMcpOperations\(store,allowedOperations,\{/);

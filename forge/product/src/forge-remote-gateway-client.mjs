@@ -157,6 +157,18 @@ export class ForgeRemoteGatewayClient {
     this.catalogPublishedDigest=this.catalogDigest;
     this.lastSeenAt=result.last_seen_at||new Date(this.now()).toISOString();
     this.lastError=null;
+    // The registration itself verifies the remote Owner identity. Persisted
+    // native repository grants cannot be advertised before that verification,
+    // so publish the newly available tools on the SAME existing presence
+    // channel after the bind, without a new timer or a second grant store.
+    const current=await this.catalogProvider();
+    if(!validCatalog(current))throw Error('forge_remote_catalog_invalid');
+    const digest=forgeRemoteCatalogDigest(current);
+    if(digest!==this.catalogPublishedDigest){
+      this.catalog=structuredClone(current);
+      this.catalogDigest=digest;
+      await this.presence(true);
+    }
     return result;
   }
   async presence(online=true){

@@ -1356,6 +1356,7 @@ function announcePersistedMcpMutation(operation,args,output){
 const forgeRemoteOwner=createForgeRemoteMcpOwner({
   store,service:orchestratorService,getContext:()=>localOrchestratorContext,
   ownerTrust:forgeMcpTrusted,session:forgeProductSession,version:app.getVersion(),
+  onOwnerIdentityBound:()=>{if(!stagedProfile)refreshLocalRepositoryOwnerPort();},
   onMutation:({operation,args,output})=>{
     announcePersistedMcpMutation(operation,args,output);
     return attachDefaultWorkspaceToProjectCreation(operation,output);
@@ -1761,6 +1762,7 @@ registerUiHandler('ordax:forge:product-auth:disconnect',async event=>{
   await forgeRemoteGateway.stop();
   forgeProductSession.disconnect();
   forgeMcpTrusted.clearRemoteOwnerIdentity();
+  refreshLocalRepositoryOwnerPort();
   emitRendererEvent('ordax:forge:remote-gateway:changed');
   return {account:forgeProductSession.status(),gateway:forgeRemoteGateway.status()};
 });
@@ -1797,6 +1799,7 @@ registerUiHandler('ordax:forge:local-mcp:revoke',async event=>{
   await forgeRemoteGateway.stop();
   forgeProductSession.disconnect();
   forgeMcpTrusted.clearRemoteOwnerIdentity();
+  refreshLocalRepositoryOwnerPort();
   forgeMcpResume.disableAll(); // Old project consents never revive app access.
   await forgeLocalMcp.stop();
   return {...forgeLocalMcp.status(),...forgeMcpTrusted.revokeApp(),appTrusted:false,
