@@ -80,8 +80,14 @@ export function enforceDedicatedForgeProject(store,operation,input){
     throw Error('forge_dedicated_project_scope_denied');
   return scope;
 }
-export function dedicatedForgeMcpOperations(store,operations){
+const REPOSITORY_READ_PORTS=new Set(['repository_files_list','repository_file_read']);
+export function dedicatedForgeMcpOperations(store,operations,
+  {repositoryReadPortAvailable=false}={}){
   const scope=readDedicatedForgeProject(store);
-  return scope?operations.filter(op=>!FORBIDDEN.has(op)&&
-    !SINGLE_REPOSITORY_PORTS.has(op)):operations;
+  // New tools cannot be discovered merely because they have JSON schemas.
+  // They require a real, trusted Forge-native Owner port in this process.
+  return operations.filter(op=>
+    (scope?(!FORBIDDEN.has(op)&&!SINGLE_REPOSITORY_PORTS.has(op)):true)&&
+    (!REPOSITORY_READ_PORTS.has(op)||
+      (scope!==null&&repositoryReadPortAvailable===true)));
 }
