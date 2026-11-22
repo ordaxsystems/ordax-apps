@@ -80,7 +80,9 @@ test('local Owner root becomes a real Forge MCP read port only after the Owner r
     claimToken:claim.result.claimToken,
     claimGeneration:claim.result.claim.generation};
   await app.service.invoke(app.context,'work_repositories_set',{
-    ...proof,repositories:[REPO],requestId:'owner_restart_assign'
+    projectId,taskId,claimToken:proof.claimToken,
+    claimGeneration:proof.claimGeneration,
+    repositories:[REPO],requestId:'owner_restart_assign'
   });
   app.close();app=null;
   app=launch();
