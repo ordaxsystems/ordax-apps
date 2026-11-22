@@ -1149,6 +1149,22 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(generation!==projectRefreshGeneration)return projectsCache;
     projectsCache=result.projects;
     dedicatedProject=result.projectScope?.mode==='dedicated';
+    // In dedicated passive mode the activity summary belongs to the main
+    // project view, not behind the optional engineering diagnostics menu.
+    // Move the existing node: preserve its listeners, state and read model.
+    const pulse=$('projectPulseDisclosure');
+    const messages=$('coordinatorMessages');
+    if(pulse&&messages&&advancedContent){
+      if(dedicatedProject){
+        messages.before(pulse);
+        pulse.open=true;
+      }else{
+        advancedContent.prepend(pulse);
+        pulse.open=false;
+      }
+    }
+    const projectHeading=document.querySelector('.project-hub-heading strong');
+    if(projectHeading)projectHeading.textContent=dedicatedProject?'Projeto':'Projetos';
     for(const id of ['addProject','quickNewProject','renameProjectButton',
        'deleteProjectButton','projectSetup','projectRenameSetup',
        'projectDeleteSetup','projectRepositoryForm',
