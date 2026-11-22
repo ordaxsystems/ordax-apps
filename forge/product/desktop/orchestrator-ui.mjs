@@ -139,7 +139,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     name.textContent=String(title||'Registro sem título');
     const detail=document.createElement('small');
     detail.textContent=String(description||'');
-    copy.append(name,detail);row.append(marker,copy);host.append(row);
+    copy.append(name,detail);row.append(marker,copy);host.append(row);return row;
   }
   function fdEmpty(host,description){
     host.replaceChildren();
@@ -159,9 +159,61 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     host.replaceChildren();
     if(!fdRepositories){fdEmpty(host,'Catálogo ainda indisponível. Nenhum acesso foi presumido.');return;}
     if(!fdRepositories.length){fdEmpty(host,'Nenhum repositório retornado.');return;}
-    for(const item of fdRepositories.slice(0,limit))
-      fdLine(host,item.displayName||item.repositoryFullName||'Repositório',
+    for(const item of fdRepositories.slice(0,limit)){
+      const row=fdLine(host,item.displayName||item.repositoryFullName||'Repositório',
         String(item.role||'Owner não informado').replaceAll('_',' ')+' · acesso não concedido pelo catálogo');
+      // Human Owner setup is a native OS folder picker, NOT a GPT/MCP
+      // mutation. The dashboard only shows the controls on the repo page.
+      const repo=item.repo;
+      if(limit!==Infinity||fdView!=='repositories'||
+         typeof repo!=='string'||!/^ordaxsystems\\/ordax-[a-z0-9-]{2,101}$/.test(repo)||
+         typeof api.forgeRepositoryOwnerStatus!=='function'||
+         typeof api.forgeRepositoryOwnerChoose!=='function'||
+         typeof api.forgeRepositoryOwnerRevoke!=='function')continue;
+      const controls=document.createElement('div');
+      controls.className='fd-repo-owner-actions';
+      const state=document.createElement('span');
+      state.setAttribute('role','status');
+      state.textContent='Verificando aprovação local…';
+      const choose=document.createElement('button');
+      choose.type='button';choose.className='mini-secondary';
+      choose.textContent='Vincular pasta local';
+      const revoke=document.createElement('button');
+      revoke.type='button';revoke.className='mini-secondary';
+      revoke.textContent='Revogar';
+      controls.append(state,choose,revoke);row.append(controls);
+      let busy=false;
+      const refresh=async()=>{
+        const result=await api.forgeRepositoryOwnerStatus(repo);
+        if(!controls.isConnected)return;
+        state.textContent=result?.verified===true
+          ?'Leitura local aprovada · disponível no MCP após iniciar o Owner'
+          :result?.configured===true?'Vínculo existente, mas não verificado'
+            :'Nenhuma pasta local autorizada';
+        choose.disabled=busy||result?.configured===true;
+        revoke.disabled=busy||result?.configured!==true;
+      };
+      const act=async(action)=>{
+        if(busy)return;
+        busy=true;choose.disabled=true;revoke.disabled=true;
+        try{
+          const reply=await action(repo);
+          if(reply?.cancelled===true){state.textContent='Operação cancelada pelo proprietário';}
+          await refresh();
+        }catch{
+          state.textContent='Não foi possível confirmar a alteração. Confira a autorização Owner.';
+          choose.disabled=false;revoke.disabled=false;
+        }finally{busy=false;void refresh().catch(()=>{});}
+      };
+      choose.addEventListener('click',()=>{void act(api.forgeRepositoryOwnerChoose);});
+      revoke.addEventListener('click',()=>{void act(api.forgeRepositoryOwnerRevoke);});
+      void refresh().catch(()=>{
+        if(controls.isConnected){
+          state.textContent='Autoridade local indisponível';
+          choose.disabled=true;revoke.disabled=true;
+        }
+      });
+    }
   }
   function renderFDDashboard(){
     const root=fd('forgeDedicatedDashboard');
