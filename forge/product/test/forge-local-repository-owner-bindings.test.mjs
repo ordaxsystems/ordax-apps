@@ -35,6 +35,7 @@ async function fixture(t){
   const scope=activateDedicatedForgeProject(kernel.service);
   const catalog={read:()=>({available:true,checkedOrigin:true,
     repositories:[{repo:REPO},{repo:'ordaxsystems/ordax-os'}]})};
+  kernel.service.repositoryCatalogPort=catalog;
   const orch=await kernel.service.invoke(kernel.context,'orchestrators_list',
     {projectId:scope.projectId});
   const work=await kernel.service.invoke(kernel.context,'work_create',{
