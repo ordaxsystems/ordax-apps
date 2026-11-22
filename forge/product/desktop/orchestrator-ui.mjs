@@ -186,7 +186,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     fd('fdRepos').textContent=fdRepositories?String(fdRepositories.length):'—';
     fd('fdTotalNote').textContent=total===null?'Aguardando leitura':states.ready+' aguardando · '+states.completed+' concluídas';
     fd('fdDonutCount').textContent=total===null?'—':String(total);
-    const palette=[['running','#31d690'],['ready','#4aa7ef'],
+    const palette=[['running','#31d690'],['ready','#729eaa'],
       ['attention','#e8b64d'],['completed','#a97bf2']];
     let start=0;const segments=[];const legend=fd('fdLegend');legend.replaceChildren();
     for(const [name,color] of palette){
