@@ -58,6 +58,16 @@ test('a second launch restores the Electron window if the profile owner lost it'
   assert.match(canonical,/win\.show\(\);win\.focus\(\)/);
 });
 
+test('explicit manual Windows startup activates the same Forge window without waking background residents',()=>{
+  const startup=main.slice(main.indexOf('  await createWindow();\n  // Explicit manual launches'),
+    main.indexOf("  hostStartupLog('window_ready');"));
+  assert.match(startup,/await createWindow\(\)/);
+  assert.match(startup,/!hostBrowserMode&&!backgroundStartupRequested&&!supervisedDevelopmentResident/);
+  assert.match(startup,/showCanonicalWindow\(\)/);
+  assert.doesNotMatch(startup,/new BrowserWindow\(|createWindow\(\).*createWindow\(/,
+    'activation must not create another App instance or window');
+});
+
 test('concurrent startup, activation and second-instance events share one window creation',()=>{
   assert.match(main,/let windowCreationPromise=null/);
   assert.match(createWindowEntry,/if\(windowCreationPromise\)return windowCreationPromise/);
