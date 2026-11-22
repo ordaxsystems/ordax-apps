@@ -13,6 +13,8 @@ import {createForgeNodeNativeOwnerPorts} from '../src/forge-node-native-owner-po
 import {activateDedicatedForgeProject,readDedicatedForgeProject} from '../src/forge-dedicated-project.mjs';
 import {createForgeOrdaxRepositoryCatalog} from '../src/forge-ordax-repository-catalog.mjs';
 import {createForgeOrdaxProductMcp} from '../src/forge-ordax-product-mcp.mjs';
+import {ForgeRepositoryOwnerReadPort} from '../src/forge-repository-owner-read-port.mjs';
+import {FORGE_NATIVE_OAUTH_CLIENT_ID} from '../src/forge-product-session.mjs';
 
 const MIME_EXT=new Map([['image/png','png'],['image/jpeg','jpg'],['image/webp','webp'],['image/gif','gif'],['image/avif','avif']]);
 const providerUnavailable=()=>{throw Error('provider_transport_unavailable_on_host');};
@@ -69,6 +71,27 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
     service.ordaxProductMcp=createForgeOrdaxProductMcp({
       session:remoteSession,fetchImpl:remoteFetchImpl
     });
+    // Only the explicitly launched native Owner process may provide this
+    // capability. The ordinary browser Host, App renderer, environment,
+    // repository catalog and Task assignment cannot construct a grant.
+    // The production launcher supplies no resolver until Platform/Runtime
+    // confirms a real per-repository Forge grant and Owner-selected root.
+    const resolver=nativeOwner.repositoryReadGrantResolver;
+    if(resolver!==undefined&&resolver!==null){
+      if(typeof resolver!=='function')
+        throw Error('forge_native_repository_owner_grant_resolver_invalid');
+      service.repositoryReadPort=new ForgeRepositoryOwnerReadPort({
+        store,repositoryCatalog:service.repositoryCatalogPort,
+        resolveOwnerBinding:async scope=>{
+          // Revalidate the sealed Forge OAuth identity on every read.
+          const state=remoteSession?.status?.();
+          if(state?.connected!==true||state.mode!=='oauth'||
+             state.clientId!==FORGE_NATIVE_OAUTH_CLIENT_ID)
+            throw Error('forge_native_repository_oauth_unavailable');
+          return resolver(scope);
+        }
+      });
+    }
   }
   service.recoverInterruptedCommands();
 
