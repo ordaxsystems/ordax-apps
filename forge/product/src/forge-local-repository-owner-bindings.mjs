@@ -115,11 +115,12 @@ export class ForgeLocalRepositoryOwnerBindings {
       const ws=this.store.getWorkspaceSession();
       if(ws?.status!=='active')return false;
       const rows=this.db.prepare(
-        'SELECT repository,canonical_root AS root,physical_identity AS identity FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=?'
+        'SELECT repository,canonical_root AS root,physical_identity AS identity,owner_subject_id AS ownerSubjectId FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=?'
       ).all(projectId,ws.id);
       for(const row of rows){
         try{
-          this.owner(projectId,row.repository);
+          const verified=this.owner(projectId,row.repository);
+          if(verified.ownerSubjectId!==row.ownerSubjectId)continue;
           const current=this.verifiedRoot(row.repository,row.root);
           if(current.identity===row.identity)return true;
         }catch{}
