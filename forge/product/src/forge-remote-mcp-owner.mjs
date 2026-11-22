@@ -31,7 +31,7 @@ export function createForgeRemoteMcpOwner({
     // The installed Forge connector still supplies projectId; narrowing the
     // JSON schema would reject those tools at the gateway before they reach
     // the canonical dedicated-project access guard in OrchestratorService.
-    allowedOperations:dedicatedForgeMcpOperations(store,allowedOperations,
+    allowedOperations:()=>dedicatedForgeMcpOperations(store,allowedOperations,
       {repositoryReadPortAvailable:Boolean(service.repositoryReadPort)}),authorizeFileRead,
     afterToolInvoke:({operation,args,output,transportReceipt})=>{
       try {
