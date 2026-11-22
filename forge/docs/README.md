@@ -1,18 +1,37 @@
 # Documentação OrdaX Forge — índice vigente
 
-**Autoridade documental global:** [índice normativo do ecossistema OrdaX](https://github.com/ordaxsystems/ordax-os/blob/main/docs/README.md#regra-de-publicação-documental--ssot-central-sem-espelhos) e [contrato de ownership](https://github.com/ordaxsystems/ordax-os/blob/main/docs/contracts/repository-ownership.json). O [roteiro Forge GPT-first no SSOT central](https://github.com/ordaxsystems/ordax-os/blob/main/docs/forge/FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md) descreve a implementação interna do Forge, subordinada aos contratos globais. Não é uma segunda autoridade para MCP, Runtime, Platform, segurança, grants ou composição.
+**Atualizado em 22/11/2026.** Este arquivo é **roteador**, não outro roadmap ou SSOT de arquitetura. A decisão vigente sobre **Forge MCP independente, instâncias multichat e Forge App passivo** e o roteiro executável R0–R6 estão **somente** no [roadmap canônico do Forge](https://github.com/ordaxsystems/ordax-os/blob/main/docs/forge/FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md), no início do documento. Aplicar a seção de 22/11/2026 antes de interpretar decisões históricas de 20–21/11.
 
-> Precedência: as decisões do roteiro Forge são restritas ao domínio de implementação do Forge e não altera a autoridade documental global de `ordax-os`.
+## Leitura obrigatória para qualquer outro chat/agente
 
-Em caso de conflito, a prioridade é:
+1. [Política DEV transversal](https://github.com/ordaxsystems/ordax-os/blob/main/docs/DEVELOPMENT-WORKFLOW.md) e [ownership canônico](https://github.com/ordaxsystems/ordax-os/blob/main/docs/contracts/repository-ownership.json): quem pode modificar ou executar em cada owner.
+2. [Roadmap Forge — seção vigente de 22/11/2026](https://github.com/ordaxsystems/ordax-os/blob/main/docs/forge/FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md): papéis, lacunas, comparação de ferramentas OrdaX/Forge e gates R0–R6, com protocolo de retomada.
+3. [AGENTS.md do ordax-apps](../../AGENTS.md) e [URGENTE-LEIA.md](../../URGENTE-LEIA.md): instruções específicas do owner e trabalho paralelo.
+4. **Código, schemas e testes da main** determinam o que existe de verdade; inspeção MCP e recibos físicos determinam o que funcionou. Uma decisão registrada não equivale a implantação concluída.
 
-1. **Contratos e políticas transversais do OS** determinam limites e integração com outros owners; **o roteiro central do Forge** descreve o comportamento interno desejado sem redefini-los.
-2. **Código atual, contratos de ferramentas e testes direcionados** determinam o que foi implementado.
-3. **Execução física e recibos independentes** determinam o que realmente funcionou no Windows/GPT Web.
-4. Outros arquivos em `docs/`, `docs/audits/` e `rfc-002/` são evidências históricas com data, **não outra versão do plano**.
+## Contexto de implementação, sem segunda autoridade
 
-O Forge oferece múltiplos projetos em um único aplicativo Windows, com pastas físicas separadas, SQLite canônico compartilhado e MCP integrado. O GPT é principal; Groq é opcional. O Runtime de arquivos do Forge é interno; o OrdaX Runtime externo é opcional para recursos adicionais. A instalação final, multiplexação no MCP, conexão remota GPT Web e migração integral de legados **ainda exigem homologação**.
+- Instalação DEV ativa do Forge: **um projeto dedicado OrdaX OS**, com múltiplos repositórios vinculados a Tasks por metadados. Isto não cria dependência do **OrdaX OS** em relação ao **Forge App**; outros projetos dependem de configuração/decisão explícita futura.
+- **Forge MCP:** autoridade de tarefas, claims, instâncias observadas, progresso, memória, execução por grants reais, eventos e recibos. Atualmente já dispõe de coordenação parcial, mas execução física no modo dedicado e cutover do Core ainda precisam de prova.
+- **Forge App/Forge Git:** mesma SQLite canônica e interface/projeção do estado; a meta é não executar trabalhos, providers ou agentes. App aberto não cria Task, Run nem GPT por conta própria.
+- **OrdaX MCP:** produto separado usado temporariamente para desenvolver o Forge em DEV. O Forge final **não deve depender do catálogo/servidor MCP público do OrdaX** para executar; compartilhar apenas contratos e Runtime/Platform nas autoridades apropriadas.
+- **Identidade GPT:** o gateway já observa instâncias, mas a identidade de conversa não é automaticamente verificada. Claims, timestamps e recibos devem ser mostrados com a proveniência real, sem declarar chats “online” por suposição.
 
-**Proibido ressuscitar:** "Groq obrigatória para cada envio", "uma instalação do Forge para cada projeto", "código do usuário somente em AppData", "MCP separado por projeto", "acesso a pastas arbitrárias concedido pelo prompt" ou "sucesso textual do GPT equivale a arquivo criado".
+## Onde trabalhar
 
-**Arquivamento sem duplicação:** documentos antigos permanecem acessíveis para rastrear evidências e decisões do passado; versões antigas não são mantidas nem atualizadas como instruções concorrentes. Decisões globais entram somente no owner normativo indicado pelo índice do OS; decisões internas de produto Forge entram no roteiro central do OS; evidências de execução ficam no owner Apps.
+| Área | Owner/código de implementação |
+| --- | --- |
+| Contrato MCP e transporte | forge/product/src/forge-contract.mjs, forge-loopback-mcp.mjs |
+| Tasks, claim, progresso e eventos | orchestrator-service.mjs, forge-work-claims.mjs, forge-mcp-observation.mjs, forge-project-activity-view.mjs |
+| Protocolo, memória e handoff | forge-executor-context.mjs, forge-project-handoff-view.mjs, arquivos de memória existentes |
+| App visual | forge/product/desktop/orchestrator-ui.mjs e demais arquivos da UI |
+| Integração por repositório e grants | contratos de ownership do OS, Platform/Runtime no seu respectivo owner; Forge implementa as tools próprias, sem copiar o OrdaX MCP |
+| Testes e homologação | forge/product/test/ e recibos de Forge MCP/Windows ligados à Task |
+
+**Execução:** continuar pelo primeiro gate R0–R6 ainda sem prova, aplicar o menor incremento canônico, validar o efeito real e atualizar o **mesmo roadmap central** com commit, teste, recibo e bloqueio remanescente. Não criar outro plano de mesmo tema, Store, executor, agendador, serviço ou PR para tarefa documental.
+
+## Histórico e precedência
+
+O antigo [arquivo local com título de roadmap](FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md) é um encaminhamento compatível, não uma cópia normativa. Documentos antigos em docs/, docs/audits/ e rfc-002/ são evidências históricas datadas. Não ressuscitar arquitetura multiprojeto ativa nesta instalação, Groq obrigatório, MCP por projeto, grants por prompt, “GPT respondeu” como prova de execução ou execução de Task iniciada pelo App.
+
+**Precedência:** contratos executáveis e ownership transversal → decisão vigente do roadmap Forge → código/testes atuais → recibos de operações concretas. Em caso de conflito com documentação antiga, corrigir o índice ou o consumo; não manter duas fontes normativas.
