@@ -1475,7 +1475,7 @@ const currentForgeRepositoryOwner=(event,repository)=>{
   const scope=readDedicatedForgeProject(store);
   if(hostBrowserMode||!forgeLocalRepositoryOwners||!scope||
      typeof repository!=='string'||
-     !/^ordaxsystems\\/ordax-[a-z0-9-]{2,101}$/.test(repository))
+     !/^ordaxsystems\/ordax-[a-z0-9-]{2,101}$/.test(repository))
     throw Error('forge_native_repository_owner_ui_unavailable');
   return scope.projectId;
 };
@@ -1499,8 +1499,8 @@ registerUiHandler('ordax:forge:repository-owner:choose',async(event,repository)=
   const confirmed=await confirmInActiveUi({
     title:'Autorizar leitura local pelo Forge MCP',
     message:'Vincular somente este repositório?',
-    detail:repository+'\\nPasta selecionada: '+chosen.filePaths[0]+
-      '\\nO Forge MCP terá somente leitura nesta pasta, sob Task e claim ativos. Revogável na mesma tela.',
+    detail:repository+'\nPasta selecionada: '+chosen.filePaths[0]+
+      '\nO Forge MCP terá somente leitura nesta pasta, sob Task e claim ativos. Revogável na mesma tela.',
     approveLabel:'Autorizar leitura'
   });
   if(!confirmed)return {cancelled:true};
