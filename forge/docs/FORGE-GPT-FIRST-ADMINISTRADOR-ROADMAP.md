@@ -1,5 +1,9 @@
 # Forge GPT-first — documentação centralizada
 
+
+**DECISÃO VIGENTE (22/11/2026):** Forge MCP autônomo em relação ao **OrdaX MCP público**, responsável por trabalho multichat, claims, progresso, execução autorizada e recibos; Forge App/Core restrito a persistência física e visualização. A instalação Forge DEV mantém **um único projeto OrdaX OS** como escopo de trabalho. O sistema operacional OrdaX **não depende** do Forge App. O OrdaX MCP é apenas apoio temporário de desenvolvimento do Forge. A documentação canônica contém as etapas **R0–R6**, os gates físicos, o inventário de tools e as instruções de retomada para qualquer chat.
+
+
 **SUPERSEDED — encaminhamento compatível; não é SSOT independente.**
 
 O roteiro normativo completo de direção, responsabilidades e implementação do Forge foi consolidado no [SSOT central do OrdaX OS](https://github.com/ordaxsystems/ordax-os/blob/main/docs/forge/FORGE-GPT-FIRST-ADMINISTRADOR-ROADMAP.md).
