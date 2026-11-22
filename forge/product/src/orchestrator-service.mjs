@@ -1438,8 +1438,13 @@ export class OrchestratorService {
         catch{return false;}
       }).map(row=>({projectId:row.projectId,count:Number(row.count)}));
       const activeScope=readDedicatedForgeProject(this.store);
+      const readPortAvailable=Boolean(this.repositoryReadPort);
+      const writePortAvailable=Boolean(this.repositoryWritePort);
       const visible=new Set(dedicatedForgeMcpOperations(
-        this.store,ORCHESTRATOR_TOOLS.map(t=>t.operation)));
+        this.store,ORCHESTRATOR_TOOLS.map(t=>t.operation),{
+          repositoryReadPortAvailable:readPortAvailable,
+          repositoryWritePortAvailable:writePortAvailable
+        }));
       return {
         contract:ORCHESTRATOR_CONTRACT,engine:'passive-app',
         tools:ORCHESTRATOR_TOOLS.filter(t=>visible.has(t.operation)).map(t=>t.name),
@@ -1448,7 +1453,13 @@ export class OrchestratorService {
         autonomousAnalysisAvailable:false,
         coordinatorDraftCommitAvailable:true,
         workspacePortAvailable:this.workspace.available(),
-        repositoryPortAvailable:this.repository.available(),
+        // Report the same live authority used by MCP tools/list. The
+        // historical single-repository broker is unrelated to Forge Owner
+        // ports and must not hide a valid native repository binding.
+        repositoryPortAvailable:this.repository.available()||
+          readPortAvailable||writePortAvailable,
+        repositoryReadPortAvailable:readPortAvailable,
+        repositoryWritePortAvailable:writePortAvailable,
         continuationEnabled:0,
         analysisAvailable:false,analysisMode:'gpt_via_forge_mcp',
         providerExecutionAvailable:false,

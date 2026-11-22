@@ -328,3 +328,67 @@ test('R1 released claim cannot perform an Owner-approved write',async t=>{
     /forge_work_claim_not_owned/);
   assert.equal(fs.existsSync(path.join(f.root,input.path)),false);
 });
+
+test('R1 status and live MCP tools reflect native Owner ports and revoke without reconnect',async t=>{
+  const f=await fixture(t);
+  const mcp=createOrchestratorMcp({
+    service:f.service,getContext:()=>f.context,
+    allowedOperations:()=>dedicatedForgeMcpOperations(
+      f.store,FORGE_APP_MCP_OPERATIONS,{
+        repositoryReadPortAvailable:Boolean(f.service.repositoryReadPort),
+        repositoryWritePortAvailable:Boolean(f.service.repositoryWritePort)
+      })
+  });
+  const init=await mcp.handle({jsonrpc:'2.0',id:1,method:'initialize',
+    params:{protocolVersion:'2025-11-25',capabilities:{},
+      clientInfo:{name:'owner-port-discovery-test',version:'1'}}});
+  assert.ok(init.result);
+  await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
+  const listed=async id=>(await mcp.handle({
+    jsonrpc:'2.0',id,method:'tools/list',params:{}
+  })).result.tools.map(tool=>tool.name);
+  const status=()=>f.service.invoke(f.context,'status',{});
+
+  const before=await status();
+  assert.equal(before.repositoryReadPortAvailable,false);
+  assert.equal(before.repositoryWritePortAvailable,false);
+  assert.equal(before.tools.includes('forge_repository_file_read'),false);
+  assert.equal((await listed(2)).includes('forge_repository_file_read'),false);
+
+  f.service.repositoryReadPort=f.port;
+  const read=await status();
+  assert.equal(read.repositoryReadPortAvailable,true);
+  assert.equal(read.repositoryWritePortAvailable,false);
+  assert.equal(read.repositoryPortAvailable,true);
+  assert.equal(read.tools.includes('forge_repository_file_read'),true);
+  assert.equal(read.tools.includes('forge_repository_file_write'),false);
+  assert.equal((await listed(3)).includes('forge_repository_inspect'),true);
+  assert.equal((await listed(4)).includes('forge_repository_file_read'),true);
+  assert.equal((await listed(5)).includes('forge_repository_file_write'),false);
+
+  f.service.repositoryWritePort=makeWritePort(f,()=>writableGrant(f));
+  const full=await status();
+  assert.equal(full.repositoryReadPortAvailable,true);
+  assert.equal(full.repositoryWritePortAvailable,true);
+  assert.equal(full.tools.includes('forge_repository_file_write'),true);
+  assert.equal((await listed(6)).includes('forge_repository_file_write'),true);
+
+  f.service.repositoryWritePort=null;
+  assert.equal((await listed(7)).includes('forge_repository_file_write'),false);
+  f.service.repositoryReadPort=null;
+  const revoked=await status();
+  assert.equal(revoked.repositoryReadPortAvailable,false);
+  assert.equal(revoked.repositoryPortAvailable,false);
+  assert.equal(revoked.tools.includes('forge_repository_file_read'),false);
+  const hidden=await listed(8);
+  assert.equal(hidden.includes('forge_repository_file_read'),false);
+  assert.equal(hidden.includes('forge_repository_inspect'),false);
+  const noAccess=await mcp.handle({jsonrpc:'2.0',id:9,method:'tools/call',
+    params:{name:'forge_repository_inspect',arguments:{
+      projectId:f.scope.projectId,taskId:f.taskId,repository:REPO,
+      claimToken:f.claim.claimToken,
+      claimGeneration:f.claim.claim.generation
+    }}});
+  assert.equal(noAccess.error?.message,'Unknown tool',
+    'same open MCP connection must stop dispatching revoked Owner reads');
+});

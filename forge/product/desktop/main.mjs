@@ -1373,7 +1373,13 @@ const forgeLocalMcp=createForgeLoopbackMcp({
   createMcp:({projectId,allowedOperations})=>createOrchestratorMcp({
     service:orchestratorService,getContext:()=>localOrchestratorContext,
     version:app.getVersion(),allowedProjectId:projectId,
-    allowedOperations:dedicatedForgeMcpOperations(store,allowedOperations),
+    // A session stays alive across Owner approval/revocation. Recalculate
+    // native tool visibility on every tools/list AND tools/call, as the
+    // remote MCP gateway already does, without minting any new grant.
+    allowedOperations:()=>dedicatedForgeMcpOperations(store,allowedOperations,{
+      repositoryReadPortAvailable:Boolean(orchestratorService.repositoryReadPort),
+      repositoryWritePortAvailable:Boolean(orchestratorService.repositoryWritePort)
+    }),
     afterToolInvoke:({operation,args,output})=>{
       try{observeMcpToolCall({store,operation,output,ingress:'owner_loopback'});}catch{}
       announcePersistedMcpMutation(operation,args,output);
