@@ -8,8 +8,10 @@ import {Store} from '../src/store.mjs';
 import {ForgeMcpOwnerTrust} from '../src/forge-mcp-owner-trust.mjs';
 import {ForgeLocalRepositoryOwnerBindings} from '../src/forge-local-repository-owner-bindings.mjs';
 import {ForgeRepositoryOwnerReadPort,ForgeRepositoryOwnerWritePort} from '../src/forge-repository-owner-read-port.mjs';
+import {ForgeRepositoryOwnerProcessPort} from '../src/forge-repository-owner-process-port.mjs';
 import {createOrchestratorKernel} from '../src/orchestrator-kernel.mjs';
-import {activateDedicatedForgeProject} from '../src/forge-dedicated-project.mjs';
+import {activateDedicatedForgeProject,dedicatedForgeMcpOperations} from '../src/forge-dedicated-project.mjs';
+import {FORGE_APP_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
 import {FORGE_NATIVE_OAUTH_CLIENT_ID} from '../src/forge-product-session.mjs';
 
 const REPO='ordaxsystems/ordax-apps';
@@ -143,6 +145,144 @@ test('App Owner revocation denies new reads without a second grant database',asy
   }),/forge_local_repository_owner_oauth_required/);
 });
 
+test('Owner PROCESS is separate from WRITE and launches a Task-scoped child with receipt and logs',async t=>{
+  const f=await fixture(t),projectId=f.scope.projectId;
+  f.trust.trustApp({expectedScopeHash:f.trust.appScopeHash()});
+  f.trust.bindRemoteOwnerIdentity({subjectId:SUBJECT,issuer:ISSUER});
+  f.roots.bindSelected({projectId,repository:REPO,selectedRoot:f.root});
+  f.roots.approveWrite({projectId,repository:REPO});
+  assert.equal(f.roots.status({projectId,repository:REPO}).processGranted,false);
+  await assert.rejects(f.roots.resolve({projectId,taskId:f.taskId,
+    repository:REPO,access:'process'}),/forge_local_repository_process_approval_required/);
+  f.roots.approveProcess({projectId,repository:REPO});
+  const port=new ForgeRepositoryOwnerProcessPort({store:f.store,
+    repositoryCatalog:f.catalog,resolveOwnerBinding:x=>f.roots.resolve(x)});
+  f.kernel.service.repositoryProcessPort=port;
+  const unavailable=dedicatedForgeMcpOperations(f.store,FORGE_APP_MCP_OPERATIONS);
+  assert.equal(unavailable.includes('repository_process_start'),false);
+  const live=dedicatedForgeMcpOperations(f.store,FORGE_APP_MCP_OPERATIONS,
+    {repositoryProcessPortAvailable:true});
+  assert.equal(live.includes('repository_process_start'),true);
+  assert.equal(live.includes('repository_process_stop'),true);
+  assert.equal(live.includes('repository_process_logs'),true);
+  const claim={projectId,taskId:f.taskId,repository:REPO,
+    claimToken:f.claim.claimToken,claimGeneration:f.claim.claim.generation};
+  const input={...claim,requestId:'process_test_once',
+    expectedHeadSha:git(f.root,'rev-parse','HEAD'),
+    argv:[process.execPath,'-e',
+      'console.log("FORGE_PROCESS_CHECKPOINT|{\\\"step\\\":1,\\\"total\\\":1,\\\"stage\\\":\\\"test\\\"}");console.log("RUN_OK")']};
+  const first=await f.kernel.service.invoke(f.kernel.context,'repository_process_start',input);
+  assert.equal(first.status,'succeeded');
+  const replay=await f.kernel.service.invoke(f.kernel.context,'repository_process_start',input);
+  assert.equal(replay.id,first.id);
+  const processId=first.result.processId;
+  let state;
+  for(let n=0;n<100;n++){
+    state=await f.kernel.service.invoke(f.kernel.context,'repository_process_status',
+      {...claim,processId});
+    if(state.state!=='running')break;
+    await new Promise(resolve=>setTimeout(resolve,100));
+  }
+  assert.equal(state.state,'exited');
+  assert.equal(state.exitCode,0);
+  const logs=await f.kernel.service.invoke(f.kernel.context,
+    'repository_process_logs',{...claim,processId});
+  assert.match(logs.stdout,/RUN_OK/);
+  assert.equal(logs.checkpoint?.source,'unverified_child_stdout');
+  assert.equal(logs.externalEffectsVerified,false);
+  assert.equal((await f.kernel.service.invoke(f.kernel.context,
+    'repository_process_list',claim)).processes.length,1);
+  f.roots.revokeProcess({projectId,repository:REPO});
+  assert.equal(f.roots.hasApprovedRoot(projectId,{access:'process'}),false);
+  assert.equal(f.roots.hasApprovedRoot(projectId,{access:'write'}),true);
+  await assert.rejects(f.kernel.service.invoke(f.kernel.context,
+    'repository_process_status',{...claim,processId}),
+    /forge_local_repository_process_approval_required/);
+});
+test('missing executable never produces a false accepted-process receipt',async t=>{
+  const f=await fixture(t),projectId=f.scope.projectId;
+  f.trust.trustApp({expectedScopeHash:f.trust.appScopeHash()});
+  f.trust.bindRemoteOwnerIdentity({subjectId:SUBJECT,issuer:ISSUER});
+  f.roots.bindSelected({projectId,repository:REPO,selectedRoot:f.root});
+  f.roots.approveProcess({projectId,repository:REPO});
+  f.kernel.service.repositoryProcessPort=new ForgeRepositoryOwnerProcessPort({
+    store:f.store,repositoryCatalog:f.catalog,
+    resolveOwnerBinding:x=>f.roots.resolve(x)});
+  const input={projectId,taskId:f.taskId,repository:REPO,
+    claimToken:f.claim.claimToken,claimGeneration:f.claim.claim.generation,
+    requestId:'missing_binary_once',expectedHeadSha:git(f.root,'rev-parse','HEAD'),
+    argv:['no-such-forge-owner-test-binary-8cc29.exe']};
+  await assert.rejects(f.kernel.service.invoke(f.kernel.context,
+    'repository_process_start',input),/forge_repository_process_spawn_failed/);
+  const receipt=f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE request_id=?')
+    .get(input.requestId);
+  assert.equal(receipt.status,'failed');
+  await assert.rejects(f.kernel.service.invoke(f.kernel.context,
+    'repository_process_start',{...input,requestId:'missing_binary_again'}),
+    /forge_repository_process_spawn_failed/);
+});
+test('Forge process stop terminates only an owned Task child with durable receipt',async t=>{
+  const f=await fixture(t),projectId=f.scope.projectId;
+  f.trust.trustApp({expectedScopeHash:f.trust.appScopeHash()});
+  f.trust.bindRemoteOwnerIdentity({subjectId:SUBJECT,issuer:ISSUER});
+  f.roots.bindSelected({projectId,repository:REPO,selectedRoot:f.root});
+  f.roots.approveProcess({projectId,repository:REPO});
+  const port=new ForgeRepositoryOwnerProcessPort({store:f.store,
+    repositoryCatalog:f.catalog,resolveOwnerBinding:x=>f.roots.resolve(x)});
+  f.kernel.service.repositoryProcessPort=port;
+  const unavailable=dedicatedForgeMcpOperations(f.store,FORGE_APP_MCP_OPERATIONS);
+  assert.equal(unavailable.includes('repository_process_start'),false);
+  const live=dedicatedForgeMcpOperations(f.store,FORGE_APP_MCP_OPERATIONS,
+    {repositoryProcessPortAvailable:true});
+  assert.equal(live.includes('repository_process_start'),true);
+  assert.equal(live.includes('repository_process_stop'),true);
+  assert.equal(live.includes('repository_process_logs'),true);
+  const claim={projectId,taskId:f.taskId,repository:REPO,
+    claimToken:f.claim.claimToken,claimGeneration:f.claim.claim.generation};
+  const first=await f.kernel.service.invoke(f.kernel.context,'repository_process_start',{
+    ...claim,requestId:'owner_process_stop_start',
+    expectedHeadSha:git(f.root,'rev-parse','HEAD'),
+    argv:[process.execPath,'-e','setInterval(()=>console.log("tick"),200)'],
+    timeoutMs:30000});
+  const processId=first.result.processId;
+  const recovered=new ForgeRepositoryOwnerProcessPort({store:f.store,
+    repositoryCatalog:f.catalog,resolveOwnerBinding:x=>f.roots.resolve(x)});
+  const uncertain=await recovered.status({...claim,processId});
+  assert.equal(uncertain.state,'uncertain');
+  assert.equal(uncertain.reason,'forge_process_unverified_after_restart');
+  await f.kernel.service.invoke(f.kernel.context,'work_claim',{
+    projectId,taskId:f.taskId,action:'release',
+    claimToken:f.claim.claimToken,generation:f.claim.claim.generation,
+    requestId:'process_handoff_release'});
+  const replacement=await f.kernel.service.invoke(f.kernel.context,'work_claim',{
+    projectId,taskId:f.taskId,action:'acquire',chatLabel:'second-chat',
+    requestId:'process_handoff_acquire'});
+  const nextClaim={...claim,claimToken:replacement.result.claimToken,
+    claimGeneration:replacement.result.claim.generation};
+  // Survive a full Owner/process-monitor interval after the original claim
+  // is released. The process remains owned by Forge, not by the GPT turn.
+  await new Promise(resolve=>setTimeout(resolve,5300));
+  const observed=await f.kernel.service.invoke(f.kernel.context,
+    'repository_process_status',{...nextClaim,processId});
+  assert.equal(observed.state,'running');
+  const stopped=await f.kernel.service.invoke(f.kernel.context,'repository_process_stop',{
+    ...nextClaim,requestId:'owner_process_stop_once',processId});
+  assert.equal(stopped.status,'succeeded');
+  assert.equal(stopped.result.stopRequested,true);
+  const again=await f.kernel.service.invoke(f.kernel.context,'repository_process_stop',{
+    ...nextClaim,requestId:'owner_process_stop_once',processId});
+  assert.equal(again.id,stopped.id);
+  for(let n=0;n<100;n++){
+    const status=await f.kernel.service.invoke(f.kernel.context,
+      'repository_process_status',{...nextClaim,processId});
+    if(status.state==='stopped'){
+      assert.equal(status.externalEffectsVerified,false);
+      return;
+    }
+    await new Promise(resolve=>setTimeout(resolve,100));
+  }
+  assert.fail('owned process did not stop');
+});
 test('local write approval is independent, persisted, per-repository and revocable without losing read',async t=>{
   const f=await fixture(t),projectId=f.scope.projectId;
   f.trust.trustApp({expectedScopeHash:f.trust.appScopeHash()});

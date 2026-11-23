@@ -35,7 +35,7 @@ function missionProjectName(mission) {
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
 export class OrchestratorService {
-  constructor({store,authorize,workspacePort=null,fileBroker=null,development=null,repositoryPort=null,repositoryReadPort=null,repositoryWritePort=null,verifyLocalArtifact=null}={}) {
+  constructor({store,authorize,workspacePort=null,fileBroker=null,development=null,repositoryPort=null,repositoryReadPort=null,repositoryWritePort=null,repositoryProcessPort=null,verifyLocalArtifact=null}={}) {
     if(!store?.db || typeof authorize!=='function')throw Error('orchestrator_ports_required');
     this.store=store; this.db=store.db; this.authorize=authorize;
     // Optional native Forge MCP projection of the separately owned Forge Git checkpoint.
@@ -46,6 +46,8 @@ export class OrchestratorService {
     this.repositoryReadPort=repositoryReadPort;
     // Independent, opt-in Owner WRITE port. A read approval never enables this.
     this.repositoryWritePort=repositoryWritePort;
+    // Independent Owner PROCESS approval is not inferred from file WRITE.
+    this.repositoryProcessPort=repositoryProcessPort;
     // Native renderer proof is an optional App-owned read-only port. It is
     // never used as project authorization or as evidence of publication.
     this.viewPort=null;
@@ -768,7 +770,8 @@ export class OrchestratorService {
       }
       const effect=this.db.prepare(`SELECT 1 FROM lab_command_receipt_scope
         WHERE task_id=? AND operation IN (
-          'project_file_write','repository_file_write','project_command_run','project_worktree_prepare',
+          'project_file_write','repository_file_write','repository_process_start',
+          'repository_process_stop','project_command_run','project_worktree_prepare',
           'project_worktree_integrate','project_worktree_verify','work_accept'
         ) LIMIT 1`).get(input.taskId);
       if(effect)throw Error('forge_task_repository_scope_after_effect_denied');
@@ -781,6 +784,8 @@ export class OrchestratorService {
       });
     });
     if(operation==='repository_file_write')return this.writeRepositoryFile(context,input);
+    if(operation==='repository_process_start')return this.startRepositoryProcess(context,input);
+    if(operation==='repository_process_stop')return this.stopRepositoryProcess(context,input);
     if(operation==='project_file_write')return this.writeProjectFile(context,input);
     if(operation==='project_development_status')
       return readDedicatedForgeProject(this.store)
@@ -1101,6 +1106,58 @@ export class OrchestratorService {
     }
   }
 
+  async startRepositoryProcess(context,input){
+    if(!this.repositoryProcessPort)throw Error('forge_repository_process_owner_grant_required');
+    this.task(input.projectId,input.taskId,'work');
+    this.workClaims.assertActiveTaskLease(context,input);
+    const reserved=this.transaction(()=>this.reserve(context,'repository_process_start',input));
+    if(reserved.existing)return reserved.existing;
+    try{
+      this.requireAccess(context,'repository_process_start',input.projectId);
+      const proof=await this.repositoryProcessPort.start(input,reserved.commandId,
+        ()=>this.workClaims.assertActiveTaskLease(context,input));
+      this.workClaims.assertActiveTaskLease(context,input);
+      return this.transaction(()=>this.finish(reserved.commandId,proof));
+    }catch(error){
+      const beforeEffect=new Set(['forge_repository_process_owner_grant_required',
+        'forge_repository_owner_port_and_grant_required',
+        'forge_local_repository_process_approval_required',
+        'forge_repository_process_argv_invalid','forge_repository_process_directory_invalid',
+        'forge_repository_process_timeout_invalid','forge_repository_head_version_conflict',
+        'forge_repository_process_limit_reached',
+        'forge_repository_process_spawn_failed','forge_work_claim_not_owned',
+        'forge_work_claim_renew_required']);
+      const safe=beforeEffect.has(error?.message);
+      try{this.transaction(()=>this.finish(reserved.commandId,{
+        reason:safe?error.message:'forge_repository_process_outcome_uncertain',
+        externalEffectsVerified:false},safe?'failed':'uncertain'));}catch{}
+      throw error;
+    }
+  }
+  async stopRepositoryProcess(context,input){
+    if(!this.repositoryProcessPort)throw Error('forge_repository_process_owner_grant_required');
+    this.task(input.projectId,input.taskId,'work');
+    this.workClaims.assertActiveTaskLease(context,input);
+    const reserved=this.transaction(()=>this.reserve(context,'repository_process_stop',input));
+    if(reserved.existing)return reserved.existing;
+    try{
+      this.requireAccess(context,'repository_process_stop',input.projectId);
+      const proof=await this.repositoryProcessPort.stop(input);
+      this.workClaims.assertActiveTaskLease(context,input);
+      return this.transaction(()=>this.finish(reserved.commandId,proof));
+    }catch(error){
+      const safe=new Set(['forge_repository_process_owner_grant_required',
+        'forge_repository_owner_port_and_grant_required',
+        'forge_local_repository_process_approval_required',
+        'forge_repository_process_id_invalid','forge_repository_process_not_found',
+        'forge_work_claim_not_owned','forge_work_claim_renew_required']).has(error?.message);
+      try{this.transaction(()=>this.finish(reserved.commandId,{
+        reason:safe?error.message:'forge_repository_process_stop_uncertain',
+        externalEffectsVerified:false},safe?'failed':'uncertain'));}catch{}
+      throw error;
+    }
+  }
+
   // Per-repository writes use the same canonical command ledger and Task
   // claim. An indeterminate physical write remains UNCERTAIN and is never
   // repeated just because the MCP transport or GPT conversation disconnected.
@@ -1373,6 +1430,19 @@ export class OrchestratorService {
         return result;
       });
     }
+    if(['repository_process_status','repository_process_logs',
+      'repository_process_list'].includes(operation)){
+      if(!this.repositoryProcessPort)
+        throw Error('forge_repository_process_owner_grant_required');
+      this.task(input.projectId,input.taskId,'work');
+      this.workClaims.assertActiveTaskLease(context,input);
+      const action={repository_process_status:'status',
+        repository_process_logs:'logs',repository_process_list:'list'}[operation];
+      return Promise.resolve(this.repositoryProcessPort[action](input)).then(result=>{
+        this.workClaims.assertActiveTaskLease(context,input);
+        return result;
+      });
+    }
     if(operation==='project_repositories'){
       const scope=readDedicatedForgeProject(this.store);
       if(!scope||scope.projectId!==input.projectId)
@@ -1442,10 +1512,12 @@ export class OrchestratorService {
       const activeScope=readDedicatedForgeProject(this.store);
       const readPortAvailable=Boolean(this.repositoryReadPort);
       const writePortAvailable=Boolean(this.repositoryWritePort);
+      const processPortAvailable=Boolean(this.repositoryProcessPort);
       const visible=new Set(dedicatedForgeMcpOperations(
         this.store,ORCHESTRATOR_TOOLS.map(t=>t.operation),{
           repositoryReadPortAvailable:readPortAvailable,
-          repositoryWritePortAvailable:writePortAvailable
+          repositoryWritePortAvailable:writePortAvailable,
+          repositoryProcessPortAvailable:processPortAvailable
         }));
       return {
         contract:ORCHESTRATOR_CONTRACT,engine:'passive-app',
@@ -1459,9 +1531,10 @@ export class OrchestratorService {
         // historical single-repository broker is unrelated to Forge Owner
         // ports and must not hide a valid native repository binding.
         repositoryPortAvailable:this.repository.available()||
-          readPortAvailable||writePortAvailable,
+          readPortAvailable||writePortAvailable||processPortAvailable,
         repositoryReadPortAvailable:readPortAvailable,
         repositoryWritePortAvailable:writePortAvailable,
+        repositoryProcessPortAvailable:processPortAvailable,
         continuationEnabled:0,
         analysisAvailable:false,analysisMode:'gpt_via_forge_mcp',
         providerExecutionAvailable:false,

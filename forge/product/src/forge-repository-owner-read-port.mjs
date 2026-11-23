@@ -16,6 +16,7 @@ const SHA=/^[0-9a-f]{40}$/;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ATTESTATION='ordax.forge.owner-repository-read-attestation/1';
 const WRITE_ATTESTATION='ordax.forge.owner-repository-write-attestation/1';
+const PROCESS_ATTESTATION='ordax.forge.owner-repository-process-attestation/1';
 const MAX_ATTESTATION_AGE_MS=120_000;
 const MAX_GRANT_FUTURE_MS=5*60_000;
 const physicalIdentity=folder=>{const stat=fs.statSync(folder,{bigint:true});
@@ -38,7 +39,7 @@ export class ForgeRepositoryOwnerReadPort {
     this.clock=clock;
   }
   async authorize({projectId,taskId,repository}={},access='read'){
-    if(!['read','write'].includes(access))throw Error('forge_repository_access_invalid');
+    if(!['read','write','process'].includes(access))throw Error('forge_repository_access_invalid');
     if(!PROJECT.test(projectId)||!TASK.test(taskId)||!REPO.test(repository))
       throw Error('forge_repository_read_scope_invalid');
     const session=this.store.getWorkspaceSession();
@@ -74,18 +75,21 @@ export class ForgeRepositoryOwnerReadPort {
     const expiry=Date.parse(grant?.validUntil||'');
     if(!grant||grant.projectId!==projectId||grant.taskId!==taskId||
        grant.repository!==repository||grant.ownerApproved!==true||
-       (access==='write'?grant.writeAuthorized!==true:grant.readAuthorized!==true)||
+       (access==='write'?grant.writeAuthorized!==true:
+         access==='process'?grant.processAuthorized!==true:grant.readAuthorized!==true)||
        grant.authority!=='forge_native_owner'||
        !Number.isFinite(expiry)||expiry<=now||expiry>now+MAX_GRANT_FUTURE_MS||
        typeof grant.root!=='string'||!path.isAbsolute(grant.root)||
        typeof grant.rootIdentity!=='string'||!/^\d+:\d+$/.test(grant.rootIdentity)||
-       proof?.schema!==(access==='write'?WRITE_ATTESTATION:ATTESTATION)||
+       proof?.schema!==(access==='write'?WRITE_ATTESTATION:
+         access==='process'?PROCESS_ATTESTATION:ATTESTATION)||
        (!localOwner&&!runtimeOwner)||
        proof.forgeClientId!==FORGE_NATIVE_OAUTH_CLIENT_ID||
        proof.projectId!==projectId||proof.taskId!==taskId||
        proof.repository!==repository||proof.ownerConfirmed!==true||
        (access==='write'?proof.repositoryWriteGranted!==true:
-         proof.repositoryReadGranted!==true)||
+         access==='process'?proof.repositoryProcessGranted!==true:
+           proof.repositoryReadGranted!==true)||
        !Number.isFinite(issuedAt)||issuedAt>now||
        now-issuedAt>MAX_ATTESTATION_AGE_MS)
       throw Error('forge_repository_owner_port_and_grant_required');

@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('ordax', {
   forgeRepositoryOwnerChoose: repo => ipcRenderer.invoke('ordax:forge:repository-owner:choose',repo),
   forgeRepositoryOwnerApproveWrite: repo => ipcRenderer.invoke('ordax:forge:repository-owner:write-approve',repo),
   forgeRepositoryOwnerRevokeWrite: repo => ipcRenderer.invoke('ordax:forge:repository-owner:write-revoke',repo),
+  forgeRepositoryOwnerApproveProcess: repo => ipcRenderer.invoke('ordax:forge:repository-owner:process-approve',repo),
+  forgeRepositoryOwnerRevokeProcess: repo => ipcRenderer.invoke('ordax:forge:repository-owner:process-revoke',repo),
   forgeRepositoryOwnerRevoke: repo => ipcRenderer.invoke('ordax:forge:repository-owner:revoke',repo),
   forgeWorkspaceMigrate: projectId => ipcRenderer.invoke('ordax:forge:workspace:migrate',projectId),
   forgeDevelopmentStatus: projectId => ipcRenderer.invoke('ordax:forge:development:status',projectId),

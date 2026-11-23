@@ -42,6 +42,13 @@ test('only native Owner picker may create or revoke a local repository root',()=
   assert.match(preload,/forgeRepositoryOwnerApproveWrite: repo => ipcRenderer\.invoke\('ordax:forge:repository-owner:write-approve',repo\)/);
   assert.match(preload,/forgeRepositoryOwnerRevokeWrite: repo => ipcRenderer\.invoke\('ordax:forge:repository-owner:write-revoke',repo\)/);
   assert.match(ui,/writeGranted\?api\.forgeRepositoryOwnerRevokeWrite/);
+  assert.match(main,/forgeLocalRepositoryOwners\.approveProcess\(\{projectId,repository\}\)/);
+  assert.match(main,/forgeLocalRepositoryOwners\.revokeProcess\(\{projectId,repository\}\)/);
+  assert.match(main,/new ForgeRepositoryOwnerProcessPort\(/);
+  assert.match(preload,/forgeRepositoryOwnerApproveProcess: repo => ipcRenderer\.invoke\('ordax:forge:repository-owner:process-approve',repo\)/);
+  assert.match(preload,/forgeRepositoryOwnerRevokeProcess: repo => ipcRenderer\.invoke\('ordax:forge:repository-owner:process-revoke',repo\)/);
+  assert.match(ui,/processGranted\?api\.forgeRepositoryOwnerRevokeProcess/);
+  assert.match(remote,/repositoryProcessPortAvailable:Boolean\(service\.repositoryProcessPort\)/);
   assert.match(host,/service\.repositoryWritePort=new ForgeRepositoryOwnerWritePort/);
 });
 test('local permissions remain distinct from remote Runtime attestation',()=>{

@@ -30,6 +30,7 @@ import {createForgeOrdaxRepositoryCatalog} from '../src/forge-ordax-repository-c
 import {createForgeOrdaxProductMcp} from '../src/forge-ordax-product-mcp.mjs';
 import {ForgeLocalRepositoryOwnerBindings} from '../src/forge-local-repository-owner-bindings.mjs';
 import {ForgeRepositoryOwnerReadPort,ForgeRepositoryOwnerWritePort} from '../src/forge-repository-owner-read-port.mjs';
+import {ForgeRepositoryOwnerProcessPort} from '../src/forge-repository-owner-process-port.mjs';
 import {ForgeMcpSecureResume} from '../src/forge-mcp-secure-resume.mjs';
 import {canonicalProviderChatUrl} from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
@@ -1039,6 +1040,7 @@ if(!stagedProfile){
       .filter(value=>typeof value==='string'&&path.isAbsolute(value))
   });
 }
+let forgeRepositoryProcessPort=null;
 function refreshLocalRepositoryOwnerPort(){
   const scope=readDedicatedForgeProject(store);
   const approved=Boolean(forgeLocalRepositoryOwners&&scope&&
@@ -1057,6 +1059,15 @@ function refreshLocalRepositoryOwnerPort(){
       resolveOwnerBinding:input=>forgeLocalRepositoryOwners.resolve(input)
     })
     :null;
+  const processApproved=approved&&forgeLocalRepositoryOwners.hasApprovedRoot(
+    scope.projectId,{access:'process'});
+  if(processApproved&&!forgeRepositoryProcessPort)
+    forgeRepositoryProcessPort=new ForgeRepositoryOwnerProcessPort({
+      store,repositoryCatalog:orchestratorService.repositoryCatalogPort,
+      resolveOwnerBinding:input=>forgeLocalRepositoryOwners.resolve(input)
+    });
+  orchestratorService.repositoryProcessPort=processApproved
+    ?forgeRepositoryProcessPort:null;
   return approved;
 }
 if(!stagedProfile)refreshLocalRepositoryOwnerPort();
@@ -1379,7 +1390,8 @@ const forgeLocalMcp=createForgeLoopbackMcp({
     // remote MCP gateway already does, without minting any new grant.
     allowedOperations:()=>dedicatedForgeMcpOperations(store,allowedOperations,{
       repositoryReadPortAvailable:Boolean(orchestratorService.repositoryReadPort),
-      repositoryWritePortAvailable:Boolean(orchestratorService.repositoryWritePort)
+      repositoryWritePortAvailable:Boolean(orchestratorService.repositoryWritePort),
+      repositoryProcessPortAvailable:Boolean(orchestratorService.repositoryProcessPort)
     }),
     afterToolInvoke:({operation,args,output})=>{
       try{observeMcpToolCall({store,operation,output,ingress:'owner_loopback'});}catch{}
@@ -1520,7 +1532,10 @@ registerUiHandler('ordax:forge:repository-owner:status',(event,repository)=>{
     Boolean(orchestratorService.repositoryReadPort),
     writeCatalogSynchronized:gateway.running===true&&
       gateway.catalogSynchronized===true&&
-      Boolean(orchestratorService.repositoryWritePort)};
+      Boolean(orchestratorService.repositoryWritePort),
+    processCatalogSynchronized:gateway.running===true&&
+      gateway.catalogSynchronized===true&&
+      Boolean(orchestratorService.repositoryProcessPort)};
 });
 registerUiHandler('ordax:forge:repository-owner:choose',async(event,repository)=>{
   const projectId=currentForgeRepositoryOwner(event,repository);
@@ -1556,6 +1571,51 @@ registerUiHandler('ordax:forge:repository-owner:choose',async(event,repository)=
   }catch{/* Existing gateway heartbeat retries; never reinterpret a grant. */}
   return {...granted,catalogSynchronized};
 });
+registerUiHandler('ordax:forge:repository-owner:process-approve',async(event,repository)=>{
+  const projectId=currentForgeRepositoryOwner(event,repository);
+  const status=forgeLocalRepositoryOwners.status({projectId,repository});
+  if(status.verified!==true)
+    throw Error('forge_local_repository_read_binding_required');
+  if(status.processGranted===true)return {...status,unchanged:true};
+  const approved=await confirmInActiveUi({
+    title:'Autorizar processos locais pelo Forge MCP',
+    message:'Permitir que Tasks com claim válido executem programas no Windows neste checkout?',
+    detail:repository+'\nProcessos terão a autoridade do usuário Windows, NÃO são sandbox. Esta permissão é separada da escrita de arquivos, exige Task e recibo, possui limites de tempo/concorrência, e pode ser revogada nesta tela. Não concede acesso a outros repositórios.',
+    approveLabel:'Autorizar processos'
+  });
+  if(!approved)return {cancelled:true};
+  currentForgeRepositoryOwner(event,repository);
+  const granted=forgeLocalRepositoryOwners.approveProcess({projectId,repository});
+  refreshLocalRepositoryOwnerPort();
+  let catalogSynchronized=false;
+  try{
+    const state=await forgeRemoteGateway.refreshCatalog();
+    catalogSynchronized=state.catalogSynchronized===true;
+  }catch{/* Gateway heartbeat retries; local grant remains authoritative. */}
+  return {...granted,catalogSynchronized};
+});
+registerUiHandler('ordax:forge:repository-owner:process-revoke',async(event,repository)=>{
+  const projectId=currentForgeRepositoryOwner(event,repository);
+  const status=forgeLocalRepositoryOwners.status({projectId,repository});
+  if(status.processGranted!==true)return {projectId,repository,processRevoked:false};
+  const approved=await confirmInActiveUi({
+    title:'Revogar execução local do Forge MCP',
+    message:'Revogar a execução de processos, mantendo as permissões de leitura e escrita existentes?',
+    detail:repository+'\nA revogação bloqueia novos comandos e interrompe processos vivos gerenciados pelo Forge após a verificação de autorização.',
+    approveLabel:'Revogar processos'
+  });
+  if(!approved)return {cancelled:true};
+  currentForgeRepositoryOwner(event,repository);
+  const revoked=forgeLocalRepositoryOwners.revokeProcess({projectId,repository});
+  forgeRepositoryProcessPort?.stopForRepository(projectId,repository);
+  refreshLocalRepositoryOwnerPort();
+  let catalogSynchronized=false;
+  try{
+    const state=await forgeRemoteGateway.refreshCatalog();
+    catalogSynchronized=state.catalogSynchronized===true;
+  }catch{/* A autoridade local é mais restrita que qualquer catálogo remoto. */}
+  return {...revoked,catalogSynchronized};
+});
 registerUiHandler('ordax:forge:repository-owner:write-approve',async(event,repository)=>{
   const projectId=currentForgeRepositoryOwner(event,repository);
   const status=forgeLocalRepositoryOwners.status({projectId,repository});
@@ -1585,8 +1645,8 @@ registerUiHandler('ordax:forge:repository-owner:write-revoke',async(event,reposi
   if(status.writeGranted!==true)return {projectId,repository,writeRevoked:false};
   const approved=await confirmInActiveUi({
     title:'Revogar escrita do Forge MCP',
-    message:'Revogar a escrita, mantendo somente a leitura neste repositório?',
-    detail:'A autorização física de escrita de '+repository+' será revogada na SQLite canônica. Arquivos existentes não serão alterados.',
+    message:'Revogar a ferramenta de escrita de arquivos deste repositório?',
+    detail:'A autorização física de escrita de '+repository+' será revogada na SQLite canônica. Se a permissão separada de PROCESSOS estiver ativa, comandos autorizados ainda poderão modificar arquivos: revogue processos separadamente para bloquear essa via.',
     approveLabel:'Revogar escrita'
   });
   if(!approved)return {cancelled:true};

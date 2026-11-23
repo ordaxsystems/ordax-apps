@@ -84,8 +84,12 @@ const REPOSITORY_READ_PORTS=new Set(['repository_inspect','repository_files_list
   'repository_file_read','repository_git_status','repository_git_diff',
   'repository_git_log','repository_git_branches']);
 const REPOSITORY_WRITE_PORTS=new Set(['repository_file_write']);
+const REPOSITORY_PROCESS_PORTS=new Set(['repository_process_start',
+  'repository_process_status','repository_process_logs',
+  'repository_process_list','repository_process_stop']);
 export function dedicatedForgeMcpOperations(store,operations,
-  {repositoryReadPortAvailable=false,repositoryWritePortAvailable=false}={}){
+  {repositoryReadPortAvailable=false,repositoryWritePortAvailable=false,
+    repositoryProcessPortAvailable=false}={}){
   const scope=readDedicatedForgeProject(store);
   // New tools cannot be discovered merely because they have JSON schemas.
   // They require a real, trusted Forge-native Owner port in this process.
@@ -94,5 +98,7 @@ export function dedicatedForgeMcpOperations(store,operations,
     (!REPOSITORY_READ_PORTS.has(op)||
       (scope!==null&&repositoryReadPortAvailable===true))&&
     (!REPOSITORY_WRITE_PORTS.has(op)||
-      (scope!==null&&repositoryWritePortAvailable===true)));
+      (scope!==null&&repositoryWritePortAvailable===true))&&
+    (!REPOSITORY_PROCESS_PORTS.has(op)||
+      (scope!==null&&repositoryProcessPortAvailable===true)));
 }

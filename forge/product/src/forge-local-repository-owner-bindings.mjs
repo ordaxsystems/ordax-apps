@@ -48,6 +48,9 @@ export class ForgeLocalRepositoryOwnerBindings {
     if(!this.db.prepare('PRAGMA table_info(forge_local_repository_roots)').all()
       .some(column=>column.name==='write_approved_at'))
       this.db.exec('ALTER TABLE forge_local_repository_roots ADD COLUMN write_approved_at TEXT');
+    if(!this.db.prepare('PRAGMA table_info(forge_local_repository_roots)').all()
+      .some(column=>column.name==='process_approved_at'))
+      this.db.exec('ALTER TABLE forge_local_repository_roots ADD COLUMN process_approved_at TEXT');
   }
   owner(projectId,repository){
     const ws=this.store.getWorkspaceSession();
@@ -94,7 +97,7 @@ export class ForgeLocalRepositoryOwnerBindings {
   status({projectId,repository}={}){
     try{
       const owner=this.owner(projectId,repository);
-      const row=this.db.prepare('SELECT canonical_root AS root,physical_identity AS identity,write_approved_at AS writeApprovedAt FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=? AND repository=? AND owner_subject_id=?')
+      const row=this.db.prepare('SELECT canonical_root AS root,physical_identity AS identity,write_approved_at AS writeApprovedAt,process_approved_at AS processApprovedAt FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=? AND repository=? AND owner_subject_id=?')
         .get(projectId,owner.sessionId,repository,owner.ownerSubjectId);
       if(!row)return {projectId,repository,configured:false,verified:false,
         reason:'forge_local_repository_owner_binding_required'};
@@ -104,15 +107,18 @@ export class ForgeLocalRepositoryOwnerBindings {
         return {projectId,repository,configured:true,verified:true,readGranted:true,
           writeGranted:typeof row.writeApprovedAt==='string'&&
             Number.isFinite(Date.parse(row.writeApprovedAt))&&
-            Date.parse(row.writeApprovedAt)<=this.clock(),headSha:current.head};
+            Date.parse(row.writeApprovedAt)<=this.clock(),
+          processGranted:typeof row.processApprovedAt==='string'&&
+            Number.isFinite(Date.parse(row.processApprovedAt))&&
+            Date.parse(row.processApprovedAt)<=this.clock(),headSha:current.head};
       }catch{
         return {projectId,repository,configured:true,verified:false,
-          readGranted:false,writeGranted:false,
+          readGranted:false,writeGranted:false,processGranted:false,
           reason:'forge_local_repository_grant_not_verified'};
       }
     }catch{
       return {projectId,repository,configured:false,verified:false,
-        readGranted:false,writeGranted:false,reason:'forge_local_repository_owner_authorization_required'};
+        readGranted:false,writeGranted:false,processGranted:false,reason:'forge_local_repository_owner_authorization_required'};
     }
   }
   // Trusted native Owner UI only; the OS picker supplies selectedRoot.
@@ -129,7 +135,7 @@ export class ForgeLocalRepositoryOwnerBindings {
         owner.ownerSubjectId,new Date(this.clock()).toISOString());
     return {schema:'ordax.forge.local-owner-repository/1',
       projectId,repository,configured:true,originVerified:true,
-      rootIdentityVerified:true,readGranted:true,writeGranted:false,
+      rootIdentityVerified:true,readGranted:true,writeGranted:false,processGranted:false,
       headSha:proof.head};
   }
   // Native Owner UI calls this only after a separate, explicit WRITE
@@ -155,6 +161,27 @@ export class ForgeLocalRepositoryOwnerBindings {
       .run(projectId,owner.sessionId,repository,owner.ownerSubjectId).changes;
     return {projectId,repository,writeRevoked:changed===1};
   }
+  // Full user-process execution is never implicitly granted by file WRITE.
+  approveProcess({projectId,repository}={}){
+    const owner=this.owner(projectId,repository);
+    const row=this.db.prepare('SELECT canonical_root AS root,physical_identity AS identity,process_approved_at AS approvedAt FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=? AND repository=? AND owner_subject_id=?')
+      .get(projectId,owner.sessionId,repository,owner.ownerSubjectId);
+    if(!row)throw Error('forge_local_repository_owner_binding_required');
+    const current=this.verifiedRoot(repository,row.root);
+    if(current.identity!==row.identity)throw Error('forge_local_repository_physical_identity_changed');
+    if(row.approvedAt)return {projectId,repository,processGranted:true,unchanged:true};
+    const changed=this.db.prepare('UPDATE forge_local_repository_roots SET process_approved_at=? WHERE project_id=? AND workspace_session_id=? AND repository=? AND owner_subject_id=? AND physical_identity=? AND process_approved_at IS NULL')
+      .run(new Date(this.clock()).toISOString(),projectId,owner.sessionId,
+        repository,owner.ownerSubjectId,row.identity).changes;
+    if(changed!==1)throw Error('forge_local_repository_process_authorization_conflict');
+    return {projectId,repository,processGranted:true,headSha:current.head};
+  }
+  revokeProcess({projectId,repository}={}){
+    const owner=this.owner(projectId,repository);
+    const changed=this.db.prepare('UPDATE forge_local_repository_roots SET process_approved_at=NULL WHERE project_id=? AND workspace_session_id=? AND repository=? AND owner_subject_id=? AND process_approved_at IS NOT NULL')
+      .run(projectId,owner.sessionId,repository,owner.ownerSubjectId).changes;
+    return {projectId,repository,processRevoked:changed===1};
+  }
   revoke({projectId,repository}={}){
     const owner=this.owner(projectId,repository);
     const changed=this.db.prepare('DELETE FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=? AND repository=? AND owner_subject_id=?')
@@ -165,16 +192,18 @@ export class ForgeLocalRepositoryOwnerBindings {
   // a database table or OAuth login exists; at least one live root must pass
   // the exact local Owner identity, origin and physical identity checks.
   hasApprovedRoot(projectId,{access='read'}={}){
-    if(!['read','write'].includes(access))return false;
+    if(!['read','write','process'].includes(access))return false;
     try {
       const ws=this.store.getWorkspaceSession();
       if(ws?.status!=='active')return false;
       const rows=this.db.prepare(
-        'SELECT repository,canonical_root AS root,physical_identity AS identity,owner_subject_id AS ownerSubjectId,write_approved_at AS writeApprovedAt FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=?'
+        'SELECT repository,canonical_root AS root,physical_identity AS identity,owner_subject_id AS ownerSubjectId,write_approved_at AS writeApprovedAt,process_approved_at AS processApprovedAt FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=?'
       ).all(projectId,ws.id);
       for(const row of rows){
         if(access==='write'&&(!Number.isFinite(Date.parse(row.writeApprovedAt||''))||
           Date.parse(row.writeApprovedAt)>this.clock()))continue;
+        if(access==='process'&&(!Number.isFinite(Date.parse(row.processApprovedAt||''))||
+          Date.parse(row.processApprovedAt)>this.clock()))continue;
         try{
           const verified=this.owner(projectId,row.repository);
           if(verified.ownerSubjectId!==row.ownerSubjectId)continue;
@@ -186,23 +215,27 @@ export class ForgeLocalRepositoryOwnerBindings {
     }catch{return false;}
   }
   async resolve({projectId,taskId,repository,access}={}){
-    if(!['read','write'].includes(access))throw Error('forge_local_repository_access_denied');
+    if(!['read','write','process'].includes(access))throw Error('forge_local_repository_access_denied');
     const owner=this.owner(projectId,repository);
-    const row=this.db.prepare('SELECT canonical_root AS root,physical_identity AS identity,write_approved_at AS writeApprovedAt FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=? AND repository=? AND owner_subject_id=?')
+    const row=this.db.prepare('SELECT canonical_root AS root,physical_identity AS identity,write_approved_at AS writeApprovedAt,process_approved_at AS processApprovedAt FROM forge_local_repository_roots WHERE project_id=? AND workspace_session_id=? AND repository=? AND owner_subject_id=?')
       .get(projectId,owner.sessionId,repository,owner.ownerSubjectId);
     if(!row)throw Error('forge_local_repository_owner_binding_required');
     if(access==='write'&&(!Number.isFinite(Date.parse(row.writeApprovedAt||''))||
        Date.parse(row.writeApprovedAt)>this.clock()))
       throw Error('forge_local_repository_write_approval_required');
+    if(access==='process'&&(!Number.isFinite(Date.parse(row.processApprovedAt||''))||
+       Date.parse(row.processApprovedAt)>this.clock()))
+      throw Error('forge_local_repository_process_approval_required');
     const current=this.verifiedRoot(repository,row.root);
     if(current.identity!==row.identity)throw Error('forge_local_repository_physical_identity_changed');
     const now=this.clock();
     return {projectId,taskId,repository,authority:'forge_native_owner',
       ownerApproved:true,readAuthorized:access==='read',
-      writeAuthorized:access==='write',root:current.root,
+      writeAuthorized:access==='write',processAuthorized:access==='process',root:current.root,
       rootIdentity:current.identity,validUntil:new Date(now+60_000).toISOString(),
       attestation:{
         schema:access==='write'?'ordax.forge.owner-repository-write-attestation/1':
+          access==='process'?'ordax.forge.owner-repository-process-attestation/1':
           'ordax.forge.owner-repository-read-attestation/1',
         source:'forge_native_local_owner',forgeClientId:FORGE_NATIVE_OAUTH_CLIENT_ID,
         projectId,taskId,repository,ownerConfirmed:true,ownerIdentityBound:true,
@@ -210,6 +243,7 @@ export class ForgeLocalRepositoryOwnerBindings {
         localHostVerified:true,deviceBindingAttested:false,
         repositoryReadGranted:access==='read',
         repositoryWriteGranted:access==='write',
+        repositoryProcessGranted:access==='process',
         verifiedAt:new Date(now).toISOString()
       }};
   }

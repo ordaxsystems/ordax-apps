@@ -179,7 +179,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
          typeof api.forgeRepositoryOwnerChoose!=='function'||
          typeof api.forgeRepositoryOwnerRevoke!=='function'||
          typeof api.forgeRepositoryOwnerApproveWrite!=='function'||
-         typeof api.forgeRepositoryOwnerRevokeWrite!=='function')continue;
+         typeof api.forgeRepositoryOwnerRevokeWrite!=='function'||
+         typeof api.forgeRepositoryOwnerApproveProcess!=='function'||
+         typeof api.forgeRepositoryOwnerRevokeProcess!=='function')continue;
       row.classList.add('fd-repo-owner-row');
       const controls=document.createElement('div');
       controls.className='fd-repo-owner-actions';
@@ -192,11 +194,14 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const write=document.createElement('button');
       write.type='button';write.className='mini-secondary';
       write.textContent='Autorizar escrita';
+      const processButton=document.createElement('button');
+      processButton.type='button';processButton.className='mini-secondary';
+      processButton.textContent='Autorizar processos';
       const revoke=document.createElement('button');
       revoke.type='button';revoke.className='mini-secondary';
       revoke.textContent='Revogar';
-      controls.append(state,choose,write,revoke);row.append(controls);
-      let busy=false,writeGranted=false;
+      controls.append(state,choose,write,processButton,revoke);row.append(controls);
+      let busy=false,writeGranted=false,processGranted=false;
       const refresh=async()=>{
         const result=await api.forgeRepositoryOwnerStatus(repo);
         if(!controls.isConnected)return;
@@ -210,20 +215,27 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         if(writeGranted)state.textContent+=result?.writeCatalogSynchronized===true
           ?' · escrita MCP sincronizada':' · escrita autorizada, aguardando catálogo';
         write.textContent=writeGranted?'Revogar escrita':'Autorizar escrita';
+        processGranted=result?.verified===true&&result?.processGranted===true;
+        if(processGranted)state.textContent+=result?.processCatalogSynchronized===true
+          ?' · processos MCP sincronizados':' · processos aprovados, aguardando catálogo';
+        processButton.textContent=processGranted?'Revogar processos':'Autorizar processos';
+        processButton.disabled=busy||result?.verified!==true;
         write.disabled=busy||result?.verified!==true;
         choose.disabled=busy||result?.configured===true;
         revoke.disabled=busy||result?.configured!==true;
       };
       const act=async(action)=>{
         if(busy)return;
-        busy=true;choose.disabled=true;write.disabled=true;revoke.disabled=true;
+        busy=true;choose.disabled=true;write.disabled=true;
+        processButton.disabled=true;revoke.disabled=true;
         try{
           const reply=await action(repo);
           if(reply?.cancelled===true){state.textContent='Operação cancelada pelo proprietário';}
           await refresh();
         }catch{
           state.textContent='Não foi possível confirmar a alteração. Confira a autorização Owner.';
-          choose.disabled=false;write.disabled=false;revoke.disabled=false;
+          choose.disabled=false;write.disabled=false;
+          processButton.disabled=false;revoke.disabled=false;
         }finally{busy=false;void refresh().catch(()=>{});}
       };
       choose.addEventListener('click',()=>{void act(api.forgeRepositoryOwnerChoose);});
@@ -231,11 +243,16 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         void act(writeGranted?api.forgeRepositoryOwnerRevokeWrite:
           api.forgeRepositoryOwnerApproveWrite);
       });
+      processButton.addEventListener('click',()=>{
+        void act(processGranted?api.forgeRepositoryOwnerRevokeProcess:
+          api.forgeRepositoryOwnerApproveProcess);
+      });
       revoke.addEventListener('click',()=>{void act(api.forgeRepositoryOwnerRevoke);});
       void refresh().catch(()=>{
         if(controls.isConnected){
           state.textContent='Autoridade local indisponível';
-          choose.disabled=true;write.disabled=true;revoke.disabled=true;
+          choose.disabled=true;write.disabled=true;
+          processButton.disabled=true;revoke.disabled=true;
         }
       });
     }
