@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
-import {FORGE_EXECUTOR_PROTOCOL,FORGE_MCP_INSTRUCTIONS,FORGE_SCOPED_MCP_INSTRUCTIONS} from '../src/forge-executor-context.mjs';
+import {FORGE_EXECUTOR_PROTOCOL,FORGE_MCP_INSTRUCTIONS,FORGE_SCOPED_MCP_INSTRUCTIONS,FORGE_EXECUTION_DISCIPLINE} from '../src/forge-executor-context.mjs';
 import {FORGE_LOCAL_MCP_OPERATIONS} from '../src/forge-loopback-mcp.mjs';
 import {ORCHESTRATOR_TOOLS} from '../src/forge-contract.mjs';
 import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
@@ -88,4 +88,16 @@ test('Forge MCP advertises its operating protocol as discovery, not as a new gra
   // blanket computer shell grant and still requires a verified project binding.
   assert.equal(list.result.tools.some(x=>/shell_exec/.test(x.name)),false);
   assert.equal(list.result.tools.some(x=>x.name==='forge_project_file_write'),true);
+});
+
+
+test('all Forge context surfaces share one operational discipline without conferring authority',()=>{
+  assert.equal(FORGE_EXECUTOR_PROTOCOL.guidanceOnly,true);
+  assert.match(FORGE_EXECUTOR_PROTOCOL.guidanceRevision,/^\d{4}-\d{2}-\d{2}\.\d+$/);
+  for(const rule of FORGE_EXECUTION_DISCIPLINE){
+    assert.equal(FORGE_EXECUTOR_PROTOCOL.flow.filter(x=>x===rule).length,1);
+    assert.equal(FORGE_MCP_INSTRUCTIONS.split(rule).length,2);
+    assert.equal(FORGE_SCOPED_MCP_INSTRUCTIONS.split(rule).length,2);
+  }
+  assert.equal(FORGE_EXECUTOR_PROTOCOL.safety.modelCanCreateGrants,false);
 });
