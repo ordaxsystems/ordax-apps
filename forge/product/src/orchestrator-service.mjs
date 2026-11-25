@@ -8,7 +8,7 @@ import {LabContinuation} from './lab-continuation.mjs';
 import {AutonomousDialogue} from './autonomous-dialogue.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
 import {forgeProjectContext,forgeMcpDiscovery} from './forge-executor-context.mjs';
-import {forgeProjectMemoryView} from './forge-project-memory-view.mjs';
+import {forgeProjectMemoryView,forgeProjectDirectivesView} from './forge-project-memory-view.mjs';
 import {forgeProjectAdministratorView} from './forge-project-administrator-view.mjs';
 import {forgeProjectHandoffView} from './forge-project-handoff-view.mjs';
 import {forgeProjectActivityView} from './forge-project-activity-view.mjs';
@@ -1316,6 +1316,7 @@ export class OrchestratorService {
         ...(dedicated?{limitations:{...view.limitations,
           physicalFileAccess:'forge_repository_owner_port_and_grant_required'}}:{}),
         projectMissions:forgeProjectMissionsView(this.store,input.projectId),
+        projectDirectives:forgeProjectDirectivesView(this.store,input.projectId),
         development:dedicated?{projectId:input.projectId,available:false,
           nativeProcessExecution:false,
           reason:'dedicated_repository_owner_port_required'}:

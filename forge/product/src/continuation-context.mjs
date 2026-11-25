@@ -3,11 +3,11 @@ import { createHash } from 'node:crypto';
 // Pure, deterministic builder: the provider chat is disposable, the OrdaX Task is SSOT.
 // Never cut the context in the middle of a memory record or truncate the user's request.
 const LABELS = Object.freeze({
-  goal: 'OBJETIVO', constraint: 'RESTRICAO', decision: 'DECISAO',
+  directive: 'DIRETRIZ', goal: 'OBJETIVO', constraint: 'RESTRICAO', decision: 'DECISAO',
   open_loop: 'PENDENCIA', structure: 'ESTRUTURA', entity: 'ENTIDADE',
   fact: 'FATO', reference: 'REFERENCIA'
 });
-const PRIORITY = ['goal','constraint','decision','open_loop','structure','entity','fact','reference'];
+const PRIORITY = ['directive','goal','constraint','decision','open_loop','structure','entity','fact','reference'];
 const clean = value => String(value ?? '').replace(/\s+/g,' ').trim();
 const short = (value,limit) => {
   const text=clean(value);
@@ -26,7 +26,7 @@ function packet(prompt,{contextText='',request='',maxChars=16000,checkpointVersi
   historyWindowMessageCount=0,historyWindowOmittedCount=0,historyWindowOmittedMessages=[],
   historyWindowRetrievedMessages=[],omissionReasons=[],recentHistoryBudgetOmissions=0,
   retrievedMessageOmissions=0}={}) {
-  const criticalCategories=new Set(['goal','constraint','decision','open_loop']);
+  const criticalCategories=new Set(['directive','goal','constraint','decision','open_loop']);
   const criticalOmissions=omittedMemory.filter(item=>criticalCategories.has(item.category));
   const contextSourceCount=(checkpointPresent?1:0)+includedMemory.length+includedMessages.length;
   const contextIncluded=Boolean(contextText&&contextSourceCount>0);

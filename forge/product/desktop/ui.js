@@ -994,6 +994,8 @@ function friendlyError(error) {
     chatgpt_response_in_progress: 'O ChatGPT ainda está gerando uma resposta. O rascunho permanece local e nenhum novo envio será feito.',
     google_login_button_not_found: 'O botão de login do Google não ficou disponível.',
     google_login_navigation_not_observed: 'O fluxo do Google não confirmou a navegação.',
+    project_directive_manual_editor_required: 'Diretrizes só podem ser salvas pelo editor manual, não por notas ou propostas do GPT.',
+    project_directive_project_required: 'Vincule a tarefa a um projeto para cadastrar uma diretriz.',
     invalid_project_memory_category: 'Escolha uma categoria válida para a memória.',
     project_memory_key_required: 'Dê um nome ou chave para este item de memória.',
     project_memory_content_required: 'Descreva o conteúdo que deve permanecer canônico.',
@@ -1011,7 +1013,7 @@ function friendlyError(error) {
 
 const memoryCategoryLabels = {
   entity:'Entidade', structure:'Estrutura', fact:'Fato', decision:'Decisão',
-  constraint:'Restrição', goal:'Objetivo', open_loop:'Pendência', reference:'Referência'
+  directive:'Diretriz do projeto', constraint:'Restrição', goal:'Objetivo', open_loop:'Pendência', reference:'Referência'
 };
 
 function setMemoryEditor(open, item = null) {

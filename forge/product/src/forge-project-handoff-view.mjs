@@ -1,6 +1,7 @@
 import {forgeProjectFileReceiptView} from './forge-project-file-receipts.mjs';
 import {forgeProjectMissionsView} from './forge-project-missions-view.mjs';
 import {forgeVerifiedWorkAcceptances} from './forge-work-acceptance-evidence.mjs';
+import {forgeProjectDirectivesView} from './forge-project-memory-view.mjs';
 import {forgeMcpWorkObservation} from './forge-mcp-observation.mjs';
 
 // Deterministic handoff read model. Rehydrates one project from canonical SQLite;
@@ -124,6 +125,7 @@ export function forgeProjectHandoffView(store,projectId,{taskId=null}={}) {
   return {
     schema:'ordax.forge.project-handoff/1',project,
     projectMissions:forgeProjectMissionsView(store,projectId),
+    projectDirectives:forgeProjectDirectivesView(store,projectId),
     selectedTask,
     provenance:{source:'canonical_app_sqlite',createdFor:'read_only_continuity',
       providerMessagesAreNotArtifactProof:true,physicalFilesInspected:false,

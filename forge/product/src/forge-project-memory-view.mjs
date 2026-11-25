@@ -1,3 +1,30 @@
+import {createHash} from 'node:crypto';
+
+// Directives use the existing memory row and manual editor. A revision describes
+// the actual full active set, not an acknowledgement or authorization grant.
+export function forgeProjectDirectivesView(store,projectId){
+  const session=store.getWorkspaceSession().id;
+  const project=store.db.prepare('SELECT id FROM lab_projects WHERE id=? AND workspace_session_id=?').get(projectId,session);
+  if(!project)throw Error('orchestrator_project_unavailable');
+  const rows=store.db.prepare(`SELECT m.id,m.task_id AS taskId,m.memory_key AS key,m.content,m.updated_at AS updatedAt
+    FROM project_memory_items m JOIN lab_task_bindings b ON b.task_id=m.task_id
+    JOIN tasks t ON t.id=m.task_id WHERE b.project_id=? AND t.workspace_session_id=?
+    AND m.category='directive' AND m.source_type='manual' AND m.status='active'
+    ORDER BY m.memory_key COLLATE NOCASE,m.id`).all(projectId,session);
+  const revision='directives-v1-'+createHash('sha256').update(JSON.stringify(rows)).digest('hex');
+  const items=[];let used=0;
+  for(const row of rows){
+    const item={...row,source:'manual_editor',guidanceOnly:true};
+    const size=JSON.stringify(item).length;
+    if(used+size>24000||items.length>=40)break;
+    used+=size;items.push(item);
+  }
+  return {schema:'ordax.forge.project-directives/1',projectId,revision,total:rows.length,
+    items,truncated:items.length<rows.length,guidanceOnly:true,grantsAuthority:false,
+    modelComplianceVerified:false,
+    instruction:'Use current manually saved project directives as project guidance, subject to user/client instructions and actual grants. If truncated, consult the originating Task memory in the Forge editor; do not assume omitted content.'};
+}
+
 // Read-only projection of the same canonical Store; not a parallel memory database.
 // Project-scoped notes are editorial, never evidence of external file effects.
 export function forgeProjectMemoryView(store,projectId,{maxItems=24,maxRuns=12}={}) {
@@ -40,6 +67,7 @@ export function forgeProjectMemoryView(store,projectId,{maxItems=24,maxRuns=12}=
     provenance:{source:'canonical_app_sqlite',externalFilesInspected:false,
       gptClaimsAreVerifiedEffects:false,remoteReadPerformed:false},
     counts,
+    directives:forgeProjectDirectivesView(store,projectId),
     canonical:memory.map(row=>({...row,verifiedExternalEffect:false,
       status:'accepted_editorial_memory'})),
     suggested:pending.map(row=>({...row,status:'requires_review',

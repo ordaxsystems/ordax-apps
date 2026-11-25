@@ -166,3 +166,31 @@ test('handoff exposes only scoped recorded branch, never a live HEAD or PR claim
   const foreign=await invoke('project_handoff',{projectId:other.projectId});
   assert.equal(foreign.tasks.some(item=>item.branchEvidence!==null),false);
 });
+
+
+test('manually saved directives are project-wide and distinct from GPT notes',async t=>{
+  const {store,invoke}=fixture(t);
+  const p=(await invoke('project_quick_create',{creationNonce:'directives_a'})).result;
+  const w=(await invoke('work_create',{projectId:p.projectId,orchestratorId:p.orchestratorId,title:'Work'})).result;
+  const other=(await invoke('project_quick_create',{creationNonce:'directives_other'})).result;
+  const item=store.upsertProjectMemory(p.chatTaskId,{category:'directive',key:'SSOT',content:'Use the canonical owner.'});
+  store.upsertProjectMemory(w.taskId,{category:'constraint',key:'Note',content:'Unverified note',source_type:'import'});
+  store.upsertProjectMemory(other.chatTaskId,{category:'directive',key:'Private',content:'OTHER PROJECT'});
+  assert.throws(()=>store.upsertProjectMemory(w.taskId,{category:'directive',key:'SSOT',content:'duplicate'}),/project_memory_key_conflict/);
+  assert.throws(()=>store.upsertProjectMemory(w.taskId,{category:'directive',key:'Fake',content:'model',source_type:'import'}),/project_directive_manual_editor_required/);
+  assert.throws(()=>store.upsertProjectMemory(p.chatTaskId,{id:item.id,category:'fact',key:'SSOT',content:'model',source_type:'import'}),/project_directive_manual_editor_required/);
+  const discovery=await invoke('forge_discover',{projectId:p.projectId});
+  const handoff=await invoke('project_handoff',{projectId:p.projectId,taskId:w.taskId});
+  const memory=await invoke('project_memory',{projectId:p.projectId});
+  assert.deepEqual(discovery.projectDirectives,handoff.projectDirectives);
+  assert.deepEqual(memory.directives,handoff.projectDirectives);
+  assert.equal(handoff.projectDirectives.total,1);
+  assert.equal(handoff.projectDirectives.items[0].id,item.id);
+  assert.equal(handoff.projectDirectives.grantsAuthority,false);
+  assert.equal(JSON.stringify(handoff.projectDirectives).includes('OTHER PROJECT'),false);
+  store.upsertProjectMemory(p.chatTaskId,{id:item.id,category:'directive',key:'SSOT',content:'Use updated owner rules.'});
+  const revised=await invoke('project_handoff',{projectId:p.projectId,taskId:w.taskId});
+  assert.notEqual(revised.projectDirectives.revision,handoff.projectDirectives.revision);
+  store.archiveProjectMemory(p.chatTaskId,item.id);
+  assert.equal((await invoke('project_memory',{projectId:p.projectId})).directives.total,0);
+});

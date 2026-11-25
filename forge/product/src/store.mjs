@@ -12,7 +12,7 @@ import { searchTaskHistoricalMessages, searchTaskHistoricalMessagesWithMemoryKey
 
 const SQLITE_OPEN_RETRY_DELAYS_MS = [0, 40, 80, 160, 320, 640, 1280];
 const sqliteOpenWait = new Int32Array(new SharedArrayBuffer(4));
-const PROJECT_MEMORY_CATEGORIES = new Set(['entity','structure','fact','decision','constraint','goal','open_loop','reference']);
+const PROJECT_MEMORY_CATEGORIES = new Set(['entity','structure','fact','decision','constraint','goal','open_loop','reference','directive']);
 const PROJECT_MEMORY_SOURCE_TYPES = new Set(['manual','message','checkpoint','import','system']);
 export const MESSAGE_PAGE_SIZE = 50;
 
@@ -730,7 +730,7 @@ export class Store {
       SELECT id,task_id,category,memory_key AS key,content,status,source_type,source_ref,created_at,updated_at,archived_at
       FROM project_memory_items WHERE ${where}
       ORDER BY CASE category
-        WHEN 'goal' THEN 1 WHEN 'constraint' THEN 2 WHEN 'decision' THEN 3 WHEN 'entity' THEN 4
+        WHEN 'directive' THEN 0 WHEN 'goal' THEN 1 WHEN 'constraint' THEN 2 WHEN 'decision' THEN 3 WHEN 'entity' THEN 4
         WHEN 'structure' THEN 5 WHEN 'fact' THEN 6 WHEN 'open_loop' THEN 7 ELSE 8 END,
         updated_at DESC,id
     `).all(taskId);
@@ -755,14 +755,28 @@ export class Store {
     if (!key) throw new Error('project_memory_key_required');
     if (!content) throw new Error('project_memory_content_required');
     if (!PROJECT_MEMORY_SOURCE_TYPES.has(sourceType)) throw new Error('invalid_project_memory_source');
+    // MCP notes and candidate review cannot masquerade as a manually saved directive.
+    if (category === 'directive' && sourceType !== 'manual') throw new Error('project_directive_manual_editor_required');
     if (key.length > 160 || content.length > 8000) throw new Error('project_memory_too_large');
 
     const now = this.now();
     const requestedId = item.id == null ? null : String(item.id).trim() || null;
-    const existingById = requestedId ? this.db.prepare('SELECT id FROM project_memory_items WHERE task_id=? AND id=?').get(taskId, requestedId) : null;
+    const existingById = requestedId ? this.db.prepare('SELECT id,category,content,memory_key,source_type,updated_at FROM project_memory_items WHERE task_id=? AND id=?').get(taskId, requestedId) : null;
     if (requestedId && !existingById) throw new Error('project_memory_not_found');
-    const existingByKey = this.db.prepare('SELECT id,memory_key FROM project_memory_items WHERE task_id=? AND category=? AND memory_key COLLATE NOCASE=?').get(taskId, category, key);
+    const existingByKey = this.db.prepare('SELECT id,category,content,memory_key,source_type,updated_at FROM project_memory_items WHERE task_id=? AND category=? AND memory_key COLLATE NOCASE=?').get(taskId, category, key);
     if (existingById && existingByKey && existingById.id !== existingByKey.id) throw new Error('project_memory_key_conflict');
+    const prior = existingById || existingByKey;
+    if (prior?.category === 'directive' && sourceType !== 'manual')
+      throw new Error('project_directive_manual_editor_required');
+    if (category === 'directive') {
+      const binding = this.db.prepare('SELECT project_id FROM lab_task_bindings WHERE task_id=?').get(taskId);
+      if (!binding) throw new Error('project_directive_project_required');
+      const conflict = this.db.prepare(`SELECT m.id FROM project_memory_items m
+        JOIN lab_task_bindings b ON b.task_id=m.task_id
+        WHERE b.project_id=? AND m.category='directive' AND m.status='active'
+          AND m.memory_key COLLATE NOCASE=? AND m.task_id<>?`).get(binding.project_id,key,taskId);
+      if (conflict) throw new Error('project_memory_key_conflict');
+    }
     const id = existingById?.id || existingByKey?.id || `memory_${randomUUID()}`;
     if (existingById || existingByKey) {
       const storedKey = existingById ? key : existingByKey.memory_key;
@@ -774,16 +788,23 @@ export class Store {
     }
     this.touch(taskId);
     this.event(taskId, 'project_memory.upserted', { memory_id:id, category, key, source_type:sourceType, source_ref:sourceRef });
+    if (category === 'directive' || prior?.category === 'directive') {
+      this.event(taskId,'project_directive.revised',{
+        memory_id:id, previous:prior?{category:prior.category,key:prior.memory_key,content:prior.content,updated_at:prior.updated_at}:null,
+        current:{category,key,content,updated_at:now},source:'manual_editor'
+      });
+    }
     return this.listProjectMemory(taskId).find(row => row.id === id) || null;
   }
 
   archiveProjectMemory(taskId, memoryId) {
-    const row = this.db.prepare('SELECT id,category,memory_key FROM project_memory_items WHERE id=? AND task_id=?').get(memoryId, taskId);
+    const row = this.db.prepare('SELECT id,category,memory_key,content FROM project_memory_items WHERE id=? AND task_id=?').get(memoryId, taskId);
     if (!row) throw new Error('project_memory_not_found');
     const now = this.now();
     this.db.prepare("UPDATE project_memory_items SET status='archived',archived_at=?,updated_at=? WHERE id=?").run(now, now, memoryId);
     this.touch(taskId);
     this.event(taskId, 'project_memory.archived', { memory_id:memoryId, category:row.category, key:row.memory_key });
+    if(row.category==='directive')this.event(taskId,'project_directive.archived',{memory_id:memoryId,key:row.memory_key,content:row.content});
     return true;
   }
 
