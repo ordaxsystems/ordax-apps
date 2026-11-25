@@ -2,15 +2,19 @@ import {createHash} from 'node:crypto';
 
 // Directives use the existing memory row and manual editor. A revision describes
 // the actual full active set, not an acknowledgement or authorization grant.
-export function forgeProjectDirectivesView(store,projectId){
+export function forgeProjectDirectiveRows(store,projectId){
   const session=store.getWorkspaceSession().id;
   const project=store.db.prepare('SELECT id FROM lab_projects WHERE id=? AND workspace_session_id=?').get(projectId,session);
   if(!project)throw Error('orchestrator_project_unavailable');
-  const rows=store.db.prepare(`SELECT m.id,m.task_id AS taskId,m.memory_key AS key,m.content,m.updated_at AS updatedAt
+  return store.db.prepare(`SELECT m.id,m.task_id AS taskId,m.memory_key AS key,m.content,m.updated_at AS updatedAt
     FROM project_memory_items m JOIN lab_task_bindings b ON b.task_id=m.task_id
     JOIN tasks t ON t.id=m.task_id WHERE b.project_id=? AND t.workspace_session_id=?
     AND m.category='directive' AND m.source_type='manual' AND m.status='active'
     ORDER BY m.memory_key COLLATE NOCASE,m.id`).all(projectId,session);
+}
+
+export function forgeProjectDirectivesView(store,projectId){
+  const rows=forgeProjectDirectiveRows(store,projectId);
   const revision='directives-v1-'+createHash('sha256').update(JSON.stringify(rows)).digest('hex');
   const items=[];let used=0;
   for(const row of rows){

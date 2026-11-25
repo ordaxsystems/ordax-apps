@@ -4,10 +4,10 @@ export const TASK_HANDOFF_SNAPSHOT_FORMAT = 'ordax-task-handoff/v1';
 export const TASK_HANDOFF_SNAPSHOT_MAX_BYTES = 1_000_000;
 
 const CATEGORY_ORDER = Object.freeze([
-  'goal','constraint','decision','open_loop','structure','entity','fact','reference'
+  'directive','goal','constraint','decision','open_loop','structure','entity','fact','reference'
 ]);
 const LABELS = Object.freeze({
-  goal:'Objetivo', constraint:'Restrição', decision:'Decisão', open_loop:'Pendência',
+  directive:'Diretriz do projeto', goal:'Objetivo', constraint:'Restrição', decision:'Decisão', open_loop:'Pendência',
   structure:'Estrutura', entity:'Entidade', fact:'Fato', reference:'Referência'
 });
 const cleanLine = value => String(value ?? '').replace(/[\t\r\n ]+/g,' ').trim();

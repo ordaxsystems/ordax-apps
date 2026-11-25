@@ -101,3 +101,29 @@ test('fresh GPT context exposes only owner-verified project folder as location m
   assert.match(forgeFreshConversationContext(store,project.chatTaskId).text,
     /"workspace":\{"verified":false\}/);
 });
+
+
+test('project-wide manual directives follow every Task across fresh and continuation context',async t=>{
+  const {store,invoke}=fixture(t);
+  const p=(await invoke('project_quick_create',{creationNonce:'directive_context'})).result;
+  const work=(await invoke('work_create',{projectId:p.projectId,orchestratorId:p.orchestratorId,title:'Other task'})).result;
+  const rule=store.upsertProjectMemory(p.chatTaskId,{category:'directive',key:'Owner',content:'Use only the canonical owner.'});
+  const large=store.upsertProjectMemory(p.chatTaskId,{category:'directive',key:'Z full rule',content:'x'.repeat(3000)});
+  const initial=forgeFreshConversationContext(store,work.taskId);
+  const block=JSON.parse(initial.text.split('\n').find(line=>line.startsWith('{')));
+  assert.equal(block.directives.total,2);
+  assert.equal(block.directives.omitted,1);
+  assert.equal(block.directives.items[0].content,rule.content);
+  assert.ok(initial.memoryIds.includes(rule.id));
+  assert.ok(!initial.memoryIds.includes(large.id));
+  assert.ok(initial.text.length<=1800);
+  const packet=store.buildContinuationPacket(work.taskId,'Continue');
+  assert.ok(packet.prompt.includes(rule.content));
+  assert.ok(packet.prompt.includes(large.content));
+  const snapshot=store.buildTaskHandoffSnapshot(work.taskId);
+  assert.ok(snapshot.manifest.memoryIds.includes(rule.id));
+  assert.ok(snapshot.manifest.memoryIds.includes(large.id));
+  assert.equal(store.listProjectMemory(work.taskId).length,0);
+  store.archiveProjectMemory(p.chatTaskId,rule.id);
+  assert.ok(!store.continuationMemoryItems(work.taskId).some(item=>item.id===rule.id));
+});

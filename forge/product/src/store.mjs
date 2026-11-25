@@ -7,6 +7,7 @@ import { assertSupervisorRole } from './supervisor-role-presets.mjs';
 import { canonicalProviderChatUrl, MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT, SUCCESSFUL_TURNS_PER_SEGMENT } from './conversation-policy.mjs';
 import {W3_MAX_ASSISTANT_CHARS} from './provider-recovery-bounds.mjs';
 import { buildProjectContinuationPacket } from './continuation-context.mjs';
+import { forgeProjectDirectiveRows } from './forge-project-memory-view.mjs';
 import { buildTaskHandoffSnapshot } from './task-handoff-snapshot.mjs';
 import { searchTaskHistoricalMessages, searchTaskHistoricalMessagesWithMemoryKeys } from './task-message-search.mjs';
 
@@ -892,6 +893,22 @@ export class Store {
     };
   }
 
+  continuationMemoryItems(taskId) {
+    const local=this.listProjectMemory(taskId);
+    const binding=this.db.prepare(`SELECT b.project_id FROM lab_task_bindings b
+      JOIN tasks t ON t.id=b.task_id WHERE b.task_id=? AND t.workspace_session_id=?`)
+      .get(taskId,this.workspaceSession.id);
+    if(!binding)return local;
+    // One full directive query, used by both the bounded MCP view and the
+    // existing continuation builders. Never silently truncate a directive.
+    const directives=forgeProjectDirectiveRows(this,binding.project_id).map(row=>({
+      id:row.id,task_id:row.taskId,category:'directive',key:row.key,
+      content:row.content,status:'active',source_type:'manual',source_ref:null,
+      updated_at:row.updatedAt
+    }));
+    return [...directives,...local.filter(item=>item.category!=='directive')];
+  }
+
   buildContinuationPacket(taskId, prompt, { maxChars = 16000 } = {}) {
     // Bounded projection of the SAME SQLite SSOT, never an independent cache.
     // Avoid loading every message, event, candidate and conversation on each send.
@@ -900,7 +917,7 @@ export class Store {
     const checkpoint=this.latestCheckpoint(taskId);
     const recentMessages=this.messages(taskId,{limit:8});
     const totalMessageCount=Number(this.db.prepare('SELECT COUNT(*) AS n FROM messages WHERE task_id=?').get(taskId)?.n||0);
-    const memoryItems=this.listProjectMemory(taskId);
+    const memoryItems=this.continuationMemoryItems(taskId);
     const retrievedMessages=totalMessageCount>recentMessages.length
       ?searchTaskHistoricalMessagesWithMemoryKeys(this.db,taskId,prompt,{beforeMessage:recentMessages[0],limit:4,memoryItems})
       :[];
@@ -926,7 +943,7 @@ export class Store {
        new Set(includeMessageIds).size!==includeMessageIds.length)
       throw new Error('task_handoff_message_scope_invalid');
     const checkpoint=this.latestCheckpoint(taskId);
-    const memoryItems=this.listProjectMemory(taskId);
+    const memoryItems=this.continuationMemoryItems(taskId);
     for(const item of memoryItems){
       if(!item.source_ref)continue;
       const sourceExists=item.source_type==='message'

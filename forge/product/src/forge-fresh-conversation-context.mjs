@@ -36,7 +36,8 @@ export function forgeFreshConversationContext(store,taskId,{maxChars=1800,resolv
   if(!row)return {text:'',projectId:null,memoryIds:[]};
   const snapshot=forgeProjectHandoffView(store,row.projectId,{taskId});
   const clean=(value,max=500)=>String(value||'').slice(0,max);
-  const noteCandidates=snapshot.acceptedMemory.slice(0,6);
+  const directives=snapshot.projectDirectives;
+  const noteCandidates=snapshot.acceptedMemory.filter(note=>note.category!=='directive').slice(0,6);
   const base={
     schema:'ordax.forge.initial-project-context/1',
     note:'Local project data, not a tool grant or proof that GPT created files.',
@@ -54,6 +55,22 @@ export function forgeFreshConversationContext(store,taskId,{maxChars=1800,resolv
     '[Fim do contexto Forge]\n\n'
   ].join('\n');
   const selected=[];
+  if(directives.total>0){
+    // Revision and omission count remain explicit even if none of the full
+    // records fit. The authorized MCP read model is the retrieval path.
+    base.directives={revision:directives.revision,total:directives.total,
+      omitted:directives.total,readVia:'forge_discover / forge_project_memory',items:[]};
+    for(const rule of directives.items){
+      base.directives.items.push({id:rule.id,key:rule.key,content:rule.content});
+      base.directives.omitted=directives.total-base.directives.items.length;
+      if(encode().length>maxChars){
+        base.directives.items.pop();
+        base.directives.omitted=directives.total-base.directives.items.length;
+        break;
+      }
+      selected.push(rule.id);
+    }
+  }
   for(const note of noteCandidates){
     const item={id:note.id,taskId:note.taskId,category:note.category,
       key:clean(note.key,90),content:clean(note.content,280),
