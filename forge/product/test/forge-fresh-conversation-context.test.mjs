@@ -40,12 +40,15 @@ test('new project work inherits accepted cross-task decisions only from its proj
   assert.equal(context.sentToProvider,false);
   assert.ok(context.text.includes('verifiedExternalEffects'));
   assert.ok(context.text.length<=1800);
-  // The first-send wiring is intentionally bounded; a rotation uses the
-  // pre-existing Task-level continuation instead.
+  // The App is passive: a new GPT chat reads the authorized MCP
+  // discovery/handoff; the App must not send a first provider turn.
   const main=readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
-  assert.match(main,/!task\.has_messages\s*\?forgeFreshConversationContext\(store,taskId,\{/);
-  assert.match(main,/resolveWorkspace:projectId=>forgeLocalWorkspaces\.status\(projectId\)/);
-  assert.match(main,/projectContext\?\.text/);
+  assert.doesNotMatch(main,/forgeFreshConversationContext\(store,taskId/);
+  const discovery=await invoke('forge_discover',{projectId:p.projectId});
+  assert.equal(discovery.project.id,p.projectId);
+  const handoff=await invoke('project_handoff',{projectId:p.projectId,taskId:work.taskId});
+  assert.ok(handoff.acceptedMemory.some(item=>item.content==='Escolhemos HTML estático'));
+  assert.equal(handoff.nextSession.automaticSendAllowed,false);
 });
 
 test('bounded project introduction is read-only and does not replay commands',async t=>{

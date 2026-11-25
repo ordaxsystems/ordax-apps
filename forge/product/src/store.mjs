@@ -895,6 +895,9 @@ export class Store {
 
   continuationMemoryItems(taskId) {
     const local=this.listProjectMemory(taskId);
+    // A standalone Task Store can exist before the project owner schema
+    // is initialized; it has no project directives to inherit.
+    if(!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='lab_task_bindings'").get())return local;
     const binding=this.db.prepare(`SELECT b.project_id FROM lab_task_bindings b
       JOIN tasks t ON t.id=b.task_id WHERE b.task_id=? AND t.workspace_session_id=?`)
       .get(taskId,this.workspaceSession.id);
