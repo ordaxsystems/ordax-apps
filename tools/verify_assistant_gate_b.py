@@ -116,13 +116,62 @@ def probe_platform_gate_a(main_checkout: Path) -> dict:
     package_owners = policy.get("canonical_package_source_repository_by_component")
     external_owners = policy.get("canonical_external_source_repository_by_component")
     native_broker_components = policy.get("native_loopback_broker_supported_components")
-    # Gate A is proof of a SINGLE source owner, not a permanent prohibition
-    # against reading the eventual signed component. Module read is safe only
-    # after the package's exact slot is reverified by the OS-owned broker.
-    # It does not authorize mount, health mutation, installation or promotion.
+    # Source ownership is independent of exact-revision health recording.
+    # Probation may prove a signed mount, but may never activate, publish or
+    # decide the pending Assistant slot. Require the complete Native contract.
+    health_components = policy.get("native_loopback_broker_health_mutation_components", [])
+    bridge_components = policy.get("runtime_health_bridge_supported_components", [])
+    decision_components = policy.get("native_pending_decision_supported_components", [])
+    def valid_components(value):
+        return (isinstance(value, list) and all(isinstance(x, str) for x in value)
+                and len(value) == len(set(value)))
+    component_lists_valid = all(valid_components(value) for value in
+        (native_broker_components, health_components, bridge_components, decision_components))
+    probation_only = False
+    if component_lists_valid:
+        has_health = "assistant" in health_components
+        has_bridge = "assistant" in bridge_components
+        probation_only = not has_health and not has_bridge
+        if has_health and has_bridge and "assistant" in native_broker_components:
+            required_true = (
+                "signature_required_before_activation",
+                "pending_health_required_before_promotion",
+                "pending_probation_loader_available",
+                "pending_probation_loader_requires_unknown_pending_health",
+                "pending_health_record_requires_exact_revision",
+                "pending_health_record_idempotent_same_receipt",
+                "pending_health_record_rejects_stale_receipt",
+                "native_pending_health_recorder_adapter_available",
+                "native_pending_health_recorder_requires_exact_revision",
+                "runtime_health_bridge_available",
+                "runtime_health_bridge_requires_host_nonce",
+                "runtime_health_bridge_records_exact_pending_revision",
+            )
+            required_false = (
+                "activation_allowed_from_unsigned_candidate",
+                "direct_activation_allowed_from_signed_package",
+                "pending_probation_loader_promotes_candidate",
+                "pending_probation_loader_mutates_component_state",
+                "native_pending_health_recorder_promotes_candidate",
+                "native_pending_health_recorder_exposed_over_http",
+                "runtime_health_bridge_exposed_over_http",
+                "runtime_health_bridge_promotes_candidate",
+                "runtime_health_bridge_rejects_candidate",
+                "runtime_health_bridge_rolls_back_candidate",
+                "rollback_slot_activation_available",
+            )
+            modes = policy.get("runtime_health_bridge_probe_mode_by_component")
+            probation_only = (
+                all(policy.get(key) is True for key in required_true)
+                and all(policy.get(key) is False for key in required_false)
+                and policy.get("runtime_health_bridge_owner") == "ordax_browser_host"
+                and policy.get("runtime_health_bridge_transport") == "native-webkit-message-nonce"
+                and isinstance(modes, dict) and modes.get("assistant") == "mount-contract"
+            )
+        probation_only = probation_only and "assistant" not in decision_components
     broker_read_only = (
-        isinstance(native_broker_components, list)
-        and (len(native_broker_components) == len(set(native_broker_components)))
+        component_lists_valid
+        and probation_only
         and (
             "assistant" not in native_broker_components
             or (
@@ -132,12 +181,6 @@ def probe_platform_gate_a(main_checkout: Path) -> dict:
                 and policy.get("runtime_file_read_revalidates_slot_and_hash") is True
                 and policy.get("runtime_file_read_requires_exact_version_and_source_commit") is True
                 and policy.get("runtime_file_read_rejects_state_identity_change") is True
-                and "assistant" not in policy.get(
-                    "native_loopback_broker_health_mutation_components", [])
-                and "assistant" not in policy.get(
-                    "runtime_health_bridge_supported_components", [])
-                and "assistant" not in policy.get(
-                    "native_pending_decision_supported_components", [])
             )
         )
     )

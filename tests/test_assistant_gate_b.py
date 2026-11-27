@@ -248,6 +248,61 @@ class AssistantGateBTests(unittest.TestCase):
                     run_git(root, "update-ref", "refs/remotes/origin/main",
                             run_git(root, "rev-parse", "HEAD"))
 
+            # The OS now owns a nonce-bound, exact-revision health receipt.
+            # This is neither source duplication nor a pending decision.
+            current_policy.update({
+                "native_loopback_broker_health_mutation_components": ["assistant"],
+                "runtime_health_bridge_supported_components": ["assistant"],
+                "runtime_health_bridge_owner": "ordax_browser_host",
+                "runtime_health_bridge_transport": "native-webkit-message-nonce",
+                "runtime_health_bridge_probe_mode_by_component": {"assistant": "mount-contract"},
+                "signature_required_before_activation": True,
+                "pending_health_required_before_promotion": True,
+                "pending_probation_loader_available": True,
+                "pending_probation_loader_requires_unknown_pending_health": True,
+                "pending_health_record_requires_exact_revision": True,
+                "pending_health_record_idempotent_same_receipt": True,
+                "pending_health_record_rejects_stale_receipt": True,
+                "native_pending_health_recorder_adapter_available": True,
+                "native_pending_health_recorder_requires_exact_revision": True,
+                "runtime_health_bridge_available": True,
+                "runtime_health_bridge_requires_host_nonce": True,
+                "runtime_health_bridge_records_exact_pending_revision": True,
+                "activation_allowed_from_unsigned_candidate": False,
+                "direct_activation_allowed_from_signed_package": False,
+                "pending_probation_loader_promotes_candidate": False,
+                "pending_probation_loader_mutates_component_state": False,
+                "native_pending_health_recorder_promotes_candidate": False,
+                "native_pending_health_recorder_exposed_over_http": False,
+                "runtime_health_bridge_exposed_over_http": False,
+                "runtime_health_bridge_promotes_candidate": False,
+                "runtime_health_bridge_rejects_candidate": False,
+                "runtime_health_bridge_rolls_back_candidate": False,
+                "rollback_slot_activation_available": False,
+            })
+            def prove_policy(candidate):
+                policy.write_text(json.dumps(candidate), encoding="utf-8")
+                run_git(root, "add", "-A")
+                run_git(root, "commit", "-qm", "verify exact probation policy")
+                run_git(root, "update-ref", "refs/remotes/origin/main",
+                        run_git(root, "rev-parse", "HEAD"))
+                return gate.probe_platform_gate_a(root)["platform_gate_a_main_proven"]
+            self.assertTrue(prove_policy(current_policy))
+            for key, value in current_policy.items():
+                if isinstance(value, bool):
+                    with self.subTest(probation_policy=key):
+                        self.assertFalse(prove_policy({**current_policy, key: not value}))
+            for change in (
+                {"native_loopback_broker_health_mutation_components": []},
+                {"runtime_health_bridge_supported_components": []},
+                {"native_pending_decision_supported_components": ["assistant"]},
+                {"runtime_health_bridge_transport": "http"},
+                {"runtime_health_bridge_probe_mode_by_component": {"assistant": "import-contract"}},
+                {"native_loopback_broker_supported_components": []},
+            ):
+                with self.subTest(probation_change=change):
+                    self.assertFalse(prove_policy({**current_policy, **change}))
+
     def test_security_rules_and_published_contract_floor_are_required(self):
         for key in ("copy_host_memory_service", "inline_private_contracts"):
             with tempfile.TemporaryDirectory() as tmp:
