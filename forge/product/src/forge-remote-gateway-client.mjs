@@ -57,6 +57,8 @@ export class ForgeRemoteGatewayClient {
     this.agentInstanceId=this.agentInstanceIds[0];
     this.bootId='forge-'+randomUUID().toLowerCase();
     this.running=false;this.abortController=null;this.loopPromises=[];
+    // One claim coordinator per instance; execution leases retain distinct slot identities.
+    this.slotJobs=new Map();this.claimInFlight=null;
     this.startPromise=null;this.stopRequested=false;
     this.presenceTimer=null;this.retryTimer=null;this.retryAttempt=0;this.nextRetryAt=null;
     this.retryBaseMs=retryBaseMs;this.retryMaxMs=retryMaxMs;
@@ -266,15 +268,41 @@ export class ForgeRemoteGatewayClient {
     if(!reported)throw last||Error('forge_remote_report_unconfirmed');
     return reported;
   }
-  async pump(signal,agentInstanceId){
+  async pump(signal){
     while(this.running&&!signal.aborted){
+      // A stopped generation may still be resolving its aborted claim. Never
+      // issue a second claim before its receipt has been processed.
+      if(this.claimInFlight){
+        await this.claimInFlight.catch(()=>{});
+        continue;
+      }
+      const agentInstanceId=this.agentInstanceIds.find(id=>!this.slotJobs.has(id));
+      if(!agentInstanceId){
+        await Promise.race(this.slotJobs.values());
+        continue;
+      }
       try{
-        const claimed=await this.request('/v1/forge/instance/claim',{
+        const pending=this.request('/v1/forge/instance/claim',{
           instance_id:this.instanceId(),agent_instance_id:agentInstanceId,
           boot_id:this.bootId,wait_ms:15_000
         },{timeoutMs:22_000,signal});
-        this.lastError=null;
-        if(claimed.job)await this.executeJob(claimed.job,{agentInstanceId});
+        this.claimInFlight=pending;
+        try{
+          const claimed=await pending;
+          if(!signal.aborted)this.lastError=null;
+          if(claimed.job){
+            // Preserve the lease identity through start, execution and report.
+            // Claim the next free slot immediately; only claims are serialized.
+            const work=this.executeJob(claimed.job,{agentInstanceId})
+              .catch(error=>{
+                if(this.running&&!signal.aborted)
+                  this.lastError=String(error?.message||TERMINAL_ERROR).slice(0,120);
+              }).finally(()=>{this.slotJobs.delete(agentInstanceId);});
+            this.slotJobs.set(agentInstanceId,work);
+          }
+        }finally{
+          if(this.claimInFlight===pending)this.claimInFlight=null;
+        }
       }catch(error){
         if(signal.aborted||!this.running)break;
         this.lastError=String(error?.message||TERMINAL_ERROR).slice(0,120);
@@ -299,8 +327,7 @@ export class ForgeRemoteGatewayClient {
         this.presenceTimer=setInterval(()=>{if(this.running)this.presence(true).catch(error=>{
           this.lastError=String(error?.message||TERMINAL_ERROR).slice(0,120);
         });},30_000);
-        this.loopPromises=this.agentInstanceIds.map(agentInstanceId=>
-          this.pump(this.abortController.signal,agentInstanceId).catch(()=>{}));
+        this.loopPromises=[this.pump(this.abortController.signal).catch(()=>{})];
         return this.status();
       }catch(error){
         this.lastError=String(error?.message||TERMINAL_ERROR).slice(0,120);

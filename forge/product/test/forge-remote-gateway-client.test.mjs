@@ -402,3 +402,58 @@ test('parallel start calls register once; stop during registration cannot revive
   assert.equal(claims,0);
   assert.equal(client.status().running,false);
 });
+
+
+test('one idle claim coordinator fills four distinct execution slots and refills freed slots',async t=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'forge-remote-coordinator-'));
+  const store=new Store(path.join(dir,'x.sqlite'));
+  const client=new ForgeRemoteGatewayClient({store,maxConcurrent:4,
+    session:{status:()=>({connected:true}),accessToken:async()=>jwt()},
+    catalogProvider:async()=>[],toolInvoker:async()=>({result:{}}),
+    bindOwnerIdentity:()=>{},fetchImpl:async()=>{throw Error('unexpected_network');}});
+  const controller=new AbortController();
+  const claims=[],jobs=new Map();
+  const turn=()=>new Promise(resolve=>setImmediate(resolve));
+  client.request=async(path,body,{signal})=>{
+    assert.ok(path.endsWith('/claim'));
+    return new Promise(resolve=>{
+      const claim={body,resolve};
+      claims.push(claim);
+      signal.addEventListener('abort',()=>resolve({job:null}),{once:true});
+    });
+  };
+  client.executeJob=async(job,{agentInstanceId})=>{
+    assert.equal(jobs.has(agentInstanceId),false);
+    await new Promise(resolve=>jobs.set(agentInstanceId,resolve));
+    jobs.delete(agentInstanceId);
+  };
+  client.running=true;
+  const pump=client.pump(controller.signal);
+  t.after(async()=>{
+    client.running=false;controller.abort();
+    for(const resolve of jobs.values())resolve();
+    await pump;
+    await Promise.all(client.slotJobs.values());
+    store.close();fs.rmSync(dir,{recursive:true,force:true});
+  });
+  await turn();
+  assert.equal(claims.length,1);
+  claims[0].resolve({job:null});
+  await turn();
+  assert.equal(claims.length,2);
+  for(let i=1;i<=4;i++){
+    claims[i].resolve({job:{id:i}});
+    await turn();
+  }
+  assert.equal(claims.length,5,'no claim when every slot is occupied');
+  assert.equal(jobs.size,4);
+  assert.equal(new Set(claims.slice(1).map(c=>c.body.agent_instance_id)).size,4);
+  const released=claims[2].body.agent_instance_id;
+  jobs.get(released)();
+  await turn();
+  assert.equal(claims.length,6);
+  assert.equal(claims[5].body.agent_instance_id,released);
+  client.running=false;controller.abort();
+  await pump;
+  assert.equal(claims.length,6,'stop prevents further claims');
+});
